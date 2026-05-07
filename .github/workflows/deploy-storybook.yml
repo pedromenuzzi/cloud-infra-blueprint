@@ -1,0 +1,70 @@
+name: Deploy Storybook
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/storybook/**'
+      - 'packages/ui/**'
+      - '.github/workflows/deploy-storybook.yml'
+  workflow_dispatch:
+
+# GitHub Pages deploy needs `pages: write` and `id-token: write` (see
+# https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, but do NOT cancel in-progress runs:
+# the published Storybook should always be the latest *complete* build.
+concurrency:
+  group: storybook-pages
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 20.10.0
+  PNPM_VERSION: 9.12.0
+  TURBO_TELEMETRY_DISABLED: 1
+
+jobs:
+  build:
+    name: Build static Storybook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: '${{ env.PNPM_VERSION }}' }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Configure base path for GitHub Pages
+        # GitHub Pages serves project sites from `/<repo>/`. Storybook's
+        # main.ts honours `STORYBOOK_BASE` (see apps/storybook/.storybook/main.ts).
+        run: echo "STORYBOOK_BASE=/${{ github.event.repository.name }}/" >> "$GITHUB_ENV"
+
+      - name: Build Storybook
+        run: pnpm --filter @blueprint/storybook build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/storybook/storybook-static
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

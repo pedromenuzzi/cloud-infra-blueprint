@@ -1,0 +1,21 @@
+# Default reviewers for everything
+*                       @cloud-blueprint/maintainers
+
+# Frontend
+/apps/web/              @cloud-blueprint/frontend
+/packages/ui/           @cloud-blueprint/frontend
+
+# Backend
+/apps/api/              @cloud-blueprint/backend
+/apps/api/prisma/       @cloud-blueprint/backend @cloud-blueprint/maintainers
+
+# Core (qualquer mudança aqui exige review extra-cuidadoso)
+/packages/ir/           @cloud-blueprint/core
+/packages/hcl/          @cloud-blueprint/core
+/packages/resources/    @cloud-blueprint/core
+/packages/templates/    @cloud-blueprint/core
+
+# Infra / CI / docs
+/infra/                 @cloud-blueprint/devops
+/.github/               @cloud-blueprint/devops @cloud-blueprint/maintainers
+/docs/                  @cloud-blueprint/maintainers

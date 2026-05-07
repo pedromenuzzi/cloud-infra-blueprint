@@ -1,0 +1,74 @@
+{
+  "name": "cloud-blueprint",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloud Infra Blueprint - SaaS multi-tenant que une um editor visual estilo Cloudcraft a um editor de codigo Terraform com sincronizacao bidirecional em tempo real (AWS / Azure / GCP).",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/cloud-blueprint/cloud-blueprint#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cloud-blueprint/cloud-blueprint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cloud-blueprint/cloud-blueprint/issues"
+  },
+  "engines": {
+    "node": ">=20.10.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "eslint apps packages --max-warnings 0",
+    "lint:fix": "eslint apps packages --fix",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .prettierignore",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .prettierignore",
+    "clean": "turbo run clean && rimraf node_modules .turbo",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:up:cost": "docker compose -f infra/docker-compose.yml --profile cost up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml --profile cost --profile tools down",
+    "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
+    "db:migrate": "pnpm --filter @blueprint/api db:migrate",
+    "db:reset": "pnpm --filter @blueprint/api db:reset",
+    "db:studio": "pnpm --filter @blueprint/api db:studio",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@blueprint/config": "workspace:*",
+    "@changesets/cli": "^2.27.9",
+    "@eslint/js": "^9.13.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.13.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.14",
+    "globals": "^15.11.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "prettier": "^3.3.3",
+    "prettier-plugin-tailwindcss": "^0.8.0",
+    "rimraf": "^6.0.1",
+    "turbo": "^2.3.0",
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.11.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix --max-warnings=0 --no-warn-ignored",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css}": [
+      "prettier --write"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "prisma.prisma",
+    "hashicorp.terraform",
+    "editorconfig.editorconfig",
+    "yoavbls.pretty-ts-errors",
+    "vivaxy.vscode-conventional-commits",
+    "ms-azuretools.vscode-docker"
+  ]
+}

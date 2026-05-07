@@ -1,0 +1,75 @@
+name: Novo recurso (catálogo multi-cloud)
+description: Pedir adição de um recurso AWS/Azure/GCP ao catálogo
+title: '[resource]: <provider>_<tipo>'
+labels: ['type:enhancement', 'area:resources', 'good first issue', 'effort:S']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Adicionar um recurso ao catálogo é a contribuição mais acessível
+        do projeto. O passo a passo está em [`docs/RESOURCES.md`](https://github.com/cloud-blueprint/cloud-blueprint/blob/main/docs/RESOURCES.md).
+        Tempo típico: **1–4 horas** (effort:S).
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options: [aws, azure, gcp, kubernetes, random, tls]
+    validations:
+      required: true
+  - type: input
+    id: type
+    attributes:
+      label: Tipo Terraform
+      placeholder: 'aws_lambda_function'
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Categoria
+      options:
+        [
+          Compute,
+          Storage,
+          Network,
+          Database,
+          Identity,
+          Container,
+          Serverless,
+          Messaging,
+          Analytics,
+          CDN,
+          DNS,
+          Other,
+        ]
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Por que faz sentido adicionar agora?
+    validations:
+      required: true
+  - type: textarea
+    id: schema
+    attributes:
+      label: Campos essenciais (Pareto 80/20)
+      description: Liste os 5–15 campos mais usados. Não tente cobrir os 200+ do provider.
+    validations:
+      required: true
+  - type: input
+    id: docs
+    attributes:
+      label: Link da documentação oficial Terraform
+      placeholder: 'https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function'
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmações
+      options:
+        - label: Verifiquei que o recurso ainda não está em `packages/resources/src/<provider>/`.
+          required: true
+        - label: Quero implementar este recurso (deixe desmarcado se está apenas pedindo).
+          required: false

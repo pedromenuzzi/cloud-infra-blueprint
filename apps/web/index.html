@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="pt-BR" class="h-full">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta name="description" content="Cloud Infra Blueprint - desenhe arquiteturas cloud com sincronizacao bidirecional para Terraform." />
+    <title>Cloud Infra Blueprint</title>
+    <!--
+      Anti-flash theme bootstrap: runs before React mounts so we never paint
+      light-mode CSS variables and then snap to dark. Reads the same
+      localStorage key as `apps/web/src/theme/theme.ts` (THEME_STORAGE_KEY).
+      Persisted shape is Zustand's `{ state: { mode }, version }`.
+    -->
+    <script>
+      (function () {
+        try {
+          var key = 'cbp.theme';
+          var stored = localStorage.getItem(key);
+          var mode = 'system';
+          if (stored) {
+            try {
+              var parsed = JSON.parse(stored);
+              if (parsed && parsed.state && parsed.state.mode) mode = parsed.state.mode;
+              else if (stored === 'light' || stored === 'dark' || stored === 'system') mode = stored;
+            } catch (_) {}
+          }
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = mode === 'dark' || (mode === 'system' && prefersDark);
+          var root = document.documentElement;
+          if (isDark) root.classList.add('dark');
+          root.style.colorScheme = isDark ? 'dark' : 'light';
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', isDark ? '#0B1220' : '#FFFFFF');
+        } catch (_) {}
+      })();
+    </script>
+  </head>
+  <body class="h-full bg-background text-foreground antialiased">
+    <div id="root" class="h-full"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

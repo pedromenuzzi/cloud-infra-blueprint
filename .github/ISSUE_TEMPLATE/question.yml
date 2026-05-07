@@ -1,0 +1,55 @@
+name: Pergunta de uso ou design
+description: Pergunta sobre como usar, integrar ou estender o Cloud Infra Blueprint
+title: '[question]: '
+labels: ['question', 'needs-triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de abrir, **considere usar Discussions** — perguntas costumam virar threads
+        mais úteis lá: <https://github.com/cloud-blueprint/cloud-blueprint/discussions>.
+        Use issues quando a resposta provavelmente vira documentação oficial ou
+        nova feature.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área da pergunta
+      options:
+        - 'area:web (canvas, editor, UI)'
+        - 'area:api (backend NestJS)'
+        - 'area:ir (IR canônica e Ops)'
+        - 'area:hcl (parser/emitter)'
+        - 'area:resources (catálogo multi-cloud)'
+        - 'area:templates (patterns prontos)'
+        - 'area:ui (design system)'
+        - 'area:infra (docker, CI, deploy)'
+        - 'area:docs'
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto
+      description: O que você está tentando fazer? Inclua versão (`commit SHA`) e provider envolvido se relevante.
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Sua pergunta
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: O que você já tentou
+      description: ADRs lidos, docs/ folheados, código consultado, threads no Discussions etc.
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmações
+      options:
+        - label: Procurei nas issues e discussions existentes.
+          required: true
+        - label: Li os [ADRs em `docs/adr/`](https://github.com/cloud-blueprint/cloud-blueprint/tree/main/docs/adr) que parecem relevantes.
+          required: true

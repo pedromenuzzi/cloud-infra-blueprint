@@ -1,0 +1,47 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    groups:
+      types:
+        patterns: ['@types/*']
+      dev-tools:
+        patterns:
+          - 'eslint*'
+          - 'prettier*'
+          - 'turbo'
+          - 'typescript'
+          - 'vitest'
+          - 'playwright*'
+      react-stack:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - 'react-router-dom'
+          - '@xyflow/*'
+          - 'monaco-editor'
+          - '@monaco-editor/react'
+      yjs:
+        patterns:
+          - 'yjs'
+          - 'y-*'
+      nest:
+        patterns:
+          - '@nestjs/*'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /infra
+    schedule:
+      interval: weekly

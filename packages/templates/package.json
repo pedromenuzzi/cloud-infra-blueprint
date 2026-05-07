@@ -1,0 +1,61 @@
+{
+  "name": "@blueprint/templates",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Pre-baked architecture patterns (Web App AWS, Static Site, Container Stack, ...) emitted as IR patches.",
+  "keywords": [
+    "terraform",
+    "templates",
+    "patterns",
+    "blueprint",
+    "infrastructure-as-code",
+    "cloud-blueprint"
+  ],
+  "homepage": "https://github.com/cloud-blueprint/cloud-blueprint/tree/main/packages/templates#readme",
+  "bugs": {
+    "url": "https://github.com/cloud-blueprint/cloud-blueprint/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cloud-blueprint/cloud-blueprint.git",
+    "directory": "packages/templates"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "blueprint:source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rimraf dist .turbo"
+  },
+  "dependencies": {
+    "@blueprint/ir": "workspace:*",
+    "@blueprint/resources": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@blueprint/config": "workspace:*",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.4"
+  }
+}

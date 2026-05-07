@@ -1,0 +1,203 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -------------------------------------------------------------------------- */
+/* Cloud Blueprint — Design System (canonical, see image 06)                  */
+/* -------------------------------------------------------------------------- */
+
+@layer base {
+  :root {
+    /* ---- Surfaces (light) -------------------------------------------------- */
+    /* #FFFFFF, #F8FAFC, #F1F5F9 */
+    --background: 0 0% 100%;
+    --surface-1: 210 40% 98%; /* #F8FAFC — app shell */
+    --surface-2: 210 40% 96%; /* #F1F5F9 — subtle bands */
+    --foreground: 222.2 47.4% 11.2%; /* #0F172A */
+
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+
+    /* ---- Brand primary ----------------------------------------------------- */
+    /* #2563EB / #1D4ED8 */
+    --primary: 221.2 83.2% 53.3%;
+    --primary-hover: 224 76% 48%;
+    --primary-foreground: 0 0% 100%;
+
+    /* ---- Secondary / muted / accent --------------------------------------- */
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 19.3% 34.7%; /* #475569 */
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+
+    /* ---- Status ------------------------------------------------------------ */
+    /* #10B981 / #F59E0B / #EF4444 */
+    --success: 160 84% 39%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 222.2 47.4% 11.2%;
+    --danger: 0 84% 60%;
+    --danger-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* ---- Provider brand colors -------------------------------------------- */
+    --provider-aws: 36 100% 50%; /* #FF9900 */
+    --provider-azure: 207 100% 42%; /* #0078D4 */
+    --provider-gcp: 217 89% 61%; /* #4285F4 */
+    --provider-multi: 271 76% 53%; /* #7C3AED — purple for "multi-cloud" */
+
+    /* ---- Border / input / ring -------------------------------------------- */
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+
+    /* ---- Radii ------------------------------------------------------------- */
+    --radius: 0.625rem; /* 10px — cards, inputs, sheets */
+    --radius-sm: 0.375rem; /* 6px — pills, chips */
+    --radius-lg: 0.875rem; /* 14px — large cards, modals */
+
+    /* ---- Shadows ----------------------------------------------------------- */
+    --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+    --shadow-sm: 0 1px 3px 0 rgb(15 23 42 / 0.08), 0 1px 2px -1px rgb(15 23 42 / 0.06);
+    --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.1), 0 2px 6px -2px rgb(15 23 42 / 0.06);
+    --shadow-lg: 0 12px 28px -4px rgb(15 23 42 / 0.12), 0 6px 12px -4px rgb(15 23 42 / 0.08);
+    --shadow-glow: 0 0 0 6px rgb(37 99 235 / 0.12);
+  }
+
+  .dark {
+    /* ---- Surfaces (dark) — #0B1220 / #0F172A / #1E293B -------------------- */
+    --background: 222 47% 8.6%; /* #0B1220 — base */
+    --surface-1: 222.2 47.4% 11.2%; /* #0F172A — sidebar / cards */
+    --surface-2: 217.2 32.6% 17.5%; /* #1E293B — elevated chips */
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 47.4% 11.2%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 47.4% 11.2%;
+    --popover-foreground: 210 40% 98%;
+
+    /* Slightly brighter primary for contrast on dark surfaces. */
+    --primary: 217 91% 60%;
+    --primary-hover: 221.2 83.2% 53.3%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --success: 160 84% 39%;
+    --success-foreground: 222 47% 8.6%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 8.6%;
+    --danger: 0 84% 60%;
+    --danger-foreground: 222 47% 8.6%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 217.2 32.6% 20%;
+    --input: 217.2 32.6% 20%;
+    --ring: 217 91% 60%;
+
+    --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.45), 0 2px 6px -2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 12px 28px -4px rgb(0 0 0 / 0.55), 0 6px 12px -4px rgb(0 0 0 / 0.4);
+    --shadow-glow: 0 0 0 6px rgb(37 99 235 / 0.22);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    /* Inter Variable from @fontsource-variable, with safe system fallbacks. */
+    font-family:
+      'Inter Variable',
+      'Inter',
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      'Segoe UI',
+      Roboto,
+      'Helvetica Neue',
+      Arial,
+      sans-serif;
+    font-feature-settings:
+      'cv02' 1,
+      /* improved I */ 'cv03' 1,
+      /* improved 6/9 */ 'cv11' 1,
+      /* improved single-storey a */ 'ss01' 1,
+      /* alt 1 */ 'ss03' 1,
+      /* alt asterisk */ 'rlig' 1,
+      'calt' 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  code,
+  kbd,
+  pre,
+  samp,
+  .font-mono {
+    font-family:
+      'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco,
+      Consolas, 'Liberation Mono', 'Courier New', monospace;
+    font-feature-settings:
+      'liga' 1,
+      'calt' 1;
+  }
+
+  /* Scrollbar polish — subtle, theme-aware. */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.5);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  /* Focus ring helper class so we don't repeat the formula. */
+  .focus-ring {
+    @apply ring-offset-background focus-visible:ring-ring outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Canvas grid utilities (used by the editor canvas).                         */
+/* -------------------------------------------------------------------------- */
+@layer utilities {
+  .bg-grid-dots {
+    background-image: radial-gradient(circle at 1px 1px, hsl(var(--border)) 1px, transparent 0);
+    background-size: 20px 20px;
+  }
+  .bg-grid-lines {
+    background-image:
+      linear-gradient(to right, hsl(var(--border) / 0.6) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border) / 0.6) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}

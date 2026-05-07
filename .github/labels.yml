@@ -1,0 +1,181 @@
+# Cloud Infra Blueprint — manifesto declarativo de labels.
+#
+# Sincronizado para o GitHub via .github/workflows/sync-labels.yml a cada push em
+# main que toque este arquivo. Se você quer adicionar/renomear/remover uma label,
+# faça aqui — não no UI do GitHub.
+#
+# Convenções:
+#   - type:*      o que é a issue (bug, feature, chore, docs, question)
+#   - area:*      qual parte do código toca (web, api, ir, hcl, ...)
+#   - effort:*    chute inicial de tamanho (XS, S, M, L, XL)
+#   - severity:*  só para bugs
+#   - status:*    estado de triagem (needs-triage, blocked, in-progress)
+#   - good first issue / help wanted   labels canônicas do GitHub OSS
+#
+# Cores escolhidas para serem distinguíveis em modo light e dark
+# (sem vermelho saturado para não confundir com `bug`).
+
+# ---------------------------------------------------------------------------
+# Type
+# ---------------------------------------------------------------------------
+- name: 'type:bug'
+  color: 'd73a4a'
+  description: Algo está quebrado ou se comporta diferente do documentado.
+
+- name: 'type:enhancement'
+  color: 'a2eeef'
+  description: Nova feature ou melhoria de uma feature existente.
+
+- name: 'type:chore'
+  color: 'c5def5'
+  description: Manutenção, dependências, refactor sem mudança de comportamento.
+
+- name: 'type:docs'
+  color: '0075ca'
+  description: Apenas documentação.
+
+- name: 'type:question'
+  color: 'd876e3'
+  description: Pergunta sobre uso, design ou roadmap.
+
+- name: 'type:rfc'
+  color: '7C3AED'
+  description: Proposta arquitetural significativa via Discussions ou ADR.
+
+# ---------------------------------------------------------------------------
+# Area (mapeada 1:1 com pastas do monorepo)
+# ---------------------------------------------------------------------------
+- name: 'area:web'
+  color: '1f6feb'
+  description: 'apps/web — canvas, editor, UI.'
+
+- name: 'area:api'
+  color: '0e8a16'
+  description: 'apps/api — backend NestJS + Fastify.'
+
+- name: 'area:ir'
+  color: 'fbca04'
+  description: 'packages/ir — IR canônica e Ops.'
+
+- name: 'area:hcl'
+  color: 'e99695'
+  description: 'packages/hcl — parser/emitter/patch.'
+
+- name: 'area:resources'
+  color: 'fef2c0'
+  description: 'packages/resources — catálogo multi-cloud.'
+
+- name: 'area:templates'
+  color: 'bfd4f2'
+  description: 'packages/templates — patterns prontos.'
+
+- name: 'area:ui'
+  color: 'd4c5f9'
+  description: 'packages/ui — design system.'
+
+- name: 'area:infra'
+  color: 'cccccc'
+  description: 'infra/, docker-compose, scripts.'
+
+- name: 'area:ci'
+  color: 'cccccc'
+  description: 'GitHub Actions, deploy workflows.'
+
+- name: 'area:docs'
+  color: 'c2e0c6'
+  description: 'docs/, README, ADRs.'
+
+- name: 'area:multi'
+  color: 'eeeeee'
+  description: 'Cross-cutting (toca várias áreas).'
+
+# ---------------------------------------------------------------------------
+# Effort (chute inicial — triagem ajusta)
+# ---------------------------------------------------------------------------
+- name: 'effort:XS'
+  color: 'c2f5b8'
+  description: 'Menos de 1 hora de trabalho real.'
+
+- name: 'effort:S'
+  color: 'a3eba2'
+  description: '1 a 4 horas.'
+
+- name: 'effort:M'
+  color: 'fbca04'
+  description: '4 a 8 horas (até um dia útil).'
+
+- name: 'effort:L'
+  color: 'd93f0b'
+  description: '1 a 3 dias.'
+
+- name: 'effort:XL'
+  color: 'b60205'
+  description: 'Mais de 3 dias — provavelmente quer virar épico ou RFC.'
+
+# ---------------------------------------------------------------------------
+# Severity (somente bugs)
+# ---------------------------------------------------------------------------
+- name: 'severity:low'
+  color: 'cccccc'
+  description: Cosmético ou caso de borda.
+
+- name: 'severity:medium'
+  color: 'fbca04'
+  description: Quebra um fluxo, há workaround.
+
+- name: 'severity:high'
+  color: 'd93f0b'
+  description: Quebra um fluxo, sem workaround conhecido.
+
+- name: 'severity:critical'
+  color: 'b60205'
+  description: Perda de dados ou bloqueio total da experiência.
+
+# ---------------------------------------------------------------------------
+# Status / triagem
+# ---------------------------------------------------------------------------
+- name: 'needs-triage'
+  color: 'fbca04'
+  description: Aguardando classificação inicial pelo mantenedor.
+
+- name: 'needs-design'
+  color: '7C3AED'
+  description: Precisa de proposta de design (UI ou API) antes de implementar.
+
+- name: 'needs-docs'
+  color: 'fef2c0'
+  description: Implementação OK, mas falta documentar.
+
+- name: 'needs-repro'
+  color: 'd4c5f9'
+  description: Precisa de passos reproduzíveis para avançar.
+
+- name: 'blocked'
+  color: '000000'
+  description: Aguardando dependência externa ou outra issue.
+
+- name: 'in-progress'
+  color: '0e8a16'
+  description: Alguém está mexendo agora — não duplique esforço.
+
+# ---------------------------------------------------------------------------
+# Onboarding / community
+# ---------------------------------------------------------------------------
+- name: 'good first issue'
+  color: '7057ff'
+  description: Boa para uma primeira contribuição. Caminho de implementação claro.
+
+- name: 'help wanted'
+  color: '008672'
+  description: O mantenedor quer ativamente ajuda externa nesta issue.
+
+- name: 'hacktoberfest'
+  color: 'ff8a16'
+  description: Aceita para Hacktoberfest. Ativada apenas durante o evento.
+
+# ---------------------------------------------------------------------------
+# Resource catalog (sub-categoria de area:resources, atalho útil)
+# ---------------------------------------------------------------------------
+- name: 'resource-catalog'
+  color: 'fef2c0'
+  description: Adicionar/atualizar um recurso AWS/Azure/GCP no catálogo.

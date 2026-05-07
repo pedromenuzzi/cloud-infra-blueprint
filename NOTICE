@@ -1,0 +1,20 @@
+Cloud Infra Blueprint
+Copyright 2026 Cloud Infra Blueprint contributors
+
+This product includes software developed by:
+
+  - HashiCorp, Inc. — @cdktf/hcl2json (https://github.com/hashicorp/terraform-cdk),
+    licensed under the Mozilla Public License 2.0.
+  - Microsoft Corporation — Monaco Editor (https://github.com/microsoft/monaco-editor),
+    licensed under the MIT License.
+  - The xyflow team — @xyflow/react (https://github.com/xyflow/xyflow),
+    licensed under the MIT License.
+  - Kevin Jahns and Yjs contributors — Yjs (https://github.com/yjs/yjs),
+    licensed under the MIT License.
+  - NestJS contributors — NestJS (https://github.com/nestjs/nest),
+    licensed under the MIT License.
+  - Prisma — Prisma (https://github.com/prisma/prisma),
+    licensed under the Apache License 2.0.
+
+Full license texts for the dependencies above are available in their
+respective repositories.

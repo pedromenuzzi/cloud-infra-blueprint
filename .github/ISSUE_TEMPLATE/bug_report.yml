@@ -1,0 +1,94 @@
+name: Bug report
+description: Reportar um bug reproduzível no Cloud Infra Blueprint
+title: '[bug]: '
+labels: ['type:bug', 'needs-triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado por reportar! Preencha o máximo possível para acelerar o diagnóstico.
+        Bugs de **segurança** seguem [`SECURITY.md`](https://github.com/cloud-blueprint/cloud-blueprint/blob/main/SECURITY.md).
+  - type: input
+    id: version
+    attributes:
+      label: Versão / commit SHA
+      placeholder: 'main @ a1b2c3d ou v0.2.1'
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área afetada
+      description: Será mapeada para a label `area:<...>`.
+      options:
+        - 'area:web (canvas, editor, UI)'
+        - 'area:api (backend NestJS)'
+        - 'area:ir (IR canônica e Ops)'
+        - 'area:hcl (parser/emitter)'
+        - 'area:resources (catálogo multi-cloud)'
+        - 'area:templates (patterns prontos)'
+        - 'area:ui (design system)'
+        - 'area:infra (docker, CI, deploy)'
+        - 'area:docs'
+        - outro
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. Vá para `/editor/<project>`
+        2. Arraste uma EC2 para o canvas
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportamento observado
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Ambiente
+      placeholder: |
+        - SO: Windows 11 / macOS 14 / Ubuntu 22.04
+        - Browser: Chrome 130
+        - Node: v20.10.0
+        - pnpm: 9.12.0
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      render: shell
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severidade percebida
+      description: Triagem ajusta isso.
+      options:
+        - 'severity:low — cosmético ou de borda'
+        - 'severity:medium — quebra um fluxo, há workaround'
+        - 'severity:high — quebra um fluxo, sem workaround'
+        - 'severity:critical — perda de dados ou bloqueio total'
+    validations:
+      required: true
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Confirmações
+      options:
+        - label: Procurei nas issues existentes e não encontrei duplicata.
+          required: true
+        - label: Não estou reportando uma vulnerabilidade de segurança (uso `SECURITY.md`).
+          required: true

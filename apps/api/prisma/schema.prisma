@@ -1,0 +1,152 @@
+// Cloud Infra Blueprint - Prisma schema (spec section 5)
+// Multi-tenant: User -> Membership -> Organization -> Project.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Identity
+// ----------------------------------------------------------------------------
+
+model User {
+  id          String       @id @default(cuid())
+  email       String       @unique
+  name        String?
+  avatarUrl   String?
+  memberships Membership[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("users")
+}
+
+model Organization {
+  id          String       @id @default(cuid())
+  slug        String       @unique
+  name        String
+  memberships Membership[]
+  projects    Project[]
+  templates   Template[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("organizations")
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model Membership {
+  id        String       @id @default(cuid())
+  userId    String
+  orgId     String
+  role      Role         @default(MEMBER)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+  @@map("memberships")
+}
+
+// ----------------------------------------------------------------------------
+// Projects
+// ----------------------------------------------------------------------------
+
+model Project {
+  id              String           @id @default(cuid())
+  orgId           String
+  org             Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  defaultProvider String           @default("aws")
+  /// Snapshot of the canonical IR (see packages/ir).
+  ir              Json
+  /// Map of `<filename>` -> string (e.g. { "main.tf": "...", "variables.tf": "..." }).
+  files           Json
+  versions        ProjectVersion[]
+  shareLinks      ShareLink[]
+  gitIntegration  GitIntegration?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([orgId])
+  @@map("projects")
+}
+
+model ProjectVersion {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ir        Json
+  files     Json
+  message   String?
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+  @@map("project_versions")
+}
+
+model ShareLink {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  token     String    @unique
+  readOnly  Boolean   @default(true)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([projectId])
+  @@map("share_links")
+}
+
+model GitIntegration {
+  id         String    @id @default(cuid())
+  projectId  String    @unique
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  /// 'github' | 'gitlab'
+  provider   String
+  /// owner/name
+  repo       String
+  branch     String    @default("main")
+  pathPrefix String    @default("terraform/")
+  /// AES-GCM(base64) encrypted token. Never returned to the frontend.
+  tokenEnc   String
+  lastSyncAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("git_integrations")
+}
+
+// ----------------------------------------------------------------------------
+// Templates (org-scoped + public)
+// ----------------------------------------------------------------------------
+
+model Template {
+  id          String        @id @default(cuid())
+  /// null = public template visible to all orgs.
+  orgId       String?
+  org         Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  slug        String
+  name        String
+  description String?
+  ir          Json
+  thumbnail   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([orgId, slug])
+  @@map("templates")
+}

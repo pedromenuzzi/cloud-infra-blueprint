@@ -1,0 +1,3 @@
+# Fast pre-push gate: typecheck + unit tests across the monorepo.
+# Skip with `git push --no-verify` if you really need to.
+pnpm typecheck && pnpm test

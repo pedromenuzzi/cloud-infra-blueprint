@@ -1,0 +1,82 @@
+{
+  "name": "@blueprint/resources",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "description": "Declarative multi-cloud resource catalog (AWS / Azure / GCP). Each resource exports schema, defaults, ports, and an emit function.",
+  "keywords": [
+    "terraform",
+    "aws",
+    "azure",
+    "gcp",
+    "multi-cloud",
+    "resources",
+    "catalog",
+    "cloud-blueprint"
+  ],
+  "homepage": "https://github.com/cloud-blueprint/cloud-blueprint/tree/main/packages/resources#readme",
+  "bugs": {
+    "url": "https://github.com/cloud-blueprint/cloud-blueprint/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cloud-blueprint/cloud-blueprint.git",
+    "directory": "packages/resources"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "blueprint:source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./aws": {
+      "blueprint:source": "./src/aws/index.ts",
+      "types": "./dist/aws/index.d.ts",
+      "import": "./dist/aws/index.js",
+      "default": "./dist/aws/index.js"
+    },
+    "./azure": {
+      "blueprint:source": "./src/azure/index.ts",
+      "types": "./dist/azure/index.d.ts",
+      "import": "./dist/azure/index.js",
+      "default": "./dist/azure/index.js"
+    },
+    "./gcp": {
+      "blueprint:source": "./src/gcp/index.ts",
+      "types": "./dist/gcp/index.d.ts",
+      "import": "./dist/gcp/index.js",
+      "default": "./dist/gcp/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "clean": "rimraf dist .turbo"
+  },
+  "dependencies": {
+    "@blueprint/ir": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@blueprint/config": "workspace:*",
+    "@blueprint/hcl": "workspace:*",
+    "@types/node": "^20.14.0",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.4"
+  }
+}

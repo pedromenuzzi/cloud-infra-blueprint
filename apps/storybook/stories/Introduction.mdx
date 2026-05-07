@@ -1,0 +1,52 @@
+import { Meta } from '@storybook/blocks';
+
+<Meta title="Introduction" />
+
+# Cloud Blueprint — Design System
+
+This Storybook is the **public catalog of the `@blueprint/ui` package** —
+the design-system primitives shared by every surface of Cloud Infra Blueprint.
+What you see here is exactly what ships in the production web app.
+
+## Why this exists
+
+Without Storybook, anyone wanting to contribute a UI tweak had to clone the
+monorepo, install all dependencies, run Postgres and Redis locally and start
+the editor route just to see a Button. With Storybook deployed on GitHub
+Pages, the design system is one URL away — and so is the design feedback
+that turns into 10× more PRs.
+
+## Conventions
+
+- **Tokens, not hex.** Every color, radius and shadow is an HSL CSS variable
+  defined in [`packages/ui/src/styles.css`](https://github.com/cloud-blueprint/cloud-blueprint/blob/main/packages/ui/src/styles.css).
+  Stories never hard-code values.
+- **Light + dark are equal citizens.** Toggle the theme switcher in the
+  toolbar. If a component looks wrong in dark mode, that is a bug.
+- **Accessibility runs on every story.** The `a11y` panel surfaces axe
+  violations for the rendered output. The contract: no critical or serious
+  violations on any story.
+- **Variants over props.** Class Variance Authority (`cva`) is the single
+  way variants are declared. New visual options are new `variant` keys, not
+  new boolean props.
+
+## How stories are organized
+
+- **Foundations** — colors, typography, radii, shadows.
+- **Components** — one folder per primitive. Each primitive ships a
+  "Default", an "All variants" overview, and at least one realistic usage
+  example.
+- **Patterns** — multi-component compositions that show idiomatic usage
+  (e.g. a settings card with input + badge + button).
+
+## Contributing
+
+See [`docs/DESIGN-SYSTEM.md`](https://github.com/cloud-blueprint/cloud-blueprint/blob/main/docs/DESIGN-SYSTEM.md)
+and [`CONTRIBUTING.md`](https://github.com/cloud-blueprint/cloud-blueprint/blob/main/CONTRIBUTING.md).
+A new component needs:
+
+1. Implementation in `packages/ui/src/<Name>.tsx`.
+2. Export from `packages/ui/src/index.ts`.
+3. Story in `apps/storybook/stories/<Name>.stories.tsx` covering default
+   state, all variants, all sizes, and at least one realistic usage.
+4. Unit tests in `apps/web/src/test/ui.test.tsx`.

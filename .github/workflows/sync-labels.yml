@@ -1,0 +1,38 @@
+name: Sync labels
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/labels.yml'
+      - '.github/workflows/sync-labels.yml'
+  workflow_dispatch:
+    inputs:
+      delete-other-labels:
+        description: 'Remover labels que existem no repo mas não estão em labels.yml?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  sync:
+    name: Reconcile repository labels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The action is free and runs entirely on GitHub Actions minutes the
+      # account already gets for public repos. Source:
+      # https://github.com/EndBug/label-sync
+      - name: Apply .github/labels.yml
+        uses: EndBug/label-sync@v2
+        with:
+          config-file: .github/labels.yml
+          # Default: false. Renomes via `aliases:` in labels.yml are still
+          # respected even when delete-other-labels is false. Toggle this on
+          # via workflow_dispatch when you want to GC stale labels.
+          delete-other-labels: ${{ inputs.delete-other-labels || false }}

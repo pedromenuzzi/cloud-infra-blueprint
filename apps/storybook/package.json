@@ -1,0 +1,44 @@
+{
+  "name": "@blueprint/storybook",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Public Storybook for @blueprint/ui — design system playground deployed to GitHub Pages.",
+  "type": "module",
+  "scripts": {
+    "dev": "storybook dev -p 6006",
+    "build": "storybook build --output-dir storybook-static",
+    "preview": "storybook dev -p 6006 --no-open",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo 'no unit tests for storybook'",
+    "clean": "rimraf storybook-static .turbo"
+  },
+  "dependencies": {
+    "@blueprint/ui": "workspace:*",
+    "@fontsource-variable/inter": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "lucide-react": "^0.453.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@blueprint/config": "workspace:*",
+    "@storybook/addon-a11y": "^8.4.2",
+    "@storybook/addon-essentials": "^8.4.2",
+    "@storybook/addon-interactions": "^8.4.2",
+    "@storybook/addon-themes": "^8.4.2",
+    "@storybook/blocks": "^8.4.2",
+    "@storybook/react": "^8.4.2",
+    "@storybook/react-vite": "^8.4.2",
+    "@storybook/test": "^8.4.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "rimraf": "^6.0.1",
+    "storybook": "^8.4.2",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.10"
+  }
+}

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Pergunta rápida ou ideia em discussão
+    url: https://github.com/cloud-blueprint/cloud-blueprint/discussions
+    about: Use Discussions para perguntas, ideias, RFCs e dúvidas de uso.
+  - name: Vulnerabilidade de segurança
+    url: https://github.com/cloud-blueprint/cloud-blueprint/security/advisories/new
+    about: Reporte vulnerabilidades em PRIVADO (não em issues públicas).
+  - name: Boas primeiras issues
+    url: https://github.com/cloud-blueprint/cloud-blueprint/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22
+    about: 'Procurando por onde começar? Filtra por label `good first issue`.'

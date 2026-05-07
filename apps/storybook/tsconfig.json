@@ -1,0 +1,10 @@
+{
+  "extends": "@blueprint/config/tsconfig/react.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "types": ["node"],
+    "jsx": "react-jsx"
+  },
+  "include": [".storybook/**/*", "stories/**/*"],
+  "exclude": ["node_modules", "storybook-static"]
+}
