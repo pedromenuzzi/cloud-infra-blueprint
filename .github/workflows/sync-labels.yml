@@ -23,7 +23,7 @@ jobs:
     name: Reconcile repository labels
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # The action is free and runs entirely on GitHub Actions minutes the
       # account already gets for public repos. Source:
