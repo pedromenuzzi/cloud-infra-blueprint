@@ -140,7 +140,9 @@ function MockCanvasContent() {
           </marker>
         </defs>
         <g stroke="hsl(var(--primary))" strokeWidth="1.5" fill="none">
-          <path d="M 50% 80 L 50% 200" markerEnd="url(#arrow)" />
+          {/* SVG <path d=...> doesn't accept %, but <line> does — use it for the
+              decorative ALB → VPC connector. */}
+          <line x1="50%" y1="80" x2="50%" y2="200" markerEnd="url(#arrow)" />
         </g>
       </svg>
     </div>
