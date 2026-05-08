@@ -66,7 +66,7 @@ export function LandingRoute() {
 
           <p className="mt-3 text-xs text-muted-foreground">
             No credit card. Free for 3 projects. Already have <code>.tf</code> files?{' '}
-            <Link to="/import" className="text-primary underline-offset-2 hover:underline">
+            <Link to="/import" className="text-primary underline underline-offset-2">
               Drop them here
             </Link>{' '}
             to visualize.

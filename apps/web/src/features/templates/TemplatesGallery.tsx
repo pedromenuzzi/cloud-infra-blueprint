@@ -62,7 +62,7 @@ export function TemplatesGallery({ open, onClose, onPick, onStartScratch }: Temp
             Or start from scratch
           </Button>
           <a
-            className="text-sm font-medium text-primary hover:underline"
+            className="text-sm font-medium text-primary underline underline-offset-2"
             href="https://github.com/cloud-blueprint/cloud-blueprint/tree/main/packages/templates"
             target="_blank"
             rel="noreferrer"

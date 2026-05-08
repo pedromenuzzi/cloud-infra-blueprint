@@ -77,8 +77,8 @@ export function Dropzone({
       />
       <div className="space-y-1">
         <label htmlFor={inputId} className="cursor-pointer text-sm font-medium text-foreground">
-          <span className="text-primary underline-offset-2 hover:underline">Choose files</span> or
-          drag and drop here
+          <span className="text-primary underline underline-offset-2">Choose files</span> or drag
+          and drop here
         </label>
         <p className="text-xs text-muted-foreground">
           Accepts <code className="rounded bg-muted px-1">.tf</code>,{' '}
