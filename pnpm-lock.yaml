@@ -460,8 +460,8 @@ importers:
         specifier: workspace:*
         version: link:../config
       '@fast-check/vitest':
-        specifier: ^0.1.3
-        version: 0.1.6(vitest@2.1.9(@types/node@20.19.39)(happy-dom@15.11.7)(jsdom@25.0.1)(terser@5.46.2))
+        specifier: ^0.4.1
+        version: 0.4.1(vitest@2.1.9(@types/node@20.19.39)(happy-dom@15.11.7)(jsdom@25.0.1)(terser@5.46.2))
       '@types/node':
         specifier: ^20.14.0
         version: 20.19.39
@@ -1150,10 +1150,10 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@fast-check/vitest@0.1.6':
-    resolution: {integrity: sha512-/POA3YDsja15aIoXNqQ/vJrm0x7qTRPjL7oDTMLJcOYGqEBjlrmHTKWyRzxgSNa7xyh5B3q8Jib9ALObtMJiEA==}
+  '@fast-check/vitest@0.4.1':
+    resolution: {integrity: sha512-OX6TecB+ZzRfPc49jcPChcV1cf5aDu77CdDU8liecWVam7eD7mPvJNP50b9bBSTxVoGN5wzxrX9PIcCnqgC8bg==}
     peerDependencies:
-      vitest: '>=0.28.1 <1.0.0 || ^1 || ^2 || ^3'
+      vitest: ^4.1.0
 
   '@fastify/ajv-compiler@3.6.0':
     resolution: {integrity: sha512-LwdXQJjmMD+GwLOkP7TVC68qa+pSSogeWWmznRJ/coyTcfe9qA05AHFSe1eZFwK6q+xVRpChnvFUkf1iYaSZsQ==}
@@ -6782,7 +6782,7 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@fast-check/vitest@0.1.6(vitest@2.1.9(@types/node@20.19.39)(happy-dom@15.11.7)(jsdom@25.0.1)(terser@5.46.2))':
+  '@fast-check/vitest@0.4.1(vitest@2.1.9(@types/node@20.19.39)(happy-dom@15.11.7)(jsdom@25.0.1)(terser@5.46.2))':
     dependencies:
       fast-check: 3.23.2
       vitest: 2.1.9(@types/node@20.19.39)(happy-dom@15.11.7)(jsdom@25.0.1)(terser@5.46.2)
