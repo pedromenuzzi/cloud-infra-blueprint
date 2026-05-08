@@ -5,13 +5,13 @@
   "type": "module",
   "description": "Cloud Infra Blueprint - SaaS multi-tenant que une um editor visual estilo Cloudcraft a um editor de codigo Terraform com sincronizacao bidirecional em tempo real (AWS / Azure / GCP).",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/cloud-blueprint/cloud-blueprint#readme",
+  "homepage": "https://github.com/pedromenuzzi/cloud-infra-blueprint#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/cloud-blueprint/cloud-blueprint.git"
+    "url": "git+https://github.com/pedromenuzzi/cloud-infra-blueprint.git"
   },
   "bugs": {
-    "url": "https://github.com/cloud-blueprint/cloud-blueprint/issues"
+    "url": "https://github.com/pedromenuzzi/cloud-infra-blueprint/issues"
   },
   "engines": {
     "node": ">=20.10.0",
