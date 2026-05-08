@@ -1,7 +1,9 @@
 import { Avatar, AvatarGroup, Button } from '@blueprint/ui';
-import { Check, ChevronRight, Download, Settings } from 'lucide-react';
+import { Check, ChevronRight, Download, HelpCircle, Settings } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { ComingSoonModal } from '@/components/ComingSoonModal';
 import { CostTotalBadge, useCostEstimate } from '@/features/cost';
 import { ShareButton } from '@/features/share';
 import { useIRStore } from '@/store/useIRStore';
@@ -13,15 +15,24 @@ interface TopbarProps {
   workspace?: string;
   /** Sync status — defaults to `saved`. */
   status?: 'saved' | 'syncing' | 'error';
+  /** Callback invoked by the help (?) button to open the onboarding tour. */
+  onOpenHelp?: () => void;
 }
 
 /**
  * Editor topbar — mirrors image 01: centered breadcrumb (workspace / project),
  * collaborator avatar pile, sync status pill, Share, Export and Settings.
  */
-export function Topbar({ projectId, workspace = 'Acme Corp', status = 'saved' }: TopbarProps) {
+export function Topbar({
+  projectId,
+  workspace = 'Acme Corp',
+  status = 'saved',
+  onOpenHelp,
+}: TopbarProps) {
   const ir = useIRStore((s) => s.ir);
   const cost = useCostEstimate(ir);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   return (
     <header className="flex h-14 items-center justify-between gap-3 border-b border-border/60 bg-card px-4">
       <div className="flex min-w-0 items-center gap-3">
@@ -50,17 +61,47 @@ export function Topbar({ projectId, workspace = 'Acme Corp', status = 'saved' }:
         <span className="mx-1 h-6 w-px bg-border" />
 
         <ShareButton />
-        <Button size="sm">
+        <Button size="sm" onClick={() => setExportOpen(true)}>
           <Download className="h-4 w-4" /> Export
         </Button>
 
         <span className="mx-1 h-6 w-px bg-border" />
 
         <ThemeToggle />
-        <Button size="icon" variant="ghost" aria-label="Settings">
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Help & onboarding tour"
+          title="Help (open tour)"
+          onClick={() => onOpenHelp?.()}
+        >
+          <HelpCircle className="h-4 w-4" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Settings"
+          title="Settings"
+          onClick={() => setSettingsOpen(true)}
+        >
           <Settings className="h-4 w-4" />
         </Button>
       </div>
+
+      <ComingSoonModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        feature="Project settings"
+        description="Per-project settings (default region, naming conventions, plug-ins) will live here."
+        phase="Phase 4 — Persistence"
+      />
+      <ComingSoonModal
+        open={exportOpen}
+        onClose={() => setExportOpen(false)}
+        feature="Export to ZIP / push to Git"
+        description="Bundle your Terraform as a downloadable ZIP or push directly to GitHub / GitLab."
+        phase="Phase 5 — Templates + Git"
+      />
     </header>
   );
 }

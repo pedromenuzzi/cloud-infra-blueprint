@@ -66,10 +66,7 @@ export function Palette() {
   }, [items, search]);
 
   return (
-    <aside
-      className="flex w-64 shrink-0 flex-col border-r border-border/60 bg-card"
-      aria-label="Resource palette"
-    >
+    <aside className="flex h-full w-full min-w-0 flex-col bg-card" aria-label="Resource palette">
       {/* Search */}
       <div className="border-b border-border/60 p-3">
         <div className="relative">

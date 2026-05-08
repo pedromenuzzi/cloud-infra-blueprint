@@ -1,4 +1,4 @@
-import { type SVGAttributes } from 'react';
+import { type HTMLAttributes } from 'react';
 
 import { cn } from './cn.js';
 
@@ -12,6 +12,8 @@ export interface ProviderMeta {
   bgClass: string;
   /** Hex value (canonical brand color from spec). */
   hex: string;
+  /** Short monogram rendered inside the chip glyph. */
+  abbr: string;
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
@@ -21,6 +23,7 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
     textClass: 'text-provider-aws',
     bgClass: 'bg-provider-aws/15',
     hex: '#FF9900',
+    abbr: 'aws',
   },
   azure: {
     id: 'azure',
@@ -28,6 +31,7 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
     textClass: 'text-provider-azure',
     bgClass: 'bg-provider-azure/15',
     hex: '#0078D4',
+    abbr: 'Az',
   },
   gcp: {
     id: 'gcp',
@@ -35,6 +39,7 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
     textClass: 'text-provider-gcp',
     bgClass: 'bg-provider-gcp/15',
     hex: '#4285F4',
+    abbr: 'GCP',
   },
   multi: {
     id: 'multi',
@@ -42,68 +47,44 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
     textClass: 'text-provider-multi',
     bgClass: 'bg-provider-multi/15',
     hex: '#7C3AED',
+    abbr: 'M+',
   },
 };
 
-export interface ProviderIconProps extends SVGAttributes<SVGSVGElement> {
+export interface ProviderIconProps extends HTMLAttributes<HTMLSpanElement> {
   provider: ProviderId;
-  /** Edge size in px. Defaults to 14. */
+  /** Edge size in px. Defaults to 16. */
   size?: number;
 }
 
 /**
- * Tiny logical glyph per provider — a stylized monogram that doesn't infringe
- * on official cloud provider brand assets. Rendered in the canonical brand
- * hue from the design system.
+ * Provider glyph rendered as a colored monogram chip — a deliberately small,
+ * brand-neutral mark that doesn't infringe on official cloud provider logos.
+ *
+ * Previous implementation tried to draw stylized 16x16 SVG monograms but at
+ * tab/filter sizes (12–14px) they degenerated into illegible blobs. Letters
+ * stay readable down to 10px and ship with the canonical brand hue.
  */
-export function ProviderIcon({ provider, size = 14, className, ...rest }: ProviderIconProps) {
+export function ProviderIcon({ provider, size = 16, className, ...rest }: ProviderIconProps) {
   const meta = PROVIDERS[provider];
+  const fontSize = Math.max(7, Math.round(size * 0.5));
   return (
-    <svg
-      viewBox="0 0 16 16"
-      width={size}
-      height={size}
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-      className={cn('shrink-0', meta.textClass, className)}
+    <span
+      role="img"
+      aria-label={meta.label}
+      style={{
+        width: size,
+        height: size,
+        fontSize,
+        backgroundColor: meta.hex,
+      }}
+      className={cn(
+        'inline-flex shrink-0 items-center justify-center rounded-[4px] font-bold leading-none text-white',
+        className,
+      )}
       {...rest}
     >
-      {provider === 'aws' && (
-        <>
-          <path
-            d="M2 9.5c2 1.5 4 2 6 2s4-.5 6-2"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <circle cx="5" cy="6" r="1.6" fill="currentColor" />
-          <circle cx="11" cy="6" r="1.6" fill="currentColor" />
-        </>
-      )}
-      {provider === 'azure' && (
-        <path d="M7 2 L1.5 13 H6 L9 7.5 L11 13 H14.5 L9 2 Z" fill="currentColor" />
-      )}
-      {provider === 'gcp' && (
-        <>
-          <circle cx="8" cy="8" r="5" stroke="currentColor" strokeWidth="1.6" fill="none" />
-          <path
-            d="M8 3 V8 L11.5 11.5"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            fill="none"
-          />
-        </>
-      )}
-      {provider === 'multi' && (
-        <>
-          <circle cx="6" cy="9" r="3" stroke="currentColor" strokeWidth="1.4" fill="none" />
-          <circle cx="10" cy="9" r="3" stroke="currentColor" strokeWidth="1.4" fill="none" />
-          <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.4" fill="none" />
-        </>
-      )}
-    </svg>
+      {meta.abbr}
+    </span>
   );
 }

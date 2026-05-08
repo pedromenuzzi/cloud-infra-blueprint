@@ -30,7 +30,7 @@ export function Inspector() {
   const [tab, setTab] = useState<InspectorTab>('properties');
 
   return (
-    <aside className="flex w-80 flex-col border-l border-border/60 bg-card" aria-label="Inspector">
+    <aside className="flex h-full w-full min-w-0 flex-col bg-card" aria-label="Inspector">
       <header className="border-b border-border/60 p-3">
         {def ? (
           <div className="flex items-center gap-2">

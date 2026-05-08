@@ -6,13 +6,15 @@ interface RailItem {
   to: string;
   label: string;
   icon: LucideIcon;
+  /** When true, renders as a non-interactive button with a "Soon" hint. */
+  comingSoon?: boolean;
 }
 
 const ITEMS: RailItem[] = [
   { to: '/dashboard', label: 'Home', icon: Home },
   { to: '/dashboard', label: 'Projects', icon: FolderKanban },
-  { to: '/teams', label: 'Teams', icon: Users },
-  { to: '/branches', label: 'Branches', icon: GitBranch },
+  { to: '/teams', label: 'Teams', icon: Users, comingSoon: true },
+  { to: '/branches', label: 'Branches', icon: GitBranch, comingSoon: true },
 ];
 
 interface AppRailProps {
@@ -23,6 +25,10 @@ interface AppRailProps {
 /**
  * Vertical 64px navigation rail used by the dashboard and editor (image 01/03).
  * Stays dark-only — even in light mode — to match the spec's reference shots.
+ *
+ * Items marked `comingSoon` render as disabled buttons with a hover tooltip
+ * showing "Coming soon" — these correspond to F4/F5 features that are not yet
+ * routable, so we avoid sending the user to a 404.
  */
 export function AppRail({ activeLabel }: AppRailProps) {
   const location = useLocation();
@@ -43,10 +49,33 @@ export function AppRail({ activeLabel }: AppRailProps) {
         <nav className="flex flex-col items-center gap-1" aria-label="App navigation">
           {ITEMS.map((item) => {
             const isActive =
-              activeLabel != null
+              !item.comingSoon &&
+              (activeLabel != null
                 ? activeLabel === item.label
-                : location.pathname.startsWith(item.to);
+                : location.pathname.startsWith(item.to));
             const Icon = item.icon;
+
+            if (item.comingSoon) {
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  disabled
+                  title={`${item.label} — coming soon`}
+                  aria-label={`${item.label} (coming soon)`}
+                  className="group relative flex h-10 w-10 cursor-not-allowed items-center justify-center rounded-md text-white/30"
+                >
+                  <Icon className="h-5 w-5" />
+                  <span
+                    aria-hidden
+                    className="absolute -right-1 -top-1 rounded-full bg-warning/80 px-1 text-[8px] font-bold leading-3 text-black"
+                  >
+                    SOON
+                  </span>
+                </button>
+              );
+            }
+
             return (
               <Link
                 key={item.label}
@@ -72,13 +101,21 @@ export function AppRail({ activeLabel }: AppRailProps) {
           })}
         </nav>
       </div>
-      <Link
-        to="/settings"
-        className="flex h-10 w-10 items-center justify-center rounded-md text-white/60 hover:bg-white/5 hover:text-white"
-        title="Settings"
+      <button
+        type="button"
+        disabled
+        title="Settings — coming soon"
+        aria-label="Settings (coming soon)"
+        className="relative flex h-10 w-10 cursor-not-allowed items-center justify-center rounded-md text-white/30"
       >
         <Settings className="h-5 w-5" />
-      </Link>
+        <span
+          aria-hidden
+          className="absolute -right-1 -top-1 rounded-full bg-warning/80 px-1 text-[8px] font-bold leading-3 text-black"
+        >
+          SOON
+        </span>
+      </button>
     </aside>
   );
 }

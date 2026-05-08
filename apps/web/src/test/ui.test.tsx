@@ -142,12 +142,13 @@ describe('@blueprint/ui — Provider', () => {
     expect(PROVIDERS.multi.label).toMatch(/Multi/);
   });
 
-  it('ProviderIcon renders an aria-hidden SVG with the provider color class', () => {
+  it('ProviderIcon renders a labeled monogram chip with the brand color', () => {
     const { container } = render(<ProviderIcon provider="aws" size={24} />);
-    const svg = container.querySelector('svg');
-    expect(svg).toBeTruthy();
-    expect(svg!.getAttribute('aria-hidden')).toBe('true');
-    expect(svg!.classList.contains('text-provider-aws')).toBe(true);
+    const chip = container.querySelector('[role="img"]') as HTMLElement | null;
+    expect(chip).toBeTruthy();
+    expect(chip!.getAttribute('aria-label')).toBe('AWS');
+    expect(chip!.textContent).toBe('aws');
+    expect(chip!.style.backgroundColor).toBeTruthy();
   });
 });
 

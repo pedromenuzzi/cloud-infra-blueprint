@@ -1,7 +1,9 @@
 import { Badge, Button, LogoLockup } from '@blueprint/ui';
 import { ArrowRight, PlayCircle, UploadCloud } from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { ComingSoonModal } from '@/components/ComingSoonModal';
 import { ProductMockup } from '@/components/ProductMockup';
 import { ThemeToggle } from '@/theme';
 
@@ -15,6 +17,7 @@ import { ThemeToggle } from '@/theme';
  * - trust bar with placeholder logos.
  */
 export function LandingRoute() {
+  const [demoOpen, setDemoOpen] = useState(false);
   return (
     <div className="relative isolate flex min-h-full flex-col overflow-x-clip bg-background text-foreground">
       {/* Soft background gradient (image 05 has a subtle blue wash). */}
@@ -59,7 +62,7 @@ export function LandingRoute() {
                 <UploadCloud className="h-4 w-4" /> Import existing Terraform
               </Button>
             </Link>
-            <Button size="lg" variant="ghost">
+            <Button size="lg" variant="ghost" onClick={() => setDemoOpen(true)}>
               <PlayCircle className="h-4 w-4" /> Watch demo
             </Button>
           </div>
@@ -85,6 +88,14 @@ export function LandingRoute() {
       </main>
 
       <SiteFooter />
+
+      <ComingSoonModal
+        open={demoOpen}
+        onClose={() => setDemoOpen(false)}
+        feature="Watch demo"
+        description="A short product walkthrough is being recorded. In the meantime, hit Start building free to jump straight into the editor."
+        phase="Phase 6 — Polish + beta"
+      />
     </div>
   );
 }
