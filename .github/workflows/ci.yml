@@ -164,8 +164,8 @@ jobs:
       - name: Install Playwright system deps
         if: steps.pw-cache.outputs.cache-hit == 'true'
         run: pnpm --filter @blueprint/web exec playwright install-deps chromium
-      - name: Build web app
-        run: pnpm --filter @blueprint/web build
+      - name: Build web app (with workspace deps)
+        run: pnpm exec turbo run build --filter=@blueprint/web
       - name: Run Playwright
         run: pnpm --filter @blueprint/web test:e2e
       - name: Upload Playwright report

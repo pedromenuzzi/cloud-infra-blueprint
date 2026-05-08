@@ -11,6 +11,7 @@
     "start": "nest start",
     "start:prod": "cross-env NODE_ENV=production node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "postinstall": "prisma generate",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "db:generate": "prisma generate",
