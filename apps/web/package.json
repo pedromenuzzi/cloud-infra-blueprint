@@ -38,7 +38,7 @@
     "react-resizable-panels": "^2.1.7",
     "react-router-dom": "^6.27.0",
     "y-monaco": "^0.1.6",
-    "y-websocket": "^2.0.4",
+    "y-websocket": "^3.0.0",
     "yjs": "^13.6.20",
     "zod": "^3.23.8",
     "zustand": "^5.0.1"
