@@ -235,6 +235,47 @@ export const GCP_RESOURCES = [
   }),
 
   defineResource({
+    type: 'google_artifact_registry_repository',
+    provider: 'gcp',
+    category: 'containers',
+    displayName: 'Artifact Registry',
+    shortName: 'Artifact Registry',
+    description: 'Container image and package registry',
+    fields: [
+      { name: 'repository_id', type: 'string', required: true },
+      { name: 'format', type: 'select', options: ['DOCKER', 'NPM', 'MAVEN'], required: true },
+      { name: 'location', type: 'select', options: ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'] },
+    ],
+    defaults: { format: lit('DOCKER') },
+    subtitle: (args) => litStr(args.format) ?? 'registry',
+  }),
+
+  defineResource({
+    type: 'google_cloud_run_v2_service',
+    provider: 'gcp',
+    category: 'containers',
+    displayName: 'Cloud Run Service',
+    shortName: 'Cloud Run',
+    description: 'Serverless containers',
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      {
+        name: 'location',
+        type: 'select',
+        options: ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'],
+        required: true,
+      },
+      {
+        name: 'ingress',
+        type: 'select',
+        options: ['INGRESS_TRAFFIC_ALL', 'INGRESS_TRAFFIC_INTERNAL_ONLY'],
+      },
+    ],
+    defaults: { location: lit('us-central1'), ingress: lit('INGRESS_TRAFFIC_ALL') },
+    subtitle: (args) => litStr(args.location),
+  }),
+
+  defineResource({
     type: 'google_dns_managed_zone',
     provider: 'gcp',
     category: 'edge',

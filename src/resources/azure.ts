@@ -231,6 +231,58 @@ export const AZURE_RESOURCES = [
   }),
 
   defineResource({
+    type: 'azurerm_cdn_profile',
+    provider: 'azure',
+    category: 'edge',
+    displayName: 'CDN Profile',
+    shortName: 'CDN Profile',
+    description: 'Container for CDN endpoints',
+    containment: rgContainment,
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'location', type: 'select', options: [...AZURE_LOCATIONS, 'global'], required: true },
+      rgField,
+      {
+        name: 'sku',
+        type: 'select',
+        options: ['Standard_Microsoft', 'Standard_Akamai', 'Standard_Verizon'],
+        required: true,
+      },
+    ],
+    defaults: { location: lit('global'), sku: lit('Standard_Microsoft') },
+    connections: [rgConnection],
+    subtitle: (args) => litStr(args.sku),
+  }),
+
+  defineResource({
+    type: 'azurerm_cdn_endpoint',
+    provider: 'azure',
+    category: 'edge',
+    displayName: 'CDN Endpoint',
+    shortName: 'CDN Endpoint',
+    description: 'Serves cached content from the edge',
+    containment: rgContainment,
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      {
+        name: 'profile_name',
+        type: 'string',
+        refTo: ['azurerm_cdn_profile'],
+        refAttr: 'name',
+        required: true,
+      },
+      { name: 'location', type: 'select', options: [...AZURE_LOCATIONS, 'global'], required: true },
+      rgField,
+    ],
+    defaults: { location: lit('global') },
+    connections: [
+      rgConnection,
+      { targetTypes: ['azurerm_cdn_profile'], arg: 'profile_name', attr: 'name', mode: 'set' },
+    ],
+    subtitle: () => 'CDN endpoint',
+  }),
+
+  defineResource({
     type: 'azurerm_mssql_database',
     provider: 'azure',
     category: 'database',

@@ -8,7 +8,17 @@ import { cn, slugify } from '@/lib/utils';
 import { PROVIDER_LABELS, ProviderDot } from '@/resources/icons';
 import { scratchProject, TEMPLATES, type TemplateDef } from '@/templates';
 
-const FILTERS = ['All', 'AWS', 'Azure', 'GCP', 'Web Apps', 'Static Sites', 'Containers'] as const;
+const FILTERS = [
+  'All',
+  'AWS',
+  'Azure',
+  'GCP',
+  'Multi-cloud',
+  'Web Apps',
+  'Static Sites',
+  'Containers',
+  'Data',
+] as const;
 type Filter = (typeof FILTERS)[number];
 
 const PROVIDER_FILTER: Partial<Record<Filter, Provider>> = {
@@ -23,8 +33,9 @@ function matches(t: TemplateDef, filter: Filter, query: string): boolean {
     return false;
   }
   if (filter === 'All') return true;
+  if (filter === 'Multi-cloud') return t.providers.length > 1;
   const provider = PROVIDER_FILTER[filter];
-  if (provider) return t.providers.includes(provider);
+  if (provider) return t.providers.length === 1 && t.providers.includes(provider);
   return t.tags.includes(filter);
 }
 

@@ -635,6 +635,311 @@ function buildGcpStaticSite(appName: string): Record<string, string> {
   return emitProject(ir);
 }
 
+// --- Azure · Static Site --------------------------------------------------------
+
+function buildAzureStaticSite(appName: string): Record<string, string> {
+  const app = tfName(appName);
+  const azName = app.replace(/[^a-z0-9]/g, '').slice(0, 16) || 'site';
+  const ir: IR = emptyIR();
+
+  ir.providers.push(providerBlock('azure', { features: block({}) }));
+  ir.extras.push(versionsBlock(['azure']));
+
+  ir.resources.push(
+    res(
+      'azurerm_resource_group',
+      'main',
+      { name: lit(`${app}-rg`), location: lit('eastus') },
+      { x: 40, y: 60, w: 860, h: 320 },
+      ['# Everything lives in one resource group'],
+    ),
+    res(
+      'azurerm_storage_account',
+      'site',
+      {
+        name: lit(`${azName}site`),
+        resource_group_name: ref('azurerm_resource_group.main.name'),
+        location: ref('azurerm_resource_group.main.location'),
+        account_tier: lit('Standard'),
+        account_replication_type: lit('LRS'),
+        static_website: block({
+          index_document: lit('index.html'),
+          error_404_document: lit('404.html'),
+        }),
+      },
+      { x: 40, y: 80 },
+      ['# Static assets served from blob storage'],
+    ),
+    res(
+      'azurerm_cdn_profile',
+      'main',
+      {
+        name: lit(`${app}-cdn`),
+        location: lit('global'),
+        resource_group_name: ref('azurerm_resource_group.main.name'),
+        sku: lit('Standard_Microsoft'),
+      },
+      { x: 340, y: 80 },
+      ['# CDN'],
+    ),
+    res(
+      'azurerm_cdn_endpoint',
+      'site',
+      {
+        name: lit(`${app}-endpoint`),
+        profile_name: ref('azurerm_cdn_profile.main.name'),
+        location: lit('global'),
+        resource_group_name: ref('azurerm_resource_group.main.name'),
+        origin: block({
+          name: lit('storage'),
+          host_name: ref('azurerm_storage_account.site.primary_web_host'),
+        }),
+      },
+      { x: 610, y: 80 },
+    ),
+  );
+
+  ir.outputs.push(
+    output('site_url', ref('azurerm_storage_account.site.primary_web_endpoint')),
+    output('cdn_url', raw('"https://${azurerm_cdn_endpoint.site.fqdn}"')),
+  );
+
+  return emitProject(ir);
+}
+
+// --- GCP · Web App ---------------------------------------------------------------
+
+function buildGcpWebApp(appName: string): Record<string, string> {
+  const app = tfName(appName);
+  const ir: IR = emptyIR();
+
+  ir.variables.push(
+    variable('project_id', { description: 'GCP project id', type: 'string' }),
+    variable('region', { description: 'GCP region', type: 'string', default: lit('us-central1') }),
+  );
+  ir.providers.push(providerBlock('gcp', { project: ref('var.project_id'), region: ref('var.region') }));
+  ir.extras.push(versionsBlock(['gcp']));
+
+  ir.resources.push(
+    res(
+      'google_compute_network',
+      'main',
+      { name: lit(`${app}-network`), auto_create_subnetworks: lit(false) },
+      { x: 40, y: 60, w: 700, h: 360 },
+      ['# Networking'],
+    ),
+    res(
+      'google_compute_subnetwork',
+      'app',
+      {
+        name: lit(`${app}-subnet`),
+        ip_cidr_range: lit('10.0.1.0/24'),
+        region: ref('var.region'),
+        network: ref('google_compute_network.main.id'),
+      },
+      { x: 32, y: 64, w: 320, h: 180 },
+    ),
+    res(
+      'google_compute_firewall',
+      'allow_http',
+      {
+        name: lit(`${app}-allow-http`),
+        network: ref('google_compute_network.main.id'),
+        direction: lit('INGRESS'),
+        source_ranges: list([lit('0.0.0.0/0')]),
+        allow: block({
+          protocol: lit('tcp'),
+          ports: list([lit('80'), lit('22')]),
+        }),
+      },
+      { x: 400, y: 90 },
+    ),
+    res(
+      'google_compute_instance',
+      'web',
+      {
+        name: lit(`${app}-web`),
+        machine_type: lit('e2-micro'),
+        zone: raw('"${var.region}-a"'),
+        boot_disk: block({
+          initialize_params: block({ image: lit('debian-cloud/debian-12') }),
+        }),
+        network_interface: block({
+          subnetwork: ref('google_compute_subnetwork.app.id'),
+          access_config: block({}),
+        }),
+        metadata: obj({
+          'db-connection': ref('google_sql_database_instance.main.connection_name'),
+        }),
+      },
+      { x: 48, y: 70 },
+      ['# Compute'],
+    ),
+    res(
+      'google_sql_database_instance',
+      'main',
+      {
+        name: lit(`${app}-db`),
+        database_version: lit('POSTGRES_16'),
+        region: ref('var.region'),
+        deletion_protection: lit(false),
+        settings: block({ tier: lit('db-f1-micro') }),
+      },
+      { x: 800, y: 240 },
+      ['# Database'],
+    ),
+  );
+
+  ir.outputs.push(
+    output('web_ip', raw('google_compute_instance.web.network_interface[0].access_config[0].nat_ip')),
+    output('db_connection', ref('google_sql_database_instance.main.connection_name')),
+  );
+
+  return emitProject(ir);
+}
+
+// --- GCP · Cloud Run ---------------------------------------------------------------
+
+function buildGcpCloudRun(appName: string): Record<string, string> {
+  const app = tfName(appName);
+  const ir: IR = emptyIR();
+
+  ir.variables.push(
+    variable('project_id', { description: 'GCP project id', type: 'string' }),
+    variable('region', { description: 'GCP region', type: 'string', default: lit('us-central1') }),
+  );
+  ir.providers.push(providerBlock('gcp', { project: ref('var.project_id'), region: ref('var.region') }));
+  ir.extras.push(versionsBlock(['gcp']));
+
+  ir.resources.push(
+    res(
+      'google_artifact_registry_repository',
+      'app',
+      {
+        repository_id: lit(`${app.replace(/_/g, '-')}-images`),
+        format: lit('DOCKER'),
+        location: ref('var.region'),
+      },
+      { x: 60, y: 120 },
+      ['# Container images'],
+    ),
+    res(
+      'google_cloud_run_v2_service',
+      'app',
+      {
+        name: lit(`${app.replace(/_/g, '-')}-svc`),
+        location: ref('var.region'),
+        ingress: lit('INGRESS_TRAFFIC_ALL'),
+        template: block({
+          containers: block({
+            image: raw(
+              '"${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.app.repository_id}/app:latest"',
+            ),
+            ports: block({ container_port: lit(3000) }),
+          }),
+          scaling: block({ min_instance_count: lit(0), max_instance_count: lit(4) }),
+        }),
+      },
+      { x: 420, y: 120 },
+      ['# Serverless service'],
+    ),
+  );
+
+  ir.outputs.push(output('service_url', ref('google_cloud_run_v2_service.app.uri')));
+
+  return emitProject(ir);
+}
+
+// --- Multi-cloud · DR storage ---------------------------------------------------------
+
+function buildMultiCloudDr(appName: string): Record<string, string> {
+  const app = tfName(appName);
+  const azName = app.replace(/[^a-z0-9]/g, '').slice(0, 14) || 'app';
+  const ir: IR = emptyIR();
+
+  ir.variables.push(
+    variable('domain_name', { description: 'Public domain', type: 'string', default: lit('example.com') }),
+    variable('gcp_project_id', { description: 'GCP project id', type: 'string' }),
+  );
+  ir.providers.push(
+    providerBlock('aws', { region: lit('us-east-1') }),
+    providerBlock('gcp', { project: ref('var.gcp_project_id'), region: lit('us-central1') }),
+    providerBlock('azure', { features: block({}) }),
+  );
+  ir.extras.push(versionsBlock(['aws', 'gcp', 'azure']));
+
+  ir.resources.push(
+    // Primary — AWS
+    res(
+      'aws_s3_bucket',
+      'primary',
+      { bucket: lit(`${app}-primary`), force_destroy: lit(true) },
+      { x: 40, y: 120 },
+      ['# Primary copy — AWS', '# Replication to the other clouds runs out-of-band (rclone / storage transfer).'],
+    ),
+    res(
+      'aws_route53_zone',
+      'main',
+      { name: ref('var.domain_name') },
+      { x: 40, y: 300 },
+      ['# DNS — flip this record to fail over'],
+    ),
+    res(
+      'aws_route53_record',
+      'data',
+      {
+        zone_id: ref('aws_route53_zone.main.zone_id'),
+        name: raw('"data.${var.domain_name}"'),
+        type: lit('CNAME'),
+        ttl: lit(60),
+        records: list([raw('aws_s3_bucket.primary.bucket_regional_domain_name')]),
+      },
+      { x: 340, y: 300 },
+    ),
+    // Replica — GCP
+    res(
+      'google_storage_bucket',
+      'replica',
+      {
+        name: lit(`${app}-replica`),
+        location: lit('US'),
+        storage_class: lit('STANDARD'),
+        uniform_bucket_level_access: lit(true),
+      },
+      { x: 640, y: 120 },
+      ['# Warm replica — GCP'],
+    ),
+    // Cold archive — Azure
+    res(
+      'azurerm_resource_group',
+      'dr',
+      { name: lit(`${app}-dr-rg`), location: lit('eastus') },
+      { x: 940, y: 60, w: 380, h: 260 },
+      ['# Cold archive — Azure'],
+    ),
+    res(
+      'azurerm_storage_account',
+      'archive',
+      {
+        name: lit(`${azName}archive`),
+        resource_group_name: ref('azurerm_resource_group.dr.name'),
+        location: ref('azurerm_resource_group.dr.location'),
+        account_tier: lit('Standard'),
+        account_replication_type: lit('GRS'),
+      },
+      { x: 40, y: 80 },
+    ),
+  );
+
+  ir.outputs.push(
+    output('primary_bucket', ref('aws_s3_bucket.primary.id')),
+    output('replica_bucket', ref('google_storage_bucket.replica.name')),
+    output('archive_account', ref('azurerm_storage_account.archive.name')),
+  );
+
+  return emitProject(ir);
+}
+
 // --- Blank project ------------------------------------------------------------
 
 export function scratchProject(provider: Provider, appName: string): Record<string, string> {
@@ -696,6 +1001,33 @@ export const TEMPLATES: TemplateDef[] = [
     build: buildAzureWebApp,
   },
   {
+    slug: 'azure-static-site',
+    name: 'Azure Static Site',
+    description: 'Blob storage static website served through Azure CDN.',
+    providers: ['azure'],
+    tags: ['Static Sites'],
+    resourceCount: 4,
+    build: buildAzureStaticSite,
+  },
+  {
+    slug: 'gcp-web-app',
+    name: 'GCP Web App',
+    description: 'VPC network with a Compute Engine web server, firewall rules and Cloud SQL.',
+    providers: ['gcp'],
+    tags: ['Web Apps'],
+    resourceCount: 5,
+    build: buildGcpWebApp,
+  },
+  {
+    slug: 'gcp-cloud-run',
+    name: 'GCP Cloud Run',
+    description: 'Serverless containers on Cloud Run pulling images from Artifact Registry.',
+    providers: ['gcp'],
+    tags: ['Containers'],
+    resourceCount: 2,
+    build: buildGcpCloudRun,
+  },
+  {
     slug: 'gcp-static-site',
     name: 'GCP Static Site',
     description: 'Cloud Storage bucket behind a global HTTP load balancer with Cloud CDN and DNS.',
@@ -703,6 +1035,15 @@ export const TEMPLATES: TemplateDef[] = [
     tags: ['Static Sites'],
     resourceCount: 7,
     build: buildGcpStaticSite,
+  },
+  {
+    slug: 'multi-cloud-dr',
+    name: 'Multi-cloud DR',
+    description: 'Primary S3 bucket with a GCP warm replica, Azure cold archive and Route 53 failover DNS.',
+    providers: ['aws', 'gcp', 'azure'],
+    tags: ['Data'],
+    resourceCount: 6,
+    build: buildMultiCloudDr,
   },
 ];
 

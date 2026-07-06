@@ -26,6 +26,9 @@ between them.
   (`vpc_security_group_ids`, `target`, …); deleting it removes the reference.
 - 💾 **No account, no server**: projects auto-save to your browser. Share a whole project
   as a URL. Export a ready-to-`terraform apply` zip.
+- 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the
+  diagram and the code side by side with the new lines highlighted — any step opens in
+  the editor.
 
 ### Why it's different
 
@@ -87,8 +90,9 @@ The app is a fully static SPA. Any free static host works:
 src/
 ├── ir/          # canonical IR types, ops, graph derivation, layout, validation
 ├── hcl/         # parser, emitter, minimal-patch engine (+ round-trip tests)
-├── resources/   # declarative multi-cloud catalog (38 resources: AWS / Azure / GCP)
-├── templates/   # Web App AWS, Static Site CDN, ECS Fargate, Azure Web App, GCP Static Site
+├── resources/   # declarative multi-cloud catalog (42 resources: AWS / Azure / GCP)
+├── templates/   # 9 patterns: AWS web/static/ECS, Azure web/static, GCP web/run/static, multi-cloud DR
+├── tutorials/   # step-by-step lessons (diagram + code, diff-highlighted)
 ├── features/    # editor (canvas, code, palette, inspector, topbar), templates modal
 ├── routes/      # landing, dashboard, editor, 404
 ├── components/  # design-system UI kit, thumbnails, theme toggle, toasts

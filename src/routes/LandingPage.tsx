@@ -1,48 +1,14 @@
 import { ArrowRight, Check, Cloud, FileDown, Github, Play, RefreshCw } from 'lucide-react';
-import { useMemo, type ReactNode } from 'react';
+import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { hlLine } from '@/components/HclSnippet';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { Badge, Button, Logo } from '@/components/ui';
+import { Button, Logo } from '@/components/ui';
 import { createProject, listProjects } from '@/lib/storage';
 import { getTemplate } from '@/templates';
 
 const REPO_URL = 'https://github.com';
-
-/** Tiny static HCL highlighter for the hero mockup. */
-function hlLine(line: string, i: number): ReactNode {
-  if (/^\s*#/.test(line)) {
-    return (
-      <span key={i} className="text-faint">
-        {line}
-      </span>
-    );
-  }
-  const parts: ReactNode[] = [];
-  const re = /("(?:[^"\\]|\\.)*")|\b(resource|variable|output|provider|terraform)\b/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  let k = 0;
-  while ((m = re.exec(line))) {
-    if (m.index > last) parts.push(line.slice(last, m.index));
-    if (m[1]) {
-      parts.push(
-        <span key={k++} className="text-success">
-          {m[1]}
-        </span>,
-      );
-    } else {
-      parts.push(
-        <span key={k++} className="text-primary">
-          {m[2]}
-        </span>,
-      );
-    }
-    last = m.index + m[0].length;
-  }
-  if (last < line.length) parts.push(line.slice(last));
-  return <span key={i}>{parts}</span>;
-}
 
 function HeroMockup() {
   const demo = useMemo(() => getTemplate('aws-web-app')!.build('production-web'), []);
@@ -148,6 +114,9 @@ export default function LandingPage() {
             <Link to="/dashboard" className="hover:text-foreground">
               Templates
             </Link>
+            <Link to="/tutorials" className="hover:text-foreground">
+              Tutorials
+            </Link>
             <a
               href={REPO_URL}
               target="_blank"
@@ -165,13 +134,8 @@ export default function LandingPage() {
       </header>
 
       <main>
-        <section className="mx-auto max-w-6xl px-6 pb-20 pt-16 text-center">
-          <Link to="/dashboard" className="inline-block">
-            <Badge className="px-3 py-0.5 text-[12px]">
-              New: Multi-cloud support <ArrowRight className="h-3 w-3" />
-            </Badge>
-          </Link>
-          <h1 className="mx-auto mt-6 max-w-3xl text-balance text-[44px] font-bold leading-[1.08] tracking-[-0.02em] md:text-[56px]">
+        <section className="mx-auto max-w-6xl px-6 pb-20 pt-20 text-center">
+          <h1 className="mx-auto max-w-3xl text-balance text-[44px] font-bold leading-[1.08] tracking-[-0.02em] md:text-[56px]">
             Design cloud infrastructure visually.
             <br />
             Ship Terraform instantly.

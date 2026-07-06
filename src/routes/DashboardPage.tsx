@@ -1,17 +1,8 @@
-import {
-  Copy,
-  FileDown,
-  Github,
-  Home,
-  LayoutTemplate,
-  Plus,
-  Search,
-  Trash2,
-} from 'lucide-react';
+import { Copy, FileDown, Plus, Search, Trash2 } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { AppRail } from '@/components/AppRail';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
-import { ThemeToggle } from '@/components/ThemeToggle';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Input, LogoMark } from '@/components/ui';
 import { TemplateModal } from '@/features/templates/TemplateModal';
@@ -155,38 +146,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex h-full">
-      {/* icon rail */}
-      <aside
-        className="flex w-14 shrink-0 flex-col items-center gap-1 border-r bg-surface-1 py-3"
-        aria-label="Primary"
-      >
-        <Link to="/" className="mb-2 p-1" aria-label="Cloud Blueprint home">
-          <LogoMark size={26} />
-        </Link>
-        <Button variant="ghost" size="icon" aria-label="Projects" className="bg-primary-soft text-primary">
-          <Home className="h-4 w-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Templates"
-          title="Templates"
-          onClick={() => setTemplatesOpen(true)}
-        >
-          <LayoutTemplate className="h-4 w-4" />
-        </Button>
-        <div className="flex-1" />
-        <a
-          href="https://github.com"
-          target="_blank"
-          rel="noreferrer"
-          className="flex h-8 w-8 items-center justify-center rounded-sm text-muted hover:bg-surface-2 hover:text-foreground"
-          aria-label="GitHub repository"
-        >
-          <Github className="h-4 w-4" />
-        </a>
-        <ThemeToggle />
-      </aside>
+      <AppRail active="projects" onTemplates={() => setTemplatesOpen(true)} />
 
       {/* main */}
       <main className="min-w-0 flex-1 overflow-y-auto">

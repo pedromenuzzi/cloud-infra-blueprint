@@ -7,6 +7,8 @@ import { readShareFromLocation } from '@/lib/share';
 const LandingPage = lazy(() => import('./routes/LandingPage'));
 const DashboardPage = lazy(() => import('./routes/DashboardPage'));
 const EditorPage = lazy(() => import('./routes/EditorPage'));
+const TutorialsPage = lazy(() => import('./routes/TutorialsPage'));
+const TutorialPlayerPage = lazy(() => import('./routes/TutorialPlayerPage'));
 const NotFoundPage = lazy(() => import('./routes/NotFoundPage'));
 
 function RouteFallback() {
@@ -53,6 +55,8 @@ export const router = createBrowserRouter(
         { index: true, element: <LandingPage /> },
         { path: 'dashboard', element: <DashboardPage /> },
         { path: 'editor/:id', element: <EditorPage /> },
+        { path: 'tutorials', element: <TutorialsPage /> },
+        { path: 'tutorials/:slug', element: <TutorialPlayerPage /> },
         { path: '*', element: <NotFoundPage /> },
       ],
     },
