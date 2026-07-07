@@ -19,7 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Best-effort auto-enable; harmless when Pages is already configured
+      # (Settings → Pages → Source: GitHub Actions).
       - uses: actions/configure-pages@v5
+        continue-on-error: true
         with:
           enablement: true
       - uses: pnpm/action-setup@v4
