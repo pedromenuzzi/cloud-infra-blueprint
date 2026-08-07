@@ -1,0 +1,16 @@
+UID          PID    PPID  C STIME TTY          TIME CMD
+root           1       0  0 Jan01 ?        00:01:02 /sbin/init
+root         800       1  0 Jan01 ?        00:00:14 nginx: master process
+www-data     801     800  0 Jan01 ?        00:02:31 nginx: worker process
+www-data     802     800  0 Jan01 ?        00:02:19 nginx: worker process
+postgres    3333       1  1 Jan01 ?        00:14:55 postgres: main (22% MEM)
+root        2001       1  0 Jan01 ?        00:00:07 /usr/sbin/sshd -D
+node        2222       1  0 Jan02 ?        00:03:12 node /srv/api/server.js
+root         600       1  0 Jan01 ?        00:00:03 /lib/systemd/systemd-journald
+www-data    1337       1  0 03:10 ?        00:00:00 /bin/bash /var/tmp/.hidden/dropper.sh
+www-data    6060    1337 97 03:10 ?        07:44:00 /var/tmp/.hidden/xmr-miner --pool pool.evil.example:4444 --threads 8
+root         901       1  0 Jan01 ?        00:00:01 /usr/sbin/cron -f
+www-data     905     901  0 03:10 ?        00:00:00 /usr/sbin/CRON -f
+tux         4001    2001  0 09:12 pts/0    00:00:00 -bash
+tux         4099    4001  0 09:31 pts/0    00:00:00 ps -ef
+root        1100       1  0 Jan01 ?        00:00:22 /usr/sbin/rsyslogd -n

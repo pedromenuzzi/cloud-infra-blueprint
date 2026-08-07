@@ -1,0 +1,5 @@
+root:x:0:
+ops:x:2001:tux,dana
+sudo:x:27:tux
+docker:x:999:dana
+backup:x:998:backup-svc

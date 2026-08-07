@@ -1,0 +1,80 @@
+Mar  3 14:00:00 dojo sshd[900]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:27:13 dojo sshd[901]: Failed password for invalid user admin from 203.0.113.42 port 40000 ssh2
+Mar  3 14:54:26 dojo sshd[902]: Invalid user admin from 203.0.113.42 port 40002
+Mar  3 14:21:39 dojo sshd[903]: Connection closed by 203.0.113.42 port 44008 [preauth]
+Mar  3 14:48:52 dojo sshd[904]: Disconnected from authenticating user root 198.18.0.9 port 52000 [preauth]
+Mar  3 14:15:05 dojo sshd[905]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:42:18 dojo sshd[906]: Connection closed by 203.0.113.42 port 44005 [preauth]
+Mar  3 14:09:31 dojo sshd[907]: Connection closed by 203.0.113.42 port 44015 [preauth]
+Mar  3 14:36:44 dojo sshd[908]: Failed password for root from 198.18.0.9 port 41004 ssh2
+Mar  3 14:03:57 dojo sshd[909]: Invalid user admin from 203.0.113.42 port 40007
+Mar  3 14:30:10 dojo sshd[910]: Connection closed by 203.0.113.42 port 44001 [preauth]
+Mar  3 14:57:23 dojo sshd[911]: Received disconnect from 192.0.2.37 port 51000: Bye Bye [preauth]
+Mar  3 14:24:36 dojo sshd[912]: Connection closed by 203.0.113.42 port 44009 [preauth]
+Mar  3 14:51:49 dojo sshd[913]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:18:02 dojo sshd[914]: Disconnected from authenticating user root 198.18.0.10 port 52000 [preauth]
+Mar  3 14:45:15 dojo sshd[915]: Connection closed by 203.0.113.42 port 44016 [preauth]
+Mar  3 14:12:28 dojo sshd[916]: Accepted password for tux from 198.51.100.7 port 43000 ssh2
+Mar  3 14:39:41 dojo sshd[917]: Disconnected from authenticating user root 198.18.0.10 port 52000 [preauth]
+Mar  3 14:06:54 dojo sshd[918]: Failed password for invalid user admin from 203.0.113.42 port 40010 ssh2
+Mar  3 14:33:07 dojo sshd[919]: Failed password for root from 192.0.2.15 port 41001 ssh2
+Mar  3 14:00:20 dojo sshd[920]: Connection closed by 203.0.113.42 port 44006 [preauth]
+Mar  3 14:27:33 dojo sshd[921]: Accepted password for tux from 198.51.100.7 port 43001 ssh2
+Mar  3 14:54:46 dojo sshd[922]: Failed password for root from 192.0.2.16 port 41003 ssh2
+Mar  3 14:21:59 dojo sshd[923]: Connection closed by 203.0.113.42 port 44010 [preauth]
+Mar  3 14:48:12 dojo sshd[924]: Invalid user admin from 203.0.113.42 port 40008
+Mar  3 14:15:25 dojo sshd[925]: Failed password for invalid user admin from 203.0.113.42 port 40001 ssh2
+Mar  3 14:42:38 dojo sshd[926]: Invalid user admin from 203.0.113.42 port 40001
+Mar  3 14:09:51 dojo sshd[927]: Invalid user admin from 203.0.113.42 port 40004
+Mar  3 14:36:04 dojo sshd[928]: Accepted password for tux from 198.51.100.7 port 43002 ssh2
+Mar  3 14:03:17 dojo sshd[929]: Failed password for root from 198.18.0.10 port 41005 ssh2
+Mar  3 14:30:30 dojo sshd[930]: Invalid user admin from 203.0.113.42 port 40006
+Mar  3 14:57:43 dojo sshd[931]: Connection closed by 203.0.113.42 port 44000 [preauth]
+Mar  3 14:24:56 dojo sshd[932]: Disconnected from authenticating user root 198.18.0.9 port 52000 [preauth]
+Mar  3 14:51:09 dojo sshd[933]: Disconnected from authenticating user root 198.18.0.10 port 52000 [preauth]
+Mar  3 14:18:22 dojo sshd[934]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:45:35 dojo sshd[935]: Invalid user admin from 203.0.113.42 port 40003
+Mar  3 14:12:48 dojo sshd[936]: Disconnected from authenticating user root 198.18.0.10 port 52000 [preauth]
+Mar  3 14:39:01 dojo sshd[937]: Disconnected from authenticating user root 198.18.0.9 port 52000 [preauth]
+Mar  3 14:06:14 dojo sshd[938]: Received disconnect from 192.0.2.33 port 51000: Bye Bye [preauth]
+Mar  3 14:33:27 dojo sshd[939]: Connection closed by 203.0.113.42 port 44011 [preauth]
+Mar  3 14:00:40 dojo sshd[940]: Disconnected from authenticating user root 198.18.0.9 port 52000 [preauth]
+Mar  3 14:27:53 dojo sshd[941]: Connection closed by 203.0.113.42 port 44003 [preauth]
+Mar  3 14:54:06 dojo sshd[942]: Failed password for root from 203.0.113.99 port 41006 ssh2
+Mar  3 14:21:19 dojo sshd[943]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:48:32 dojo sshd[944]: Received disconnect from 192.0.2.38 port 51000: Bye Bye [preauth]
+Mar  3 14:15:45 dojo sshd[945]: Failed password for invalid user admin from 203.0.113.42 port 40002 ssh2
+Mar  3 14:42:58 dojo sshd[946]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:09:11 dojo sshd[947]: Invalid user admin from 203.0.113.42 port 40010
+Mar  3 14:36:24 dojo sshd[948]: Connection closed by 203.0.113.42 port 44002 [preauth]
+Mar  3 14:03:37 dojo sshd[949]: Received disconnect from 192.0.2.35 port 51000: Bye Bye [preauth]
+Mar  3 14:30:50 dojo sshd[950]: Received disconnect from 192.0.2.34 port 51000: Bye Bye [preauth]
+Mar  3 14:57:03 dojo sshd[951]: Received disconnect from 192.0.2.36 port 51000: Bye Bye [preauth]
+Mar  3 14:24:16 dojo sshd[952]: Connection closed by 203.0.113.42 port 44014 [preauth]
+Mar  3 14:51:29 dojo sshd[953]: Received disconnect from 192.0.2.31 port 51000: Bye Bye [preauth]
+Mar  3 14:18:42 dojo sshd[954]: Connection closed by 203.0.113.42 port 44017 [preauth]
+Mar  3 14:45:55 dojo sshd[955]: Failed password for root from 192.0.2.16 port 41002 ssh2
+Mar  3 14:12:08 dojo sshd[956]: Disconnected from authenticating user root 198.18.0.9 port 52000 [preauth]
+Mar  3 14:39:21 dojo sshd[957]: Connection closed by 203.0.113.42 port 44013 [preauth]
+Mar  3 14:06:34 dojo sshd[958]: Invalid user admin from 203.0.113.42 port 40011
+Mar  3 14:33:47 dojo sshd[959]: Failed password for invalid user admin from 203.0.113.42 port 40003 ssh2
+Mar  3 14:00:00 dojo sshd[960]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:27:13 dojo sshd[961]: Connection closed by 203.0.113.42 port 44012 [preauth]
+Mar  3 14:54:26 dojo sshd[962]: Failed password for invalid user admin from 203.0.113.42 port 40005 ssh2
+Mar  3 14:21:39 dojo sshd[963]: Connection closed by 203.0.113.42 port 44007 [preauth]
+Mar  3 14:48:52 dojo sshd[964]: Failed password for invalid user admin from 203.0.113.42 port 40008 ssh2
+Mar  3 14:15:05 dojo sshd[965]: Received disconnect from 192.0.2.30 port 51000: Bye Bye [preauth]
+Mar  3 14:42:18 dojo sshd[966]: Received disconnect from 192.0.2.32 port 51000: Bye Bye [preauth]
+Mar  3 14:09:31 dojo sshd[967]: Failed password for invalid user admin from 203.0.113.42 port 40011 ssh2
+Mar  3 14:36:44 dojo sshd[968]: Failed password for invalid user admin from 203.0.113.42 port 40004 ssh2
+Mar  3 14:03:57 dojo sshd[969]: Connection closed by 203.0.113.42 port 44004 [preauth]
+Mar  3 14:30:10 dojo sshd[970]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:57:23 dojo sshd[971]: Failed password for invalid user admin from 203.0.113.42 port 40007 ssh2
+Mar  3 14:24:36 dojo sshd[972]: Invalid user admin from 203.0.113.42 port 40005
+Mar  3 14:51:49 dojo sshd[973]: Failed password for root from 192.0.2.15 port 41000 ssh2
+Mar  3 14:18:02 dojo sshd[974]: pam_unix(sshd:session): session opened for user tux by (uid=0)
+Mar  3 14:45:15 dojo sshd[975]: Failed password for invalid user admin from 203.0.113.42 port 40009 ssh2
+Mar  3 14:12:28 dojo sshd[976]: Failed password for invalid user admin from 203.0.113.42 port 40006 ssh2
+Mar  3 14:39:41 dojo sshd[977]: Invalid user admin from 203.0.113.42 port 40009
+Mar  3 14:06:54 dojo sshd[978]: Failed password for invalid user guest from 192.0.2.77 port 42000 ssh2
+Mar  3 14:33:07 dojo sshd[979]: Invalid user admin from 203.0.113.42 port 40000

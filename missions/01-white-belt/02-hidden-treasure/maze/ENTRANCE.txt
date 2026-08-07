@@ -1,0 +1,3 @@
+Welcome to the Maze of Directories.
+Somewhere deep inside, a treasure is hidden.
+Remember: some things only reveal themselves to `ls -a`.

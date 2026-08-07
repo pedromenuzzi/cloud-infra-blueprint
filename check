@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# ╭──────────────────────────────────────────────────────────────────────╮
+# │  Linux Dojo — the belt examiner.                                       │
+# │  ./check          run every mission, show the dojo board, save progress│
+# │  ./check 3.2      examine a single mission in detail                   │
+# │  ./check --help   full usage                                           │
+# ╰──────────────────────────────────────────────────────────────────────╯
+DOJO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+cd "$DOJO_ROOT" || exit 1
+
+# shellcheck source=tools/lib.sh
+. "$DOJO_ROOT/tools/lib.sh"
+# shellcheck source=tools/checks.sh
+. "$DOJO_ROOT/tools/checks.sh"
+
+MANIFEST="$DOJO_ROOT/game/manifest.sh"
+STATE_DIR="$DOJO_ROOT/.dojo"
+STATE_FILE="$STATE_DIR/state"
+TOTAL_XP=6200
+
+usage() {
+  cat <<EOF
+${C_BOLD}🐧 Linux Dojo — belt examiner${C_RST}
+
+  ${C_CYN}./check${C_RST}            Examine all 45 missions, print the dojo board, save progress
+  ${C_CYN}./check 3.2${C_RST}        Examine one mission in detail (great while you work)
+  ${C_CYN}./check --list${C_RST}     List every mission and its belt
+  ${C_CYN}./check --help${C_RST}     This help
+
+Progress is written to ${C_DIM}game/progress.json${C_RST} and ${C_DIM}.dojo/state${C_RST}, which power
+the game board. Open the board any time with ${C_CYN}./play${C_RST}.
+EOF
+}
+
+# ---- manifest access (skip comment/blank lines) ----------------------------
+manifest_rows() { grep -v '^[[:space:]]*#' "$MANIFEST" | grep -v '^[[:space:]]*$'; }
+
+fn_for_id() { printf 'm_%s' "$(printf '%s' "$1" | tr '.' '_')"; }
+
+# Run one mission's checks. Sets MISSION_FAILS / MISSION_PASS globals.
+run_one() {
+  local id="$1" bslug="$2" mslug="$3"
+  local dir="$DOJO_ROOT/missions/$bslug/$mslug"
+  _check_reset
+  if [ ! -d "$dir" ]; then
+    CHK_FAILS=1; CHK_MSGS="
+    ${C_RED}✗${C_RST} mission folder missing: missions/$bslug/$mslug"
+  else
+    cd "$dir" || { CHK_FAILS=1; cd "$DOJO_ROOT"; return; }
+    local fn; fn=$(fn_for_id "$id")
+    if type "$fn" >/dev/null 2>&1; then
+      "$fn"
+    else
+      CHK_FAILS=1; CHK_MSGS="
+    ${C_RED}✗${C_RST} no verifier defined for $id (internal error)"
+    fi
+    cd "$DOJO_ROOT" || true
+  fi
+  MISSION_FAILS=$CHK_FAILS
+  MISSION_PASS=$CHK_PASS
+}
+
+progress_bar() { # progress_bar DONE TOTAL WIDTH
+  local done="$1" total="$2" width="${3:-14}" i filled
+  filled=$(( done * width / total ))
+  printf '['
+  i=0; while [ "$i" -lt "$width" ]; do
+    if [ "$i" -lt "$filled" ]; then printf '%s' "█"; else printf '%s' "░"; fi
+    i=$((i+1))
+  done
+  printf ']'
+}
+
+# ---- single mission (detailed) ---------------------------------------------
+examine_single() {
+  local want="$1" row found=""
+  while IFS='|' read -r bn bslug bname mid mslug xp boss title; do
+    [ "$mid" = "$want" ] || continue
+    found=1
+    printf "\n${C_BOLD}🥋 Mission %s — %s${C_RST}  ${C_DIM}(Belt %s · %s · %s XP)${C_RST}\n" "$mid" "$title" "$bn" "$bname" "$xp"
+    printf "${C_DIM}%s${C_RST}\n\n" "─────────────────────────────────────────────"
+    VERBOSE=1
+    run_one "$mid" "$bslug" "$mslug"
+    VERBOSE=""
+    echo ""
+    if [ "$MISSION_FAILS" -eq 0 ] && [ "$MISSION_PASS" -gt 0 ]; then
+      printf "  ${C_GRN}${C_BOLD}✓ PASS${C_RST}  %s/%s checks — mission %s cleared! ${C_YEL}+%s XP${C_RST}\n" "$MISSION_PASS" "$MISSION_PASS" "$mid" "$xp"
+      printf "  ${C_DIM}Run ./check (no arguments) to bank it and update your board.${C_RST}\n\n"
+    else
+      printf "  ${C_RED}${C_BOLD}✗ not yet${C_RST}  %s passed, %s to fix:\n%s\n\n" "$MISSION_PASS" "$MISSION_FAILS" "$CHK_MSGS"
+      printf "  ${C_DIM}Read missions/%s/%s/README.md — the hints are at the bottom.${C_RST}\n\n" "$bslug" "$mslug"
+    fi
+  done <<EOF
+$(manifest_rows)
+EOF
+  if [ -z "$found" ]; then
+    printf "${C_RED}Unknown mission '%s'.${C_RST} Try ${C_CYN}./check --list${C_RST} to see them all.\n" "$want"
+    return 1
+  fi
+  [ "$MISSION_FAILS" -eq 0 ]
+}
+
+list_missions() {
+  printf "\n${C_BOLD}The path of the Tux — 9 belts, 45 missions${C_RST}\n\n"
+  local last=""
+  while IFS='|' read -r bn bslug bname mid mslug xp boss title; do
+    if [ "$bn" != "$last" ]; then printf "\n  ${C_BOLD}Belt %s · %s${C_RST}\n" "$bn" "$bname"; last="$bn"; fi
+    local tag="   "; [ "$boss" = "1" ] && tag="${C_MAG}🥋 ${C_RST}"
+    printf "    %s%s  ${C_DIM}%s${C_RST}  (%s XP)\n" "$tag" "$mid" "$title" "$xp"
+  done <<EOF
+$(manifest_rows)
+EOF
+  echo ""
+}
+
+# ---- full run (all missions + board + save) --------------------------------
+examine_all() {
+  # remember what was already done, for celebration diffs
+  local prev_done=" "
+  if [ -f "$STATE_FILE" ]; then
+    while read -r kw id; do [ "$kw" = "done" ] && prev_done="$prev_done$id "; done < "$STATE_FILE"
+  fi
+
+  local done_ids="" earned=0 belt_done_1=0 belt_done_2=0 belt_done_3=0 belt_done_4=0
+  local belt_done_5=0 belt_done_6=0 belt_done_7=0 belt_done_8=0 belt_done_9=0
+  local newly="" belt_names=""
+
+  printf "\n${C_BOLD}${C_CYN}🐧  L I N U X   D O J O${C_RST}   ${C_DIM}· examining your work ·${C_RST}\n\n"
+
+  local cur_belt="" cur_name=""
+  while IFS='|' read -r bn bslug bname mid mslug xp boss title; do
+    run_one "$mid" "$bslug" "$mslug"
+    if [ "$MISSION_FAILS" -eq 0 ] && [ "$MISSION_PASS" -gt 0 ]; then
+      done_ids="$done_ids$mid "
+      earned=$(( earned + xp ))
+      eval "belt_done_$bn=\$(( belt_done_$bn + 1 ))"
+      case "$prev_done" in *" $mid "*) : ;; *) newly="$newly$mid ";; esac
+    fi
+  done <<EOF
+$(manifest_rows)
+EOF
+
+  # per-belt board
+  local ranks="Hatchling|File Wrangler|Text Ninja|Gatekeeper|Process Tamer|Net Runner|Script Smith|System Craftsman|Tux Sensei"
+  local names="White Belt|Yellow Belt|Orange Belt|Green Belt|Blue Belt|Purple Belt|Brown Belt|Red Belt|Black Belt"
+  local icons="⚪|🟡|🟠|🟢|🔵|🟣|🟤|🔴|⚫"
+  local belts_complete=0 bn=1
+  while [ "$bn" -le 9 ]; do
+    local dcount; eval "dcount=\$belt_done_$bn"
+    local nm; nm=$(printf '%s' "$names" | cut -d'|' -f"$bn")
+    local ic; ic=$(printf '%s' "$icons" | cut -d'|' -f"$bn")
+    local rk; rk=$(printf '%s' "$ranks" | cut -d'|' -f"$bn")
+    local bar; bar=$(progress_bar "$dcount" 5 12)
+    local status=""
+    if [ "$dcount" -eq 5 ]; then status="${C_GRN}✓ ${rk}${C_RST}"; belts_complete=$((belts_complete+1)); fi
+    printf "  %s ${C_BOLD}Belt %s${C_RST} %-13s %s %s/5   %s\n" "$ic" "$bn" "$nm" "$bar" "$dcount" "$status"
+    bn=$((bn+1))
+  done
+
+  # total xp bar + rank
+  local done_count; done_count=$(printf '%s' "$done_ids" | wc -w | tr -d ' ')
+  echo ""
+  printf "  ${C_BOLD}XP${C_RST}  %s ${C_YEL}%s${C_RST}/%s   ${C_BOLD}Missions${C_RST} %s/45   ${C_BOLD}Belts earned${C_RST} %s/9\n" \
+    "$(progress_bar "$earned" "$TOTAL_XP" 24)" "$earned" "$TOTAL_XP" "$done_count" "$belts_complete"
+
+  save_progress "$done_ids" "$earned" \
+    "$belt_done_1" "$belt_done_2" "$belt_done_3" "$belt_done_4" "$belt_done_5" \
+    "$belt_done_6" "$belt_done_7" "$belt_done_8" "$belt_done_9"
+
+  # celebrations
+  echo ""
+  local nc; nc=$(printf '%s' "$newly" | wc -w | tr -d ' ')
+  if [ "$nc" -gt 0 ]; then
+    printf "  ${C_GRN}${C_BOLD}⭐ New this run:${C_RST} "
+    local x; for x in $newly; do printf "%s " "$x"; done; echo ""
+  fi
+  # belt-completion ceremonies for belts finished this run
+  bn=1
+  while [ "$bn" -le 9 ]; do
+    local dcount; eval "dcount=\$belt_done_$bn"
+    if [ "$dcount" -eq 5 ]; then
+      # was it complete before?
+      local was=1 mid2
+      for mid2 in "$bn.1" "$bn.2" "$bn.3" "$bn.4" "$bn.5"; do
+        case "$prev_done" in *" $mid2 "*) : ;; *) was=0;; esac
+      done
+      if [ "$was" -eq 0 ]; then
+        local rk; rk=$(printf '%s' "$ranks" | cut -d'|' -f"$bn")
+        local nm; nm=$(printf '%s' "$names" | cut -d'|' -f"$bn")
+        belt_ceremony "$bn" "$nm" "$rk"
+      fi
+    fi
+    bn=$((bn+1))
+  done
+
+  if [ "$done_count" -eq 45 ]; then black_belt_art; else
+    printf "\n  ${C_DIM}Keep going — open the board with ${C_RST}${C_CYN}./play${C_RST}${C_DIM} and pick your next mission.${C_RST}\n\n"
+  fi
+}
+
+belt_ceremony() { # bn name rank
+  printf "\n  ${C_YEL}${C_BOLD}╭───────────────────────────────────────────────╮${C_RST}\n"
+  printf "  ${C_YEL}${C_BOLD}│${C_RST}   🥋  BELT %s COMPLETE — %s${C_RST}\n" "$1" "$2"
+  printf "  ${C_YEL}${C_BOLD}│${C_RST}   Tux advances to rank: ${C_BOLD}%s${C_RST}\n" "$3"
+  printf "  ${C_YEL}${C_BOLD}╰───────────────────────────────────────────────╯${C_RST}\n"
+}
+
+black_belt_art() {
+  cat <<'EOF'
+
+        .--.         ┌───────────────────────────────────┐
+       |o_o |        │  ⚫  B L A C K   B E L T           │
+       |:_/ |        │                                   │
+      //   \ \       │  You have walked the whole path.  │
+     (|     | )      │  45/45 missions. 6200 XP.         │
+    /'\_   _/`\      │  Tux bows to you, Sensei.         │
+    \___)=(___/      └───────────────────────────────────┘
+EOF
+  printf "\n  ${C_BOLD}${C_GRN}The dojo has no more to teach. From here, you teach yourself.${C_RST}\n\n"
+}
+
+# ---- persist progress -------------------------------------------------------
+save_progress() {
+  local done_ids="$1" earned="$2"; shift 2
+  local b1="$1" b2="$2" b3="$3" b4="$4" b5="$5" b6="$6" b7="$7" b8="$8" b9="$9"
+  mkdir -p "$STATE_DIR"
+  # state file
+  : > "$STATE_FILE"
+  local id
+  for id in $done_ids; do echo "done $id" >> "$STATE_FILE"; done
+
+  local now; now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+  local ver=1
+  if [ -f "$DOJO_ROOT/game/progress.json" ]; then
+    local pv; pv=$(grep -o '"version"[[:space:]]*:[[:space:]]*[0-9]*' "$DOJO_ROOT/game/progress.json" 2>/dev/null | grep -o '[0-9]*$')
+    [ -n "$pv" ] && ver=$((pv + 1))
+  fi
+
+  # done array json
+  local arr="" first=1
+  for id in $done_ids; do
+    if [ "$first" -eq 1 ]; then arr="\"$id\""; first=0; else arr="$arr,\"$id\""; fi
+  done
+
+  local belts_json=""
+  local bn=1
+  for cnt in "$b1" "$b2" "$b3" "$b4" "$b5" "$b6" "$b7" "$b8" "$b9"; do
+    local comp=false; [ "$cnt" -eq 5 ] && comp=true
+    local sep=","; [ "$bn" -eq 1 ] && sep=""
+    belts_json="$belts_json$sep\"$bn\":{\"done\":$cnt,\"total\":5,\"complete\":$comp}"
+    bn=$((bn+1))
+  done
+
+  local json="{\"version\":$ver,\"updatedAt\":\"$now\",\"xp\":$earned,\"totalXp\":$TOTAL_XP,\"done\":[$arr],\"belts\":{$belts_json}}"
+  printf '%s\n' "$json" > "$DOJO_ROOT/game/progress.json"
+  printf '// AUTO-GENERATED by ./check — your live progress (used when the board is opened via file://).\nwindow.DOJO_PROGRESS = %s;\n' "$json" > "$DOJO_ROOT/game/progress.js"
+}
+
+# ---- entrypoint -------------------------------------------------------------
+case "${1:-}" in
+  ""|"--all"|"-a") examine_all ;;
+  "-h"|"--help") usage ;;
+  "--list"|"-l") list_missions ;;
+  *) examine_single "$1" ;;
+esac

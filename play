@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# ╭──────────────────────────────────────────────────────────────────────╮
+# │  Linux Dojo — open the game board in your browser.                     │
+# │  ./play          serve the board and open it (best experience)         │
+# │  ./play --no-open  serve without launching a browser                   │
+# ╰──────────────────────────────────────────────────────────────────────╯
+DOJO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+GAME_DIR="$DOJO_ROOT/game"
+PORT="${DOJO_PORT:-4173}"
+
+if [ -t 1 ]; then C_CYN=$'\033[36m'; C_DIM=$'\033[2m'; C_BOLD=$'\033[1m'; C_RST=$'\033[0m'
+else C_CYN=""; C_DIM=""; C_BOLD=""; C_RST=""; fi
+
+# make sure progress files exist so the board renders even before the first check
+if [ ! -f "$GAME_DIR/progress.js" ]; then
+  printf 'window.DOJO_PROGRESS = {"version":0,"updatedAt":"","xp":0,"totalXp":6200,"done":[],"belts":{}};\n' > "$GAME_DIR/progress.js"
+fi
+
+open_browser() {
+  local url="$1"
+  if command -v xdg-open >/dev/null 2>&1; then xdg-open "$url" >/dev/null 2>&1 &
+  elif command -v open >/dev/null 2>&1; then open "$url" >/dev/null 2>&1 &
+  elif command -v wslview >/dev/null 2>&1; then wslview "$url" >/dev/null 2>&1 &
+  fi
+}
+
+find_python() {
+  if command -v python3 >/dev/null 2>&1; then echo "python3";
+  elif command -v python >/dev/null 2>&1; then echo "python";
+  else echo ""; fi
+}
+
+PY="$(find_python)"
+URL="http://localhost:$PORT/"
+
+printf "\n${C_BOLD}🐧 Linux Dojo${C_RST}\n"
+if [ -z "$PY" ]; then
+  printf "  ${C_DIM}Python isn't available to run a local server.${C_RST}\n"
+  printf "  Open this file directly in your browser instead:\n\n"
+  printf "     ${C_CYN}file://%s/index.html${C_RST}\n\n" "$GAME_DIR"
+  printf "  ${C_DIM}(The board falls back to reading game/progress.js, so it still works offline.)${C_RST}\n\n"
+  exit 0
+fi
+
+printf "  Serving the dojo board at  ${C_CYN}%s${C_RST}\n" "$URL"
+printf "  ${C_DIM}Leave this running while you train. Press Ctrl+C to stop.${C_RST}\n"
+printf "  ${C_DIM}Run ./check in another terminal to update your progress live.${C_RST}\n\n"
+
+if [ "${1:-}" != "--no-open" ]; then ( sleep 1; open_browser "$URL" ) & fi
+
+cd "$GAME_DIR" || exit 1
+exec "$PY" -m http.server "$PORT" --bind 127.0.0.1

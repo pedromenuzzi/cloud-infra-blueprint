@@ -1,0 +1,15 @@
+USER         PID %CPU %MEM    VSZ    RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.1 167744  11264 ?       Ss   Jan01   1:02 /sbin/init
+root         800  0.0  0.2  55432  18944 ?       Ss   Jan01   0:14 nginx: master process
+www-data     801  0.3  0.3  56720  25600 ?       S    Jan01   2:31 nginx: worker process
+www-data     802  0.2  0.3  56720  25472 ?       S    Jan01   2:19 nginx: worker process
+postgres    1201  1.1  6.4 1258380 524288 ?      Ss   Jan01  14:55 postgres: main
+java        4242  2.4 38.2 8891200 3145728 ?     Sl   Jan02  88:12 java -Xmx8g -jar /opt/app/server.jar
+root        2001  0.0  0.1  15420   9216 ?       Ss   Jan01   0:07 /usr/sbin/sshd -D
+tux         3300  0.0  0.1  21520   5376 pts/0   Ss   09:12   0:00 -bash
+tux         3391  0.0  0.0  19312   3584 pts/0   R+   09:31   0:00 ps aux
+mysql       6666  0.0  0.0      0      0 ?       Z    08:55   0:00 [mysqld] <defunct>
+root         950  0.0  0.1  99887   8112 ?       Ssl  Jan01   0:40 /usr/lib/systemd/systemd-journald
+syslog      1100  0.0  0.1 224344   6912 ?       Ssl  Jan01   0:22 /usr/sbin/rsyslogd -n
+tux         5555  4.2  1.1 1866776  92160 ?      Sl   09:02   3:44 /usr/bin/python3 train.py
+root        7777  0.0  0.0   9040   2816 ?       S    09:30   0:00 sleep 3600

@@ -1,0 +1,12 @@
+* Connected to internal-api (10.0.9.12) port 80
+> GET / HTTP/1.1
+> Host: internal-api
+> User-Agent: curl/8.5.0
+> Accept: */*
+>
+< HTTP/1.1 302 Found
+< Location: /login
+< Server: nginx
+< Content-Length: 0
+<
+* Connection #0 to host internal-api left intact

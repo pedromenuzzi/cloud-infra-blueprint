@@ -1,0 +1,2 @@
+default via 10.0.0.1 dev eth0 proto dhcp src 10.0.5.4 metric 100
+10.0.0.0/16 dev eth0 proto kernel scope link src 10.0.5.4

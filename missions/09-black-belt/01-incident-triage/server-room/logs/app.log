@@ -1,0 +1,400 @@
+2026-03-07T03:00:01Z INFO cache hit ratio 415%
+2026-03-07T03:00:02Z INFO worker heartbeat ok
+2026-03-07T03:00:03Z INFO queue depth 206
+2026-03-07T03:00:04Z INFO connection pool healthy
+2026-03-07T03:00:05Z INFO scheduled job finished
+2026-03-07T03:00:06Z INFO request served in 237ms
+2026-03-07T03:00:07Z INFO cache hit ratio 256%
+2026-03-07T03:00:08Z INFO worker heartbeat ok
+2026-03-07T03:00:09Z INFO queue depth 780
+2026-03-07T03:00:10Z ERROR timeout talking to db replica
+2026-03-07T03:00:11Z INFO scheduled job finished
+2026-03-07T03:00:12Z INFO request served in 259ms
+2026-03-07T03:00:13Z INFO cache hit ratio 748%
+2026-03-07T03:00:14Z INFO worker heartbeat ok
+2026-03-07T03:00:15Z INFO queue depth 545
+2026-03-07T03:00:16Z INFO connection pool healthy
+2026-03-07T03:00:17Z INFO scheduled job finished
+2026-03-07T03:00:18Z INFO request served in 553ms
+2026-03-07T03:00:19Z INFO cache hit ratio 93%
+2026-03-07T03:00:20Z ERROR timeout talking to db replica
+2026-03-07T03:00:21Z INFO queue depth 640
+2026-03-07T03:00:22Z INFO connection pool healthy
+2026-03-07T03:00:23Z INFO scheduled job finished
+2026-03-07T03:00:24Z INFO request served in 433ms
+2026-03-07T03:00:25Z INFO cache hit ratio 741%
+2026-03-07T03:00:26Z INFO worker heartbeat ok
+2026-03-07T03:00:27Z INFO queue depth 604
+2026-03-07T03:00:28Z INFO connection pool healthy
+2026-03-07T03:00:29Z INFO scheduled job finished
+2026-03-07T03:00:30Z ERROR timeout talking to db replica
+2026-03-07T03:00:31Z INFO cache hit ratio 809%
+2026-03-07T03:00:32Z INFO worker heartbeat ok
+2026-03-07T03:00:33Z INFO queue depth 844
+2026-03-07T03:00:34Z INFO connection pool healthy
+2026-03-07T03:00:35Z INFO scheduled job finished
+2026-03-07T03:00:36Z INFO request served in 700ms
+2026-03-07T03:00:37Z INFO cache hit ratio 219%
+2026-03-07T03:00:38Z INFO worker heartbeat ok
+2026-03-07T03:00:39Z INFO queue depth 474
+2026-03-07T03:00:40Z ERROR timeout talking to db replica
+2026-03-07T03:00:41Z INFO scheduled job finished
+2026-03-07T03:00:42Z INFO request served in 185ms
+2026-03-07T03:00:43Z INFO cache hit ratio 872%
+2026-03-07T03:00:44Z INFO worker heartbeat ok
+2026-03-07T03:00:45Z INFO queue depth 348
+2026-03-07T03:00:46Z INFO connection pool healthy
+2026-03-07T03:00:47Z INFO scheduled job finished
+2026-03-07T03:00:48Z INFO request served in 543ms
+2026-03-07T03:00:49Z INFO cache hit ratio 695%
+2026-03-07T03:00:50Z ERROR timeout talking to db replica
+2026-03-07T03:00:51Z INFO queue depth 795
+2026-03-07T03:00:52Z INFO connection pool healthy
+2026-03-07T03:00:53Z INFO scheduled job finished
+2026-03-07T03:00:54Z INFO request served in 325ms
+2026-03-07T03:00:55Z INFO cache hit ratio 414%
+2026-03-07T03:00:56Z INFO worker heartbeat ok
+2026-03-07T03:00:57Z INFO queue depth 277
+2026-03-07T03:00:58Z INFO connection pool healthy
+2026-03-07T03:00:59Z INFO scheduled job finished
+2026-03-07T03:01:00Z ERROR timeout talking to db replica
+2026-03-07T03:01:01Z INFO cache hit ratio 437%
+2026-03-07T03:01:02Z INFO worker heartbeat ok
+2026-03-07T03:01:03Z INFO queue depth 373
+2026-03-07T03:01:04Z INFO connection pool healthy
+2026-03-07T03:01:05Z INFO scheduled job finished
+2026-03-07T03:01:06Z INFO request served in 475ms
+2026-03-07T03:01:07Z INFO cache hit ratio 533%
+2026-03-07T03:01:08Z INFO worker heartbeat ok
+2026-03-07T03:01:09Z INFO queue depth 622
+2026-03-07T03:01:10Z ERROR timeout talking to db replica
+2026-03-07T03:01:11Z INFO scheduled job finished
+2026-03-07T03:01:12Z INFO request served in 54ms
+2026-03-07T03:01:13Z INFO cache hit ratio 368%
+2026-03-07T03:01:14Z INFO worker heartbeat ok
+2026-03-07T03:01:15Z INFO queue depth 223
+2026-03-07T03:01:16Z INFO connection pool healthy
+2026-03-07T03:01:17Z INFO scheduled job finished
+2026-03-07T03:01:18Z INFO request served in 767ms
+2026-03-07T03:01:19Z INFO cache hit ratio 812%
+2026-03-07T03:01:20Z ERROR timeout talking to db replica
+2026-03-07T03:01:21Z INFO queue depth 454
+2026-03-07T03:01:22Z INFO connection pool healthy
+2026-03-07T03:01:23Z INFO scheduled job finished
+2026-03-07T03:01:24Z INFO request served in 517ms
+2026-03-07T03:01:25Z INFO cache hit ratio 678%
+2026-03-07T03:01:26Z INFO worker heartbeat ok
+2026-03-07T03:01:27Z INFO queue depth 39
+2026-03-07T03:01:28Z INFO connection pool healthy
+2026-03-07T03:01:29Z INFO scheduled job finished
+2026-03-07T03:01:30Z ERROR timeout talking to db replica
+2026-03-07T03:01:31Z INFO cache hit ratio 177%
+2026-03-07T03:01:32Z INFO worker heartbeat ok
+2026-03-07T03:01:33Z INFO queue depth 702
+2026-03-07T03:01:34Z INFO connection pool healthy
+2026-03-07T03:01:35Z INFO scheduled job finished
+2026-03-07T03:01:36Z INFO request served in 85ms
+2026-03-07T03:01:37Z INFO cache hit ratio 437%
+2026-03-07T03:01:38Z INFO worker heartbeat ok
+2026-03-07T03:01:39Z INFO queue depth 90
+2026-03-07T03:01:40Z ERROR timeout talking to db replica
+2026-03-07T03:01:41Z INFO scheduled job finished
+2026-03-07T03:01:42Z INFO request served in 319ms
+2026-03-07T03:01:43Z INFO cache hit ratio 634%
+2026-03-07T03:01:44Z INFO worker heartbeat ok
+2026-03-07T03:01:45Z INFO queue depth 392
+2026-03-07T03:01:46Z INFO connection pool healthy
+2026-03-07T03:01:47Z INFO scheduled job finished
+2026-03-07T03:01:48Z INFO request served in 537ms
+2026-03-07T03:01:49Z INFO cache hit ratio 417%
+2026-03-07T03:01:50Z ERROR timeout talking to db replica
+2026-03-07T03:01:51Z INFO queue depth 207
+2026-03-07T03:01:52Z INFO connection pool healthy
+2026-03-07T03:01:53Z INFO scheduled job finished
+2026-03-07T03:01:54Z INFO request served in 657ms
+2026-03-07T03:01:55Z INFO cache hit ratio 218%
+2026-03-07T03:01:56Z INFO worker heartbeat ok
+2026-03-07T03:01:57Z INFO queue depth 265
+2026-03-07T03:01:58Z INFO connection pool healthy
+2026-03-07T03:01:59Z INFO scheduled job finished
+2026-03-07T03:02:00Z ERROR timeout talking to db replica
+2026-03-07T03:02:01Z INFO cache hit ratio 846%
+2026-03-07T03:02:02Z INFO worker heartbeat ok
+2026-03-07T03:02:03Z INFO queue depth 131
+2026-03-07T03:02:04Z INFO connection pool healthy
+2026-03-07T03:02:05Z INFO scheduled job finished
+2026-03-07T03:02:06Z INFO request served in 489ms
+2026-03-07T03:02:07Z INFO cache hit ratio 59%
+2026-03-07T03:02:08Z INFO worker heartbeat ok
+2026-03-07T03:02:09Z INFO queue depth 758
+2026-03-07T03:02:10Z ERROR timeout talking to db replica
+2026-03-07T03:02:11Z INFO scheduled job finished
+2026-03-07T03:02:12Z INFO request served in 737ms
+2026-03-07T03:02:13Z INFO cache hit ratio 616%
+2026-03-07T03:02:14Z INFO worker heartbeat ok
+2026-03-07T03:02:15Z INFO queue depth 767
+2026-03-07T03:02:16Z INFO connection pool healthy
+2026-03-07T03:02:17Z INFO scheduled job finished
+2026-03-07T03:02:18Z INFO request served in 420ms
+2026-03-07T03:02:19Z INFO cache hit ratio 129%
+2026-03-07T03:02:20Z ERROR timeout talking to db replica
+2026-03-07T03:02:21Z INFO queue depth 100
+2026-03-07T03:02:22Z INFO connection pool healthy
+2026-03-07T03:02:23Z INFO scheduled job finished
+2026-03-07T03:02:24Z INFO request served in 305ms
+2026-03-07T03:02:25Z INFO cache hit ratio 180%
+2026-03-07T03:02:26Z INFO worker heartbeat ok
+2026-03-07T03:02:27Z INFO queue depth 421
+2026-03-07T03:02:28Z INFO connection pool healthy
+2026-03-07T03:02:29Z INFO scheduled job finished
+2026-03-07T03:02:30Z ERROR timeout talking to db replica
+2026-03-07T03:02:31Z INFO cache hit ratio 576%
+2026-03-07T03:02:32Z INFO worker heartbeat ok
+2026-03-07T03:02:33Z INFO queue depth 791
+2026-03-07T03:02:34Z INFO connection pool healthy
+2026-03-07T03:02:35Z INFO scheduled job finished
+2026-03-07T03:02:36Z INFO request served in 241ms
+2026-03-07T03:02:37Z INFO cache hit ratio 868%
+2026-03-07T03:02:38Z INFO worker heartbeat ok
+2026-03-07T03:02:39Z INFO queue depth 122
+2026-03-07T03:02:40Z ERROR timeout talking to db replica
+2026-03-07T03:02:41Z INFO scheduled job finished
+2026-03-07T03:02:42Z INFO request served in 844ms
+2026-03-07T03:02:43Z INFO cache hit ratio 372%
+2026-03-07T03:02:44Z INFO worker heartbeat ok
+2026-03-07T03:02:45Z INFO queue depth 696
+2026-03-07T03:02:46Z INFO connection pool healthy
+2026-03-07T03:02:47Z INFO scheduled job finished
+2026-03-07T03:02:48Z INFO request served in 296ms
+2026-03-07T03:02:49Z INFO cache hit ratio 13%
+2026-03-07T03:02:50Z ERROR timeout talking to db replica
+2026-03-07T03:02:51Z INFO queue depth 601
+2026-03-07T03:02:52Z INFO connection pool healthy
+2026-03-07T03:02:53Z INFO scheduled job finished
+2026-03-07T03:02:54Z INFO request served in 347ms
+2026-03-07T03:02:55Z INFO cache hit ratio 223%
+2026-03-07T03:02:56Z INFO worker heartbeat ok
+2026-03-07T03:02:57Z INFO queue depth 410
+2026-03-07T03:02:58Z INFO connection pool healthy
+2026-03-07T03:02:59Z INFO scheduled job finished
+2026-03-07T03:03:00Z ERROR timeout talking to db replica
+2026-03-07T03:03:01Z INFO cache hit ratio 833%
+2026-03-07T03:03:02Z INFO worker heartbeat ok
+2026-03-07T03:03:03Z INFO queue depth 397
+2026-03-07T03:03:04Z INFO connection pool healthy
+2026-03-07T03:03:05Z INFO scheduled job finished
+2026-03-07T03:03:06Z INFO request served in 381ms
+2026-03-07T03:03:07Z INFO cache hit ratio 549%
+2026-03-07T03:03:08Z INFO worker heartbeat ok
+2026-03-07T03:03:09Z INFO queue depth 187
+2026-03-07T03:03:10Z ERROR timeout talking to db replica
+2026-03-07T03:03:11Z INFO scheduled job finished
+2026-03-07T03:03:12Z INFO request served in 383ms
+2026-03-07T03:03:13Z INFO cache hit ratio 740%
+2026-03-07T03:03:14Z INFO worker heartbeat ok
+2026-03-07T03:03:15Z INFO queue depth 410
+2026-03-07T03:03:16Z INFO connection pool healthy
+2026-03-07T03:03:17Z INFO scheduled job finished
+2026-03-07T03:03:18Z INFO request served in 237ms
+2026-03-07T03:03:19Z INFO cache hit ratio 320%
+2026-03-07T03:03:20Z ERROR timeout talking to db replica
+2026-03-07T03:03:21Z INFO queue depth 876
+2026-03-07T03:03:22Z INFO connection pool healthy
+2026-03-07T03:03:23Z INFO scheduled job finished
+2026-03-07T03:03:24Z INFO request served in 671ms
+2026-03-07T03:03:25Z INFO cache hit ratio 739%
+2026-03-07T03:03:26Z INFO worker heartbeat ok
+2026-03-07T03:03:27Z INFO queue depth 110
+2026-03-07T03:03:28Z INFO connection pool healthy
+2026-03-07T03:03:29Z INFO scheduled job finished
+2026-03-07T03:03:30Z ERROR timeout talking to db replica
+2026-03-07T03:03:31Z INFO cache hit ratio 740%
+2026-03-07T03:03:32Z INFO worker heartbeat ok
+2026-03-07T03:03:33Z INFO queue depth 225
+2026-03-07T03:03:34Z INFO connection pool healthy
+2026-03-07T03:03:35Z INFO scheduled job finished
+2026-03-07T03:03:36Z INFO request served in 730ms
+2026-03-07T03:03:37Z INFO cache hit ratio 692%
+2026-03-07T03:03:38Z INFO worker heartbeat ok
+2026-03-07T03:03:39Z INFO queue depth 257
+2026-03-07T03:03:40Z ERROR timeout talking to db replica
+2026-03-07T03:03:41Z INFO scheduled job finished
+2026-03-07T03:03:42Z INFO request served in 305ms
+2026-03-07T03:03:43Z INFO cache hit ratio 450%
+2026-03-07T03:03:44Z INFO worker heartbeat ok
+2026-03-07T03:03:45Z INFO queue depth 84
+2026-03-07T03:03:46Z INFO connection pool healthy
+2026-03-07T03:03:47Z INFO scheduled job finished
+2026-03-07T03:03:48Z INFO request served in 264ms
+2026-03-07T03:03:49Z INFO cache hit ratio 73%
+2026-03-07T03:03:50Z ERROR timeout talking to db replica
+2026-03-07T03:03:51Z INFO queue depth 517
+2026-03-07T03:03:52Z INFO connection pool healthy
+2026-03-07T03:03:53Z INFO scheduled job finished
+2026-03-07T03:03:54Z INFO request served in 897ms
+2026-03-07T03:03:55Z INFO cache hit ratio 330%
+2026-03-07T03:03:56Z INFO worker heartbeat ok
+2026-03-07T03:03:57Z INFO queue depth 490
+2026-03-07T03:03:58Z INFO connection pool healthy
+2026-03-07T03:03:59Z INFO scheduled job finished
+2026-03-07T03:04:00Z ERROR timeout talking to db replica
+2026-03-07T03:04:01Z INFO cache hit ratio 264%
+2026-03-07T03:04:02Z INFO worker heartbeat ok
+2026-03-07T03:04:03Z INFO queue depth 299
+2026-03-07T03:04:04Z INFO connection pool healthy
+2026-03-07T03:04:05Z INFO scheduled job finished
+2026-03-07T03:04:06Z INFO request served in 848ms
+2026-03-07T03:04:07Z INFO cache hit ratio 627%
+2026-03-07T03:04:08Z INFO worker heartbeat ok
+2026-03-07T03:04:09Z INFO queue depth 291
+2026-03-07T03:04:10Z ERROR timeout talking to db replica
+2026-03-07T03:04:11Z FATAL disk full — cannot write /var/data/queue
+2026-03-07T03:04:12Z INFO request served in 390ms
+2026-03-07T03:04:13Z INFO cache hit ratio 696%
+2026-03-07T03:04:14Z INFO worker heartbeat ok
+2026-03-07T03:04:15Z INFO queue depth 620
+2026-03-07T03:04:16Z INFO connection pool healthy
+2026-03-07T03:04:17Z INFO scheduled job finished
+2026-03-07T03:04:18Z INFO request served in 684ms
+2026-03-07T03:04:19Z INFO cache hit ratio 733%
+2026-03-07T03:04:20Z ERROR timeout talking to db replica
+2026-03-07T03:04:21Z INFO queue depth 452
+2026-03-07T03:04:22Z INFO connection pool healthy
+2026-03-07T03:04:23Z INFO scheduled job finished
+2026-03-07T03:04:24Z INFO request served in 346ms
+2026-03-07T03:04:25Z INFO cache hit ratio 204%
+2026-03-07T03:04:26Z INFO worker heartbeat ok
+2026-03-07T03:04:27Z INFO queue depth 6
+2026-03-07T03:04:28Z INFO connection pool healthy
+2026-03-07T03:04:29Z INFO scheduled job finished
+2026-03-07T03:04:30Z ERROR timeout talking to db replica
+2026-03-07T03:04:31Z INFO cache hit ratio 713%
+2026-03-07T03:04:32Z INFO worker heartbeat ok
+2026-03-07T03:04:33Z INFO queue depth 872
+2026-03-07T03:04:34Z INFO connection pool healthy
+2026-03-07T03:04:35Z INFO scheduled job finished
+2026-03-07T03:04:36Z INFO request served in 685ms
+2026-03-07T03:04:37Z INFO cache hit ratio 177%
+2026-03-07T03:04:38Z INFO worker heartbeat ok
+2026-03-07T03:04:39Z INFO queue depth 657
+2026-03-07T03:04:40Z ERROR timeout talking to db replica
+2026-03-07T03:04:41Z INFO scheduled job finished
+2026-03-07T03:04:42Z INFO request served in 674ms
+2026-03-07T03:04:43Z INFO cache hit ratio 428%
+2026-03-07T03:04:44Z INFO worker heartbeat ok
+2026-03-07T03:04:45Z INFO queue depth 772
+2026-03-07T03:04:46Z INFO connection pool healthy
+2026-03-07T03:04:47Z INFO scheduled job finished
+2026-03-07T03:04:48Z INFO request served in 238ms
+2026-03-07T03:04:49Z INFO cache hit ratio 420%
+2026-03-07T03:04:50Z ERROR timeout talking to db replica
+2026-03-07T03:04:51Z INFO queue depth 883
+2026-03-07T03:04:52Z INFO connection pool healthy
+2026-03-07T03:04:53Z INFO scheduled job finished
+2026-03-07T03:04:54Z INFO request served in 674ms
+2026-03-07T03:04:55Z INFO cache hit ratio 411%
+2026-03-07T03:04:56Z INFO worker heartbeat ok
+2026-03-07T03:04:57Z INFO queue depth 117
+2026-03-07T03:04:58Z INFO connection pool healthy
+2026-03-07T03:04:59Z INFO scheduled job finished
+2026-03-07T03:05:00Z ERROR timeout talking to db replica
+2026-03-07T03:05:01Z INFO cache hit ratio 209%
+2026-03-07T03:05:02Z INFO worker heartbeat ok
+2026-03-07T03:05:03Z INFO queue depth 536
+2026-03-07T03:05:04Z INFO connection pool healthy
+2026-03-07T03:05:05Z INFO scheduled job finished
+2026-03-07T03:05:06Z INFO request served in 767ms
+2026-03-07T03:05:07Z INFO cache hit ratio 173%
+2026-03-07T03:05:08Z INFO worker heartbeat ok
+2026-03-07T03:05:09Z INFO queue depth 805
+2026-03-07T03:05:10Z ERROR timeout talking to db replica
+2026-03-07T03:05:11Z INFO scheduled job finished
+2026-03-07T03:05:12Z INFO request served in 456ms
+2026-03-07T03:05:13Z INFO cache hit ratio 212%
+2026-03-07T03:05:14Z INFO worker heartbeat ok
+2026-03-07T03:05:15Z INFO queue depth 768
+2026-03-07T03:05:16Z INFO connection pool healthy
+2026-03-07T03:05:17Z INFO scheduled job finished
+2026-03-07T03:05:18Z INFO request served in 428ms
+2026-03-07T03:05:19Z INFO cache hit ratio 481%
+2026-03-07T03:05:20Z ERROR timeout talking to db replica
+2026-03-07T03:05:21Z INFO queue depth 575
+2026-03-07T03:05:22Z INFO connection pool healthy
+2026-03-07T03:05:23Z INFO scheduled job finished
+2026-03-07T03:05:24Z INFO request served in 636ms
+2026-03-07T03:05:25Z INFO cache hit ratio 788%
+2026-03-07T03:05:26Z INFO worker heartbeat ok
+2026-03-07T03:05:27Z INFO queue depth 852
+2026-03-07T03:05:28Z INFO connection pool healthy
+2026-03-07T03:05:29Z INFO scheduled job finished
+2026-03-07T03:05:30Z ERROR timeout talking to db replica
+2026-03-07T03:05:31Z INFO cache hit ratio 789%
+2026-03-07T03:05:32Z INFO worker heartbeat ok
+2026-03-07T03:05:33Z INFO queue depth 207
+2026-03-07T03:05:34Z INFO connection pool healthy
+2026-03-07T03:05:35Z INFO scheduled job finished
+2026-03-07T03:05:36Z INFO request served in 109ms
+2026-03-07T03:05:37Z INFO cache hit ratio 827%
+2026-03-07T03:05:38Z INFO worker heartbeat ok
+2026-03-07T03:05:39Z INFO queue depth 79
+2026-03-07T03:05:40Z ERROR timeout talking to db replica
+2026-03-07T03:05:41Z INFO scheduled job finished
+2026-03-07T03:05:42Z INFO request served in 34ms
+2026-03-07T03:05:43Z INFO cache hit ratio 61%
+2026-03-07T03:05:44Z INFO worker heartbeat ok
+2026-03-07T03:05:45Z INFO queue depth 308
+2026-03-07T03:05:46Z INFO connection pool healthy
+2026-03-07T03:05:47Z INFO scheduled job finished
+2026-03-07T03:05:48Z INFO request served in 643ms
+2026-03-07T03:05:49Z INFO cache hit ratio 729%
+2026-03-07T03:05:50Z ERROR timeout talking to db replica
+2026-03-07T03:05:51Z INFO queue depth 604
+2026-03-07T03:05:52Z INFO connection pool healthy
+2026-03-07T03:05:53Z INFO scheduled job finished
+2026-03-07T03:05:54Z INFO request served in 200ms
+2026-03-07T03:05:55Z INFO cache hit ratio 776%
+2026-03-07T03:05:56Z INFO worker heartbeat ok
+2026-03-07T03:05:57Z INFO queue depth 886
+2026-03-07T03:05:58Z INFO connection pool healthy
+2026-03-07T03:05:59Z INFO scheduled job finished
+2026-03-07T03:06:00Z ERROR timeout talking to db replica
+2026-03-07T03:06:01Z INFO cache hit ratio 410%
+2026-03-07T03:06:02Z INFO worker heartbeat ok
+2026-03-07T03:06:03Z INFO queue depth 178
+2026-03-07T03:06:04Z INFO connection pool healthy
+2026-03-07T03:06:05Z INFO scheduled job finished
+2026-03-07T03:06:06Z INFO request served in 338ms
+2026-03-07T03:06:07Z INFO cache hit ratio 133%
+2026-03-07T03:06:08Z INFO worker heartbeat ok
+2026-03-07T03:06:09Z INFO queue depth 135
+2026-03-07T03:06:10Z ERROR timeout talking to db replica
+2026-03-07T03:06:11Z INFO scheduled job finished
+2026-03-07T03:06:12Z INFO request served in 890ms
+2026-03-07T03:06:13Z INFO cache hit ratio 872%
+2026-03-07T03:06:14Z INFO worker heartbeat ok
+2026-03-07T03:06:15Z INFO queue depth 720
+2026-03-07T03:06:16Z INFO connection pool healthy
+2026-03-07T03:06:17Z INFO scheduled job finished
+2026-03-07T03:06:18Z INFO request served in 577ms
+2026-03-07T03:06:19Z INFO cache hit ratio 734%
+2026-03-07T03:06:20Z INFO worker heartbeat ok
+2026-03-07T03:06:21Z INFO queue depth 370
+2026-03-07T03:06:22Z INFO connection pool healthy
+2026-03-07T03:06:23Z INFO scheduled job finished
+2026-03-07T03:06:24Z INFO request served in 282ms
+2026-03-07T03:06:25Z INFO cache hit ratio 476%
+2026-03-07T03:06:26Z INFO worker heartbeat ok
+2026-03-07T03:06:27Z INFO queue depth 866
+2026-03-07T03:06:28Z INFO connection pool healthy
+2026-03-07T03:06:29Z INFO scheduled job finished
+2026-03-07T03:06:30Z INFO request served in 190ms
+2026-03-07T03:06:31Z INFO cache hit ratio 848%
+2026-03-07T03:06:32Z INFO worker heartbeat ok
+2026-03-07T03:06:33Z INFO queue depth 588
+2026-03-07T03:06:34Z INFO connection pool healthy
+2026-03-07T03:06:35Z INFO scheduled job finished
+2026-03-07T03:06:36Z INFO request served in 682ms
+2026-03-07T03:06:37Z INFO cache hit ratio 175%
+2026-03-07T03:06:38Z INFO worker heartbeat ok
+2026-03-07T03:06:39Z INFO queue depth 546
+2026-03-07T03:06:40Z INFO connection pool healthy

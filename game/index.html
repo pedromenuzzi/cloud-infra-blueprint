@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Linux Dojo — Master Linux, one belt at a time</title>
+  <link rel="icon" href="favicon.svg" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <!-- ───────────────────────── HEADER / HUD ───────────────────────── -->
+  <header class="hud">
+    <div class="hud-inner">
+      <div class="hud-left">
+        <div class="mascot" id="mascot" title="Tux advances a belt for every zone you clear"></div>
+        <div class="identity">
+          <div class="brand">🐧 Linux&nbsp;Dojo</div>
+          <div class="rank" id="rank">White Belt · Hatchling</div>
+        </div>
+      </div>
+
+      <div class="hud-right">
+        <div class="stat">
+          <div class="stat-num" id="stat-missions">0<span class="stat-den">/45</span></div>
+          <div class="stat-label">missions</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num" id="stat-belts">0<span class="stat-den">/9</span></div>
+          <div class="stat-label">belts</div>
+        </div>
+        <div class="stat streak" id="stat-xp-wrap" title="Total experience earned">
+          <div class="stat-num"><span id="stat-xp">0</span><span class="stat-den">/6200 XP</span></div>
+          <div class="xpbar"><div class="xpbar-fill" id="xpbar-fill"></div></div>
+        </div>
+        <button class="ghost-btn" id="theme-btn" title="Toggle light / dark" aria-label="Toggle theme">◑</button>
+      </div>
+    </div>
+    <div class="sync-note" id="sync-note"></div>
+  </header>
+
+  <!-- ───────────────────────── THE PATH ───────────────────────── -->
+  <main id="path" class="path"></main>
+
+  <!-- ───────────────────────── FOOTER ───────────────────────── -->
+  <footer class="foot">
+    <div class="foot-card">
+      <h3>How the dojo works</h3>
+      <ol>
+        <li>Pick the glowing mission. Read the lesson, do the task in your terminal or VS&nbsp;Code.</li>
+        <li>Run <code>./check <span class="mono-accent">B.M</span></code> from the repo root to grade one mission, or <code>./check</code> to grade everything.</li>
+        <li>Passing a mission banks its XP, advances Tux's belt, and updates this board automatically.</li>
+      </ol>
+      <p class="dim">This board reads <code>game/progress.json</code> (written by <code>./check</code>). Keep <code>./play</code>
+      running and it refreshes on its own — no reload needed.</p>
+    </div>
+  </footer>
+
+  <!-- ───────────────────────── MISSION MODAL ───────────────────────── -->
+  <div class="modal-backdrop" id="modal-backdrop" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-title">
+      <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
+      <div class="modal-scroll" id="modal-body"><!-- filled by JS --></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="missions.js"></script>
+  <script src="progress.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

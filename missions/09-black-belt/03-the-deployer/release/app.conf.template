@@ -1,0 +1,4 @@
+# app config (rendered by deploy.sh)
+port=__PORT__
+workers=2
+log=shared/logs/app.log

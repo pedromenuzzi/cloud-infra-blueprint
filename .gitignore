@@ -1,0 +1,21 @@
+# Linux Dojo — runtime junk that should never be committed.
+# (Your mission answers under missions/** are yours to commit or not — they are NOT ignored.)
+
+# grader runtime state
+.dojo/
+
+# python bytecode from the generator
+__pycache__/
+*.pyc
+
+# background-job output students may create during process/scripting missions
+nohup.out
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# editor cruft
+*.swp
+.idea/
+.vscode/
