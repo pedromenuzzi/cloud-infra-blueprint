@@ -10,6 +10,7 @@ window.DOJO_MISSIONS = {
       "color": "#f2f2ec",
       "rank": "Hatchling",
       "motto": "Every sensei once typed `ls` for the first time.",
+      "notebook": "Draw the filesystem as a tree starting from `/`. Mark where your home (`~`) sits, and where `/etc`, `/var`, and `/tmp` live. In your own words, write the difference between an absolute path and a relative one.",
       "missions": [
         {
           "id": "1.1",
@@ -351,6 +352,7 @@ window.DOJO_MISSIONS = {
       "color": "#f7d94c",
       "rank": "File Wrangler",
       "motto": "Move a thousand files with one line — or delete your weekend with one typo.",
+      "notebook": "Write your personal rule for `rm`: the one thing you always do before deleting. Then sketch how a glob like `*.jpg` is expanded by the shell *before* the command ever runs.",
       "missions": [
         {
           "id": "2.1",
@@ -717,6 +719,7 @@ window.DOJO_MISSIONS = {
       "color": "#f59e42",
       "rank": "Text Ninja",
       "motto": "Small tools, one pipe, infinite power.",
+      "notebook": "Draw the three streams (stdin / stdout / stderr) of a command and how `|` connects one to the next. Then write the frequency-table idiom from memory: `sort | uniq -c | sort -nr`.",
       "missions": [
         {
           "id": "3.1",
@@ -1074,6 +1077,7 @@ window.DOJO_MISSIONS = {
       "color": "#22c55e",
       "rank": "Gatekeeper",
       "motto": "Permissions are not bureaucracy. They are the locks on every door.",
+      "notebook": "Make the permissions table: r=4, w=2, x=1, and the four classics — 755, 700, 644, 600 — with when to use each. In one line: why is `chmod 777` a crime?",
       "missions": [
         {
           "id": "4.1",
@@ -1440,6 +1444,7 @@ window.DOJO_MISSIONS = {
       "color": "#3b82f6",
       "rank": "Process Tamer",
       "motto": "Every command is a process. Learn to see them, signal them, and outlast them.",
+      "notebook": "Explain SIGTERM vs SIGKILL with your own metaphor. Note the admin's triage trio you keep reaching for: check status → read the logs → restart.",
       "missions": [
         {
           "id": "5.1",
@@ -1813,6 +1818,7 @@ window.DOJO_MISSIONS = {
       "color": "#a855f7",
       "rank": "Net Runner",
       "motto": "The network is just files and ports. Learn to read both.",
+      "notebook": "Draw the network diagnostic ladder: have an IP? → reach the internet? → does DNS resolve? → does the service answer? Then sketch the SSH key handshake (public on the server, private with you). Why is a key better than a password?",
       "missions": [
         {
           "id": "6.1",
@@ -2187,6 +2193,7 @@ window.DOJO_MISSIONS = {
       "color": "#a16207",
       "rank": "Script Smith",
       "motto": "Do it once by hand. Do it twice, write a script. Do it thrice, you already have one.",
+      "notebook": "Draw the five cron fields (min hour dom month dow) with three of your own examples. Write the rule you never want to forget: a script without input validation is a time bomb.",
       "missions": [
         {
           "id": "7.1",
@@ -2568,6 +2575,7 @@ window.DOJO_MISSIONS = {
       "color": "#ef4444",
       "rank": "System Craftsman",
       "motto": "The system is yours to shape: archives, environment, time, and software.",
+      "notebook": "Draw the system map as a neighborhood — each directory a building with a job. Where do logs live? Where do configs live? Note the `apt update` vs `apt upgrade` gotcha for your past self.",
       "missions": [
         {
           "id": "8.1",
@@ -2963,6 +2971,7 @@ window.DOJO_MISSIONS = {
       "color": "#111827",
       "rank": "Tux Sensei",
       "motto": "You no longer run commands. You compose systems.",
+      "notebook": "Write today's date and one line: \"what I didn't know X weeks ago.\" Keep it. On the days impostor syndrome visits, reread it. 🥋",
       "missions": [
         {
           "id": "9.1",

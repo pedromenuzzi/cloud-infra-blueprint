@@ -37,11 +37,44 @@
         <button class="ghost-btn" id="theme-btn" title="Toggle light / dark" aria-label="Toggle theme">◑</button>
       </div>
     </div>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-view="path">🗺️ Path</button>
+      <button class="tab" data-view="trophies">🏆 Trophies <span class="tab-badge" id="reward-badge" hidden>●</span></button>
+      <button class="tab" data-view="cheats">📓 Cheat Sheet</button>
+    </nav>
     <div class="sync-note" id="sync-note"></div>
   </header>
 
-  <!-- ───────────────────────── THE PATH ───────────────────────── -->
-  <main id="path" class="path"></main>
+  <!-- ───────────────────────── PATH VIEW ───────────────────────── -->
+  <main id="view-path" class="view">
+    <section class="hero" id="hero"><!-- rules, pact, kata, setup — filled by JS --></section>
+    <div id="path" class="path"></div>
+  </main>
+
+  <!-- ───────────────────────── TROPHIES VIEW ───────────────────────── -->
+  <main id="view-trophies" class="view" hidden>
+    <div class="wrap">
+      <h2 class="view-title">🏆 Trophies</h2>
+      <p class="view-sub">Earned automatically as you clear missions and belts.</p>
+      <div class="trophy-grid" id="trophy-grid"></div>
+
+      <h2 class="view-title" style="margin-top:34px">🎁 Real-life rewards</h2>
+      <p class="view-sub">Promises to your future self. Unlock a belt, then claim the prize off-screen.
+        Tap a reward to rename it to something you actually want.</p>
+      <div class="reward-list" id="reward-list"></div>
+    </div>
+  </main>
+
+  <!-- ───────────────────────── CHEAT SHEET VIEW ───────────────────────── -->
+  <main id="view-cheats" class="view" hidden>
+    <div class="wrap">
+      <h2 class="view-title">📓 Cheat Sheet</h2>
+      <p class="view-sub">Every command the dojo teaches. Search by command or description — your Linux Ctrl+F.</p>
+      <input class="cheat-search" id="cheat-search" type="search" placeholder="Filter… e.g. 'permission', 'grep', 'ssh', 'cron'" autocomplete="off" />
+      <div id="cheat-body"></div>
+    </div>
+  </main>
 
   <!-- ───────────────────────── FOOTER ───────────────────────── -->
   <footer class="foot">
@@ -52,8 +85,8 @@
         <li>Run <code>./check <span class="mono-accent">B.M</span></code> from the repo root to grade one mission, or <code>./check</code> to grade everything.</li>
         <li>Passing a mission banks its XP, advances Tux's belt, and updates this board automatically.</li>
       </ol>
-      <p class="dim">This board reads <code>game/progress.json</code> (written by <code>./check</code>). Keep <code>./play</code>
-      running and it refreshes on its own — no reload needed.</p>
+      <p class="dim">New here or on Windows? See <code>SETUP.md</code> to get a Linux shell in ~10&nbsp;min (WSL2), then come back and run <code>./play</code>.
+      This board reads <code>game/progress.json</code>; keep <code>./play</code> running and it refreshes on its own.</p>
     </div>
   </footer>
 
@@ -68,6 +101,8 @@
   <div class="toast" id="toast" hidden></div>
 
   <script src="missions.js"></script>
+  <script src="extras.js"></script>
+  <script src="cheatsheet.js"></script>
   <script src="progress.js"></script>
   <script src="app.js"></script>
 </body>

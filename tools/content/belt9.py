@@ -5,6 +5,8 @@ BELT = {
     "color": "#111827",
     "rank": "Tux Sensei",
     "motto": "You no longer run commands. You compose systems.",
+    "notebook": "Write today's date and one line: \"what I didn't know X weeks ago.\" Keep it. On the days "
+                "impostor syndrome visits, reread it. 🥋",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 9.1

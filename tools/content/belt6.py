@@ -5,6 +5,9 @@ BELT = {
     "color": "#a855f7",
     "rank": "Net Runner",
     "motto": "The network is just files and ports. Learn to read both.",
+    "notebook": "Draw the network diagnostic ladder: have an IP? → reach the internet? → does DNS "
+                "resolve? → does the service answer? Then sketch the SSH key handshake (public on the "
+                "server, private with you). Why is a key better than a password?",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 6.1

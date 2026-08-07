@@ -29,7 +29,25 @@ advance until a script confirms you actually did it. The knowledge sticks becaus
 
 ---
 
+## The three rules of the dojo
+
+1. **Everything happens inside the repo.** Never run a destructive command outside your dojo.
+2. **Use `sudo` only when a mission tells you to** — with sudo, Linux obeys even dumb orders.
+3. **`rm` has no trash can:** once it's deleted, it's gone. Respect it.
+
+## The pact
+
+- **Type everything by hand — no pasting.** The memory goes to your fingers.
+- **Stuck? Reach for `man <cmd>` or `<cmd> --help` _before_ any AI.**
+- **Fumbling a command _is_ the training.** Every error is a rep.
+
+> That's why every mission hides its solution behind a "reveal hints" fold — the answer exists, but it
+> costs one conscious click. These rules live on the game board's home screen too.
+
 ## Quickstart (60 seconds)
+
+> **On Windows, or a fresh machine?** Do [`SETUP.md`](SETUP.md) first — it gets you a real Linux shell
+> via WSL2 in about 10 minutes. Then come back here.
 
 ```bash
 # 1) Open the game board (serves it locally and opens your browser)
@@ -71,6 +89,21 @@ task) and any practice files you'll work on. You never need to leave the repo. T
 on any machine and never depends on your operating system's internals.
 
 ---
+
+## More than a checklist
+
+The board (`./play`) is a small game in three tabs:
+
+- **🗺️ Path** — the serpentine belt map. Tux wears your current belt (and earns a bandana at Blue, shades at Black). Each belt carries an *"In your notebook"* prompt that pushes you to consolidate off-screen.
+- **🏆 Trophies** — 12 achievements that unlock automatically, plus **real-life rewards**: a prize you promise yourself per belt (rename it to whatever you actually want, then "claim" it when you earn it).
+- **📓 Cheat Sheet** — every command the dojo teaches, grouped and **searchable** — your Linux Ctrl+F.
+
+A **Kata of the Day** greets you on the home screen — a short drill that rotates daily.
+
+<p align="center">
+  <img src="docs/screenshots/trophies.png" alt="Trophies and real-life rewards" width="420">
+  <img src="docs/screenshots/mission-modal.png" alt="A mission's lesson and task" width="420">
+</p>
 
 ## The nine belts
 
@@ -157,13 +190,17 @@ linux-dojo/
 ├── game/                 # the game board (vanilla HTML/CSS/JS, zero deps)
 │   ├── index.html  style.css  app.js
 │   ├── missions.js       # generated: the curriculum data the board reads
+│   ├── extras.js         # generated: rules, pact, katas, trophies, rewards
+│   ├── cheatsheet.js     # generated: the searchable cheat-sheet data
 │   ├── manifest.sh       # generated: belt/mission table the grader reads
 │   └── progress.json/.js # your save file (written by ./check)
 ├── tools/
 │   ├── content/belt*.py  # the curriculum source of truth
+│   ├── content/extras.py # rules, pact, katas, trophies, rewards, cheat sheet
 │   ├── generate.py       # renders READMEs + game data + cheat sheet
 │   ├── lib.sh checks.sh  # the grader's engine and the 45 verifiers
 │   └── selftest.sh       # solves everything; asserts 45/45
+├── SETUP.md              # get a Linux shell (WSL2 / macOS / Linux)
 ├── CHEATSHEET.md
 └── docs/ARCHITECTURE.md
 ```

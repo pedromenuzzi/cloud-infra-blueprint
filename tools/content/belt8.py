@@ -5,6 +5,8 @@ BELT = {
     "color": "#ef4444",
     "rank": "System Craftsman",
     "motto": "The system is yours to shape: archives, environment, time, and software.",
+    "notebook": "Draw the system map as a neighborhood — each directory a building with a job. Where do "
+                "logs live? Where do configs live? Note the `apt update` vs `apt upgrade` gotcha for your past self.",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 8.1

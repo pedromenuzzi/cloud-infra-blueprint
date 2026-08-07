@@ -5,6 +5,8 @@ BELT = {
     "color": "#22c55e",
     "rank": "Gatekeeper",
     "motto": "Permissions are not bureaucracy. They are the locks on every door.",
+    "notebook": "Make the permissions table: r=4, w=2, x=1, and the four classics — 755, 700, 644, 600 — "
+                "with when to use each. In one line: why is `chmod 777` a crime?",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 4.1

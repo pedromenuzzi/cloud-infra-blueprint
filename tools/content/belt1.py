@@ -5,6 +5,9 @@ BELT = {
     "color": "#f2f2ec",
     "rank": "Hatchling",
     "motto": "Every sensei once typed `ls` for the first time.",
+    "notebook": "Draw the filesystem as a tree starting from `/`. Mark where your home (`~`) sits, "
+                "and where `/etc`, `/var`, and `/tmp` live. In your own words, write the difference "
+                "between an absolute path and a relative one.",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 1.1

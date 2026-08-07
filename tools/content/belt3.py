@@ -5,6 +5,9 @@ BELT = {
     "color": "#f59e42",
     "rank": "Text Ninja",
     "motto": "Small tools, one pipe, infinite power.",
+    "notebook": "Draw the three streams (stdin / stdout / stderr) of a command and how `|` connects "
+                "one to the next. Then write the frequency-table idiom from memory: "
+                "`sort | uniq -c | sort -nr`.",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 3.1

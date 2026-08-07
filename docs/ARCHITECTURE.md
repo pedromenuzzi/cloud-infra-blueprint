@@ -17,22 +17,34 @@ How Linux Dojo is built, so future-you can extend it with confidence.
 ## The pieces
 
 ```
-tools/content/belt1.py … belt9.py     ← the curriculum (authored by hand)
+tools/content/belt1.py … belt9.py  +  tools/content/extras.py   ← authored by hand
             │
             ▼  tools/generate.py
-   ┌────────┴─────────────────────────────────────────────┐
-   ▼                     ▼                    ▼             ▼
-missions/**/README.md   game/missions.js   game/manifest.sh   CHEATSHEET.md
-(human lessons)         (board data)       (grader table)     (reference)
+   ┌────────┴───────────────┬───────────────┬───────────────┬───────────────┬──────────────┐
+   ▼                        ▼               ▼               ▼               ▼              ▼
+missions/**/README.md   game/missions.js  game/extras.js  game/cheatsheet.js  game/manifest.sh  CHEATSHEET.md
+(human lessons)         (board data)      (rules/katas/    (searchable cheat   (grader table)    (reference)
+                                           trophies/rewards) sheet data)
 ```
 
 - **`tools/content/belt*.py`** — one module per belt. Each mission is a dict: intro, `learn` blocks
   (headings, prose, code, bullet lists, sensei tips), `task` steps, expected `artifacts`, and `hints`.
   This is the *only* place prose lives.
+- **`tools/content/extras.py`** — the cross-cutting game content: the 3 rules & the pact, the katas,
+  the trophy definitions (pure predicates over progress), the real-life rewards, and the searchable
+  cheat-sheet rows. One source feeds both `CHEATSHEET.md` and the board's Cheat Sheet tab.
+
 - **`tools/generate.py`** — renders the mission `README.md` files, `game/missions.js`
-  (`window.DOJO_MISSIONS`), `game/manifest.sh` (the pipe-delimited belt/mission/xp table the grader
-  reads), and `CHEATSHEET.md`. Idempotent: same input → identical output. Regenerate with
-  `python3 tools/generate.py`.
+  (`window.DOJO_MISSIONS`, including each belt's `notebook` prompt), `game/extras.js`
+  (`window.DOJO_EXTRAS`), `game/cheatsheet.js` (`window.DOJO_CHEATSHEET`), `game/manifest.sh` (the
+  pipe-delimited belt/mission/xp table the grader reads), and `CHEATSHEET.md`. Idempotent: same input →
+  identical output. Regenerate with `python3 tools/generate.py`.
+
+- **The game board's three tabs** (all client-side, derived from the data + your progress): **Path**
+  (the belt map, with penguin cosmetics — bandana at Blue, shades at Black — and per-belt notebook
+  prompts), **Trophies** (auto-unlocking achievements + editable/claimable real-life rewards, persisted
+  in `localStorage`), and **Cheat Sheet** (live text filter). The home hero shows the rules, the pact,
+  and a Kata of the Day chosen deterministically by date.
 
 - **Practice assets** under `missions/**/` — generated deterministically (see the seeded builder that
   produced them). Every statistic the grader or answer key relies on (line counts, top IPs, file

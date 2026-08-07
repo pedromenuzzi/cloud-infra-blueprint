@@ -5,6 +5,8 @@ BELT = {
     "color": "#a16207",
     "rank": "Script Smith",
     "motto": "Do it once by hand. Do it twice, write a script. Do it thrice, you already have one.",
+    "notebook": "Draw the five cron fields (min hour dom month dow) with three of your own examples. "
+                "Write the rule you never want to forget: a script without input validation is a time bomb.",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 7.1

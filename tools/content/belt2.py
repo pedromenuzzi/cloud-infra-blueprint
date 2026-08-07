@@ -5,6 +5,9 @@ BELT = {
     "color": "#f7d94c",
     "rank": "File Wrangler",
     "motto": "Move a thousand files with one line — or delete your weekend with one typo.",
+    "notebook": "Write your personal rule for `rm`: the one thing you always do before deleting. "
+                "Then sketch how a glob like `*.jpg` is expanded by the shell *before* the command "
+                "ever runs.",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 2.1

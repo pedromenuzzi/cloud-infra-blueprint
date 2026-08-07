@@ -5,6 +5,8 @@ BELT = {
     "color": "#3b82f6",
     "rank": "Process Tamer",
     "motto": "Every command is a process. Learn to see them, signal them, and outlast them.",
+    "notebook": "Explain SIGTERM vs SIGKILL with your own metaphor. Note the admin's triage trio you "
+                "keep reaching for: check status → read the logs → restart.",
     "missions": [
 
 # ─────────────────────────────────────────────────────────────── 5.1
