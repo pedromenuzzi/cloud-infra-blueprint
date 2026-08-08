@@ -25,6 +25,12 @@ echo "→ staging a clean copy of the dojo in $WORK"
     . ) | ( cd "$WORK" && tar xf - )
 rm -rf "$WORK/.dojo"
 cd "$WORK"
+# a real student clones via git; recreate that context (needed by side quest 10.2)
+git init -q
+git config user.email "selftest@dojo.local"
+git config user.name "Dojo Selftest"
+git add -A
+git commit -qm "dojo selftest baseline"
 
 M() { cd "$WORK/missions/$1" || { echo "missing mission dir $1"; exit 1; }; }
 R() { cd "$WORK"; }
@@ -621,26 +627,79 @@ EOF
   chmod +x gauntlet/gauntlet-report.sh
 R; done_
 
+# ───────────────────────────────────────── SIDE QUESTS
+say 10.1; M 10-side-quests/01-vim-gauntlet
+  # reproduce the exact vim gauntlet result (5G dd · 2G yy G p · :%s/line/step/g)
+  cat > scroll.txt <<'EOF'
+step 1: the journey begins
+step 2: guard this scroll well
+step 3: the middle path is quiet
+step 4: patience is a command
+step 6: the editor waits on every server
+step 7: modes are not prisons
+step 8: practice until reflex
+step 9: almost at the end
+step 10: the scroll ends here
+step 2: guard this scroll well
+EOF
+  printf 'insert_key=i\nsave_quit=:wq\nquit_no_save=:q!\nundo_key=u\n' > answers.md
+R; done_
+
+say 10.2; M 10-side-quests/02-git-time-machine
+  # the resurrection drill
+  rm -f precious.txt
+  git restore precious.txt 2>/dev/null || git checkout -- precious.txt
+  git branch training/dojo 2>/dev/null || true
+  {
+    echo 'restore_cmd=git restore'
+    echo 'branch_created=training/dojo'
+    echo 'never_commit=secrets and private keys'
+  } > git-notes.md
+  git add git-notes.md
+  git commit -qm "dojo: complete the git time machine side quest"
+R; done_
+
+say 10.3; M 10-side-quests/03-service-commander
+  {
+    echo 'nginx_state=active'
+    echo 'nginx_main_pid=1200'
+    echo 'nginx_enabled=enabled'
+    echo 'failed_unit=app-sync'
+    echo 'exit_status=127'
+    echo 'root_cause=rsync'
+  } > answers.md
+  {
+    echo '# incident runbook — the admin trio, in order'
+    echo 'first_step=status'
+    echo '1. systemctl status app-sync        # is it running? what did it say last?'
+    echo '2. journalctl -u app-sync -n 50     # WHY did it fail?'
+    echo '3. sudo systemctl restart app-sync  # only after understanding; then status again'
+  } > runbook.md
+  { systemctl list-units --type=service 2>/dev/null || echo "no systemd on this machine"; } | head -20 > systemctl-live.txt
+R; done_
+
 echo ""
-echo "→ all 45 missions solved; running ./check ..."
+echo "→ all 48 missions solved (45 main + 3 side quests); running ./check ..."
 echo ""
 OUT="$(cd "$WORK" && NO_COLOR=1 ./check 2>/dev/null)"
 echo "$OUT" | grep -E "Missions|Belts earned|XP " | sed 's/^/    /'
 
 # assertions
 missions_line="$(echo "$OUT" | grep -oE 'Missions [0-9]+/45' | head -1)"
-xp_line="$(echo "$OUT" | grep -oE '[0-9]+/6200' | head -1)"
+side_line="$(echo "$OUT" | grep -oE 'Side quests [0-9]+/3' | head -1)"
+xp_line="$(echo "$OUT" | grep -oE '[0-9]+/6500' | head -1)"
 echo ""
-if [ "$missions_line" = "Missions 45/45" ] && [ "$xp_line" = "6200/6200" ]; then
-  echo "✅ SELFTEST PASSED — 45/45 missions, 6200/6200 XP. The dojo is fully beatable."
+if [ "$missions_line" = "Missions 45/45" ] && [ "$side_line" = "Side quests 3/3" ] && [ "$xp_line" = "6500/6500" ]; then
+  echo "✅ SELFTEST PASSED — 45/45 main missions, 3/3 side quests, 6500/6500 XP. Fully beatable."
   RESULT=0
 else
-  echo "❌ SELFTEST FAILED — expected 45/45 & 6200/6200, got: '$missions_line' '$xp_line'"
+  echo "❌ SELFTEST FAILED — expected 45/45 + 3/3 + 6500/6500, got: '$missions_line' '$side_line' '$xp_line'"
   echo ""
   echo "─── per-mission failures ─────────────────────────────"
   for id in 1.1 1.2 1.3 1.4 1.5 2.1 2.2 2.3 2.4 2.5 3.1 3.2 3.3 3.4 3.5 \
             4.1 4.2 4.3 4.4 4.5 5.1 5.2 5.3 5.4 5.5 6.1 6.2 6.3 6.4 6.5 \
-            7.1 7.2 7.3 7.4 7.5 8.1 8.2 8.3 8.4 8.5 9.1 9.2 9.3 9.4 9.5; do
+            7.1 7.2 7.3 7.4 7.5 8.1 8.2 8.3 8.4 8.5 9.1 9.2 9.3 9.4 9.5 \
+            10.1 10.2 10.3; do
     r="$(cd "$WORK" && NO_COLOR=1 ./check "$id" 2>/dev/null)"
     if ! echo "$r" | grep -q "PASS"; then
       echo ""

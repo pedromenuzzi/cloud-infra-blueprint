@@ -402,3 +402,8 @@ details.hints li { margin: 6px 0; font-size: .9rem; color: var(--ink-dim); }
   .cheat-row { grid-template-columns: 1fr; gap: 2px; }
   .tabs { overflow-x: auto; }
 }
+
+/* side-quest zone accent */
+.zone-side { margin-top: 34px; padding-top: 18px; border-top: 1px dashed var(--line); }
+.zone-side .zone-badge { font-size: 1rem; }
+.zone-side .nodes::before { left: 16%; right: 16%; }

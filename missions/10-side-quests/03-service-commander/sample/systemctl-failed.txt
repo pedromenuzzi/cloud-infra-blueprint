@@ -1,0 +1,6 @@
+× app-sync.service - Sync uploads to object storage
+     Loaded: loaded (/etc/systemd/system/app-sync.service; enabled; preset: enabled)
+     Active: failed (Result: exit-code) since Thu 2026-03-05 03:12:44 UTC; 2min 10s ago
+    Process: 4451 ExecStart=/opt/appsync/run.sh (code=exited, status=127)
+   Main PID: 4451 (code=exited, status=127)
+        CPU: 18ms

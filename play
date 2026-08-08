@@ -13,7 +13,7 @@ else C_CYN=""; C_DIM=""; C_BOLD=""; C_RST=""; fi
 
 # make sure progress files exist so the board renders even before the first check
 if [ ! -f "$GAME_DIR/progress.js" ]; then
-  printf 'window.DOJO_PROGRESS = {"version":0,"updatedAt":"","xp":0,"totalXp":6200,"done":[],"belts":{}};\n' > "$GAME_DIR/progress.js"
+  printf 'window.DOJO_PROGRESS = {"version":0,"updatedAt":"","xp":0,"totalXp":6500,"done":[],"belts":{}};\n' > "$GAME_DIR/progress.js"
 fi
 
 open_browser() {

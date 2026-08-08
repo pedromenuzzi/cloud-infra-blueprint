@@ -1,0 +1,6 @@
+Mar 05 03:12:43 web-prod-04 systemd[1]: Started app-sync.service - Sync uploads to object storage.
+Mar 05 03:12:43 web-prod-04 run.sh[4451]: starting upload sync cycle
+Mar 05 03:12:43 web-prod-04 run.sh[4451]: checking destination bucket
+Mar 05 03:12:44 web-prod-04 run.sh[4451]: /opt/appsync/run.sh: line 3: rsync: command not found
+Mar 05 03:12:44 web-prod-04 systemd[1]: app-sync.service: Main process exited, code=exited, status=127/n/a
+Mar 05 03:12:44 web-prod-04 systemd[1]: app-sync.service: Failed with result 'exit-code'.

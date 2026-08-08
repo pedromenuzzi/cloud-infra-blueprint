@@ -18,10 +18,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 
-from content import belt1, belt2, belt3, belt4, belt5, belt6, belt7, belt8, belt9  # noqa: E402
+from content import belt1, belt2, belt3, belt4, belt5, belt6, belt7, belt8, belt9, belt10  # noqa: E402
 from content import extras  # noqa: E402
 
-BELTS = [b.BELT for b in (belt1, belt2, belt3, belt4, belt5, belt6, belt7, belt8, belt9)]
+BELTS = [b.BELT for b in (belt1, belt2, belt3, belt4, belt5, belt6, belt7, belt8, belt9, belt10)]
 
 
 def total_xp():
@@ -144,6 +144,7 @@ def emit_missions_js():
                 "rank": b["rank"],
                 "motto": b["motto"],
                 "notebook": b.get("notebook", ""),
+                "side": bool(b.get("side")),
                 "missions": [
                     {
                         "id": m["id"],
@@ -269,11 +270,14 @@ def main():
     print(f"✓ game/cheatsheet.js  ({len(extras.CHEATSHEET)} commands)")
     print(f"✓ CHEATSHEET.md")
     print(f"✓ total XP available: {total_xp()}")
-    # sanity: 45 missions, unique ids/slugs
-    assert missions == 45, f"expected 45 missions, got {missions}"
+    # sanity: 45 main-path missions + 3 side quests, all ids unique
+    main = sum(len(b["missions"]) for b in BELTS if not b.get("side"))
+    assert main == 45, f"expected 45 main missions, got {main}"
+    assert missions == 48, f"expected 48 total missions, got {missions}"
     ids = [m["id"] for b in BELTS for m in b["missions"]]
-    assert len(set(ids)) == 45, "duplicate mission ids!"
-    print("✓ sanity checks passed (45 unique missions)")
+    assert len(set(ids)) == 48, "duplicate mission ids!"
+    assert total_xp() == 6500, f"expected 6500 total XP, got {total_xp()}"
+    print("✓ sanity checks passed (45 main + 3 side quests, unique ids)")
 
 
 if __name__ == "__main__":

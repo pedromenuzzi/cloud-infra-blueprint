@@ -11,12 +11,20 @@
   var EXTRAS = window.DOJO_EXTRAS || { rules: [], pact: [], katas: [], trophies: [], rewards: [] };
   var CHEAT = window.DOJO_CHEATSHEET || [];
 
+  // main belts form the sequential path; side quests are always-open extras
+  var MAIN_BELTS = BELTS.filter(function (b) { return !b.side; });
+  var SIDE_BELTS = BELTS.filter(function (b) { return b.side; });
+
   var FLAT = [];
-  BELTS.forEach(function (b) {
+  MAIN_BELTS.forEach(function (b) {
     (b.missions || []).forEach(function (m) { FLAT.push({ m: m, belt: b }); });
   });
+  var SIDE_FLAT = [];
+  SIDE_BELTS.forEach(function (b) {
+    (b.missions || []).forEach(function (m) { SIDE_FLAT.push({ m: m, belt: b }); });
+  });
 
-  var BELT_ICONS = ["⚪", "🟡", "🟠", "🟢", "🔵", "🟣", "🟤", "🔴", "⚫"];
+  var BELT_ICONS = ["⚪", "🟡", "🟠", "🟢", "🔵", "🟣", "🟤", "🔴", "⚫", "🗡️"];
 
   // ---- progress state -------------------------------------------------------
   function emptyProgress() { return { version: 0, xp: 0, totalXp: TOTAL_XP, done: [], belts: {} }; }
@@ -26,10 +34,15 @@
   rebuildDoneSet();
 
   function missionDone(id) { return !!doneSet[id]; }
-  function doneCount() { return (progress.done || []).length; }
-  function pctDone() { return FLAT.length ? (doneCount() / FLAT.length) * 100 : 0; }
+  function mainDoneCount() {
+    return FLAT.filter(function (x) { return missionDone(x.m.id); }).length;
+  }
+  function sideDoneCount() {
+    return SIDE_FLAT.filter(function (x) { return missionDone(x.m.id); }).length;
+  }
+  function pctDone() { return FLAT.length ? (mainDoneCount() / FLAT.length) * 100 : 0; }
   function beltComplete(b) { return (b.missions || []).every(function (m) { return missionDone(m.id); }); }
-  function beltsComplete() { var n = 0; BELTS.forEach(function (b) { if (beltComplete(b)) n++; }); return n; }
+  function beltsComplete() { var n = 0; MAIN_BELTS.forEach(function (b) { if (beltComplete(b)) n++; }); return n; }
 
   function unlockedIndex() {
     for (var i = 0; i < FLAT.length; i++) if (!missionDone(FLAT[i].m.id)) return i;
@@ -42,7 +55,7 @@
   }
   function currentBelt() {
     var ui = unlockedIndex();
-    if (ui >= FLAT.length) return BELTS[BELTS.length - 1];
+    if (ui >= FLAT.length) return MAIN_BELTS[MAIN_BELTS.length - 1];
     return FLAT[ui].belt;
   }
 
@@ -83,7 +96,7 @@
 
   function tuxCosmetics() {
     var cb = currentBelt();
-    return { bandana: cb.n >= 5, shades: cb.n >= 9 && doneCount() === FLAT.length ? true : cb.n >= 9 };
+    return { bandana: cb.n >= 5, shades: cb.n >= 9 && mainDoneCount() === FLAT.length };
   }
 
   // ---- HUD ------------------------------------------------------------------
@@ -91,7 +104,7 @@
     var cb = currentBelt();
     document.getElementById("mascot").innerHTML = tuxSVG(cb.color, tuxCosmetics());
     document.getElementById("rank").textContent = BELT_ICONS[cb.n - 1] + " " + cb.name + " · " + cb.rank;
-    document.getElementById("stat-missions").innerHTML = doneCount() + '<span class="stat-den">/45</span>';
+    document.getElementById("stat-missions").innerHTML = mainDoneCount() + '<span class="stat-den">/45</span>';
     document.getElementById("stat-belts").innerHTML = beltsComplete() + '<span class="stat-den">/9</span>';
     document.getElementById("stat-xp").textContent = progress.xp || 0;
     document.getElementById("xpbar-fill").style.width =
@@ -124,7 +137,7 @@
     path.innerHTML = "";
     var ui = unlockedIndex();
 
-    BELTS.forEach(function (belt, bi) {
+    MAIN_BELTS.forEach(function (belt, bi) {
       var firstFlat = FLAT.findIndex(function (x) { return x.belt === belt; });
       var beltLocked = ui < firstFlat;
 
@@ -176,16 +189,62 @@
       }
       path.appendChild(zone);
     });
+
+    // side quests: always open, outside the belt ladder
+    SIDE_BELTS.forEach(function (belt) {
+      var zone = document.createElement("section");
+      zone.className = "zone zone-side";
+      var doneInBelt = belt.missions.filter(function (m) { return missionDone(m.id); }).length;
+      var head = document.createElement("div");
+      head.className = "zone-head";
+      head.innerHTML =
+        '<div class="zone-badge" style="background:' + belt.color + '">🗡️</div>' +
+        '<div><div class="zone-title">' + esc(belt.name) + ' · ' + esc(belt.rank) +
+          '</div><div class="zone-sub">' + doneInBelt + '/' + belt.missions.length +
+          ' cleared · always open — play these any time</div></div>' +
+        '<div class="zone-motto">' + esc(belt.motto) + '</div>';
+      zone.appendChild(head);
+
+      var row = document.createElement("div");
+      row.className = "nodes";
+      row.style.gridTemplateColumns = "repeat(" + belt.missions.length + ", 1fr)";
+      belt.missions.forEach(function (m) {
+        var status = missionDone(m.id) ? "done" : "available";
+        var cell = document.createElement("div");
+        cell.className = "node-cell";
+        var btn = document.createElement("button");
+        btn.className = "node " + status;
+        btn.setAttribute("data-id", m.id);
+        var glyphs = { "10.1": "✎", "10.2": "⎇", "10.3": "♻" };
+        btn.innerHTML =
+          '<span class="node-id">' + m.id + '</span>' +
+          '<span class="node-glyph">' + (status === "done" ? "✓" : (glyphs[m.id] || "★")) + '</span>' +
+          '<span class="node-belt-dot" style="background:' + belt.color + '"></span>' +
+          '<span class="node-xp">' + m.xp + ' XP</span>';
+        btn.addEventListener("click", function () { openModal(m, belt, status); });
+        cell.appendChild(btn);
+        row.appendChild(cell);
+      });
+      zone.appendChild(row);
+
+      if (belt.notebook) {
+        var nb = document.createElement("div");
+        nb.className = "zone-notebook";
+        nb.innerHTML = '<span class="nb-tag">📓 In your notebook</span> ' + esc(belt.notebook);
+        zone.appendChild(nb);
+      }
+      path.appendChild(zone);
+    });
   }
 
   // ---- Trophies + Rewards ---------------------------------------------------
   function trophyEarned(cond) {
     switch (cond.type) {
-      case "first": return doneCount() >= 1;
+      case "first": return (progress.done || []).length >= 1;
       case "belt": { var b = BELTS[cond.n - 1]; return b && beltComplete(b); }
       case "pct": return pctDone() >= cond.v;
       case "mission": return missionDone(cond.id);
-      case "all": return doneCount() === FLAT.length && FLAT.length > 0;
+      case "all": return mainDoneCount() === FLAT.length && FLAT.length > 0;
       default: return false;
     }
   }
@@ -484,9 +543,14 @@
       burstConfetti(newBelts.length ? 220 : 90);
       if (newBelts.length) {
         var b = newBelts[newBelts.length - 1];
-        toast('🥋 <span class="t-belt">Belt ' + b.n + ' complete!</span> Tux is now a ' + esc(b.name) + ' · ' + esc(b.rank), 5200);
+        if (b.side) {
+          toast('🗡️ <span class="t-belt">Side quests complete!</span> vim · git · services — Tux earns the rank of ' + esc(b.rank), 5200);
+        } else {
+          toast('🥋 <span class="t-belt">Belt ' + b.n + ' complete!</span> Tux is now a ' + esc(b.name) + ' · ' + esc(b.rank), 5200);
+        }
       } else {
-        var one = fresh[fresh.length - 1], meta = FLAT.find(function (x) { return x.m.id === one; });
+        var one = fresh[fresh.length - 1];
+        var meta = FLAT.concat(SIDE_FLAT).find(function (x) { return x.m.id === one; });
         toast('⭐ Mission ' + one + ' cleared — <b>' + esc(meta ? meta.m.title : one) + '</b>! +' + (meta ? meta.m.xp : 0) + ' XP', 4200);
       }
     }

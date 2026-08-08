@@ -579,3 +579,62 @@ m_9_5() {
     printf '%s' "$RUN_OUT" | grep -q "status=all-clear" && _ok "report prints status=all-clear" || _bad "gauntlet-report.sh should print status=all-clear"
   fi
 }
+
+# ============================================================ SIDE QUESTS
+m_10_1() {
+  local exp
+  exp=$(cat <<'EOF'
+step 1: the journey begins
+step 2: guard this scroll well
+step 3: the middle path is quiet
+step 4: patience is a command
+step 6: the editor waits on every server
+step 7: modes are not prisons
+step 8: practice until reflex
+step 9: almost at the end
+step 10: the scroll ends here
+step 2: guard this scroll well
+EOF
+)
+  req_file_eq_cmd "scroll.txt" "$exp" "scroll.txt edited exactly (delete 5, dup line 2 at end, line→step)"
+  req_kv "answers.md" "insert_key" "i"
+  req_kv_has "answers.md" "save_quit" "wq"
+  req_kv_has "answers.md" "quit_no_save" "q!"
+  req_kv "answers.md" "undo_key" "u"
+}
+
+m_10_2() {
+  req_oneline_eq "precious.txt" "Priceless dojo wisdom: never force-push to main on a Friday." \
+    "precious.txt is back, intact (the resurrection drill)"
+  if git rev-parse --git-dir >/dev/null 2>&1; then
+    if git branch --list 'training/*' 2>/dev/null | grep -q training; then
+      _ok "a training/* branch exists"
+    else
+      _bad "create the branch: git branch training/dojo"
+    fi
+    if git log --grep='dojo:' --oneline 2>/dev/null | grep -q .; then
+      _ok "history has a 'dojo:' commit"
+    else
+      _bad "make a commit whose message starts with 'dojo:' (add git-notes.md and commit it)"
+    fi
+  else
+    _bad "not inside a git repository — the time machine needs the dojo cloned via git"
+  fi
+  req_kv_any "git-notes.md" "restore_cmd" "restore" "checkout"
+  req_kv_has "git-notes.md" "branch_created" "training/dojo"
+  req_kv_any "git-notes.md" "never_commit" "secret" "private" "key" "credential" ".env" "password"
+}
+
+m_10_3() {
+  req_kv_has "answers.md" "nginx_state" "active"
+  req_kv_num "answers.md" "nginx_main_pid" 1200
+  req_kv_any "answers.md" "nginx_enabled" "enabled" "yes"
+  req_kv_has "answers.md" "failed_unit" "app-sync"
+  req_kv_num "answers.md" "exit_status" 127
+  req_kv_has "answers.md" "root_cause" "rsync"
+  req_grep "runbook.md" "systemctl status" "runbook step 1: systemctl status"
+  req_grep "runbook.md" "journalctl -u" "runbook step 2: journalctl -u"
+  req_grep "runbook.md" "systemctl restart" "runbook step 3: systemctl restart"
+  req_kv_has "runbook.md" "first_step" "status"
+  req_nonempty "systemctl-live.txt" "the live probe ran (real list or graceful fallback)"
+}

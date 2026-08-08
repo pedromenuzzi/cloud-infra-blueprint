@@ -16,13 +16,15 @@ cd "$DOJO_ROOT" || exit 1
 MANIFEST="$DOJO_ROOT/game/manifest.sh"
 STATE_DIR="$DOJO_ROOT/.dojo"
 STATE_FILE="$STATE_DIR/state"
-TOTAL_XP=6200
+TOTAL_XP=6500
+MAIN_MISSIONS=45
+SIDE_MISSIONS=3
 
 usage() {
   cat <<EOF
 ${C_BOLD}🐧 Linux Dojo — belt examiner${C_RST}
 
-  ${C_CYN}./check${C_RST}            Examine all 45 missions, print the dojo board, save progress
+  ${C_CYN}./check${C_RST}            Examine every mission (45 main + 3 side quests), print the board, save progress
   ${C_CYN}./check 3.2${C_RST}        Examine one mission in detail (great while you work)
   ${C_CYN}./check --list${C_RST}     List every mission and its belt
   ${C_CYN}./check --help${C_RST}     This help
@@ -122,7 +124,7 @@ examine_all() {
   fi
 
   local done_ids="" earned=0 belt_done_1=0 belt_done_2=0 belt_done_3=0 belt_done_4=0
-  local belt_done_5=0 belt_done_6=0 belt_done_7=0 belt_done_8=0 belt_done_9=0
+  local belt_done_5=0 belt_done_6=0 belt_done_7=0 belt_done_8=0 belt_done_9=0 belt_done_10=0
   local newly="" belt_names=""
 
   printf "\n${C_BOLD}${C_CYN}🐧  L I N U X   D O J O${C_RST}   ${C_DIM}· examining your work ·${C_RST}\n\n"
@@ -157,11 +159,18 @@ EOF
     bn=$((bn+1))
   done
 
+  # side quests (vim, git, services) — playable any time, outside the belt ladder
+  local side_status=""
+  [ "$belt_done_10" -eq "$SIDE_MISSIONS" ] && side_status="${C_GRN}✓ Ronin${C_RST}"
+  printf "  🗡️ ${C_BOLD}Side Quests${C_RST}%-8s %s %s/%s   %s\n" "" \
+    "$(progress_bar "$belt_done_10" "$SIDE_MISSIONS" 12)" "$belt_done_10" "$SIDE_MISSIONS" "$side_status"
+
   # total xp bar + rank
   local done_count; done_count=$(printf '%s' "$done_ids" | wc -w | tr -d ' ')
+  local main_done; main_done=$(( done_count - belt_done_10 ))
   echo ""
-  printf "  ${C_BOLD}XP${C_RST}  %s ${C_YEL}%s${C_RST}/%s   ${C_BOLD}Missions${C_RST} %s/45   ${C_BOLD}Belts earned${C_RST} %s/9\n" \
-    "$(progress_bar "$earned" "$TOTAL_XP" 24)" "$earned" "$TOTAL_XP" "$done_count" "$belts_complete"
+  printf "  ${C_BOLD}XP${C_RST}  %s ${C_YEL}%s${C_RST}/%s   ${C_BOLD}Missions${C_RST} %s/%s   ${C_BOLD}Side quests${C_RST} %s/%s   ${C_BOLD}Belts earned${C_RST} %s/9\n" \
+    "$(progress_bar "$earned" "$TOTAL_XP" 24)" "$earned" "$TOTAL_XP" "$main_done" "$MAIN_MISSIONS" "$belt_done_10" "$SIDE_MISSIONS" "$belts_complete"
 
   save_progress "$done_ids" "$earned" \
     "$belt_done_1" "$belt_done_2" "$belt_done_3" "$belt_done_4" "$belt_done_5" \
@@ -192,8 +201,21 @@ EOF
     fi
     bn=$((bn+1))
   done
+  # side-quest ceremony (10.1–10.3)
+  if [ "$belt_done_10" -eq "$SIDE_MISSIONS" ]; then
+    local swas=1 smid
+    for smid in 10.1 10.2 10.3; do
+      case "$prev_done" in *" $smid "*) : ;; *) swas=0;; esac
+    done
+    if [ "$swas" -eq 0 ]; then
+      printf "\n  ${C_MAG}${C_BOLD}╭───────────────────────────────────────────────╮${C_RST}\n"
+      printf "  ${C_MAG}${C_BOLD}│${C_RST}   🗡️  SIDE QUESTS COMPLETE — vim · git · services\n"
+      printf "  ${C_MAG}${C_BOLD}│${C_RST}   Tux earns the wandering rank: ${C_BOLD}Ronin${C_RST}\n"
+      printf "  ${C_MAG}${C_BOLD}╰───────────────────────────────────────────────╯${C_RST}\n"
+    fi
+  fi
 
-  if [ "$done_count" -eq 45 ]; then black_belt_art; else
+  if [ "$main_done" -eq "$MAIN_MISSIONS" ]; then black_belt_art; else
     printf "\n  ${C_DIM}Keep going — open the board with ${C_RST}${C_CYN}./play${C_RST}${C_DIM} and pick your next mission.${C_RST}\n\n"
   fi
 }
@@ -212,7 +234,7 @@ black_belt_art() {
        |o_o |        │  ⚫  B L A C K   B E L T           │
        |:_/ |        │                                   │
       //   \ \       │  You have walked the whole path.  │
-     (|     | )      │  45/45 missions. 6200 XP.         │
+     (|     | )      │  45/45 missions on the main path. │
     /'\_   _/`\      │  Tux bows to you, Sensei.         │
     \___)=(___/      └───────────────────────────────────┘
 EOF

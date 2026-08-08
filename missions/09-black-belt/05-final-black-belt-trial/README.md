@@ -101,4 +101,4 @@ From the repository root, run:
 It tells you exactly which requirements pass and which need another pass. When it goes green, your progress and the game board update automatically.
 
 ---
-⬅️ Previous: `9.4` · [🏠 Dojo map](../../../README.md)
+⬅️ Previous: `9.4` · [🏠 Dojo map](../../../README.md) · Next: `10.1` ➡️

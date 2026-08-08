@@ -54,6 +54,7 @@ TROPHIES = [
     {"icon": "🗺️", "title": "Cartographer",     "desc": "Red Belt complete — system craft",     "cond": {"type": "belt", "n": 8}},
     {"icon": "🏁", "title": "Halfway There",    "desc": "Reached 50% of the dojo",              "cond": {"type": "pct", "v": 50}},
     {"icon": "👹", "title": "Boss Slayer",      "desc": "Cleared the final Black Belt trial",   "cond": {"type": "mission", "id": "9.5"}},
+    {"icon": "🗡️", "title": "Ronin",            "desc": "All three side quests — vim, git, services", "cond": {"type": "belt", "n": 10}},
     {"icon": "🥋", "title": "BLACK BELT",       "desc": "100% — you finished the dojo",         "cond": {"type": "all"}},
 ]
 

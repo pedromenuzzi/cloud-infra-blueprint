@@ -12,12 +12,12 @@ How Linux Dojo is built, so future-you can extend it with confidence.
    seeds, so every learner sees the exact same numbers and every answer is stable.
 3. **Single source of truth.** The curriculum is authored once in Python; everything else
    (mission pages, the board's data, the grader's manifest, the cheat sheet) is generated from it.
-4. **Provably beatable.** A self-test solves all 45 missions and asserts 45/45 on every change.
+4. **Provably beatable.** A self-test solves all 48 missions (45 main + 3 side quests) and asserts a perfect score on every change.
 
 ## The pieces
 
 ```
-tools/content/belt1.py … belt9.py  +  tools/content/extras.py   ← authored by hand
+tools/content/belt1.py … belt10.py  +  tools/content/extras.py   ← authored by hand
             │
             ▼  tools/generate.py
    ┌────────┴───────────────┬───────────────┬───────────────┬───────────────┬──────────────┐
@@ -58,7 +58,7 @@ missions/**/README.md   game/missions.js  game/extras.js  game/cheatsheet.js  ga
     (`req_file`, `req_mode`, `req_grep`, `req_kv*`, `run_cap` for timeout-guarded script execution,
     `perm_octal` for portable permission reading via `ls -ld`, etc.). Written to bash 3.2: no
     associative arrays, no `mapfile`, no `${var,,}`.
-  - `tools/checks.sh` — 45 functions `m_<belt>_<mission>()`, one per mission, each a sequence of
+  - `tools/checks.sh` — 48 functions `m_<belt>_<mission>()`, one per mission, each a sequence of
     requirement calls. This is where "what counts as solved" is defined.
 
 - **`play`** (repo root) — serves `game/` over `python3 -m http.server` and opens the browser.
@@ -79,7 +79,7 @@ missions/**/README.md   game/missions.js  game/extras.js  game/cheatsheet.js  ga
 mechanisms) plus `.dojo/state` (a simple `done <id>` list, git-ignored). Shape:
 
 ```json
-{ "version": 12, "updatedAt": "…Z", "xp": 2150, "totalXp": 6200,
+{ "version": 12, "updatedAt": "…Z", "xp": 2150, "totalXp": 6500,
   "done": ["1.1","1.2", "…"],
   "belts": { "1": {"done":5,"total":5,"complete":true}, "…": {} } }
 ```
@@ -90,7 +90,8 @@ mechanisms) plus `.dojo/state` (a simple `done <id>` list, git-ignored). Shape:
 
 Belts 1–8: four lessons at 100 XP + one boss at 250 = **650 XP/belt**.
 Belt 9 (Black): four missions at 150 XP + the final trial at 400 = **1000 XP**.
-Total: **6200 XP**, 45 missions.
+Side Quests (belt 10, outside the ladder): three missions at 100 XP — vim, git, services.
+Total: **6500 XP** — 45 main missions + 3 side quests.
 
 ## Extending it
 
@@ -100,7 +101,7 @@ Total: **6200 XP**, 45 missions.
 - **Change what "solved" means:** edit the matching `m_<belt>_<mission>` in `tools/checks.sh`.
 - **Add a mission or belt:** add it to the content module and give it a matching verifier in
   `tools/checks.sh` and a solver in `tools/selftest.sh`; regenerate; run the self-test.
-- **Always finish with** `bash tools/selftest.sh` — if it isn't 45/45, a check and its solver
+- **Always finish with** `bash tools/selftest.sh` — if it isn't a perfect score, a check and its solver
   disagree, and the message tells you which mission.
 
 ## What deliberately isn't here

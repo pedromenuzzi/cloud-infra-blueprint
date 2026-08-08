@@ -132,6 +132,15 @@ window.DOJO_EXTRAS = {
       }
     },
     {
+      "icon": "🗡️",
+      "title": "Ronin",
+      "desc": "All three side quests — vim, git, services",
+      "cond": {
+        "type": "belt",
+        "n": 10
+      }
+    },
+    {
       "icon": "🥋",
       "title": "BLACK BELT",
       "desc": "100% — you finished the dojo",

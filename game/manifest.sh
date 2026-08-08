@@ -46,3 +46,6 @@
 9|09-black-belt|Black Belt|9.3|03-the-deployer|150|0|The Deployer
 9|09-black-belt|Black Belt|9.4|04-the-watchdog|150|0|The Watchdog
 9|09-black-belt|Black Belt|9.5|05-final-black-belt-trial|400|1|BOSS — The Final Black Belt Trial
+10|10-side-quests|Side Quests|10.1|01-vim-gauntlet|100|0|The Vim Gauntlet
+10|10-side-quests|Side Quests|10.2|02-git-time-machine|100|0|Git Time Machine
+10|10-side-quests|Side Quests|10.3|03-service-commander|100|0|Service Commander

@@ -4,8 +4,8 @@
 
 ### Go from your first `pwd` to black-belt operator — one hands-on mission at a time.
 
-A gamified, self-contained course that lives **inside this repository**. Nine belts, forty-five
-missions, one penguin who levels up as you do. You learn by *doing* real commands in your terminal;
+A gamified, self-contained course that lives **inside this repository**. Nine belts, forty-five missions, three side quests,
+and one penguin who levels up as you do. You learn by *doing* real commands in your terminal;
 a built-in grader checks your work and a Duolingo-style board tracks every belt you earn.
 
 </div>
@@ -22,7 +22,7 @@ Most "learn Linux" resources are videos you watch or pages you read. You forget 
 The Dojo is the opposite: **every mission is a task you perform on a real filesystem**, and you don't
 advance until a script confirms you actually did it. The knowledge sticks because your hands did the work.
 
-- 🎯 **45 missions across 9 belts** — from `ls` and `cd` to signals, permissions, networking, shell scripting, cron, deployments, and incident response.
+- 🎯 **45 missions across 9 belts, plus 3 side quests** — from `ls` and `cd` to signals, permissions, networking, shell scripting, cron, deployments, incident response — and vim, git, and systemd services on the side track.
 - 🧪 **A real grader** — `./check` inspects the files and scripts you produced and tells you, requirement by requirement, what passes and what to fix.
 - 🎮 **A game board that makes you want to continue** — Tux changes belts, an XP bar fills, bosses guard each belt, and the board updates live as you pass missions.
 - 📦 **100% self-contained & offline** — no accounts, no servers, no dependencies to install. Just Bash, and Python only if you want the pretty board. Works on macOS and Linux.
@@ -61,7 +61,7 @@ advance until a script confirms you actually did it. The knowledge sticks becaus
 ./check            # check everything and see the full dojo board in your terminal
 ```
 
-That's it. Pass `1.1`, watch Tux earn XP, and keep climbing. When all 45 missions are green,
+That's it. Pass `1.1`, watch Tux earn XP, and keep climbing. When every mission is green,
 the repository — and you — are complete.
 
 > **No Python?** No problem. Open `game/index.html` directly in your browser; the board reads your
@@ -95,7 +95,7 @@ on any machine and never depends on your operating system's internals.
 The board (`./play`) is a small game in three tabs:
 
 - **🗺️ Path** — the serpentine belt map. Tux wears your current belt (and earns a bandana at Blue, shades at Black). Each belt carries an *"In your notebook"* prompt that pushes you to consolidate off-screen.
-- **🏆 Trophies** — 12 achievements that unlock automatically, plus **real-life rewards**: a prize you promise yourself per belt (rename it to whatever you actually want, then "claim" it when you earn it).
+- **🏆 Trophies** — 13 achievements that unlock automatically, plus **real-life rewards**: a prize you promise yourself per belt (rename it to whatever you actually want, then "claim" it when you earn it).
 - **📓 Cheat Sheet** — every command the dojo teaches, grouped and **searchable** — your Linux Ctrl+F.
 
 A **Kata of the Day** greets you on the home screen — a short drill that rotates daily.
@@ -118,10 +118,11 @@ A **Kata of the Day** greets you on the home screen — a short drill that rotat
 | 🟤 **7 · Brown** | Script Smith | Bash scripting: variables, conditionals, loops, functions |
 | 🔴 **8 · Red** | System Craftsman | `tar`, environment & `PATH`, `cron`, package managers |
 | ⚫ **9 · Black** | Tux Sensei | Incident triage, diagnostics tooling, deployments, watchdogs, the final trial |
+| 🗡️ **Side Quests** | Ronin | vim survival, git as a time machine, systemd services (`systemctl`/`journalctl`) |
 
 Each belt is **4 lessons + 1 boss trial**. Bosses combine everything in the belt into one realistic
 scenario (a log investigation, a lockdown, a backup tool, a live incident). Clear all five and the
-belt is yours; clear all nine belts and you've earned the **black belt** — **6200 XP** total.
+belt is yours; clear all nine belts and you've earned the **black belt**. The **🗡️ Side Quests** (vim, git, systemd services) sit outside the ladder — playable any time, graded like everything else. Everything together: **6500 XP**.
 
 ---
 
@@ -140,7 +141,7 @@ grouped by belt — keep it open while you train.
 
 ---
 
-## The rules of the dojo
+## Training tips
 
 1. **Do the work by hand.** The hints are collapsed on purpose. Peek only after you've tried.
 2. **Read the error.** `./check 3.2` tells you exactly which requirement failed and why. That message *is* the next clue.
@@ -169,8 +170,8 @@ files set to specific permissions. `./check` verifies those. It never phones hom
 anything outside the mission folder.
 
 **Is it really beatable end-to-end?**
-Yes — and it's proven on every change. [`tools/selftest.sh`](tools/selftest.sh) solves all 45 missions
-in a throwaway copy and asserts a perfect 45/45 · 6200/6200 XP.
+Yes — and it's proven on every change. [`tools/selftest.sh`](tools/selftest.sh) solves all 48 missions
+in a throwaway copy and asserts a perfect 45/45 main + 3/3 side quests · 6500/6500 XP.
 
 **How is the content generated?**
 The curriculum lives in [`tools/content/`](tools/content/) and [`tools/generate.py`](tools/generate.py)
