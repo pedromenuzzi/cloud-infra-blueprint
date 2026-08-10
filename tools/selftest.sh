@@ -692,6 +692,19 @@ echo ""
 if [ "$missions_line" = "Missions 45/45" ] && [ "$side_line" = "Side quests 3/3" ] && [ "$xp_line" = "6500/6500" ]; then
   echo "✅ SELFTEST PASSED — 45/45 main missions, 3/3 side quests, 6500/6500 XP. Fully beatable."
   RESULT=0
+  # the black-belt certificate must have been issued
+  if [ -f "$WORK/BLACK_BELT_CERTIFICATE.md" ] && grep -q "BLACK BELT CERTIFICATE" "$WORK/BLACK_BELT_CERTIFICATE.md"; then
+    echo "✅ certificate issued (BLACK_BELT_CERTIFICATE.md)"
+  else
+    echo "❌ certificate was NOT issued at 45/45"; RESULT=1
+  fi
+  # the hidden-egg flow must persist to the board's progress file
+  ( cd "$WORK" && ./check open-sesame >/dev/null 2>&1 )
+  if grep -q '"eggs":\["open-sesame"\]' "$WORK/game/progress.json"; then
+    echo "✅ secret egg persists (open-sesame → progress.json)"
+  else
+    echo "❌ secret egg did not persist to progress.json"; RESULT=1
+  fi
 else
   echo "❌ SELFTEST FAILED — expected 45/45 + 3/3 + 6500/6500, got: '$missions_line' '$side_line' '$xp_line'"
   echo ""

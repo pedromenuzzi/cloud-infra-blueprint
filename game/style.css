@@ -407,3 +407,23 @@ details.hints li { margin: 6px 0; font-size: .9rem; color: var(--ink-dim); }
 .zone-side { margin-top: 34px; padding-top: 18px; border-top: 1px dashed var(--line); }
 .zone-side .zone-badge { font-size: 1rem; }
 .zone-side .nodes::before { left: 16%; right: 16%; }
+
+/* delight layer: secret trophies, days tag, tux antics */
+.trophy.secret { opacity: .5; filter: grayscale(1); border-style: dashed; }
+.hero-kata { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.hero-kata .days-tag { margin-left: auto; font-weight: 800; color: var(--danger); font-size: .85rem; white-space: nowrap; }
+.mascot { cursor: pointer; }
+@keyframes tux-party {
+  0% { transform: rotate(0) scale(1); }
+  20% { transform: rotate(-14deg) scale(1.15); }
+  40% { transform: rotate(12deg) scale(1.2); }
+  60% { transform: rotate(-10deg) scale(1.15) translateY(-6px); }
+  80% { transform: rotate(8deg) scale(1.1); }
+  100% { transform: rotate(0) scale(1); }
+}
+.mascot.party { animation: tux-party 1.2s ease; }
+@keyframes tux-wobble {
+  0%,100% { transform: rotate(0); } 30% { transform: rotate(-8deg); } 60% { transform: rotate(7deg); }
+}
+.mascot.wobble { animation: tux-wobble .45s ease; }
+@media (prefers-reduced-motion: reduce) { .mascot.party, .mascot.wobble { animation: none; } }

@@ -147,6 +147,26 @@ window.DOJO_EXTRAS = {
       "cond": {
         "type": "all"
       }
+    },
+    {
+      "icon": "🗝️",
+      "title": "Curious One",
+      "desc": "You looked where others don't. The wall remembers.",
+      "cond": {
+        "type": "egg",
+        "id": "open-sesame"
+      },
+      "secret": true
+    },
+    {
+      "icon": "🕹️",
+      "title": "Konami Ronin",
+      "desc": "Up, up, down, down… some reflexes never fade.",
+      "cond": {
+        "type": "localegg",
+        "id": "konami"
+      },
+      "secret": true
     }
   ],
   "rewards": [

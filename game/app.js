@@ -118,12 +118,15 @@
       ? EXTRAS.katas[Math.floor(Date.now() / 86400000) % EXTRAS.katas.length] : "";
     var rules = EXTRAS.rules.map(function (r) { return "<li>" + mdInline(r) + "</li>"; }).join("");
     var pact = EXTRAS.pact.map(function (p) { return "<li>" + mdInline(p) + "</li>"; }).join("");
+    var days = progress.daysTrained || 0;
+    var daysTag = days > 0
+      ? '<span class="days-tag">🔥 ' + days + ' day' + (days === 1 ? "" : "s") + ' trained</span>' : "";
     hero.innerHTML =
       '<div class="hero-grid">' +
         '<div class="hero-card rules"><h3>⚔️ The three rules of the dojo</h3><ol>' + rules + '</ol></div>' +
         '<div class="hero-card pact"><h3>🤝 The pact</h3><ul>' + pact + '</ul></div>' +
       '</div>' +
-      '<div class="hero-kata"><span class="kata-tag">🥋 Kata of the day</span> ' + mdInline(kata) + '</div>';
+      '<div class="hero-kata"><span class="kata-tag">🥋 Kata of the day</span> ' + mdInline(kata) + daysTag + '</div>';
   }
 
   // ---- The path -------------------------------------------------------------
@@ -245,6 +248,10 @@
       case "pct": return pctDone() >= cond.v;
       case "mission": return missionDone(cond.id);
       case "all": return mainDoneCount() === FLAT.length && FLAT.length > 0;
+      case "egg": return (progress.eggs || []).indexOf(cond.id) >= 0;
+      case "localegg": {
+        try { return localStorage.getItem("dojo-egg-" + cond.id) === "1"; } catch (e) { return false; }
+      }
       default: return false;
     }
   }
@@ -254,11 +261,14 @@
     EXTRAS.trophies.forEach(function (t) {
       var earned = trophyEarned(t.cond);
       var el = document.createElement("div");
-      el.className = "trophy" + (earned ? " earned" : "");
+      el.className = "trophy" + (earned ? " earned" : "") + (t.secret && !earned ? " secret" : "");
+      var icon = t.secret && !earned ? "❓" : t.icon;
+      var title = t.secret && !earned ? "???" : t.title;
+      var desc = t.secret && !earned ? "A secret. It hides somewhere in the dojo — or in your reflexes." : t.desc;
       el.innerHTML =
-        '<div class="trophy-icon">' + t.icon + '</div>' +
-        '<div class="trophy-text"><div class="trophy-title">' + esc(t.title) + '</div>' +
-          '<div class="trophy-desc">' + esc(t.desc) + '</div></div>' +
+        '<div class="trophy-icon">' + icon + '</div>' +
+        '<div class="trophy-text"><div class="trophy-title">' + esc(title) + '</div>' +
+          '<div class="trophy-desc">' + esc(desc) + '</div></div>' +
         '<div class="trophy-state">' + (earned ? '✓' : '🔒') + '</div>';
       grid.appendChild(el);
     });
@@ -581,6 +591,47 @@
       })
       .catch(function () {});
   }
+
+  // ---- easter eggs: konami code + a clickable penguin ------------------------
+  var KONAMI = ["ArrowUp","ArrowUp","ArrowDown","ArrowDown","ArrowLeft","ArrowRight","ArrowLeft","ArrowRight","b","a"];
+  var kpos = 0;
+  document.addEventListener("keydown", function (e) {
+    if (!backdrop.hidden) return; // don't count keys while reading a mission
+    var k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (k === KONAMI[kpos]) {
+      kpos++;
+      if (kpos === KONAMI.length) {
+        kpos = 0;
+        var already = false;
+        try { already = localStorage.getItem("dojo-egg-konami") === "1"; localStorage.setItem("dojo-egg-konami", "1"); } catch (err) {}
+        var mascot = document.getElementById("mascot");
+        mascot.classList.remove("party"); void mascot.offsetWidth; mascot.classList.add("party");
+        burstConfetti(180);
+        toast(already
+          ? '🕹️ Tux still remembers the arcade. So do you.'
+          : '🕹️ <span class="t-belt">KONAMI!</span> Secret trophy unlocked: <b>Konami Ronin</b>. Some reflexes never fade.', 5200);
+        if (!views.trophies.hidden) renderTrophies();
+      }
+    } else {
+      kpos = (k === KONAMI[0]) ? 1 : 0;
+    }
+  });
+
+  var SQUAWKS = [
+    "Squawk! Less clicking, more typing.",
+    "The terminal misses you.",
+    "🐟?",
+    "Belts are earned in the shell, not here!",
+    "Did you try the kata today?",
+    "ls -a. Always ls -a. Walls lie.",
+  ];
+  var squawkN = 0;
+  document.getElementById("mascot").addEventListener("click", function () {
+    var m = document.getElementById("mascot");
+    m.classList.remove("wobble"); void m.offsetWidth; m.classList.add("wobble");
+    toast("🐧 " + SQUAWKS[squawkN % SQUAWKS.length], 2600);
+    squawkN++;
+  });
 
   // ---- boot -----------------------------------------------------------------
   function boot() {

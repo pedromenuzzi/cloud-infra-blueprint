@@ -44,7 +44,13 @@ missions/**/README.md   game/missions.js  game/extras.js  game/cheatsheet.js  ga
   (the belt map, with penguin cosmetics — bandana at Blue, shades at Black — and per-belt notebook
   prompts), **Trophies** (auto-unlocking achievements + editable/claimable real-life rewards, persisted
   in `localStorage`), and **Cheat Sheet** (live text filter). The home hero shows the rules, the pact,
-  and a Kata of the Day chosen deterministically by date.
+  and a Kata of the Day chosen deterministically by date, beside the days-trained counter.
+
+- **Delight layer** — every `./check` run ends with the kata, a rotating sensei fortune, and a
+  "next up" pointer; `./check --hint B.M` prints a mission's hints; finishing the 45-mission main
+  path writes `BLACK_BELT_CERTIFICATE.md` (re-stamped with the Ronin seal at 48/48). Two secret
+  trophies exist: one earned via a hidden scroll in the repo (`./check open-sesame`, persisted as an
+  `egg` in `.dojo/state` and `progress.json`), one via the Konami code on the board (localStorage).
 
 - **Practice assets** under `missions/**/` — generated deterministically (see the seeded builder that
   produced them). Every statistic the grader or answer key relies on (line counts, top IPs, file

@@ -95,10 +95,12 @@ on any machine and never depends on your operating system's internals.
 The board (`./play`) is a small game in three tabs:
 
 - **🗺️ Path** — the serpentine belt map. Tux wears your current belt (and earns a bandana at Blue, shades at Black). Each belt carries an *"In your notebook"* prompt that pushes you to consolidate off-screen.
-- **🏆 Trophies** — 13 achievements that unlock automatically, plus **real-life rewards**: a prize you promise yourself per belt (rename it to whatever you actually want, then "claim" it when you earn it).
+- **🏆 Trophies** — 15 achievements that unlock automatically (two of them are *secret*… the dojo rewards the curious), plus **real-life rewards**: a prize you promise yourself per belt (rename it to whatever you actually want, then "claim" it when you earn it).
 - **📓 Cheat Sheet** — every command the dojo teaches, grouped and **searchable** — your Linux Ctrl+F.
 
-A **Kata of the Day** greets you on the home screen — a short drill that rotates daily.
+A **Kata of the Day** greets you on the home screen — a short drill that rotates daily — next to your **🔥 days-trained counter**. Every `./check` run ends with the kata and a word from Sensei Tux, and points you at exactly what's next. And when you clear mission 45, the dojo writes you a real **`BLACK_BELT_CERTIFICATE.md`** — commit it, you earned it.
+
+> Rumor has it the dojo hides secrets. Walls lie. `ls -a`. That's all we'll say. 🗝️
 
 <p align="center">
   <img src="docs/screenshots/trophies.png" alt="Trophies and real-life rewards" width="420">
@@ -133,6 +135,7 @@ belt is yours; clear all nine belts and you've earned the **black belt**. The **
 | `./play` | Serve and open the game board (live-refreshes as you pass missions). |
 | `./check` | Grade **all** missions, print the dojo board, and save progress. |
 | `./check 3.2` | Grade **one** mission in detail — shows each requirement pass/fail. |
+| `./check --hint 3.2` | Stuck? Print that mission's hints right in the terminal (nudges, not answers). |
 | `./check --list` | List every mission and belt. |
 | `./check --help` | Full usage. |
 

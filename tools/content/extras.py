@@ -39,6 +39,28 @@ KATAS = [
     "Read a permission string like `-rwxr-x---` out loud, then write its octal from memory.",
 ]
 
+# ── Sensei fortunes (one shown after every ./check run, rotating) ───────────
+FORTUNES = [
+    "Sensei also once ran rm -rf in the wrong directory. Once.",
+    "A typo is just the shell teaching you humility.",
+    "The manual was written for you. Nobody reads it — that's your advantage.",
+    "Ctrl+C ends suffering. Ctrl+D ends sessions. Coffee ends neither.",
+    "Tab completion has prevented more disasters than any backup ever restored.",
+    "A pipe a day keeps the spreadsheet away.",
+    "Real senseis test in production. Wise senseis have backups. Be wise.",
+    "grep, and you shall find.",
+    "Yesterday you copied commands. Today you type them. Tomorrow you write them.",
+    "chmod 777 solves everything, said the intern, once.",
+    "The penguin believes in you. The penguin has seen your shell history. It still believes.",
+    "Slow is smooth, smooth is fast. sudo is neither — handle with care.",
+    "You are one man page away from looking like a wizard.",
+    "Every expert was once someone who didn't quit at 'Permission denied'.",
+    "The best time to learn vim was 10 years ago. The second best is side quest 10.1.",
+    "Somewhere, a server is quietly grateful you're learning this properly.",
+    "Exit code 0 is the shell's way of bowing back.",
+    "Errors are not failures. Errors are reps.",
+]
+
 # ── Trophies (derived from progress; `cond` interpreted by the frontend) ─────
 # cond types: {"type":"first"} first mission done; {"type":"belt","n":N} belt N
 # complete; {"type":"pct","v":P} at least P% of missions; {"type":"all"} 100%.
@@ -56,6 +78,11 @@ TROPHIES = [
     {"icon": "👹", "title": "Boss Slayer",      "desc": "Cleared the final Black Belt trial",   "cond": {"type": "mission", "id": "9.5"}},
     {"icon": "🗡️", "title": "Ronin",            "desc": "All three side quests — vim, git, services", "cond": {"type": "belt", "n": 10}},
     {"icon": "🥋", "title": "BLACK BELT",       "desc": "100% — you finished the dojo",         "cond": {"type": "all"}},
+    # secret trophies — shown as ??? until earned. No spoilers here beyond the cond itself.
+    {"icon": "🗝️", "title": "Curious One",      "desc": "You looked where others don't. The wall remembers.",
+     "cond": {"type": "egg", "id": "open-sesame"}, "secret": True},
+    {"icon": "🕹️", "title": "Konami Ronin",     "desc": "Up, up, down, down… some reflexes never fade.",
+     "cond": {"type": "localegg", "id": "konami"}, "secret": True},
 ]
 
 # ── Real-life rewards (unlock by belt; text is editable in the board) ────────
