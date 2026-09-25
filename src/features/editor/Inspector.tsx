@@ -398,7 +398,15 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
 
   return (
     <div className="space-y-3.5 p-3.5">
-      <Field label={<span className="font-mono">name</span>}>
+      {/* the block label, not the `name` argument most resources also have */}
+      <Field
+        label="Terraform name"
+        hint={
+          <>
+            Referenced as <span className="font-mono">{node.id}</span>
+          </>
+        }
+      >
         <Input
           key={`${node.id}:name`}
           defaultValue={node.name}
