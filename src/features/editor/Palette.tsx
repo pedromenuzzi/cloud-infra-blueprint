@@ -9,6 +9,8 @@ import { PROVIDER_COLORS, PROVIDER_LABELS, ProviderDot, ResourceIcon } from '@/r
 import { defsByProvider } from '@/resources/registry';
 import { CATEGORY_LABELS, type Category, type ResourceDef } from '@/resources/types';
 import { PALETTE_MIME } from './CanvasPane';
+import { canvasApi } from './canvasApi';
+import { useLayout } from './layoutStore';
 import { buildNewNode } from './newNode';
 import { useEditor } from './store';
 
@@ -26,6 +28,9 @@ function PaletteItem({ def }: { def: ResourceDef }) {
     const size = def.container ? { w: 320, h: 180 } : {};
     const { node, ops } = buildNewNode(state.ir, def, { x: 60, y: maxY + 50, ...size });
     applyCanvasOps(ops, node.id);
+    // it lands below the diagram — bring it into view (and get the drawer out of the way)
+    if (useLayout.getState().compact) useLayout.getState().closeDrawer();
+    setTimeout(() => canvasApi()?.focusNode(node.id), 60);
   };
 
   return (

@@ -32,7 +32,14 @@ export async function exportDiagramImage(
       transform: `translate(${PAD - bounds.x}px, ${PAD - bounds.y}px) scale(1)`,
     },
   };
-  const dataUrl = format === 'png' ? await toPng(viewport, options) : await toSvg(viewport, options);
+  // hide hover-only chrome (handles) that html-to-image would copy from computed styles
+  document.documentElement.classList.add('bp-exporting');
+  let dataUrl: string;
+  try {
+    dataUrl = format === 'png' ? await toPng(viewport, options) : await toSvg(viewport, options);
+  } finally {
+    document.documentElement.classList.remove('bp-exporting');
+  }
 
   const a = document.createElement('a');
   a.href = dataUrl;

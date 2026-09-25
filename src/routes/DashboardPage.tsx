@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AppRail } from '@/components/AppRail';
+import { confirmAction } from '@/components/Confirm';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Kbd, LogoMark } from '@/components/ui';
@@ -122,8 +123,14 @@ function ProjectCard({
             className="h-7 w-7 hover:text-danger"
             title="Delete"
             aria-label="Delete project"
-            onClick={() => {
-              if (confirm(`Delete "${project.name}"? This cannot be undone.`)) {
+            onClick={async () => {
+              const ok = await confirmAction({
+                title: `Delete “${project.name}”?`,
+                body: 'The project is removed from this browser. Export it first if you want a copy.',
+                confirmLabel: 'Delete project',
+                danger: true,
+              });
+              if (ok) {
                 deleteProject(project.id);
                 onChanged();
                 showToast('Project deleted');

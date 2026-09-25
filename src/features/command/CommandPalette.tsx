@@ -13,6 +13,8 @@ import {
   Download,
   FileCode2,
   FileImage,
+  FileUp,
+  FolderOpen,
   Github,
   GraduationCap,
   ImageDown,
@@ -44,8 +46,9 @@ import { ResourceGroups, wordFilter } from '@/features/editor/ResourcePicker';
 import { orderedFiles, useEditor } from '@/features/editor/store';
 import { copyText, exportZip } from '@/lib/download';
 import { shareUrl } from '@/lib/share';
-import { createProject, detectProviders } from '@/lib/storage';
-import { cn, slugify } from '@/lib/utils';
+import { pickTerraformFiles, readTerraformFiles } from '@/lib/importTf';
+import { createProject, detectProviders, listProjects } from '@/lib/storage';
+import { cn, slugify, timeAgo } from '@/lib/utils';
 import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
@@ -111,6 +114,10 @@ export function CommandPalette() {
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
   const editorReady = inEditor && projectId !== null;
+  const projects = useMemo(
+    () => (open ? listProjects().filter((p) => !(inEditor && p.id === projectId)) : []),
+    [open, inEditor, projectId],
+  );
   const preferred = useMemo(() => (editorReady ? detectProviders(files) : []), [editorReady, files]);
 
   useEffect(() => {
@@ -120,10 +127,10 @@ export function CommandPalette() {
     }
   }, [open]);
 
-  const run = (fn: () => void) => {
+  const run = (fn: () => unknown) => {
     setOpen(false);
     // let the dialog close (and return focus) before acting
-    requestAnimationFrame(fn);
+    requestAnimationFrame(() => void fn());
   };
 
   const editor = () => useEditor.getState();
@@ -200,7 +207,7 @@ export function CommandPalette() {
                           icon={Trash2}
                           label="Delete selected resource"
                           shortcut="Del"
-                          onSelect={() => run(() => editor().applyCanvasOps([{ kind: 'remove_resource', nodeId: selection }], null))}
+                          onSelect={() => run(() => editor().deleteResources([selection]))}
                         />
                       </>
                     ) : null}
@@ -284,6 +291,44 @@ export function CommandPalette() {
                   ) : null}
                 </>
               ) : null}
+
+              <Command.Group heading="Projects">
+                {projects.map((p) => (
+                  <Item
+                    key={p.id}
+                    value={`project ${p.id}`}
+                    icon={FolderOpen}
+                    label={p.name}
+                    hint={`Updated ${timeAgo(p.updatedAt)}`}
+                    keywords={['open', 'project', p.description ?? '']}
+                    onSelect={() => run(() => navigate(`/editor/${p.id}`))}
+                  />
+                ))}
+                <Item
+                  value="import-terraform"
+                  icon={FileUp}
+                  label="Import Terraform files…"
+                  keywords={['upload', '.tf', 'zip', 'folder', 'existing']}
+                  onSelect={() =>
+                    run(async () => {
+                      const picked = await pickTerraformFiles();
+                      if (!picked) return;
+                      const imported = await readTerraformFiles(picked);
+                      if (!imported) {
+                        showToast('No .tf files found in that selection', 'error');
+                        return;
+                      }
+                      const project = createProject({
+                        name: imported.name,
+                        files: imported.files,
+                        description: `Imported from ${Object.keys(imported.files).length} Terraform file(s).`,
+                      });
+                      showToast(`Imported “${imported.name}”`, 'success');
+                      navigate(`/editor/${project.id}`);
+                    })
+                  }
+                />
+              </Command.Group>
 
               <Command.Group heading="New project from template">
                 {TEMPLATES.map((t) => (

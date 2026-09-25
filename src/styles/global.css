@@ -171,21 +171,24 @@
 .react-flow__edge-path {
   stroke-width: 1.5;
 }
-.react-flow__handle {
-  width: 9px;
-  height: 9px;
+/* `.react-flow` prefix: xyflow's stylesheet loads later with equal specificity */
+.react-flow .react-flow__handle {
+  width: 10px;
+  height: 10px;
   background: var(--surface-1);
   border: 2px solid var(--edge-ref);
   opacity: 0;
-  transition: opacity 120ms, transform 120ms;
+  transition:
+    opacity 120ms,
+    transform 120ms;
 }
-.react-flow__node:hover .react-flow__handle,
-.react-flow__node.selected .react-flow__handle,
-.react-flow__handle.connectingto,
-.react-flow__handle.connectingfrom {
+.react-flow .react-flow__node:hover .react-flow__handle,
+.react-flow .react-flow__node.selected .react-flow__handle,
+.react-flow .react-flow__handle.connectingto,
+.react-flow .react-flow__handle.connectingfrom {
   opacity: 1;
 }
-.react-flow__handle:hover {
+.react-flow .react-flow__handle:hover {
   transform: translate(-50%, -50%) scale(1.35);
   background: var(--edge-ref);
 }
@@ -246,6 +249,32 @@
   border-style: solid;
   border-color: var(--cat);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--cat) 16%, transparent);
+}
+
+/* floating inspector + compact-mode drawers */
+@keyframes bp-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+@keyframes bp-slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+}
+.bp-drawer-right {
+  animation: bp-slide-right 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.bp-drawer-left {
+  animation: bp-slide-left 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.bp-exporting .react-flow .react-flow__handle,
+.bp-exporting .react-flow__resize-control {
+  opacity: 0 !important;
+  transition: none !important;
 }
 
 /* smooth re-layout after "Tidy up" */

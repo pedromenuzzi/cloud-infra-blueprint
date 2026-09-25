@@ -153,10 +153,10 @@ export type FlowEdgeType = Edge<FlowEdgeData, 'flow'>;
 function facingSide(node: InternalNode, other: InternalNode): { x: number; y: number; position: Position } {
   const a = node.internals.positionAbsolute;
   const b = other.internals.positionAbsolute;
-  const aw = node.measured.width ?? 0;
-  const ah = node.measured.height ?? 0;
-  const bw = other.measured.width ?? 0;
-  const bh = other.measured.height ?? 0;
+  const aw = node.measured.width ?? node.width ?? 0;
+  const ah = node.measured.height ?? node.height ?? 0;
+  const bw = other.measured.width ?? other.width ?? 0;
+  const bh = other.measured.height ?? other.height ?? 0;
   const dx = b.x + bw / 2 - (a.x + aw / 2);
   const dy = b.y + bh / 2 - (a.y + ah / 2);
   // compare against the node's aspect so wide nodes prefer left/right
@@ -187,7 +187,7 @@ export function FlowEdge({
   const sourceNode = useInternalNode(source);
   const targetNode = useInternalNode(target);
   let geometry = { sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition };
-  if (sourceNode?.measured.width && targetNode?.measured.width) {
+  if (sourceNode && targetNode) {
     const s = facingSide(sourceNode, targetNode);
     const t = facingSide(targetNode, sourceNode);
     geometry = {

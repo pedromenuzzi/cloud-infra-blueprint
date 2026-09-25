@@ -64,8 +64,10 @@ export function Topbar() {
   const canRedo = useEditor((s) => s.future.length > 0);
   const undo = useEditor((s) => s.undo);
   const redo = useEditor((s) => s.redo);
-  const panels = useLayout((s) => s.panels);
   const toggle = useLayout((s) => s.toggle);
+  // re-render on any layout change; isOpen() answers per mode (side panel vs drawer)
+  useLayout((s) => `${s.compact}:${s.drawer}:${s.panels.palette}${s.panels.code}${s.panels.inspector}`);
+  const isOpen = useLayout.getState().isOpen;
   const openPalette = usePalette((s) => s.setOpen);
   const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -95,15 +97,15 @@ export function Topbar() {
         <LogoMark size={22} />
       </Link>
       <nav className="flex min-w-0 items-center gap-1.5 text-[13px]" aria-label="Breadcrumb">
-        <Link to="/dashboard" className="shrink-0 text-muted hover:text-foreground">
+        <Link to="/dashboard" className="hidden shrink-0 text-muted hover:text-foreground sm:inline">
           Projects
         </Link>
-        <span className="text-faint">/</span>
+        <span className="hidden text-faint sm:inline">/</span>
         <input
           key={projectName}
           defaultValue={projectName}
           aria-label="Project name"
-          className="w-44 min-w-0 truncate rounded-sm border border-transparent bg-transparent px-1.5 py-0.5 font-semibold text-foreground hover:border-border focus:border-primary focus:outline-none"
+          className="w-28 min-w-0 truncate rounded-sm border border-transparent bg-transparent px-1.5 py-0.5 font-semibold text-foreground hover:border-border focus:border-primary focus:outline-none sm:w-44"
           onBlur={(e) => {
             if (e.target.value.trim() && e.target.value !== projectName) {
               renameProject(e.target.value);
@@ -117,7 +119,7 @@ export function Topbar() {
 
       <span
         className={cn(
-          'flex items-center gap-1 text-[11.5px] font-medium transition-colors',
+          'hidden items-center gap-1 text-[11.5px] font-medium transition-colors sm:flex',
           saveState === 'saved' ? 'text-faint' : 'text-muted',
         )}
         role="status"
@@ -137,48 +139,57 @@ export function Topbar() {
         <button
           type="button"
           onClick={() => openPalette(true)}
-          className="hidden h-8 w-full max-w-[340px] items-center gap-2 rounded-md border bg-surface-2/70 px-2.5 text-[12.5px] text-faint transition-colors hover:border-border-strong hover:text-muted lg:flex"
+          className="hidden h-8 w-full max-w-[340px] items-center gap-2 whitespace-nowrap rounded-md border bg-surface-2/70 px-2.5 text-[12.5px] text-faint transition-colors hover:border-border-strong hover:text-muted xl:flex"
           aria-label="Search or run a command"
         >
           <Search className="h-3.5 w-3.5" />
-          <span className="flex-1 text-left">Search or run a command…</span>
+          <span className="flex-1 truncate text-left">Search or run a command…</span>
           <Kbd>{MOD} K</Kbd>
         </button>
       </div>
+      <span className="contents xl:hidden">
+        <IconToggle label={`Search or run a command (${MOD}K)`} pressed onClick={() => openPalette(true)}>
+          <Search className="h-4 w-4" />
+        </IconToggle>
+      </span>
 
       <div className="flex items-center" role="group" aria-label="Panels">
         {panelToggles.map((p) => (
-          <IconToggle key={p.id} label={p.label} pressed={panels[p.id]} onClick={() => toggle(p.id)}>
+          <IconToggle key={p.id} label={p.label} pressed={isOpen(p.id)} onClick={() => toggle(p.id)}>
             {p.icon}
           </IconToggle>
         ))}
       </div>
 
-      <span className="mx-1 h-5 w-px bg-border" />
+      <span className="hidden sm:contents">
+        <span className="mx-1 h-5 w-px bg-border" />
+        <Button variant="ghost" size="icon" aria-label="Undo" title={`Undo (${MOD}Z)`} disabled={!canUndo} onClick={undo}>
+          <Undo2 className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" aria-label="Redo" title={`Redo (${MOD}⇧Z)`} disabled={!canRedo} onClick={redo}>
+          <Redo2 className="h-4 w-4" />
+        </Button>
+        <span className="mx-1 h-5 w-px bg-border" />
+      </span>
 
-      <Button variant="ghost" size="icon" aria-label="Undo" title={`Undo (${MOD}Z)`} disabled={!canUndo} onClick={undo}>
-        <Undo2 className="h-4 w-4" />
-      </Button>
-      <Button variant="ghost" size="icon" aria-label="Redo" title={`Redo (${MOD}⇧Z)`} disabled={!canRedo} onClick={redo}>
-        <Redo2 className="h-4 w-4" />
-      </Button>
-
-      <span className="mx-1 h-5 w-px bg-border" />
-
-      <Button variant="outline" size="sm" onClick={doShare}>
-        <Share2 className="h-3.5 w-3.5" /> Share
+      <Button variant="outline" size="sm" onClick={doShare} aria-label="Share">
+        <Share2 className="h-3.5 w-3.5" /> <span className="hidden md:inline">Share</span>
       </Button>
       <Button
         size="sm"
         aria-haspopup="menu"
+        aria-label="Export"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setExportMenu({ x: r.right - 220, y: r.bottom + 6 });
         }}
       >
-        <Download className="h-3.5 w-3.5" /> Export <ChevronDown className="-mr-0.5 h-3.5 w-3.5 opacity-80" />
+        <Download className="h-3.5 w-3.5" /> <span className="hidden md:inline">Export</span>
+        <ChevronDown className="-mr-0.5 h-3.5 w-3.5 opacity-80" />
       </Button>
-      <ThemeToggle />
+      <span className="hidden sm:contents">
+        <ThemeToggle />
+      </span>
 
       {exportMenu ? (
         <ContextMenu

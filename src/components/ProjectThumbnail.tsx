@@ -56,10 +56,13 @@ export function ProjectThumbnail({
   files,
   className,
   interactiveTitle,
+  detailed = false,
 }: {
   files: Record<string, string>;
   className?: string;
   interactiveTitle?: string;
+  /** real labels (type + name) instead of placeholder bars — for large renders */
+  detailed?: boolean;
 }) {
   const data = useMemo(() => {
     try {
@@ -149,7 +152,16 @@ export function ProjectThumbnail({
                 strokeDasharray="9 7"
               />
               <rect x={r.x + 14} y={r.y + 12} width={24} height={24} rx={7} fill={c} fillOpacity={0.85} />
-              <rect x={r.x + 46} y={r.y + 18} width={Math.min(110, r.w - 70)} height={11} rx={5.5} fill="currentColor" fillOpacity={0.28} />
+              {detailed ? (
+                <text x={r.x + 48} y={r.y + 29} fontSize={14} fontWeight={600} fill="currentColor">
+                  {r.node.name}
+                  <tspan dx={8} fontSize={10.5} fontWeight={700} fill={c} letterSpacing={0.6}>
+                    {(getDef(r.node.type)?.shortName ?? '').toUpperCase()}
+                  </tspan>
+                </text>
+              ) : (
+                <rect x={r.x + 46} y={r.y + 18} width={Math.min(110, r.w - 70)} height={11} rx={5.5} fill="currentColor" fillOpacity={0.28} />
+              )}
             </g>
           );
         })}
@@ -195,8 +207,24 @@ export function ProjectThumbnail({
               <g transform={`translate(${tx + 9} ${ty + 9}) scale(1)`} color="#fff">
                 <CategoryGlyph category={category} type={r.node.type} strokeWidth={2.2} />
               </g>
-              <rect x={tx + tile + 12} y={r.y + 22} width={Math.min(96, r.w - tile - 44)} height={11} rx={5.5} fill="currentColor" fillOpacity={0.62} />
-              <rect x={tx + tile + 12} y={r.y + 42} width={Math.min(64, r.w - tile - 60)} height={9} rx={4.5} fill="currentColor" fillOpacity={0.24} />
+              {detailed ? (
+                <>
+                  <text x={tx + tile + 12} y={r.y + 27} fontSize={10.5} fontWeight={700} letterSpacing={0.6} fill={CATEGORY_COLORS[category].solid}>
+                    {(getDef(r.node.type)?.shortName ?? r.node.type).toUpperCase()}
+                  </text>
+                  <text x={tx + tile + 12} y={r.y + 46} fontSize={15} fontWeight={600} fill="currentColor">
+                    {r.node.name.length > 16 ? `${r.node.name.slice(0, 15)}…` : r.node.name}
+                  </text>
+                  <text x={tx + tile + 12} y={r.y + 63} fontSize={11.5} fill="currentColor" fillOpacity={0.55}>
+                    {(getDef(r.node.type)?.displayName ?? '').slice(0, 22)}
+                  </text>
+                </>
+              ) : (
+                <>
+                  <rect x={tx + tile + 12} y={r.y + 22} width={Math.min(96, r.w - tile - 44)} height={11} rx={5.5} fill="currentColor" fillOpacity={0.62} />
+                  <rect x={tx + tile + 12} y={r.y + 42} width={Math.min(64, r.w - tile - 60)} height={9} rx={4.5} fill="currentColor" fillOpacity={0.24} />
+                </>
+              )}
             </g>
           );
         })}

@@ -22,6 +22,7 @@ import { emptyIR } from '@/ir/types';
 import { validateProject } from '@/ir/validate';
 import { getProject, updateProject, type Project } from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
+import { deleteResourcesOps } from './connections';
 
 const FILE_ORDER = ['main.tf', 'variables.tf', 'outputs.tf', 'providers.tf', 'versions.tf'];
 
@@ -83,6 +84,8 @@ interface EditorState {
   setSelection(id: string | null, origin?: 'canvas' | 'code'): void;
   renameProject(name: string): void;
   revealInCode(nodeId: string): void;
+  /** delete resources + their nested children + references to them, as one undo step */
+  deleteResources(ids: string[]): number;
   undo(): void;
   redo(): void;
 }
@@ -226,6 +229,13 @@ export const useEditor = create<EditorState>((set, get) => {
       if (projectId) updateProject(projectId, { name: clean });
     },
 
+    deleteResources(ids) {
+      const { ir, edges } = get();
+      const { ops, removed } = deleteResourcesOps(ir, edges, ids);
+      if (ops.length > 0) get().applyCanvasOps(ops, null);
+      return removed.length;
+    },
+
     revealInCode(nodeId) {
       const node = get().ir.resources.find((r) => r.id === nodeId);
       if (!node) return;
@@ -282,7 +292,7 @@ export const useEditor = create<EditorState>((set, get) => {
   };
 });
 
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as unknown as { __editorStore: unknown }).__editorStore = useEditor;
 }
 
