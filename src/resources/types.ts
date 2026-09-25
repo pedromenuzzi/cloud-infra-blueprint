@@ -64,6 +64,8 @@ export interface ResourceDef {
   description?: string;
   fields: FieldDef[];
   defaults?: Record<string, Expression>;
+  /** argument prefilled with the Terraform resource name on creation (default `name`) */
+  nameArg?: string;
   /** renders as a dashed group that other nodes can live inside */
   container?: boolean;
   containment?: ContainmentRule[];
