@@ -26,7 +26,10 @@
   --canvas-grid-strong: #bfd0e6;
 
   --node-bg: #ffffff;
-  --node-border: #cbd5e1;
+  --node-border: #d5deea;
+
+  --edge-ref: #3b82f6;
+  --edge-security: #f59e0b;
 
   --shadow-xs: 0 1px 2px rgb(15 23 42 / 0.05);
   --shadow-sm: 0 1px 3px rgb(15 23 42 / 0.08), 0 1px 2px rgb(15 23 42 / 0.05);
@@ -54,7 +57,10 @@
   --canvas-grid-strong: #1d3357;
 
   --node-bg: #0f1d33;
-  --node-border: #2b4368;
+  --node-border: #243a5c;
+
+  --edge-ref: #60a5fa;
+  --edge-security: #fbbf24;
 
   --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.3);
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.4), 0 1px 2px rgb(0 0 0 / 0.3);
@@ -146,42 +152,358 @@
   background: transparent;
 }
 
-/* React Flow overrides to match the blueprint look */
+/* ---------------------------------------------------------------------------
+ * Canvas (React Flow) — blueprint look
+ * ------------------------------------------------------------------------- */
 .react-flow__attribution {
   display: none;
 }
-.react-flow__controls {
-  box-shadow: var(--shadow-sm);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-.react-flow__controls-button {
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--border);
-  color: var(--foreground);
-  fill: var(--foreground);
-  width: 28px;
-  height: 28px;
-}
-.react-flow__controls-button:hover {
-  background: var(--surface-2);
-}
 .react-flow__minimap {
-  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
+}
+.react-flow__node {
+  font-family: var(--font-sans);
 }
 .react-flow__edge-path {
   stroke-width: 1.5;
 }
 .react-flow__handle {
-  width: 8px;
-  height: 8px;
-  background: var(--primary);
-  border: 2px solid var(--surface-1);
+  width: 9px;
+  height: 9px;
+  background: var(--surface-1);
+  border: 2px solid var(--edge-ref);
+  opacity: 0;
+  transition: opacity 120ms, transform 120ms;
 }
-.react-flow__node {
-  font-family: var(--font-sans);
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node.selected .react-flow__handle,
+.react-flow__handle.connectingto,
+.react-flow__handle.connectingfrom {
+  opacity: 1;
+}
+.react-flow__handle:hover {
+  transform: translate(-50%, -50%) scale(1.35);
+  background: var(--edge-ref);
+}
+
+@keyframes bp-node-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.bp-node {
+  animation: bp-node-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  transition:
+    box-shadow 160ms,
+    border-color 160ms,
+    transform 160ms;
+}
+.bp-node:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 18px -6px rgb(15 23 42 / 0.18),
+    0 2px 4px rgb(15 23 42 / 0.06);
+}
+.bp-node-selected,
+.bp-node-selected:hover {
+  box-shadow:
+    0 0 0 2px var(--cat),
+    0 10px 28px -8px color-mix(in srgb, var(--cat) 55%, transparent);
+}
+.dark .bp-node-selected,
+.dark .bp-node-selected:hover {
+  box-shadow:
+    0 0 0 2px var(--cat-light),
+    0 10px 28px -8px color-mix(in srgb, var(--cat-light) 45%, transparent);
+}
+
+.bp-container {
+  animation: bp-node-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  border: 1.5px dashed color-mix(in srgb, var(--cat) 45%, transparent);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--cat) 8%, transparent),
+    color-mix(in srgb, var(--cat) 3%, transparent) 60%
+  );
+  transition:
+    border-color 160ms,
+    box-shadow 160ms;
+}
+.bp-container:hover {
+  border-color: color-mix(in srgb, var(--cat) 65%, transparent);
+}
+.bp-container-selected,
+.bp-container-selected:hover {
+  border-style: solid;
+  border-color: var(--cat);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cat) 16%, transparent);
+}
+
+/* smooth re-layout after "Tidy up" */
+.bp-layout-anim .react-flow__node {
+  transition:
+    transform 450ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    width 450ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    height 450ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.bp-edge-dot {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* ---------------------------------------------------------------------------
+ * Landing
+ * ------------------------------------------------------------------------- */
+.bp-hero-bg {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 900px;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 50% at 18% 12%, color-mix(in srgb, #6366f1 20%, transparent), transparent 70%),
+    radial-gradient(38% 45% at 82% 8%, color-mix(in srgb, #06b6d4 18%, transparent), transparent 70%),
+    radial-gradient(45% 40% at 50% 60%, color-mix(in srgb, #2563eb 12%, transparent), transparent 70%);
+}
+.bp-hero-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(var(--canvas-grid-strong) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(70% 60% at 50% 30%, #000 30%, transparent 75%);
+  opacity: 0.7;
+}
+.bp-hero-glow {
+  position: absolute;
+  inset: 8% 6% -4% 6%;
+  border-radius: 40px;
+  background: linear-gradient(120deg, #6366f1, #2563eb 40%, #06b6d4);
+  filter: blur(70px);
+  opacity: 0.22;
+}
+.dark .bp-hero-glow {
+  opacity: 0.32;
+}
+.bp-gradient-text {
+  background: linear-gradient(100deg, #2563eb 10%, #7c3aed 50%, #0891b2 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.dark .bp-gradient-text {
+  background-image: linear-gradient(100deg, #60a5fa 10%, #a78bfa 50%, #22d3ee 90%);
+}
+@keyframes bp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+.bp-rise {
+  animation: bp-rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.bp-cta {
+  background:
+    radial-gradient(60% 120% at 0% 0%, rgb(255 255 255 / 0.16), transparent 60%),
+    linear-gradient(120deg, #1d4ed8, #6d28d9 55%, #0e7490);
+  box-shadow: 0 30px 80px -30px rgb(37 99 235 / 0.6);
+}
+.bp-cta::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgb(255 255 255 / 0.18) 1px, transparent 1px);
+  background-size: 20px 20px;
+  mask-image: linear-gradient(180deg, #000, transparent 85%);
+}
+
+/* dotted blueprint backdrop for thumbnails and hero art */
+.bp-dots {
+  background-image: radial-gradient(var(--canvas-grid) 1.2px, transparent 1.2px);
+  background-size: 16px 16px;
+}
+
+/* ---------------------------------------------------------------------------
+ * Popovers, menus, tooltips
+ * ------------------------------------------------------------------------- */
+@keyframes bp-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.bp-pop-in {
+  animation: bp-pop-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes bp-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes bp-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+.bp-fade-in {
+  animation: bp-fade-in 160ms ease-out both;
+}
+.bp-modal-in {
+  animation: bp-modal-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* command palette dialog (cmdk + Radix) */
+.bp-palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(2 6 23 / 0.5);
+  backdrop-filter: blur(3px);
+  animation: bp-fade-in 160ms ease-out both;
+}
+.bp-palette {
+  position: fixed;
+  z-index: 61;
+  top: 12vh;
+  left: 50%;
+  width: min(640px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  box-shadow:
+    0 24px 64px -12px rgb(2 6 23 / 0.45),
+    0 0 0 1px rgb(255 255 255 / 0.04) inset;
+  animation: bp-palette-in 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes bp-palette-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%);
+  }
+}
+.bp-palette:focus {
+  outline: none;
+}
+
+.bp-tip {
+  position: relative;
+}
+.bp-tip[data-tip]:hover::after,
+.bp-tip[data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: pre;
+  pointer-events: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #0f172a;
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  box-shadow: var(--shadow-md);
+  z-index: 60;
+  animation: bp-pop-in 120ms ease-out both;
+}
+.dark .bp-tip[data-tip]:hover::after {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* cmdk: command palette + quick-add picker */
+.bp-cmd-input {
+  width: 100%;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--foreground);
+  outline: none;
+}
+.bp-cmd-input::placeholder {
+  color: var(--faint-foreground);
+}
+.bp-cmd-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  scroll-padding-block: 8px;
+}
+.bp-cmd [cmdk-group-heading] {
+  padding: 8px 8px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint-foreground);
+}
+.bp-cmd-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--foreground);
+  font-size: 13px;
+  user-select: none;
+}
+.bp-cmd-item[data-selected='true'] {
+  background: var(--surface-2);
+}
+.bp-cmd-item[data-disabled='true'] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Monaco: flash the block of the resource picked on the canvas */
+@keyframes bp-flash {
+  from {
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+  }
+  to {
+    background: transparent;
+  }
+}
+.monaco-editor .bp-code-flash {
+  animation: bp-flash 1.6s ease-out both;
+}
+.monaco-editor .bp-code-flash-gutter {
+  background: var(--primary);
+  width: 3px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
 }

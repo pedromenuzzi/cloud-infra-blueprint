@@ -7,7 +7,7 @@ test('landing page leads to the dashboard with the seeded demo project', async (
 
   await page.getByRole('button', { name: 'Open the app' }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole('heading', { name: 'Projects' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Projects' })).toBeVisible();
   await expect(page.getByRole('button', { name: `Open project ${SEED_PROJECT}` })).toBeVisible();
 });
 

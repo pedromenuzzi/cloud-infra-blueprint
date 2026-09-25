@@ -5,7 +5,8 @@ import { parseProject } from '@/hcl/parser';
 import { exprEquals } from '@/ir/expr';
 import { deriveStructure } from '@/ir/graph';
 import { emptyIR } from '@/ir/types';
-import { allDefs, getDef } from './registry';
+import { hasServiceGlyph } from './icons';
+import { allDefs, docsUrl, getDef } from './registry';
 import { CATEGORY_ORDER } from './types';
 
 const PREFIX = { aws: 'aws_', azure: 'azurerm_', gcp: 'google_', other: '' } as const;
@@ -22,6 +23,16 @@ describe('resource catalog', () => {
       const names = d.fields.map((f) => f.name);
       expect(new Set(names).size, `${d.type} has duplicate fields`).toBe(names.length);
     }
+  });
+
+  it('gives every resource its own icon and a docs link', () => {
+    for (const d of defs) {
+      expect(hasServiceGlyph(d.type), `${d.type} has a service glyph`).toBe(true);
+      expect(docsUrl(d.type), `${d.type} docs url`).toMatch(/^https:\/\/registry\.terraform\.io\/providers\/hashicorp\//);
+    }
+    expect(docsUrl('aws_instance')).toBe(
+      'https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/instance',
+    );
   });
 
   it('only points refs, containment and connections at catalog types', () => {

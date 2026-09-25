@@ -214,7 +214,7 @@ export function Modal({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-4 pt-[8vh] backdrop-blur-[2px]"
+      className="bp-fade-in fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/50 p-4 pt-[8vh] backdrop-blur-[3px]"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -225,7 +225,7 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          'w-full rounded-lg border bg-surface-1 shadow-lg',
+          'bp-modal-in w-full rounded-lg border bg-surface-1 shadow-lg',
           wide ? 'max-w-3xl' : 'max-w-md',
         )}
       >
@@ -268,7 +268,7 @@ export function Logo({ size = 26, className }: { size?: number; className?: stri
 
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="rounded-[4px] border border-border-strong bg-surface-2 px-1.5 py-px font-mono text-[10.5px] text-muted">
+    <kbd className="whitespace-nowrap rounded-[4px] border border-border-strong bg-surface-2 px-1.5 py-px font-mono text-[10.5px] text-muted">
       {children}
     </kbd>
   );

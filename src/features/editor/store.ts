@@ -67,6 +67,10 @@ interface EditorState {
   warnings: Diagnostic[];
   codeErrored: boolean;
   selection: string | null;
+  /** who changed the selection last — the code pane only scrolls for canvas picks */
+  selectionOrigin: 'canvas' | 'code';
+  /** bumped by revealInCode so the code pane scrolls + flashes the block */
+  revealSeq: number;
   activeFile: string;
   saveState: 'saved' | 'saving';
   past: Array<Record<string, string>>;
@@ -76,7 +80,7 @@ interface EditorState {
   applyCanvasOps(ops: Op[], select?: string | null): void;
   onCodeChange(file: string, text: string): void;
   setActiveFile(file: string): void;
-  setSelection(id: string | null): void;
+  setSelection(id: string | null, origin?: 'canvas' | 'code'): void;
   renameProject(name: string): void;
   revealInCode(nodeId: string): void;
   undo(): void;
@@ -122,6 +126,8 @@ export const useEditor = create<EditorState>((set, get) => {
     warnings: [],
     codeErrored: false,
     selection: null,
+    selectionOrigin: 'canvas',
+    revealSeq: 0,
     activeFile: 'main.tf',
     saveState: 'saved',
     past: [],
@@ -173,6 +179,7 @@ export const useEditor = create<EditorState>((set, get) => {
         parseDiagnostics: outcome.diagnostics,
         codeErrored: outcome.diagnostics.some((d) => d.severity === 'error'),
         selection,
+        ...(select !== undefined ? { selectionOrigin: 'canvas' as const } : {}),
       });
       persist();
     },
@@ -208,8 +215,8 @@ export const useEditor = create<EditorState>((set, get) => {
       set({ activeFile: file });
     },
 
-    setSelection(id) {
-      set({ selection: id });
+    setSelection(id, origin = 'canvas') {
+      set({ selection: id, selectionOrigin: origin });
     },
 
     renameProject(name) {
@@ -223,7 +230,12 @@ export const useEditor = create<EditorState>((set, get) => {
       const node = get().ir.resources.find((r) => r.id === nodeId);
       if (!node) return;
       const file = node.trivia.sourceFile ?? 'main.tf';
-      set({ activeFile: file });
+      set({
+        activeFile: file,
+        selection: nodeId,
+        selectionOrigin: 'canvas',
+        revealSeq: get().revealSeq + 1,
+      });
     },
 
     undo() {

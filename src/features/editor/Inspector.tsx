@@ -9,7 +9,7 @@ import type { Expression, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
 import { cn, tfName } from '@/lib/utils';
 import { PROVIDER_LABELS, ResourceIcon } from '@/resources/icons';
-import { getDef } from '@/resources/registry';
+import { docsUrl, getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
 import { looksLikeTraversal, removeConnectionOps } from './connections';
 import { orderedFiles, useEditor } from './store';
@@ -408,6 +408,7 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
         }
       >
         <Input
+          id="inspector-tf-name"
           key={`${node.id}:name`}
           defaultValue={node.name}
           onBlur={(e) => {
@@ -626,21 +627,37 @@ export function Inspector() {
         <>
           <div className="border-b p-3.5">
             <div className="flex items-center gap-2.5">
-              <ResourceIcon
-                category={def?.category ?? 'compute'}
-                provider={node.provider}
-                size={34}
-              />
+              <ResourceIcon category={def?.category ?? 'compute'} type={node.type} size={38} />
               <div className="min-w-0 flex-1">
                 <h2 className="truncate text-[13.5px] font-semibold leading-tight">
                   {def?.displayName ?? node.type}
                 </h2>
-                <code className="block truncate font-mono text-[10.5px] text-faint">{node.id}</code>
+                <code className="block truncate font-mono text-[10.5px] text-faint" data-testid="inspector-address">
+                  {node.id}
+                </code>
               </div>
               {node.provider !== 'other' ? (
                 <Badge variant={node.provider}>{PROVIDER_LABELS[node.provider]}</Badge>
               ) : null}
             </div>
+            {def?.description ? (
+              <p className="mt-2 text-[11.5px] leading-snug text-muted">
+                {def.description}
+                {docsUrl(node.type) ? (
+                  <>
+                    {' · '}
+                    <a
+                      href={docsUrl(node.type)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
+                    >
+                      Terraform docs <ArrowUpRight className="h-3 w-3" />
+                    </a>
+                  </>
+                ) : null}
+              </p>
+            ) : null}
             <div className="mt-3 flex rounded-sm border bg-surface-2 p-0.5" role="tablist">
               {(['properties', 'connections', 'code'] as Tab[]).map((t) => (
                 <button

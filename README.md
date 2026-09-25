@@ -30,6 +30,23 @@ between them.
   diagram and the code side by side with the new lines highlighted — any step opens in
   the editor.
 
+### Built for speed
+
+- ⌘ **Command palette** (`⌘K` / `Ctrl+K`): add any of the 83 services, jump to a resource or
+  file, tidy the layout, export, switch theme, start from a template.
+- ✨ **Quick add**: double-click the canvas to drop a service exactly there (nested into the
+  VPC / subnet / group under the cursor).
+- 🪄 **Tidy up**: one-click layered auto-layout (ELK) that understands containers — one undo step.
+- 🔁 **Selection sync**: pick a node and the code scrolls to its block; click inside a block and
+  the node is selected.
+- 🖱️ **Right-click actions**: show in code, rename (`F2`), duplicate (`⌘D`), copy address,
+  Terraform docs, delete.
+- 📥 **Import** existing Terraform: drop `.tf` files, a folder or a `.zip` on the dashboard.
+- 🖼️ **Export** the diagram as PNG or SVG, alongside the Terraform zip.
+- 🎨 **A real icon system**: every service has its own glyph on a category-colored tile;
+  floating edges attach to the nearest side and animate the data flow of the selection.
+- ⌨️ Collapsible panels (`⌘B` palette, `⌘J` code, `⌘I` inspector) and a `?` shortcuts sheet.
+
 ### Why it's different
 
 Most tools are one-directional (diagram → code) or closed source. Cloud Blueprint keeps a
@@ -85,7 +102,10 @@ The app is a fully static SPA. Any free static host works:
 | Code editor | Monaco with a custom HCL language, catalog-aware autocomplete and diagnostics |
 | HCL ↔ IR | Hand-rolled error-tolerant parser + deterministic emitter + minimal-patch engine (`src/hcl`) |
 | State | Zustand (single editor store owns files + IR + history) |
-| Export / share | fflate (zip download, deflated share-links in the URL fragment) |
+| Export / share | fflate (zip download + import, deflated share-links in the URL fragment), html-to-image (PNG/SVG) |
+| Command palette | [cmdk](https://cmdk.paco.me), loaded on first use |
+| Auto-layout | [ELK](https://eclipse.dev/elk/) (`elkjs`), loaded on first use |
+| Icons | [Lucide](https://lucide.dev) glyphs on category-colored tiles (`src/resources/icons.tsx`) |
 
 ### Repo map
 
@@ -121,7 +141,9 @@ e2e/             # Playwright specs (editor, navigation, share links)
 - [x] **F3 (solo)** — Bidirectional sync, undo/redo, diagnostics
 - [ ] **F4** — Optional sync backend (NestJS + Postgres + Yjs) for teams & realtime collab
 - [ ] **F5** — GitHub/GitLab push, org template libraries
-- [ ] **F6** — PWA offline install, onboarding tour, community template gallery
+- [x] **F3.5** — Premium UX: command palette, quick add, tidy layout, selection sync,
+  import/export, per-service icons, first-run tips
+- [ ] **F6** — PWA offline install, guided onboarding tour, community template gallery
 
 The client-only architecture is deliberate: parsing/emitting runs in the browser, so a
 future backend only needs to store snapshots and relay WebSockets — exactly as specified

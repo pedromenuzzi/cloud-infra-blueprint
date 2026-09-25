@@ -57,3 +57,38 @@ export function buildNewNode(
   };
   return { node, ops: [{ kind: 'add_resource', node }] };
 }
+
+/**
+ * Copy of a resource next to the original: same arguments (so it stays in the
+ * same container and keeps its connections), a unique Terraform name, and
+ * `-copy` on its cloud-side name so two real resources don't collide.
+ */
+export function duplicateNode(
+  ir: IR,
+  source: ResourceNode,
+  def?: ResourceDef,
+): { node: ResourceNode; ops: Op[] } {
+  const taken = new Set(ir.resources.map((r) => r.id));
+  const stem = source.name.replace(/_copy(_\d+)?$/, '');
+  let name = `${stem}_copy`;
+  for (let i = 2; taken.has(resourceAddress(source.type, name)); i++) name = `${stem}_copy_${i}`;
+
+  const args = structuredClone(source.args);
+  const nameArg = def?.nameArg ?? 'name';
+  const current = args[nameArg];
+  if (current?.kind === 'literal' && typeof current.value === 'string' && current.value) {
+    args[nameArg] = lit(`${current.value}-copy`);
+  }
+
+  const pos = source.position ?? { x: 0, y: 0 };
+  const node: ResourceNode = {
+    id: resourceAddress(source.type, name),
+    provider: source.provider,
+    type: source.type,
+    name,
+    args,
+    position: { ...pos, x: pos.x + 32, y: pos.y + 32 },
+    trivia: { leadingComments: [] },
+  };
+  return { node, ops: [{ kind: 'add_resource', node }] };
+}

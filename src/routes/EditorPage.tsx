@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { CanvasPane } from '@/features/editor/CanvasPane';
+import { canvasApi } from '@/features/editor/canvasApi';
+import { CanvasPane, focusRenameInput } from '@/features/editor/CanvasPane';
+import { useLayout } from '@/features/editor/layoutStore';
 import { Inspector } from '@/features/editor/Inspector';
 import { Palette } from '@/features/editor/Palette';
 import { Topbar } from '@/features/editor/Topbar';
@@ -37,6 +39,7 @@ export default function EditorPage() {
   const [ready, setReady] = useState(false);
   const [split, setSplit] = useState(readSplit);
   const splitRef = useRef<HTMLDivElement>(null);
+  const panels = useLayout((s) => s.panels);
 
   useEffect(() => {
     if (!id || !loadProjectIntoEditor(id)) {
@@ -53,6 +56,30 @@ export default function EditorPage() {
       if (
         target.closest('input, textarea, select, [contenteditable], .monaco-editor') !== null
       ) {
+        return;
+      }
+      const mod = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+      const selected = useEditor.getState().selection;
+      if (mod && !e.shiftKey && (key === 'b' || key === 'j' || key === 'i')) {
+        e.preventDefault();
+        useLayout.getState().toggle(key === 'b' ? 'palette' : key === 'j' ? 'code' : 'inspector');
+        return;
+      }
+      if (mod && key === 'd') {
+        e.preventDefault();
+        if (selected) canvasApi()?.duplicate(selected);
+        return;
+      }
+      if (!mod && e.key === 'F2' && selected) {
+        e.preventDefault();
+        if (!useLayout.getState().panels.inspector) useLayout.getState().toggle('inspector');
+        focusRenameInput();
+        return;
+      }
+      if (e.shiftKey && !mod && (e.code === 'Digit1' || e.key === '!')) {
+        e.preventDefault();
+        canvasApi()?.fitView();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -97,25 +124,29 @@ export default function EditorPage() {
       <h1 className="sr-only">Cloud Blueprint editor</h1>
       <Topbar />
       <div className="flex min-h-0 flex-1">
-        <Palette />
+        {panels.palette ? <Palette /> : null}
         <div ref={splitRef} className="flex min-w-0 flex-1">
-          <div className="min-w-0" style={{ width: `${100 - split}%` }}>
+          <div className="min-w-0" style={{ width: panels.code ? `${100 - split}%` : '100%' }}>
             <CanvasPane />
           </div>
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            aria-label="Resize code panel"
-            className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60 active:bg-primary"
-            onPointerDown={startDrag}
-          />
-          <div className="min-w-[300px]" style={{ width: `${split}%` }}>
-            <Suspense fallback={<CodePaneFallback />}>
-              <CodePane />
-            </Suspense>
-          </div>
+          {panels.code ? (
+            <>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize code panel"
+                className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60 active:bg-primary"
+                onPointerDown={startDrag}
+              />
+              <div className="min-w-[300px]" style={{ width: `${split}%` }}>
+                <Suspense fallback={<CodePaneFallback />}>
+                  <CodePane />
+                </Suspense>
+              </div>
+            </>
+          ) : null}
         </div>
-        <Inspector />
+        {panels.inspector ? <Inspector /> : null}
       </div>
     </div>
   );
