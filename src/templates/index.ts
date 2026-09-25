@@ -422,6 +422,126 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
   return emitProject(ir);
 }
 
+// --- AWS · Serverless API -----------------------------------------------------
+
+function buildAwsServerlessApi(appName: string): Record<string, string> {
+  const app = tfName(appName);
+  const ir: IR = emptyIR();
+
+  ir.variables.push(
+    variable('region', { description: 'AWS region', type: 'string', default: lit('us-east-1') }),
+  );
+  ir.providers.push(providerBlock('aws', { region: ref('var.region') }));
+  ir.extras.push(versionsBlock(['aws']));
+
+  ir.resources.push(
+    res(
+      'aws_apigatewayv2_api',
+      'http',
+      { name: lit(`${app}-api`), protocol_type: lit('HTTP') },
+      { x: 40, y: 60, w: 520, h: 290 },
+      ['# HTTP API'],
+    ),
+    res(
+      'aws_apigatewayv2_route',
+      'default',
+      {
+        api_id: ref('aws_apigatewayv2_api.http.id'),
+        route_key: lit('$default'),
+        target: raw('"integrations/${aws_apigatewayv2_integration.lambda.id}"'),
+      },
+      { x: 28, y: 64 },
+    ),
+    res(
+      'aws_apigatewayv2_integration',
+      'lambda',
+      {
+        api_id: ref('aws_apigatewayv2_api.http.id'),
+        integration_type: lit('AWS_PROXY'),
+        integration_method: lit('POST'),
+        integration_uri: ref('aws_lambda_function.api.invoke_arn'),
+        payload_format_version: lit('2.0'),
+      },
+      { x: 284, y: 64 },
+    ),
+    res(
+      'aws_apigatewayv2_stage',
+      'default',
+      { api_id: ref('aws_apigatewayv2_api.http.id'), name: lit('$default'), auto_deploy: lit(true) },
+      { x: 28, y: 180 },
+    ),
+    res(
+      'aws_lambda_function',
+      'api',
+      {
+        function_name: lit(`${app}-api`),
+        role: ref('aws_iam_role.lambda.arn'),
+        runtime: lit('nodejs22.x'),
+        handler: lit('index.handler'),
+        filename: lit('lambda.zip'),
+        memory_size: lit(256),
+        timeout: lit(10),
+        environment: block({ variables: obj({ TABLE_NAME: ref('aws_dynamodb_table.items.name') }) }),
+      },
+      { x: 640, y: 124 },
+      ['# Function — package your handler as lambda.zip next to these files'],
+    ),
+    res(
+      'aws_lambda_permission',
+      'api',
+      {
+        function_name: ref('aws_lambda_function.api.function_name'),
+        action: lit('lambda:InvokeFunction'),
+        principal: lit('apigateway.amazonaws.com'),
+        source_arn: raw('"${aws_apigatewayv2_api.http.execution_arn}/*/*"'),
+      },
+      { x: 640, y: 250 },
+    ),
+    res(
+      'aws_dynamodb_table',
+      'items',
+      {
+        name: lit(`${app}-items`),
+        billing_mode: lit('PAY_PER_REQUEST'),
+        hash_key: lit('id'),
+        attribute: block({ name: lit('id'), type: lit('S') }),
+      },
+      { x: 940, y: 124 },
+      ['# Data'],
+    ),
+    res(
+      'aws_iam_role',
+      'lambda',
+      {
+        name: lit(`${app}-lambda-role`),
+        assume_role_policy: raw(
+          `jsonencode({\n    Version = "2012-10-17"\n    Statement = [{\n      Action    = "sts:AssumeRole"\n      Effect    = "Allow"\n      Principal = { Service = "lambda.amazonaws.com" }\n    }]\n  })`,
+        ),
+      },
+      { x: 640, y: 390 },
+      ['# Identity — least privilege: this table + CloudWatch logs'],
+    ),
+    res(
+      'aws_iam_role_policy',
+      'lambda',
+      {
+        name: lit(`${app}-lambda-access`),
+        role: ref('aws_iam_role.lambda.id'),
+        policy: raw(
+          `jsonencode({\n    Version = "2012-10-17"\n    Statement = [\n      {\n        Effect   = "Allow"\n        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query"]\n        Resource = aws_dynamodb_table.items.arn\n      },\n      {\n        Effect   = "Allow"\n        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]\n        Resource = "*"\n      }\n    ]\n  })`,
+        ),
+      },
+      { x: 940, y: 390 },
+    ),
+  );
+
+  ir.outputs.push(
+    output('api_url', ref('aws_apigatewayv2_stage.default.invoke_url'), 'Base URL of the HTTP API'),
+  );
+
+  return emitProject(ir);
+}
+
 // --- Azure · Web App ----------------------------------------------------------
 
 function buildAzureWebApp(appName: string): Record<string, string> {
@@ -992,6 +1112,15 @@ export const TEMPLATES: TemplateDef[] = [
     build: buildAwsContainerStack,
   },
   {
+    slug: 'aws-serverless-api',
+    name: 'Serverless API on AWS',
+    description: 'HTTP API Gateway → Lambda → DynamoDB, with a least-privilege IAM role.',
+    providers: ['aws'],
+    tags: ['Serverless', 'Web Apps'],
+    resourceCount: 9,
+    build: buildAwsServerlessApi,
+  },
+  {
     slug: 'azure-web-app',
     name: 'Azure Web App',
     description: 'Resource group with VNet, Linux VM, NSG and Azure SQL database.',
@@ -1023,7 +1152,7 @@ export const TEMPLATES: TemplateDef[] = [
     name: 'GCP Cloud Run',
     description: 'Serverless containers on Cloud Run pulling images from Artifact Registry.',
     providers: ['gcp'],
-    tags: ['Containers'],
+    tags: ['Containers', 'Serverless'],
     resourceCount: 2,
     build: buildGcpCloudRun,
   },
