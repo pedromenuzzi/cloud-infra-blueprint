@@ -23,6 +23,7 @@ export type Category =
   | 'network'
   | 'database'
   | 'containers'
+  | 'integration'
   | 'identity'
   | 'edge';
 
@@ -32,6 +33,7 @@ export const CATEGORY_ORDER: Category[] = [
   'network',
   'database',
   'containers',
+  'integration',
   'identity',
   'edge',
 ];
@@ -42,7 +44,8 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   network: 'Network',
   database: 'Database',
   containers: 'Containers',
-  identity: 'Identity',
+  integration: 'Messaging & APIs',
+  identity: 'Identity & Security',
   edge: 'Edge & DNS',
 };
 

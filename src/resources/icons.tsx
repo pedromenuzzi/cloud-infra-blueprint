@@ -51,6 +51,13 @@ const GLYPHS: Record<Category, React.ReactNode> = {
       <path d="M4 7.2 L12 11.4 L20 7.2M12 11.4V21" />
     </>
   ),
+  integration: (
+    <>
+      <rect x="6" y="7" width="12" height="10" rx="1.5" />
+      <path d="M10 7v10M14 7v10" />
+      <path d="M2 12h3M19 12h3M20.5 10.5 22 12l-1.5 1.5" />
+    </>
+  ),
   identity: (
     <>
       <path d="M12 3 L19 6v5c0 4.6-3 8.4-7 10-4-1.6-7-5.4-7-10V6Z" />
