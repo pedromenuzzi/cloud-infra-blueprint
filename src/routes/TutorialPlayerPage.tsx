@@ -175,7 +175,7 @@ export default function TutorialPlayerPage() {
 
         {/* diagram + code */}
         <main className="flex min-w-0 flex-1 flex-col">
-          <section className="relative h-[42%] shrink-0 border-b bg-canvas p-4" aria-label="Diagram">
+          <section className="bp-dots relative h-[42%] shrink-0 border-b bg-canvas p-4" aria-label="Diagram">
             <ProjectThumbnail
               key={`${tutorial.slug}-${stepIdx}`}
               files={step.files}
