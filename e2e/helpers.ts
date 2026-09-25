@@ -3,7 +3,9 @@ import { expect, type Page } from '@playwright/test';
 /** The dashboard seeds this project on first visit (fresh context = fresh localStorage). */
 export const SEED_PROJECT = 'production-web';
 
-export async function openSeedProject(page: Page) {
+export async function openSeedProject(page: Page, { tips = false } = {}) {
+  // the first-run tips card floats over the canvas; tests opt in explicitly
+  if (!tips) await page.addInitScript(() => localStorage.setItem('cb-tips-dismissed', '1'));
   await page.goto('/dashboard');
   await page.getByRole('button', { name: `Open project ${SEED_PROJECT}` }).click();
   await expect(page).toHaveURL(/\/editor\//);
