@@ -27,8 +27,9 @@ export async function focusEndOfCode(page: Page) {
 }
 
 /**
- * Insert text as one input event: Monaco treats it like a paste, so
- * auto-closing brackets/quotes don't double up.
+ * Insert text as one input event. Monaco usually treats it like a paste, but
+ * occasionally processes it as typing (auto-closing `{`, auto-indenting on
+ * newlines) — keep snippets single-line so both paths yield the same text.
  */
 export async function insertCode(page: Page, text: string) {
   await page.keyboard.insertText(text);
