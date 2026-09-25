@@ -11,7 +11,9 @@ import { cn, tfName } from '@/lib/utils';
 import { PROVIDER_LABELS, ResourceIcon } from '@/resources/icons';
 import { docsUrl, getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
+import { canvasApi } from './canvasApi';
 import { looksLikeTraversal, removeConnectionOps } from './connections';
+import { useLayout } from './layoutStore';
 import { orderedFiles, useEditor } from './store';
 
 type Tab = 'properties' | 'connections' | 'code';
@@ -539,13 +541,20 @@ function CodeTab({ node }: { node: ResourceNode }) {
   );
 }
 
-function ProjectPanel() {
+/** Project summary — opened from the canvas stats pill. */
+export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
   const projectName = useEditor((s) => s.projectName);
   const renameProject = useEditor((s) => s.renameProject);
   const ir = useEditor((s) => s.ir);
   const edges = useEditor((s) => s.edges);
   const files = useEditor((s) => s.files);
   const warnings = useEditor((s) => s.warnings);
+
+  const openFile = (f: string) => {
+    useEditor.getState().setActiveFile(f);
+    if (!useLayout.getState().isOpen('code')) useLayout.getState().toggle('code');
+    onNavigate?.();
+  };
 
   return (
     <div className="space-y-4 p-3.5">
@@ -564,16 +573,16 @@ function ProjectPanel() {
         />
       </Field>
 
-      <div className="grid grid-cols-2 gap-2 text-center">
+      <div className="grid grid-cols-4 gap-1.5 text-center">
         {[
           [ir.resources.length, 'resources'],
-          [edges.length, 'connections'],
+          [edges.length, 'links'],
           [ir.variables.length, 'variables'],
           [ir.outputs.length, 'outputs'],
         ].map(([n, label]) => (
-          <div key={String(label)} className="rounded-sm border bg-surface-2 px-2 py-2.5">
-            <div className="text-[17px] font-bold leading-none">{n}</div>
-            <div className="mt-1 text-[10.5px] uppercase tracking-wide text-faint">{label}</div>
+          <div key={String(label)} className="rounded-[8px] border bg-surface-2 px-1 py-2">
+            <div className="text-[16px] font-bold leading-none">{n}</div>
+            <div className="mt-1 text-[9.5px] uppercase tracking-wide text-faint">{label}</div>
           </div>
         ))}
       </div>
@@ -582,10 +591,15 @@ function ProjectPanel() {
         <h4 className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">Files</h4>
         <div className="space-y-1">
           {orderedFiles(files).map((f) => (
-            <div key={f} className="flex justify-between rounded-sm bg-surface-2 px-2.5 py-1.5">
+            <button
+              key={f}
+              type="button"
+              onClick={() => openFile(f)}
+              className="flex w-full justify-between rounded-[7px] bg-surface-2 px-2.5 py-1.5 text-left transition-colors hover:bg-primary-soft hover:text-primary"
+            >
               <code className="font-mono text-[11.5px]">{f}</code>
               <span className="text-[11px] text-faint">{files[f].split('\n').length} lines</span>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -596,19 +610,25 @@ function ProjectPanel() {
             Warnings ({warnings.length})
           </h4>
           <div className="space-y-1">
-            {warnings.slice(0, 6).map((w, i) => (
-              <p key={i} className="rounded-sm border border-warning/25 bg-warning/8 px-2 py-1.5 text-[11px] leading-snug text-muted">
+            {warnings.slice(0, 8).map((w, i) => (
+              <button
+                key={i}
+                type="button"
+                disabled={!w.nodeId}
+                onClick={() => {
+                  if (!w.nodeId) return;
+                  useEditor.getState().setSelection(w.nodeId, 'canvas');
+                  canvasApi()?.focusNode(w.nodeId);
+                  onNavigate?.();
+                }}
+                className="w-full rounded-[7px] border border-warning/25 bg-warning/8 px-2 py-1.5 text-left text-[11px] leading-snug text-muted transition-colors hover:border-warning/50 disabled:cursor-default"
+              >
                 {w.message}
-              </p>
+              </button>
             ))}
           </div>
         </div>
       ) : null}
-
-      <p className="text-[11px] leading-relaxed text-faint">
-        Select a resource on the canvas to edit its properties — or edit the Terraform directly;
-        the blueprint follows along.
-      </p>
     </div>
   );
 }
@@ -616,14 +636,17 @@ function ProjectPanel() {
 export function Inspector() {
   const selection = useEditor((s) => s.selection);
   const ir = useEditor((s) => s.ir);
-  const applyOps = useOps();
   const [tab, setTab] = useState<Tab>('properties');
   const node = selection ? ir.resources.find((r) => r.id === selection) : undefined;
   const def = node ? getDef(node.type) : undefined;
 
+  if (!node) return null;
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-l bg-surface-1" aria-label="Inspector">
-      {node ? (
+    <aside
+      className="bp-pop-in flex w-full flex-col overflow-hidden rounded-[14px] border bg-surface-1 shadow-xl"
+      aria-label="Inspector"
+    >
+      {
         <>
           <div className="border-b p-3.5">
             <div className="flex items-center gap-2.5">
@@ -639,6 +662,15 @@ export function Inspector() {
               {node.provider !== 'other' ? (
                 <Badge variant={node.provider}>{PROVIDER_LABELS[node.provider]}</Badge>
               ) : null}
+              <button
+                type="button"
+                aria-label="Close inspector"
+                title="Close (Esc)"
+                onClick={() => useEditor.getState().setSelection(null)}
+                className="-mr-1 rounded-[6px] p-1 text-faint transition-colors hover:bg-surface-2 hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
             {def?.description ? (
               <p className="mt-2 text-[11.5px] leading-snug text-muted">
@@ -688,23 +720,13 @@ export function Inspector() {
               variant="outline"
               size="sm"
               className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
-              onClick={() => applyOps([{ kind: 'remove_resource', nodeId: node.id }], null)}
+              onClick={() => useEditor.getState().deleteResources([node.id])}
             >
               <Trash2 className="h-3.5 w-3.5" /> Delete resource
             </Button>
           </div>
         </>
-      ) : (
-        <>
-          <div className="border-b p-3.5">
-            <h2 className="text-[13.5px] font-semibold">Project</h2>
-            <p className="mt-0.5 text-[11.5px] text-faint">No resource selected</p>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <ProjectPanel />
-          </div>
-        </>
-      )}
+      }
     </aside>
   );
 }

@@ -43,6 +43,24 @@ describe('tidy layout', () => {
   }
 });
 
+describe('tidy packing', () => {
+  // Regression: disconnected resources used to be stacked in one tall column.
+  it('packs disconnected resources into rows instead of a column', async () => {
+    const files = TEMPLATES.find((t) => t.slug === 'aws-web-app')!.build('demo');
+    files['main.tf'] +=
+      '\nresource "aws_s3_bucket" "logs" {}\nresource "aws_route53_zone" "zone" {\n  name = "x.com"\n}\n' +
+      'resource "aws_sqs_queue" "jobs" {}\nresource "aws_kms_key" "k" {}\n';
+    const { ir } = parseProject(files);
+    const ops = await computeTidyOps(ir, deriveStructure(ir, getDef), isContainerType);
+    const top = ops.flatMap((op) =>
+      op.kind === 'move_node' && !ir.resources.find((r) => r.id === op.nodeId)?.parentId ? [op.position] : [],
+    );
+    const width = Math.max(...top.map((p) => p.x + (p.w ?? NODE_W)));
+    const height = Math.max(...top.map((p) => p.y + (p.h ?? NODE_H)));
+    expect(width / height).toBeGreaterThan(1.1);
+  });
+});
+
 describe('duplicateNode', () => {
   it('copies arguments next to the original with unique names', () => {
     const files = TEMPLATES.find((t) => t.slug === 'aws-web-app')!.build('demo');

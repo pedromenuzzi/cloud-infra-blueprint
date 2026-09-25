@@ -30,7 +30,7 @@ const SPLIT_KEY = 'cb-split-pct';
 
 function readSplit(): number {
   const v = Number(localStorage.getItem(SPLIT_KEY));
-  return Number.isFinite(v) && v >= 20 && v <= 70 ? v : 40;
+  return Number.isFinite(v) && v >= 20 && v <= 70 ? v : 36;
 }
 
 export default function EditorPage() {
@@ -40,6 +40,18 @@ export default function EditorPage() {
   const [split, setSplit] = useState(readSplit);
   const splitRef = useRef<HTMLDivElement>(null);
   const panels = useLayout((s) => s.panels);
+  const compact = useLayout((s) => s.compact);
+  const drawer = useLayout((s) => s.drawer);
+  const selection = useEditor((s) => s.selection);
+
+  // compact layout below 1100px: canvas full-width, palette/code as drawers
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1099px)');
+    const apply = () => useLayout.getState().setCompact(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
 
   useEffect(() => {
     if (!id || !loadProjectIntoEditor(id)) {
@@ -56,6 +68,11 @@ export default function EditorPage() {
       if (
         target.closest('input, textarea, select, [contenteditable], .monaco-editor') !== null
       ) {
+        return;
+      }
+      if (e.key === 'Escape') {
+        if (useLayout.getState().drawer) useLayout.getState().closeDrawer();
+        else if (useEditor.getState().selection) useEditor.getState().setSelection(null);
         return;
       }
       const mod = e.ctrlKey || e.metaKey;
@@ -124,12 +141,32 @@ export default function EditorPage() {
       <h1 className="sr-only">Cloud Blueprint editor</h1>
       <Topbar />
       <div className="flex min-h-0 flex-1">
-        {panels.palette ? <Palette /> : null}
+        {!compact && panels.palette ? <Palette /> : null}
         <div ref={splitRef} className="flex min-w-0 flex-1">
-          <div className="min-w-0" style={{ width: panels.code ? `${100 - split}%` : '100%' }}>
+          <div
+            className="relative min-w-0"
+            style={{ width: !compact && panels.code ? `${100 - split}%` : '100%' }}
+          >
             <CanvasPane />
+            {panels.inspector && selection && !(compact && drawer === 'code') ? (
+              <div className="bp-drawer-right absolute bottom-3 right-3 top-3 z-20 flex w-[min(300px,calc(100%-24px))]">
+                <Inspector />
+              </div>
+            ) : null}
+            {compact && drawer === 'palette' ? (
+              <div className="bp-drawer-left absolute bottom-0 left-0 top-0 z-30 flex shadow-lg">
+                <Palette />
+              </div>
+            ) : null}
+            {compact && drawer === 'code' ? (
+              <div className="bp-drawer-right absolute bottom-0 right-0 top-0 z-30 w-[min(560px,94%)] border-l shadow-lg">
+                <Suspense fallback={<CodePaneFallback />}>
+                  <CodePane />
+                </Suspense>
+              </div>
+            ) : null}
           </div>
-          {panels.code ? (
+          {!compact && panels.code ? (
             <>
               <div
                 role="separator"
@@ -146,7 +183,6 @@ export default function EditorPage() {
             </>
           ) : null}
         </div>
-        {panels.inspector ? <Inspector /> : null}
       </div>
     </div>
   );

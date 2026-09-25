@@ -14,6 +14,7 @@ import {
   type Edge,
   type Node,
   type OnSelectionChangeParams,
+  type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -24,6 +25,7 @@ import {
   CopyPlus,
   FileImage,
   ImageDown,
+  LayoutTemplate,
   Maximize,
   PencilLine,
   Plus,
@@ -33,10 +35,11 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { showToast } from '@/components/Toast';
-import { Kbd } from '@/components/ui';
-import { MOD } from '@/features/command/paletteStore';
+import { Button, Kbd } from '@/components/ui';
+import { MOD, usePalette } from '@/features/command/paletteStore';
 import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
 import { ref } from '@/ir/expr';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
@@ -51,6 +54,9 @@ import type { ResourceDef } from '@/resources/types';
 import { registerCanvasApi } from './canvasApi';
 import { CanvasToolbar } from './CanvasToolbar';
 import { exportDiagramImage } from './exportImage';
+import { removeReferencesOps } from './connections';
+import { ProjectOverview } from './Inspector';
+import { useLayout } from './layoutStore';
 import { buildNewNode, duplicateNode } from './newNode';
 import { ResourcePicker } from './ResourcePicker';
 import { computeTidyOps } from './tidy';
@@ -94,7 +100,6 @@ function buildFlow(
       id: r.id,
       position: { x: r.position?.x ?? 0, y: r.position?.y ?? 0 },
       parentId: r.parentId,
-      extent: r.parentId ? ('parent' as const) : undefined,
       selected: selection === r.id,
     };
     if (container) {
@@ -110,6 +115,8 @@ function buildFlow(
           category: def?.category ?? 'network',
           warn: warned.has(r.id),
         },
+        width: r.position?.w ?? CONTAINER_MIN_W,
+        height: r.position?.h ?? CONTAINER_MIN_H,
         style: {
           width: r.position?.w ?? CONTAINER_MIN_W,
           height: r.position?.h ?? CONTAINER_MIN_H,
@@ -118,6 +125,8 @@ function buildFlow(
     }
     return {
       ...common,
+      width: NODE_W,
+      height: NODE_H,
       type: 'resource',
       data: {
         title: r.name,
@@ -162,6 +171,10 @@ function CanvasInner() {
   const [layoutAnim, setLayoutAnim] = useState(false);
   const [quickAdd, setQuickAdd] = useState<{ x: number; y: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string | null } | null>(null);
+  const [overview, setOverview] = useState(false);
+  const panelsInspector = useLayout((s) => s.panels.inspector);
+  const compact = useLayout((s) => s.compact);
+  const drawer = useLayout((s) => s.drawer);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeType>([]);
@@ -179,16 +192,16 @@ function CanvasInner() {
     setEdges(built.edges);
   }, [ir, irEdges, warnings, selection, setNodes, setEdges]);
 
-  // DEV: hidden-tab verification environments miss the initial measurement
-  // pass; nudge React Flow to measure so edges/fitView work there too.
+  // React Flow can drop a node's measurement when its size changes (a container
+  // growing around a moved child) and hidden tabs skip the first pass; re-measure
+  // anything unmeasured so edges, fitView and export use real sizes.
   useEffect(() => {
-    if (!import.meta.env.DEV) return;
     const t = setTimeout(() => {
       const unmeasured = rf.getNodes().filter((n) => !n.measured?.width);
       if (unmeasured.length > 0) updateNodeInternals(unmeasured.map((n) => n.id));
-    }, 400);
+    }, 250);
     return () => clearTimeout(t);
-  }, [nodes.length, rf, updateNodeInternals]);
+  }, [nodes, rf, updateNodeInternals]);
 
   const byId = useMemo(() => new Map(ir.resources.map((r) => [r.id, r] as const)), [ir]);
   const absRects = useMemo(() => computeAbsoluteRects(ir), [ir]);
@@ -242,8 +255,7 @@ function CanvasInner() {
         const def = getDef(irNode.type);
         const internal = rf.getInternalNode(n.id);
         const abs = internal?.internals.positionAbsolute ?? n.position;
-        const w = internal?.measured?.width ?? NODE_W;
-        const h = internal?.measured?.height ?? NODE_H;
+        const { w, h } = internal ? sizeOf(internal) : { w: NODE_W, h: NODE_H };
         const keepSize =
           irNode.position?.w !== undefined
             ? { w: irNode.position.w, h: irNode.position.h }
@@ -348,42 +360,27 @@ function CanvasInner() {
     [applyCanvasOps, byId],
   );
 
-  const onNodesDelete = useCallback(
-    (deleted: Node[]) => {
-      const ops: Op[] = deleted.map((n) => ({ kind: 'remove_resource', nodeId: n.id }));
-      if (ops.length > 0) applyCanvasOps(ops, null);
-    },
-    [applyCanvasOps],
-  );
-
-  const onEdgesDelete = useCallback(
-    (deleted: Edge[]) => {
-      const ops: Op[] = [];
-      for (const e of deleted) {
-        const field = (e.data as { field?: string } | undefined)?.field;
-        if (!field) continue;
-        const source = byId.get(e.source);
-        if (!source) continue;
-        const expr = source.args[field];
-        if (!expr) continue;
-        if (expr.kind === 'ref') {
-          ops.push({ kind: 'unset_arg', nodeId: source.id, field });
-        } else if (expr.kind === 'list') {
-          const items = expr.items.filter(
-            (i) => !(i.kind === 'ref' && i.path.startsWith(`${e.target}.`)),
-          );
-          ops.push(
-            items.length > 0
-              ? { kind: 'set_arg', nodeId: source.id, field, value: { kind: 'list', items } }
-              : { kind: 'unset_arg', nodeId: source.id, field },
-          );
-        } else {
-          showToast(`"${field}" is a complex expression — edit it in code`, 'info');
-        }
+  /** Delete key: nodes (with children + refs to them) and/or edges — always one undo step */
+  const onDelete = useCallback(
+    ({ nodes: deletedNodes, edges: deletedEdges }: { nodes: Node[]; edges: Edge[] }) => {
+      const state = useEditor.getState();
+      if (deletedNodes.length > 0) {
+        const count = state.deleteResources(deletedNodes.map((n) => n.id));
+        if (count > 1) showToast(`Deleted ${count} resources — ${MOD} Z to undo`, 'info');
+        return;
+      }
+      const refs = deletedEdges.map((e) => ({
+        source: e.source,
+        target: e.target,
+        field: (e.data as { field?: string } | undefined)?.field ?? '',
+      }));
+      const ops = removeReferencesOps(state.ir, refs);
+      if (ops.length < new Set(refs.map((r) => `${r.source}:${r.field}`)).size) {
+        showToast('Some connections are complex expressions — edit them in code', 'info');
       }
       if (ops.length > 0) applyCanvasOps(ops);
     },
-    [applyCanvasOps, byId],
+    [applyCanvasOps],
   );
 
   /** add a catalog resource at a flow position, nesting it in the container under it */
@@ -461,32 +458,88 @@ function CanvasInner() {
         showToast('Nothing to export yet — add a resource first', 'info');
         return;
       }
+      // capture a clean diagram: no selection glow, resize handles or animated edges
+      const { selection: previous, setSelection: select } = useEditor.getState();
+      select(null);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       try {
-        await exportDiagramImage(rf.getNodesBounds(flowNodes), format, useEditor.getState().projectName);
+        // bounds from absolute positions + measured sizes of every node (children included)
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const n of flowNodes) {
+          const internal = rf.getInternalNode(n.id);
+          if (!internal) continue;
+          const { x, y } = internal.internals.positionAbsolute;
+          const { w, h } = sizeOf(internal);
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x + w);
+          maxY = Math.max(maxY, y + h);
+        }
+        const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        await exportDiagramImage(bounds, format, useEditor.getState().projectName);
         showToast(`Diagram exported as ${format.toUpperCase()}`, 'success');
       } catch (err) {
         showToast(`Export failed: ${(err as Error).message}`, 'error');
+      } finally {
+        if (previous) select(previous);
       }
     },
     [rf],
   );
 
-  /** pan (keeping the zoom) so a node is on screen */
+  const autoPan = useRef<{ before: Viewport; after: Viewport } | null>(null);
+
+  // inspector closed: undo our automatic pan, unless the user moved the canvas since
+  useEffect(() => {
+    if (selection !== null || !autoPan.current) return;
+    const { before, after } = autoPan.current;
+    autoPan.current = null;
+    const vp = rf.getViewport();
+    if (Math.abs(vp.x - after.x) < 2 && Math.abs(vp.y - after.y) < 2 && vp.zoom === after.zoom) {
+      void rf.setViewport(before, { duration: 300 });
+    }
+  }, [selection, rf]);
+
+  /** width the floating inspector covers on the right while a resource is selected */
+  const inspectorInset = useCallback(() => {
+    const layout = useLayout.getState();
+    const open = layout.panels.inspector && useEditor.getState().selection && !(layout.compact && layout.drawer === 'code');
+    const width = wrapper.current?.clientWidth ?? 0;
+    return open ? Math.min(300, width - 24) + 20 : 0;
+  }, []);
+
+  /** pan (keeping the zoom) by the smallest amount that puts a node in the visible area */
   const focusNode = useCallback(
     (nodeId: string) => {
       const internal = rf.getInternalNode(nodeId);
       const rect = wrapper.current?.getBoundingClientRect();
       if (!internal || !rect) return;
       const { x, y } = internal.internals.positionAbsolute;
-      const w = internal.measured.width ?? NODE_W;
-      const h = internal.measured.height ?? NODE_H;
-      const topLeft = rf.flowToScreenPosition({ x, y });
-      const bottomRight = rf.flowToScreenPosition({ x: x + w, y: y + h });
-      const visible =
-        topLeft.x >= rect.left && topLeft.y >= rect.top && bottomRight.x <= rect.right && bottomRight.y <= rect.bottom;
-      if (!visible) void rf.setCenter(x + w / 2, y + h / 2, { zoom: rf.getZoom(), duration: 350 });
+      const { w, h } = sizeOf(internal);
+      const tl = rf.flowToScreenPosition({ x, y });
+      const br = rf.flowToScreenPosition({ x: x + w, y: y + h });
+      const pad = 16;
+      const left = rect.left + pad;
+      const right = rect.right - inspectorInset() - pad;
+      const top = rect.top + pad;
+      const bottom = rect.bottom - pad;
+      if (br.x - tl.x > right - left || br.y - tl.y > bottom - top) {
+        void rf.setCenter(x + w / 2, y + h / 2, { zoom: rf.getZoom(), duration: 350 });
+        return;
+      }
+      const dx = br.x > right ? right - br.x : tl.x < left ? left - tl.x : 0;
+      const dy = br.y > bottom ? bottom - br.y : tl.y < top ? top - tl.y : 0;
+      if (dx === 0 && dy === 0) return;
+      const vp = rf.getViewport();
+      const next = { x: vp.x + dx, y: vp.y + dy, zoom: vp.zoom };
+      // remember where the user was, to slide back when the inspector closes
+      autoPan.current = { before: autoPan.current?.before ?? vp, after: next };
+      void rf.setViewport(next, { duration: 300 });
     },
-    [rf],
+    [rf, inspectorInset],
   );
 
   const toggleMinimap = useCallback(() => {
@@ -560,7 +613,7 @@ function CanvasInner() {
           icon: Trash2,
           shortcut: 'Del',
           danger: true,
-          onSelect: () => applyCanvasOps([{ kind: 'remove_resource', nodeId: node.id }], null),
+          onSelect: () => useEditor.getState().deleteResources([node.id]),
         },
       ];
     }
@@ -576,7 +629,9 @@ function CanvasInner() {
     ];
   }, [menu, byId, duplicate, applyCanvasOps, rf, tidy, exportImage]);
 
-  const stats = `${ir.resources.length} resources, ${irEdges.length} connections`;
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  const stats = `${plural(ir.resources.length, 'resource')}, ${plural(irEdges.length, 'connection')}`;
+  const inspectorOpen = panelsInspector && selection !== null && !(compact && drawer === 'code');
 
   return (
     <div
@@ -595,6 +650,7 @@ function CanvasInner() {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        onNodeClick={(_e, node) => requestAnimationFrame(() => focusNode(node.id))}
         onNodeContextMenu={(e, node) => {
           e.preventDefault();
           setSelection(node.id);
@@ -612,8 +668,7 @@ function CanvasInner() {
         onSelectionChange={onSelectionChange}
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
-        onNodesDelete={onNodesDelete}
-        onEdgesDelete={onEdgesDelete}
+        onDelete={onDelete}
         onDrop={onDrop}
         onDragOver={(e) => {
           e.preventDefault();
@@ -648,7 +703,8 @@ function CanvasInner() {
             position="bottom-right"
             pannable
             zoomable
-            className="!h-28 !w-44"
+            style={inspectorOpen ? { marginRight: inspectorInset() + 4 } : undefined}
+            className="!h-28 !w-44 transition-[margin]"
             bgColor="var(--surface-1)"
             maskColor="color-mix(in srgb, var(--background) 60%, transparent)"
             maskStrokeColor="var(--border-strong)"
@@ -664,11 +720,31 @@ function CanvasInner() {
         {/* one stacked panel: separate top-center/top-right panels collide on narrow canvases */}
         <Panel
           position="top-center"
-          className="flex w-max max-w-[calc(100%-2rem)] flex-col items-center gap-1.5"
+          className="flex w-max max-w-[calc(100%-2rem)] flex-col items-center gap-1.5 transition-[left]"
+          style={inspectorOpen ? { left: `max(calc(50% - ${inspectorInset() / 2}px), 120px)` } : undefined}
         >
-          <span className="rounded-full border bg-surface-1/85 px-3 py-1 text-[11.5px] font-medium text-muted shadow-xs backdrop-blur-md">
-            {stats}
+          <span className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setOverview((v) => !v)}
+              aria-expanded={overview}
+              aria-label={`${stats} — project overview`}
+              className="rounded-full border bg-surface-1/85 px-3 py-1 text-[11.5px] font-medium text-muted shadow-xs backdrop-blur-md transition-colors hover:border-border-strong hover:text-foreground"
+            >
+              {stats}
+            </button>
+            {warnings.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setOverview(true)}
+                title="Show warnings"
+                className="flex items-center gap-1 rounded-full border border-warning/40 bg-surface-1/85 px-2 py-1 text-[11.5px] font-semibold text-warning shadow-xs backdrop-blur-md"
+              >
+                <AlertTriangle className="h-3 w-3" /> {warnings.length}
+              </button>
+            ) : null}
           </span>
+          {overview ? <OverviewPopover onClose={() => setOverview(false)} /> : null}
           {codeErrored ? (
             <span
               role="status"
@@ -678,8 +754,9 @@ function CanvasInner() {
               Code has errors — canvas shows the last valid state
             </span>
           ) : null}
+          {!overview ? <EditorTips /> : null}
         </Panel>
-        <EditorTips />
+        {ir.resources.length === 0 && !codeErrored ? <EmptyCanvas /> : null}
       </ReactFlow>
 
       {menu ? (
@@ -704,6 +781,14 @@ function CanvasInner() {
       ) : null}
     </div>
   );
+}
+
+/** Node size: measured when available, else the dimensions we gave React Flow. */
+export function sizeOf(internal: { measured: { width?: number; height?: number }; width?: number; height?: number }) {
+  return {
+    w: internal.measured.width ?? internal.width ?? NODE_W,
+    h: internal.measured.height ?? internal.height ?? NODE_H,
+  };
 }
 
 const MINIMAP_KEY = 'cb-minimap';
@@ -734,8 +819,7 @@ function EditorTips() {
     ['?', 'all keyboard shortcuts'],
   ];
   return (
-    <Panel position="top-right">
-      <div className="bp-pop-in w-64 rounded-[12px] border bg-surface-1/95 p-3 shadow-lg backdrop-blur-md" role="note" aria-label="Editor tips">
+    <div className="bp-pop-in w-64 rounded-[12px] border bg-surface-1/95 p-3 shadow-lg backdrop-blur-md" role="note" aria-label="Editor tips">
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-primary" />
           <span className="flex-1 text-[12.5px] font-semibold">Pro tips</span>
@@ -756,6 +840,65 @@ function EditorTips() {
             </li>
           ))}
         </ul>
+    </div>
+  );
+}
+
+/** Stats pill popover: name, counts, clickable files and warnings. */
+function OverviewPopover({ onClose }: { onClose(): void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as HTMLElement;
+      if (!ref.current?.contains(target) && !target.closest('[aria-label$="project overview"]')) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('pointerdown', onPointer, true);
+    window.addEventListener('keydown', onKey, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointer, true);
+      window.removeEventListener('keydown', onKey, true);
+    };
+  }, [onClose]);
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label="Project overview"
+      className="bp-pop-in max-h-[70vh] w-[320px] overflow-y-auto rounded-[14px] border bg-surface-1 shadow-xl"
+    >
+      <ProjectOverview onNavigate={onClose} />
+    </div>
+  );
+}
+
+/** Blank project: say what to do instead of showing an empty grid. */
+function EmptyCanvas() {
+  const navigate = useNavigate();
+  return (
+    <Panel position="top-center" className="!top-1/2 !-translate-y-1/2">
+      <div className="bp-pop-in flex w-[340px] flex-col items-center rounded-[18px] border border-dashed border-border-strong bg-surface-1/80 px-6 py-7 text-center backdrop-blur-md">
+        <span className="flex h-11 w-11 items-center justify-center rounded-[12px] bg-primary-soft text-primary">
+          <Plus className="h-5 w-5" />
+        </span>
+        <h2 className="mt-3 text-[15px] font-semibold">Start your blueprint</h2>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+          Drag a resource from the palette, double-click anywhere on the canvas, or type Terraform in
+          the code editor.
+        </p>
+        <div className="mt-4 flex gap-2">
+          <Button size="sm" onClick={() => usePalette.getState().setOpen(true)}>
+            <Plus className="h-3.5 w-3.5" /> Add resource
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => navigate('/dashboard?new=1')}>
+            <LayoutTemplate className="h-3.5 w-3.5" /> Use a template
+          </Button>
+        </div>
       </div>
     </Panel>
   );
