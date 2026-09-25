@@ -45,13 +45,13 @@ export function AppRail({
         size="icon"
         aria-label="Templates"
         title="Templates"
-        onClick={() => (onTemplates ? onTemplates() : navigate('/dashboard'))}
+        onClick={() => (onTemplates ? onTemplates() : navigate('/dashboard?new=1'))}
       >
         <LayoutTemplate className="h-4 w-4" />
       </Button>
       <div className="flex-1" />
       <a
-        href="https://github.com"
+        href="https://github.com/pedromenuzzi/cloud-infra-blueprint"
         target="_blank"
         rel="noreferrer"
         className="flex h-8 w-8 items-center justify-center rounded-sm text-muted hover:bg-surface-2 hover:text-foreground"
