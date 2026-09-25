@@ -3,6 +3,7 @@
  * catalog-aware completion and hover. Loaded lazily with the editor route.
  */
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
+import './contribs';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import type { IR } from '@/ir/types';
 import { emptyIR } from '@/ir/types';
