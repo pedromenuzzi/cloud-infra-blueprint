@@ -50,3 +50,24 @@ export async function readTerraformFiles(input: Iterable<File>): Promise<Importe
   if (Object.keys(files).length === 0) return null;
   return { name: name || 'imported-terraform', files };
 }
+
+/** Open the OS file picker for .tf / .zip files (call from a user gesture). */
+export function pickTerraformFiles(): Promise<File[] | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = '.tf,.zip';
+    input.style.display = 'none';
+    input.addEventListener('change', () => {
+      resolve(input.files?.length ? [...input.files] : null);
+      input.remove();
+    });
+    input.addEventListener('cancel', () => {
+      resolve(null);
+      input.remove();
+    });
+    document.body.appendChild(input);
+    input.click();
+  });
+}
