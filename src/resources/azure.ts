@@ -408,8 +408,10 @@ export const AZURE_RESOURCES = [
       {
         name: 'storage_account_name',
         type: 'string',
+        required: true,
         refTo: ['azurerm_storage_account'],
         refAttr: 'name',
+        doc: 'Or set storage_key_vault_secret_id instead',
       },
       {
         name: 'storage_account_access_key',
