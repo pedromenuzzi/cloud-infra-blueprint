@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react';
+import { Check, type LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
@@ -9,6 +9,8 @@ export interface MenuItem {
   label: string;
   icon?: LucideIcon;
   shortcut?: string;
+  /** radio-style menus (e.g. theme) */
+  checked?: boolean;
   danger?: boolean;
   disabled?: boolean;
   onSelect(): void;
@@ -46,7 +48,7 @@ export function ContextMenu({
 
   useEffect(() => {
     const el = ref.current;
-    el?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
+    el?.querySelector<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')?.focus();
     const onPointer = (e: PointerEvent) => {
       if (!el?.contains(e.target as Node)) onClose();
     };
@@ -58,7 +60,7 @@ export function ContextMenu({
       }
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       e.preventDefault();
-      const items = [...(el?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
+      const items = [...(el?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)') ?? [])];
       const i = items.indexOf(document.activeElement as HTMLButtonElement);
       const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
       items[next]?.focus();
@@ -91,7 +93,8 @@ export function ContextMenu({
           <button
             key={entry.id}
             type="button"
-            role="menuitem"
+            role={entry.checked === undefined ? 'menuitem' : 'menuitemradio'}
+            aria-checked={entry.checked}
             disabled={entry.disabled}
             onClick={() => {
               onClose();
@@ -110,6 +113,7 @@ export function ContextMenu({
             )}
             <span className="flex-1">{entry.label}</span>
             {entry.shortcut ? <Kbd>{entry.shortcut}</Kbd> : null}
+            {entry.checked ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
           </button>
         ),
       )}
