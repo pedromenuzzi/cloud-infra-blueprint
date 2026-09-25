@@ -397,9 +397,7 @@ export default function LandingPage() {
           <div className="bp-hero-bg" aria-hidden="true" />
           <div className="relative mx-auto max-w-6xl px-6 pb-24 pt-16 text-center md:pt-20">
             <a
-              href={REPO_URL}
-              target="_blank"
-              rel="noreferrer"
+              href="#features"
               className="bp-fade-in inline-flex items-center gap-2 rounded-full border bg-surface-1/80 py-1 pl-1.5 pr-3 text-[12px] font-medium text-muted shadow-xs backdrop-blur transition-colors hover:text-foreground"
             >
               <span className="flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-semibold text-primary">

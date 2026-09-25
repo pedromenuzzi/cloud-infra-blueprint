@@ -179,6 +179,7 @@ export default function TutorialPlayerPage() {
             <ProjectThumbnail
               key={`${tutorial.slug}-${stepIdx}`}
               files={step.files}
+              detailed
               className="h-full w-full text-foreground"
             />
             <span className="absolute left-3 top-3 rounded-full border bg-surface-1 px-2.5 py-0.5 text-[11px] font-medium text-muted shadow-xs">
