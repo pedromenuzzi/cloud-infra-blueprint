@@ -42,7 +42,13 @@ export function CodePane() {
   const setActiveFile = useEditor((s) => s.setActiveFile);
   const parseDiagnostics = useEditor((s) => s.parseDiagnostics);
   const warnings = useEditor((s) => s.warnings);
+  const selection = useEditor((s) => s.selection);
+  const selectionOrigin = useEditor((s) => s.selectionOrigin);
+  const revealSeq = useEditor((s) => s.revealSeq);
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
+  /** resource waiting to be scrolled into view once its file's model is active */
+  const pendingRevealRef = useRef<string | null>(null);
+  const flashRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
 
   const fileList = orderedFiles(files);
 
@@ -88,8 +94,28 @@ export function CodePane() {
       quickSuggestions: { other: true, strings: true, comments: false },
       fixedOverflowWidgets: true,
     });
+    // code → canvas: explicit caret moves (click, arrows) select the enclosing resource
+    let syncTimer: ReturnType<typeof setTimeout> | undefined;
     editor.onDidChangeCursorPosition((e) => {
       setCursor({ line: e.position.lineNumber, col: e.position.column });
+      if (e.reason !== monaco.editor.CursorChangeReason.Explicit) return;
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => {
+        const model = editor.getModel();
+        if (!model) return;
+        const state = useEditor.getState();
+        const offset = model.getOffsetAt(e.position);
+        const hit = state.ir.resources.find((r) => {
+          const range = r.trivia.rawTextRange;
+          return (
+            range &&
+            (r.trivia.sourceFile ?? 'main.tf') === state.activeFile &&
+            offset >= range.start &&
+            offset < range.end
+          );
+        });
+        if (hit && hit.id !== state.selection) state.setSelection(hit.id, 'code');
+      }, 120);
     });
     editorRef.current = editor;
 
@@ -103,6 +129,7 @@ export function CodePane() {
 
     const models = modelsRef.current;
     return () => {
+      clearTimeout(syncTimer);
       observer.disconnect();
       editor.dispose();
       for (const m of models.values()) m.dispose();
@@ -139,8 +166,50 @@ export function CodePane() {
     } finally {
       suppressRef.current = false;
     }
+    flushReveal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, activeFile, filesRevision]);
+
+  /** canvas → code: scroll the pending resource's block into view and flash it */
+  const flushReveal = () => {
+    const editor = editorRef.current;
+    const id = pendingRevealRef.current;
+    if (!editor || !id) return;
+    const state = useEditor.getState();
+    const node = state.ir.resources.find((r) => r.id === id);
+    const range = node?.trivia.rawTextRange;
+    if (!node || !range) {
+      pendingRevealRef.current = null;
+      return;
+    }
+    const file = node.trivia.sourceFile ?? 'main.tf';
+    if (state.activeFile !== file) {
+      state.setActiveFile(file); // the model-switch effect calls flushReveal again
+      return;
+    }
+    pendingRevealRef.current = null;
+    const model = editor.getModel();
+    if (!model) return;
+    const start = model.getPositionAt(range.start).lineNumber;
+    const end = model.getPositionAt(Math.max(range.start, range.end - 1)).lineNumber;
+    editor.revealLinesInCenterIfOutsideViewport(start, end, monaco.editor.ScrollType.Smooth);
+    flashRef.current?.clear();
+    flashRef.current = editor.createDecorationsCollection([
+      {
+        range: new monaco.Range(start, 1, end, 1),
+        options: { isWholeLine: true, className: 'bp-code-flash', linesDecorationsClassName: 'bp-code-flash-gutter' },
+      },
+    ]);
+  };
+
+  useEffect(() => {
+    if (!selection || selectionOrigin === 'code') return;
+    pendingRevealRef.current = selection;
+    flushReveal();
+    const t = setTimeout(() => flashRef.current?.clear(), 1600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection, selectionOrigin, revealSeq]);
 
   // diagnostics → markers
   useEffect(() => {

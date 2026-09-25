@@ -1,11 +1,13 @@
-import { Search } from 'lucide-react';
+import { ChevronDown, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { Input } from '@/components/ui';
+import { Input, Kbd } from '@/components/ui';
+import { MOD } from '@/features/command/paletteStore';
 import type { Provider } from '@/ir/types';
+import { detectProviders } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 import { PROVIDER_COLORS, PROVIDER_LABELS, ProviderDot, ResourceIcon } from '@/resources/icons';
 import { defsByProvider } from '@/resources/registry';
-import { CATEGORY_LABELS, type ResourceDef } from '@/resources/types';
+import { CATEGORY_LABELS, type Category, type ResourceDef } from '@/resources/types';
 import { PALETTE_MIME } from './CanvasPane';
 import { buildNewNode } from './newNode';
 import { useEditor } from './store';
@@ -36,9 +38,9 @@ function PaletteItem({ def }: { def: ResourceDef }) {
       }}
       onClick={addAtFreeSpot}
       title={`${def.displayName} — drag to the canvas or click to add\n${def.description ?? ''}`}
-      className="flex w-full cursor-grab items-center gap-2.5 rounded-sm border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border hover:bg-surface-2 active:cursor-grabbing"
+      className="group flex w-full cursor-grab items-center gap-2.5 rounded-[8px] border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border hover:bg-surface-2 active:cursor-grabbing"
     >
-      <ResourceIcon category={def.category} provider={def.provider} size={26} />
+      <ResourceIcon category={def.category} type={def.type} size={28} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px] font-medium leading-tight">
           {def.displayName}
@@ -47,13 +49,49 @@ function PaletteItem({ def }: { def: ResourceDef }) {
           {def.type}
         </span>
       </span>
+      <Plus className="h-3.5 w-3.5 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100" />
     </button>
   );
 }
 
+const COLLAPSED_KEY = 'cb-palette-collapsed';
+
+function readCollapsed(): Set<Category> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as Category[]);
+  } catch {
+    return new Set();
+  }
+}
+
 export function Palette() {
-  const [provider, setProvider] = useState<Provider>('aws');
+  // open on the project's own cloud
+  const [provider, setProvider] = useState<Provider>(
+    () => detectProviders(useEditor.getState().files).find((p) => PROVIDERS.includes(p)) ?? 'aws',
+  );
   const [query, setQuery] = useState('');
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(
+        PROVIDERS.map((p) => [p, defsByProvider(p).reduce((n, g) => n + g.defs.length, 0)]),
+      ) as Record<Provider, number>,
+    [],
+  );
+
+  const toggleCategory = (category: Category) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      try {
+        localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  };
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -90,6 +128,7 @@ export function Palette() {
               aria-selected={provider === p}
               type="button"
               onClick={() => setProvider(p)}
+              title={`${counts[p]} ${PROVIDER_LABELS[p]} resources`}
               className={cn(
                 'flex flex-1 items-center justify-center gap-1.5 rounded-sm border px-2 py-1.5 text-[12px] font-semibold transition-colors',
                 provider === p
@@ -106,25 +145,40 @@ export function Palette() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-2">
-        {groups.map((g) => (
-          <div key={g.category} className="mb-3">
-            <h3 className="px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
-              {CATEGORY_LABELS[g.category]}
-            </h3>
-            <div className="space-y-0.5">
-              {g.defs.map((d) => (
-                <PaletteItem key={d.type} def={d} />
-              ))}
+        {groups.map((g) => {
+          const open = query.trim() !== '' || !collapsed.has(g.category);
+          return (
+            <div key={g.category} className="mb-2">
+              <h3>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => toggleCategory(g.category)}
+                  className="flex w-full items-center gap-1.5 rounded-[6px] px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint transition-colors hover:text-muted"
+                >
+                  <ChevronDown className={cn('h-3 w-3 transition-transform', !open && '-rotate-90')} />
+                  <span className="flex-1 text-left">{CATEGORY_LABELS[g.category]}</span>
+                  <span className="font-medium normal-case tracking-normal">{g.defs.length}</span>
+                </button>
+              </h3>
+              {open ? (
+                <div className="space-y-0.5">
+                  {g.defs.map((d) => (
+                    <PaletteItem key={d.type} def={d} />
+                  ))}
+                </div>
+              ) : null}
             </div>
-          </div>
-        ))}
+          );
+        })}
         {groups.length === 0 ? (
           <p className="px-2 py-6 text-center text-[12px] text-faint">No resources match.</p>
         ) : null}
       </div>
 
       <p className="border-t px-3 py-2 text-[10.5px] leading-relaxed text-faint">
-        Drag onto the canvas, or click to add. Drop inside a VPC / subnet / group to nest.
+        Drag onto the canvas or click to add — drop inside a VPC / subnet / group to nest.
+        Double-click the canvas or press <Kbd>{MOD} K</Kbd> to search.
       </p>
     </aside>
   );

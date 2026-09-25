@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { createBrowserRouter, Outlet, useNavigate } from 'react-router-dom';
 import { ToastViewport, showToast } from '@/components/Toast';
+import { CommandHost } from '@/features/command/CommandHost';
 import { createProject } from '@/lib/storage';
 import { readShareFromLocation } from '@/lib/share';
 
@@ -42,6 +43,7 @@ function Root() {
         <Outlet />
       </Suspense>
       <ToastViewport />
+      <CommandHost />
     </>
   );
 }
