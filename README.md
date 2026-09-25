@@ -55,10 +55,13 @@ pnpm dev        # http://localhost:5173
 ```
 
 ```bash
-pnpm test       # round-trip + template + share-link suites
+pnpm test       # parser, round-trip, catalog, template + share-link suites
 pnpm typecheck
 pnpm build      # static production build in dist/
+pnpm test:e2e   # Playwright against the production build (run `pnpm build` first)
 ```
+
+First E2E run on a new machine: `pnpm exec playwright install --with-deps chromium`.
 
 That's it — there is no database, no API keys, no backend to configure.
 
@@ -90,19 +93,22 @@ The app is a fully static SPA. Any free static host works:
 src/
 ├── ir/          # canonical IR types, ops, graph derivation, layout, validation
 ├── hcl/         # parser, emitter, minimal-patch engine (+ round-trip tests)
-├── resources/   # declarative multi-cloud catalog (42 resources: AWS / Azure / GCP)
-├── templates/   # 9 patterns: AWS web/static/ECS, Azure web/static, GCP web/run/static, multi-cloud DR
+├── resources/   # declarative multi-cloud catalog (83 resources: 36 AWS / 22 Azure / 25 GCP)
+├── templates/   # 10 patterns: AWS web/static/ECS/serverless, Azure web/static, GCP web/run/static, multi-cloud DR
 ├── tutorials/   # step-by-step lessons (diagram + code, diff-highlighted)
 ├── features/    # editor (canvas, code, palette, inspector, topbar), templates modal
 ├── routes/      # landing, dashboard, editor, 404
 ├── components/  # design-system UI kit, thumbnails, theme toggle, toasts
 └── lib/         # localStorage projects, zip export, share links, utils
+e2e/             # Playwright specs (editor, navigation, share links)
 ```
 
 ## Extending
 
 - **Add a resource**: one `defineResource({...})` entry in `src/resources/{aws,azure,gcp}.ts`
   — schema fields drive the inspector form, autocomplete, validation and node rendering.
+  `src/resources/catalog.test.ts` checks every entry automatically (refs point at real types,
+  a palette drop round-trips through the parser).
 - **Add a template**: build an IR in `src/templates/index.ts` and register it.
 - **Add semantics**: containment and connection rules are data on the resource definition,
   not special cases in the canvas.

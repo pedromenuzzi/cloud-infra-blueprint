@@ -1,11 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CanvasPane } from '@/features/editor/CanvasPane';
-import { CodePane } from '@/features/editor/CodePane';
 import { Inspector } from '@/features/editor/Inspector';
 import { Palette } from '@/features/editor/Palette';
 import { Topbar } from '@/features/editor/Topbar';
 import { loadProjectIntoEditor, useEditor } from '@/features/editor/store';
+
+// Monaco is ~2 MB: split it out so the canvas paints while the code pane loads
+const CodePane = lazy(() =>
+  import('@/features/editor/CodePane').then((m) => ({ default: m.CodePane })),
+);
+
+function CodePaneFallback() {
+  return (
+    <section
+      className="flex h-full flex-col items-center justify-center gap-3 bg-surface-1 text-[12px] text-faint"
+      aria-label="Terraform code"
+      aria-busy="true"
+    >
+      <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
+      Loading code editor…
+    </section>
+  );
+}
 
 const SPLIT_KEY = 'cb-split-pct';
 
@@ -93,7 +110,9 @@ export default function EditorPage() {
             onPointerDown={startDrag}
           />
           <div className="min-w-[300px]" style={{ width: `${split}%` }}>
-            <CodePane />
+            <Suspense fallback={<CodePaneFallback />}>
+              <CodePane />
+            </Suspense>
           </div>
         </div>
         <Inspector />

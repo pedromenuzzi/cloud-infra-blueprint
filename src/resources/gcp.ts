@@ -1,7 +1,9 @@
-import { lit, literalString } from '@/ir/expr';
+import { block, lit, literalString } from '@/ir/expr';
 import { defineResource } from './types';
 
 const litStr = literalString;
+
+const GCP_REGIONS = ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'];
 
 export const GCP_RESOURCES = [
   defineResource({
@@ -32,7 +34,7 @@ export const GCP_RESOURCES = [
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'ip_cidr_range', type: 'string', required: true, placeholder: '10.0.1.0/24' },
-      { name: 'region', type: 'select', options: ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'] },
+      { name: 'region', type: 'select', options: GCP_REGIONS },
       { name: 'network', type: 'string', refTo: ['google_compute_network'], required: true },
     ],
     connections: [
@@ -126,7 +128,7 @@ export const GCP_RESOURCES = [
         required: true,
         options: ['POSTGRES_15', 'POSTGRES_16', 'MYSQL_8_0', 'SQLSERVER_2019_STANDARD'],
       },
-      { name: 'region', type: 'select', options: ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'] },
+      { name: 'region', type: 'select', options: GCP_REGIONS },
       { name: 'deletion_protection', type: 'boolean' },
     ],
     defaults: { database_version: lit('POSTGRES_16') },
@@ -244,7 +246,7 @@ export const GCP_RESOURCES = [
     fields: [
       { name: 'repository_id', type: 'string', required: true },
       { name: 'format', type: 'select', options: ['DOCKER', 'NPM', 'MAVEN'], required: true },
-      { name: 'location', type: 'select', options: ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'] },
+      { name: 'location', type: 'select', options: GCP_REGIONS },
     ],
     defaults: { format: lit('DOCKER') },
     subtitle: (args) => litStr(args.format) ?? 'registry',
@@ -262,7 +264,7 @@ export const GCP_RESOURCES = [
       {
         name: 'location',
         type: 'select',
-        options: ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'],
+        options: GCP_REGIONS,
         required: true,
       },
       {
@@ -314,5 +316,245 @@ export const GCP_RESOURCES = [
       { targetTypes: ['google_dns_managed_zone'], arg: 'managed_zone', attr: 'name', mode: 'set' },
     ],
     subtitle: (args) => litStr(args.type),
+  }),
+
+  defineResource({
+    type: 'google_compute_router',
+    provider: 'gcp',
+    category: 'network',
+    displayName: 'Cloud Router',
+    shortName: 'Router',
+    description: 'Regional router (needed for Cloud NAT)',
+    containment: [{ arg: 'network', parentTypes: ['google_compute_network'] }],
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'network', type: 'string', required: true, refTo: ['google_compute_network'] },
+      { name: 'region', type: 'select', options: GCP_REGIONS },
+    ],
+    connections: [
+      { targetTypes: ['google_compute_network'], arg: 'network', attr: 'id', mode: 'set' },
+    ],
+    subtitle: (args) => litStr(args.region) ?? 'router',
+  }),
+
+  defineResource({
+    type: 'google_compute_router_nat',
+    provider: 'gcp',
+    category: 'network',
+    displayName: 'Cloud NAT',
+    shortName: 'Cloud NAT',
+    description: 'Outbound internet for private instances',
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      {
+        name: 'router',
+        type: 'string',
+        required: true,
+        refTo: ['google_compute_router'],
+        refAttr: 'name',
+      },
+      { name: 'region', type: 'select', options: GCP_REGIONS },
+      {
+        name: 'nat_ip_allocate_option',
+        type: 'select',
+        options: ['AUTO_ONLY', 'MANUAL_ONLY'],
+        required: true,
+      },
+      {
+        name: 'source_subnetwork_ip_ranges_to_nat',
+        type: 'select',
+        options: [
+          'ALL_SUBNETWORKS_ALL_IP_RANGES',
+          'ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES',
+          'LIST_OF_SUBNETWORKS',
+        ],
+        required: true,
+      },
+    ],
+    defaults: {
+      nat_ip_allocate_option: lit('AUTO_ONLY'),
+      source_subnetwork_ip_ranges_to_nat: lit('ALL_SUBNETWORKS_ALL_IP_RANGES'),
+    },
+    connections: [
+      { targetTypes: ['google_compute_router'], arg: 'router', attr: 'name', mode: 'set' },
+    ],
+    subtitle: () => 'egress NAT',
+  }),
+
+  defineResource({
+    type: 'google_cloudfunctions2_function',
+    provider: 'gcp',
+    category: 'compute',
+    displayName: 'Cloud Function',
+    shortName: 'Function',
+    description: 'Serverless function (2nd gen)',
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'location', type: 'select', options: GCP_REGIONS, required: true },
+      { name: 'description', type: 'string' },
+    ],
+    defaults: {
+      location: lit('us-central1'),
+      build_config: block({ runtime: lit('nodejs22'), entry_point: lit('handler') }),
+      service_config: block({
+        max_instance_count: lit(1),
+        available_memory: lit('256M'),
+        timeout_seconds: lit(60),
+      }),
+    },
+    subtitle: (args) =>
+      args.build_config?.kind === 'block' ? litStr(args.build_config.body.runtime) : undefined,
+  }),
+
+  defineResource({
+    type: 'google_container_cluster',
+    provider: 'gcp',
+    category: 'containers',
+    displayName: 'GKE Cluster',
+    shortName: 'GKE',
+    description: 'Managed Kubernetes',
+    container: true,
+    containment: [
+      { arg: 'subnetwork', parentTypes: ['google_compute_subnetwork'] },
+      { arg: 'network', parentTypes: ['google_compute_network'] },
+    ],
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'location', type: 'select', options: GCP_REGIONS, doc: 'A region (or a zone for a zonal cluster)' },
+      { name: 'network', type: 'string', refTo: ['google_compute_network'], refAttr: 'name' },
+      { name: 'subnetwork', type: 'string', refTo: ['google_compute_subnetwork'], refAttr: 'name' },
+      { name: 'initial_node_count', type: 'number' },
+      { name: 'remove_default_node_pool', type: 'boolean', doc: 'Manage nodes with separate node pools' },
+      { name: 'deletion_protection', type: 'boolean' },
+    ],
+    defaults: { location: lit('us-central1'), initial_node_count: lit(1) },
+    connections: [
+      { targetTypes: ['google_compute_network'], arg: 'network', attr: 'name', mode: 'set' },
+      { targetTypes: ['google_compute_subnetwork'], arg: 'subnetwork', attr: 'name', mode: 'set' },
+    ],
+    subtitle: (args) => litStr(args.location),
+  }),
+
+  defineResource({
+    type: 'google_container_node_pool',
+    provider: 'gcp',
+    category: 'containers',
+    displayName: 'GKE Node Pool',
+    shortName: 'Node Pool',
+    description: 'Group of worker nodes for a GKE cluster',
+    containment: [{ arg: 'cluster', parentTypes: ['google_container_cluster'] }],
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'cluster', type: 'string', required: true, refTo: ['google_container_cluster'] },
+      { name: 'node_count', type: 'number' },
+    ],
+    defaults: { node_count: lit(1), node_config: block({ machine_type: lit('e2-medium') }) },
+    connections: [
+      { targetTypes: ['google_container_cluster'], arg: 'cluster', attr: 'id', mode: 'set' },
+    ],
+    subtitle: (args) =>
+      args.node_config?.kind === 'block' ? litStr(args.node_config.body.machine_type) : undefined,
+  }),
+
+  defineResource({
+    type: 'google_pubsub_topic',
+    provider: 'gcp',
+    category: 'integration',
+    displayName: 'Pub/Sub Topic',
+    shortName: 'Pub/Sub',
+    description: 'Asynchronous messaging topic',
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'message_retention_duration', type: 'string', placeholder: '86400s' },
+    ],
+    subtitle: () => 'topic',
+  }),
+
+  defineResource({
+    type: 'google_pubsub_subscription',
+    provider: 'gcp',
+    category: 'integration',
+    displayName: 'Pub/Sub Subscription',
+    shortName: 'Subscription',
+    description: 'Pull or push delivery from a topic',
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'topic', type: 'string', required: true, refTo: ['google_pubsub_topic'] },
+      { name: 'ack_deadline_seconds', type: 'number' },
+      { name: 'message_retention_duration', type: 'string', placeholder: '604800s' },
+    ],
+    defaults: { ack_deadline_seconds: lit(20) },
+    connections: [{ targetTypes: ['google_pubsub_topic'], arg: 'topic', attr: 'id', mode: 'set' }],
+    subtitle: () => 'subscription',
+  }),
+
+  defineResource({
+    type: 'google_redis_instance',
+    provider: 'gcp',
+    category: 'database',
+    displayName: 'Memorystore for Redis',
+    shortName: 'Memorystore',
+    description: 'Managed Redis',
+    containment: [{ arg: 'authorized_network', parentTypes: ['google_compute_network'] }],
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'memory_size_gb', type: 'number', required: true },
+      { name: 'tier', type: 'select', options: ['BASIC', 'STANDARD_HA'] },
+      { name: 'region', type: 'select', options: GCP_REGIONS },
+      { name: 'authorized_network', type: 'string', refTo: ['google_compute_network'] },
+    ],
+    defaults: { memory_size_gb: lit(1), tier: lit('BASIC') },
+    connections: [
+      { targetTypes: ['google_compute_network'], arg: 'authorized_network', attr: 'id', mode: 'set' },
+    ],
+    subtitle: (args) => {
+      const gb = args.memory_size_gb?.kind === 'literal' ? args.memory_size_gb.value : undefined;
+      return gb !== undefined ? `${gb} GB` : 'Redis';
+    },
+  }),
+
+  defineResource({
+    type: 'google_bigquery_dataset',
+    provider: 'gcp',
+    category: 'database',
+    displayName: 'BigQuery Dataset',
+    shortName: 'BigQuery',
+    description: 'Analytics data warehouse dataset',
+    nameArg: 'dataset_id',
+    fields: [
+      { name: 'dataset_id', type: 'string', required: true, doc: 'Letters, numbers and underscores' },
+      { name: 'location', type: 'select', options: ['US', 'EU', ...GCP_REGIONS] },
+      { name: 'description', type: 'string' },
+    ],
+    defaults: { location: lit('US') },
+    subtitle: (args) => litStr(args.location),
+  }),
+
+  defineResource({
+    type: 'google_service_account',
+    provider: 'gcp',
+    category: 'identity',
+    displayName: 'Service Account',
+    shortName: 'Service Account',
+    description: 'Identity for workloads',
+    nameArg: 'account_id',
+    fields: [
+      { name: 'account_id', type: 'string', required: true, doc: '6–30 lowercase letters, digits, hyphens' },
+      { name: 'display_name', type: 'string' },
+    ],
+    subtitle: () => 'service account',
+  }),
+
+  defineResource({
+    type: 'google_secret_manager_secret',
+    provider: 'gcp',
+    category: 'identity',
+    displayName: 'Secret Manager Secret',
+    shortName: 'Secret',
+    description: 'Stores API keys, passwords and certificates',
+    nameArg: 'secret_id',
+    fields: [{ name: 'secret_id', type: 'string', required: true }],
+    defaults: { replication: block({ auto: block({}) }) },
+    subtitle: () => 'secret',
   }),
 ];

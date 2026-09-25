@@ -21,71 +21,20 @@ import { AlertTriangle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { showToast } from '@/components/Toast';
 import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
-import { lit, ref } from '@/ir/expr';
+import { ref } from '@/ir/expr';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
-import type { Expression, IR, ResourceNode } from '@/ir/types';
-import { resourceAddress } from '@/ir/types';
+import type { Expression, ResourceNode } from '@/ir/types';
 import { PROVIDER_COLORS } from '@/resources/icons';
 import { getDef, isContainerType } from '@/resources/registry';
 import type { ResourceDef } from '@/resources/types';
+import { buildNewNode } from './newNode';
 import { ContainerNodeView, ResourceNodeView, type FlowNode } from './nodes';
 import { useEditor } from './store';
 
 const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView };
 
 export const PALETTE_MIME = 'application/x-blueprint-type';
-
-/** terraform-style default name: last word of the type, made unique */
-export function uniqueResourceName(ir: IR, def: ResourceDef): string {
-  const base =
-    def.type
-      .replace(/^(aws|azurerm|google)_/, '')
-      .split('_')
-      .pop() || 'main';
-  const taken = new Set(ir.resources.map((r) => r.id));
-  if (!taken.has(resourceAddress(def.type, base))) return base;
-  for (let i = 2; i < 100; i++) {
-    if (!taken.has(resourceAddress(def.type, `${base}_${i}`))) return `${base}_${i}`;
-  }
-  return `${base}_${Date.now() % 1000}`;
-}
-
-export function buildNewNode(
-  ir: IR,
-  def: ResourceDef,
-  position: { x: number; y: number; w?: number; h?: number },
-  parent?: ResourceNode,
-): { node: ResourceNode; ops: Op[] } {
-  const name = uniqueResourceName(ir, def);
-  const args: Record<string, Expression> = {};
-  // defaults in field order for a tidy block
-  for (const field of def.fields) {
-    const dflt = def.defaults?.[field.name];
-    if (dflt) args[field.name] = structuredClone(dflt);
-  }
-  if (def.defaults) {
-    for (const [k, v] of Object.entries(def.defaults)) {
-      if (!args[k]) args[k] = structuredClone(v);
-    }
-  }
-  // name-ish fields get a helpful default
-  if (def.fields.some((f) => f.name === 'name') && !args.name) args.name = lit(name);
-  if (parent) {
-    const rule = def.connections?.find((c) => c.targetTypes.includes(parent.type));
-    if (rule && rule.mode === 'set') args[rule.arg] = ref(`${parent.id}.${rule.attr}`);
-  }
-  const node: ResourceNode = {
-    id: resourceAddress(def.type, name),
-    provider: def.provider,
-    type: def.type,
-    name,
-    args,
-    position,
-    trivia: { leadingComments: [] },
-  };
-  return { node, ops: [{ kind: 'add_resource', node }] };
-}
 
 function edgeColor(kind: string): string {
   return kind === 'security' ? '#f59e0b' : '#3b82f6';
@@ -479,19 +428,24 @@ function CanvasInner() {
             return r ? PROVIDER_COLORS[r.provider] : '#94a3b8';
           }}
         />
-        <Panel position="top-center">
+        {/* one stacked panel: separate top-center/top-right panels collide on narrow canvases */}
+        <Panel
+          position="top-center"
+          className="flex w-max max-w-[calc(100%-2rem)] flex-col items-center gap-1.5"
+        >
           <span className="rounded-full border bg-surface-1 px-3 py-1 text-[11.5px] font-medium text-muted shadow-xs">
             {stats}
           </span>
-        </Panel>
-        {codeErrored ? (
-          <Panel position="top-right">
-            <span className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-3 py-1 text-[11.5px] font-semibold text-warning shadow-xs">
-              <AlertTriangle className="h-3.5 w-3.5" />
+          {codeErrored ? (
+            <span
+              role="status"
+              className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--surface-1))] px-3 py-1 text-center text-[11.5px] font-semibold text-warning shadow-xs"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               Code has errors — canvas shows the last valid state
             </span>
-          </Panel>
-        ) : null}
+          ) : null}
+        </Panel>
       </ReactFlow>
     </div>
   );

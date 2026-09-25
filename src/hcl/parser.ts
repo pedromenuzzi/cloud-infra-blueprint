@@ -24,6 +24,18 @@ const IDENT_START = /[A-Za-z_]/;
 const IDENT_CHAR = /[A-Za-z0-9_-]/;
 const OPERATOR_CONTINUATION = /[+\-*/%<>=!&|?:.]/;
 
+/** Label arity of the top-level Terraform blocks (unknown keywords aren't checked). */
+const BLOCK_LABELS: Record<string, string[]> = {
+  resource: ['TYPE', 'NAME'],
+  data: ['TYPE', 'NAME'],
+  variable: ['NAME'],
+  output: ['NAME'],
+  provider: ['NAME'],
+  module: ['NAME'],
+  terraform: [],
+  locals: [],
+};
+
 interface ParsedBlockBase {
   leading: string[];
   pos?: CanvasPosition;
@@ -409,7 +421,13 @@ function parsePrimary(s: Scanner, start: number): Expression | null {
         s.pos++;
         break;
       }
+      const itemStart = s.pos;
       items.push(parseExpression(s));
+      if (s.pos === itemStart) {
+        // stray `}` / `)` / `,` — no progress possible (e.g. `x = [` then the block's `}`)
+        s.error('Expected "]" to close this list', start);
+        return { kind: 'raw', hcl: s.src.slice(start, s.pos).replace(/\s+$/, '') };
+      }
       skipWsCommentsNewlines(s);
       if (s.peek() === ',') s.pos++;
     }
@@ -534,6 +552,9 @@ function parseBody(s: Scanner): BodyResult {
     if (c === '=') {
       s.pos++;
       const value = parseExpression(s);
+      if (value.kind === 'raw' && value.hcl === '') {
+        s.error(`Expected a value after "${key} ="`, keyStart);
+      }
       args[key] = value;
       if (comments.length > 0) argComments[key] = comments;
       s.skipInlineWs();
@@ -650,6 +671,12 @@ export function parseFile(file: string, source: string): ParseFileResult {
       continue;
     }
 
+    const expectedLabels = BLOCK_LABELS[keyword];
+    if (expectedLabels !== undefined && labels.length !== expectedLabels.length) {
+      const usage = [keyword, ...expectedLabels.map((l) => `"${l}"`)].join(' ');
+      s.error(`Expected ${usage} { … }`, keywordStart);
+    }
+
     const openBrace = s.pos;
     const blockStart = comments.length > 0 ? groupStart : keywordStart;
     s.pos++;
@@ -662,6 +689,10 @@ export function parseFile(file: string, source: string): ParseFileResult {
     if (body.ok) {
       endOffset = s.pos;
     } else {
+      // parseBody reports every failure except running off the end of the file
+      if (s.errors.length === errCountBefore) {
+        s.error(`Missing "}" to close this "${keyword}" block`, keywordStart);
+      }
       // capture whole block verbatim
       endOffset = s.findMatchingBrace(openBrace);
       s.pos = endOffset;

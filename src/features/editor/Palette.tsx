@@ -6,7 +6,8 @@ import { cn } from '@/lib/utils';
 import { PROVIDER_COLORS, PROVIDER_LABELS, ProviderDot, ResourceIcon } from '@/resources/icons';
 import { defsByProvider } from '@/resources/registry';
 import { CATEGORY_LABELS, type ResourceDef } from '@/resources/types';
-import { buildNewNode, PALETTE_MIME } from './CanvasPane';
+import { PALETTE_MIME } from './CanvasPane';
+import { buildNewNode } from './newNode';
 import { useEditor } from './store';
 
 const PROVIDERS: Provider[] = ['aws', 'azure', 'gcp'];
