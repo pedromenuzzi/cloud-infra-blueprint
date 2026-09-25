@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { Plus } from 'lucide-react';
+import { useId, useMemo } from 'react';
 import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
 import { autoLayout, CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { IR, ResourceNode } from '@/ir/types';
-import { PROVIDER_COLORS } from '@/resources/icons';
+import { CATEGORY_COLORS, CategoryGlyph } from '@/resources/icons';
+import type { Category } from '@/resources/types';
 import { getDef, isContainerType } from '@/resources/registry';
 
 export interface AbsRect {
@@ -81,16 +83,35 @@ export function ProjectThumbnail({
       return null;
     }
   }, [files]);
+  const uid = useId().replace(/:/g, '');
 
   if (!data) {
     return (
       <div className={className}>
-        <div className="flex h-full items-center justify-center text-[11px] text-faint">
-          empty blueprint
+        <div className="flex h-full flex-col items-center justify-center gap-1.5 text-faint">
+          <span className="flex h-9 w-9 items-center justify-center rounded-[10px] border-[1.5px] border-dashed border-border-strong">
+            <Plus className="h-4 w-4" />
+          </span>
+          <span className="text-[11px] font-medium">Empty canvas</span>
         </div>
       </div>
     );
   }
+
+  const categories = [
+    ...new Set(data.rects.map((r) => getDef(r.node.type)?.category ?? 'compute')),
+  ] as Category[];
+  const gradId = (c: Category) => `${uid}-tile-${c}`;
+
+  /** middle of the side of `a` facing `b` */
+  const side = (a: AbsRect, b: AbsRect) => {
+    const dx = b.x + b.w / 2 - (a.x + a.w / 2);
+    const dy = b.y + b.h / 2 - (a.y + a.h / 2);
+    if (Math.abs(dx) / a.w >= Math.abs(dy) / a.h) {
+      return dx >= 0 ? { x: a.x + a.w, y: a.y + a.h / 2 } : { x: a.x, y: a.y + a.h / 2 };
+    }
+    return dy >= 0 ? { x: a.x + a.w / 2, y: a.y + a.h } : { x: a.x + a.w / 2, y: a.y };
+  };
 
   return (
     <svg
@@ -100,67 +121,85 @@ export function ProjectThumbnail({
       role="img"
       aria-label={interactiveTitle ?? 'Architecture preview'}
     >
+      <defs>
+        {categories.map((c) => (
+          <linearGradient key={c} id={gradId(c)} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor={CATEGORY_COLORS[c].from} />
+            <stop offset="1" stopColor={CATEGORY_COLORS[c].to} />
+          </linearGradient>
+        ))}
+      </defs>
+      {data.rects
+        .filter((r) => r.isContainer)
+        .map((r) => {
+          const c = CATEGORY_COLORS[getDef(r.node.type)?.category ?? 'network'].solid;
+          return (
+            <g key={r.node.id}>
+              <rect
+                x={r.x}
+                y={r.y}
+                width={r.w}
+                height={r.h}
+                rx={16}
+                fill={c}
+                fillOpacity={0.07}
+                stroke={c}
+                strokeOpacity={0.5}
+                strokeWidth={2.5}
+                strokeDasharray="9 7"
+              />
+              <rect x={r.x + 14} y={r.y + 12} width={24} height={24} rx={7} fill={c} fillOpacity={0.85} />
+              <rect x={r.x + 46} y={r.y + 18} width={Math.min(110, r.w - 70)} height={11} rx={5.5} fill="currentColor" fillOpacity={0.28} />
+            </g>
+          );
+        })}
       {data.edges.map((e) => {
         const a = data.map.get(e.source);
         const b = data.map.get(e.target);
         if (!a || !b) return null;
+        const p1 = side(a, b);
+        const p2 = side(b, a);
+        const mx = (p1.x + p2.x) / 2;
         return (
-          <line
+          <path
             key={e.id}
-            x1={a.x + a.w / 2}
-            y1={a.y + a.h / 2}
-            x2={b.x + b.w / 2}
-            y2={b.y + b.h / 2}
-            stroke="currentColor"
-            strokeOpacity={0.22}
-            strokeWidth={3}
-            strokeDasharray={e.kind === 'security' ? '8 6' : undefined}
-          />
-        );
-      })}
-      {data.rects.map((r) => {
-        const color = PROVIDER_COLORS[r.node.provider];
-        const def = getDef(r.node.type);
-        return r.isContainer ? (
-          <rect
-            key={r.node.id}
-            x={r.x}
-            y={r.y}
-            width={r.w}
-            height={r.h}
-            rx={10}
-            fill={color}
-            fillOpacity={0.06}
-            stroke={color}
+            d={`M${p1.x},${p1.y} C${mx},${p1.y} ${mx},${p2.y} ${p2.x},${p2.y}`}
+            fill="none"
+            stroke={e.kind === 'security' ? '#f59e0b' : '#3b82f6'}
             strokeOpacity={0.55}
-            strokeWidth={2.5}
-            strokeDasharray="10 7"
+            strokeWidth={3}
+            strokeDasharray={e.kind === 'security' ? '9 7' : undefined}
           />
-        ) : (
-          <g key={r.node.id}>
-            <rect
-              x={r.x}
-              y={r.y}
-              width={r.w}
-              height={r.h}
-              rx={9}
-              fill={color}
-              fillOpacity={0.9}
-            />
-            {def ? (
-              <rect
-                x={r.x + 8}
-                y={r.y + r.h / 2 - 14}
-                width={28}
-                height={28}
-                rx={6}
-                fill="#fff"
-                fillOpacity={0.28}
-              />
-            ) : null}
-          </g>
         );
       })}
+      {data.rects
+        .filter((r) => !r.isContainer)
+        .map((r) => {
+          const category = getDef(r.node.type)?.category ?? 'compute';
+          const tile = 42;
+          const tx = r.x + 14;
+          const ty = r.y + (r.h - tile) / 2;
+          return (
+            <g key={r.node.id}>
+              <rect
+                x={r.x}
+                y={r.y}
+                width={r.w}
+                height={r.h}
+                rx={13}
+                fill="var(--node-bg, #fff)"
+                stroke="var(--node-border, #d5deea)"
+                strokeWidth={2}
+              />
+              <rect x={tx} y={ty} width={tile} height={tile} rx={11} fill={`url(#${gradId(category)})`} />
+              <g transform={`translate(${tx + 9} ${ty + 9}) scale(1)`} color="#fff">
+                <CategoryGlyph category={category} type={r.node.type} strokeWidth={2.2} />
+              </g>
+              <rect x={tx + tile + 12} y={r.y + 22} width={Math.min(96, r.w - tile - 44)} height={11} rx={5.5} fill="currentColor" fillOpacity={0.62} />
+              <rect x={tx + tile + 12} y={r.y + 42} width={Math.min(64, r.w - tile - 60)} height={9} rx={4.5} fill="currentColor" fillOpacity={0.24} />
+            </g>
+          );
+        })}
     </svg>
   );
 }
