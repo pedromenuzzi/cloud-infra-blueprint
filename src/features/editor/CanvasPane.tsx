@@ -479,19 +479,24 @@ function CanvasInner() {
             return r ? PROVIDER_COLORS[r.provider] : '#94a3b8';
           }}
         />
-        <Panel position="top-center">
+        {/* one stacked panel: separate top-center/top-right panels collide on narrow canvases */}
+        <Panel
+          position="top-center"
+          className="flex w-max max-w-[calc(100%-2rem)] flex-col items-center gap-1.5"
+        >
           <span className="rounded-full border bg-surface-1 px-3 py-1 text-[11.5px] font-medium text-muted shadow-xs">
             {stats}
           </span>
-        </Panel>
-        {codeErrored ? (
-          <Panel position="top-right">
-            <span className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-warning/10 px-3 py-1 text-[11.5px] font-semibold text-warning shadow-xs">
-              <AlertTriangle className="h-3.5 w-3.5" />
+          {codeErrored ? (
+            <span
+              role="status"
+              className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--surface-1))] px-3 py-1 text-center text-[11.5px] font-semibold text-warning shadow-xs"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               Code has errors — canvas shows the last valid state
             </span>
-          </Panel>
-        ) : null}
+          ) : null}
+        </Panel>
       </ReactFlow>
     </div>
   );
