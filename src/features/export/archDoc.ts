@@ -78,9 +78,6 @@ const SEVERITY_COLOR: Record<Severity, PdfColor> = { critical: '#ef4444', high: 
 const GRADE_COLOR: Record<string, PdfColor> = { A: '#10b981', B: '#84cc16', C: '#f59e0b', D: '#f97316', F: '#ef4444' };
 const TRAFFIC_COLOR = { internet: '#0ea5e9', internal: '#10b981', risky: '#ef4444' };
 
-/** secrets never make it into a document meant to be forwarded */
-const SECRET_ARG = /pass(word)?|secret|token|private_key|api_key|access_key|credential|connection_string/i;
-
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export function formatDocDate(d: Date): string {
@@ -92,6 +89,66 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** baseline for text of `size` vertically centered in a line box starting at `top` */
 const baseline = (top: number, size: number, lineHeight: number) => top + (lineHeight - size * 0.925) / 2 + size * 0.718;
+
+// ------------------------------------------------------------------ secrets
+//
+// The document is meant to be forwarded, so no secret value may reach it —
+// whatever the expression looks like (literal, interpolation, list, object).
+
+const MASK = '••••••';
+const SCRIPT_HIDDEN = '(script hidden)';
+
+/** names (arguments, variables, outputs, object keys) whose values are secrets */
+const SECRET_NAME =
+  /pass(?:word|wd|phrase)?|pwd|secret|token|private_?key|api_?key|access_?key|account_?key|master_?key|signing_?key|auth_?key|shared_?key|license_?key|credential|connection_?string|keytab|plaintext/i;
+
+/** boot scripts: routinely carry exported passwords and keys */
+const SCRIPT_ARG = /^(?:user_data|user_data_base64|custom_data|metadata_startup_script|startup_script)$/;
+
+/** secret-bearing arguments of specific resource types, whatever they are called */
+const SECRET_TYPE_ARGS: Array<[type: RegExp, arg: RegExp]> = [
+  [/^aws_ssm_parameter$/, /^(?:value|insecure_value)$/],
+  [/^azurerm_key_vault_secret$/, /^value$/],
+  [/_secret_version$/, /^secret_(?:data|string|binary)$/],
+  [/^kubernetes_secret(?:_v1)?$/, /^(?:data|binary_data)$/],
+];
+
+/** `scheme://user:password@host` */
+const URL_CREDENTIALS = /([a-z][a-z0-9+.-]*:\/\/)([^\s:@/'"]+):([^\s@/'"]+)@/gi;
+/** `DB_PASS=…`, `Password=…;`, `token: …` inside a value */
+const INLINE_SECRET =
+  /\b([\w.-]*(?:pass(?:word|wd)?|pwd|secret|token|api_?key|access_?key|private_?key|account_?key)[\w.-]*)(\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s;,&'"]+)/gi;
+
+export function isSecretName(name: string): boolean {
+  return SECRET_NAME.test(name);
+}
+
+function isSecretArg(type: string, key: string): boolean {
+  return SECRET_NAME.test(key) || SECRET_TYPE_ARGS.some(([t, a]) => t.test(type) && a.test(key));
+}
+
+/** credentials embedded in URLs; `inline` also masks `KEY=value` pairs (off for prose) */
+export function redactSecrets(text: string, inline = true): string {
+  const out = text.replace(URL_CREDENTIALS, (_m, scheme: string, user: string) => `${scheme}${user}:${MASK}@`);
+  return inline ? out.replace(INLINE_SECRET, (_m, key: string, sep: string) => `${key}${sep}${MASK}`) : out;
+}
+
+/** exprPreview with the values of secret-named object keys masked */
+function safePreview(e: Expression | undefined): string {
+  if (!e) return '';
+  switch (e.kind) {
+    case 'list':
+      return `[${e.items.map(safePreview).join(', ')}]`;
+    case 'object': {
+      const inner = Object.entries(e.fields)
+        .map(([k, v]) => `${k} = ${SCRIPT_ARG.test(k) ? SCRIPT_HIDDEN : SECRET_NAME.test(k) ? MASK : safePreview(v)}`)
+        .join(', ');
+      return `{ ${inner} }`;
+    }
+    default:
+      return exprPreview(e);
+  }
+}
 
 // ------------------------------------------------------------------ facts
 
@@ -184,7 +241,10 @@ export function keySettings(r: ResourceNode, max = 6): string[] {
     if (!e || key === 'tags' || key === 'tags_all') continue;
     const value = settingValue(e);
     if (value === undefined || value === '') continue;
-    out.push(`${key}: ${SECRET_ARG.test(key) && e.kind === 'literal' ? '••••••' : value}`);
+    if (SCRIPT_ARG.test(key)) out.push(`${key}: ${SCRIPT_HIDDEN}`);
+    // a true/false switch (manage_master_user_password = true) gives nothing away
+    else if (isSecretArg(r.type, key) && !(e.kind === 'literal' && typeof e.value === 'boolean')) out.push(`${key}: ${MASK}`);
+    else out.push(`${key}: ${redactSecrets(value)}`);
   }
   return out;
 }
@@ -607,18 +667,25 @@ function inventory(c: Cursor, input: ArchDocInput) {
           { title: 'Description', share: 0.38 },
         ],
         ir.variables.map((v) => {
-          const sensitive = v.args.sensitive?.kind === 'literal' && v.args.sensitive.value === true;
+          const flagged = v.args.sensitive?.kind === 'literal' && v.args.sensitive.value === true;
+          const hidden = flagged || isSecretName(v.name);
           const def = v.args.default;
+          const description = literalText(v.args.description);
           return {
             cells: [
               [{ text: v.name, font: 'mono', size: 7.5 }],
               [{ text: v.args.type ? exprPreview(v.args.type) : 'any', size: 7.5, color: MUTED }],
               [
                 def
-                  ? { text: sensitive ? '(sensitive)' : exprPreview(def), size: 7.5, font: sensitive ? 'regular' : 'mono', color: sensitive ? FAINT : INK }
+                  ? {
+                      text: hidden ? '(sensitive)' : redactSecrets(safePreview(def)),
+                      size: 7.5,
+                      font: hidden ? 'regular' : 'mono',
+                      color: hidden ? FAINT : INK,
+                    }
                   : { text: 'required', size: 7.5, font: 'bold', color: '#b45309' },
               ],
-              [{ text: literalText(v.args.description) ?? '—', size: 7.5, color: literalText(v.args.description) ? INK : FAINT }],
+              [{ text: description ? redactSecrets(description, false) : '—', size: 7.5, color: description ? INK : FAINT }],
             ],
           } satisfies Row;
         }),
@@ -633,12 +700,21 @@ function inventory(c: Cursor, input: ArchDocInput) {
           { title: 'Description', share: 0.38 },
         ],
         ir.outputs.map((o) => {
-          const sensitive = o.args.sensitive?.kind === 'literal' && o.args.sensitive.value === true;
+          const flagged = o.args.sensitive?.kind === 'literal' && o.args.sensitive.value === true;
+          const hidden = flagged || isSecretName(o.name);
+          const description = literalText(o.args.description);
           return {
             cells: [
               [{ text: o.name, font: 'mono', size: 7.5 }],
-              [{ text: sensitive ? '(sensitive)' : exprPreview(o.args.value), font: sensitive ? 'regular' : 'mono', size: 7.5, color: sensitive ? FAINT : INK }],
-              [{ text: literalText(o.args.description) ?? '—', size: 7.5, color: literalText(o.args.description) ? INK : FAINT }],
+              [
+                {
+                  text: hidden ? '(sensitive)' : redactSecrets(safePreview(o.args.value)),
+                  font: hidden ? 'regular' : 'mono',
+                  size: 7.5,
+                  color: hidden ? FAINT : INK,
+                },
+              ],
+              [{ text: description ? redactSecrets(description, false) : '—', size: 7.5, color: description ? INK : FAINT }],
             ],
           } satisfies Row;
         }),
