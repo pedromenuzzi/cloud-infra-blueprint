@@ -7,7 +7,7 @@ const inspectorAddress = (page: Page) => page.getByTestId('inspector-address');
 test.describe('editor power features', () => {
   test.beforeEach(async ({ page }) => {
     await openSeedProject(page);
-    await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+    await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
   });
 
   test('⌘K adds a resource by name', async ({ page }) => {
@@ -18,7 +18,7 @@ test.describe('editor power features', () => {
     await palette.getByRole('option', { name: /DynamoDB Table/ }).click();
 
     await expect(palette).toBeHidden();
-    await expect(canvasStats(page)).toHaveText(/^8 resources/);
+    await expect(canvasStats(page)).toHaveText(/^12 resources/);
     await expect
       .poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf'] ?? '')
       .toContain('resource "aws_dynamodb_table" "table"');
@@ -46,7 +46,7 @@ test.describe('editor power features', () => {
     await page.keyboard.press('Enter');
 
     await expect(quickAdd).toBeHidden();
-    await expect(canvasStats(page)).toHaveText(/^8 resources/);
+    await expect(canvasStats(page)).toHaveText(/^12 resources/);
     await expect(page.getByTestId('canvas').getByText('queue', { exact: true }).first()).toBeVisible();
   });
 
@@ -56,7 +56,7 @@ test.describe('editor power features', () => {
     await expect(menu).toBeVisible();
     await menu.getByRole('menuitem', { name: /Duplicate/ }).click();
 
-    await expect(canvasStats(page)).toHaveText(/^8 resources/);
+    await expect(canvasStats(page)).toHaveText(/^12 resources/);
     await expect(page.locator('.react-flow__node[data-id="aws_iam_role.web_copy"]')).toBeVisible();
     await expect
       .poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf'] ?? '')
@@ -93,7 +93,7 @@ test.describe('editor power features', () => {
     await expect
       .poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf'])
       .not.toBe(before);
-    await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+    await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
 
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect.poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf']).toBe(before);

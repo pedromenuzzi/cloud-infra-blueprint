@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
-import type { ResourceNode } from '@/ir/types';
+import type { Expression, ResourceNode } from '@/ir/types';
 import { validateProject } from '@/ir/validate';
 import { cloudName } from '@/resources/naming';
 import { getDef } from '@/resources/registry';
@@ -105,6 +105,36 @@ describe('templates', () => {
     });
   }
 
+  for (const t of TEMPLATES) {
+    it(`${t.slug}: public subnets route 0.0.0.0/0 to an internet gateway`, () => {
+      const { ir } = parseProject(t.build('demo'));
+      const target = (e: Expression | undefined) => (e?.kind === 'ref' ? e.path.split('.').slice(0, 2).join('.') : undefined);
+      const publicSubnets = ir.resources.filter(
+        (r) =>
+          r.type === 'aws_subnet' &&
+          (r.name.startsWith('public') || (r.args.map_public_ip_on_launch as { value?: unknown })?.value === true),
+      );
+      for (const subnet of publicSubnets) {
+        const tables = ir.resources
+          .filter((r) => r.type === 'aws_route_table_association' && target(r.args.subnet_id) === subnet.id)
+          .map((a) => ir.resources.find((r) => r.id === target(a.args.route_table_id)));
+        const routesOut = tables.some((table) => {
+          const route = table?.args.route;
+          const routes = route?.kind === 'block' ? [route.body] : route?.kind === 'blocks' ? route.items : [];
+          return routes.some((r) => {
+            const gateway = ir.resources.find((g) => g.id === target(r.gateway_id));
+            return (
+              (r.cidr_block as { value?: unknown })?.value === '0.0.0.0/0' &&
+              gateway?.type === 'aws_internet_gateway' &&
+              target(gateway.args.vpc_id) === target(subnet.args.vpc_id)
+            );
+          });
+        });
+        expect(routesOut, `${subnet.id} is public but has no route to an internet gateway`).toBe(true);
+      }
+    });
+  }
+
   it('serves the Azure static site with the static website resource, not the deprecated block', () => {
     const { ir } = parseProject(TEMPLATES.find((t) => t.slug === 'azure-static-site')!.build('demo'));
     const account = ir.resources.find((r) => r.type === 'azurerm_storage_account')!;
@@ -138,5 +168,7 @@ describe('templates', () => {
     expect(byId.get('aws_subnet.public_a')?.parentId).toBe('aws_vpc.main');
     expect(byId.get('aws_instance.web')?.parentId).toBe('aws_subnet.public_a');
     expect(byId.get('aws_security_group.web')?.parentId).toBe('aws_vpc.main');
+    expect(byId.get('aws_internet_gateway.igw')?.parentId).toBe('aws_vpc.main');
+    expect(byId.get('aws_route_table.public')?.parentId).toBe('aws_vpc.main');
   });
 });

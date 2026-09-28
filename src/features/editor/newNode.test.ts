@@ -196,7 +196,7 @@ describe('duplicate offset', () => {
     // an empty neighbourhood: straight to the right
     const vpc = byId(ir, 'aws_vpc.main');
     const alone = duplicateNode({ ...ir, resources: [vpc] }, vpc).node;
-    expect(alone.position).toEqual({ x: vpc.position!.x + vpc.position!.w! + 32, y: vpc.position!.y, w: 680, h: 430 });
+    expect(alone.position).toEqual({ ...vpc.position, x: vpc.position!.x + vpc.position!.w! + 32 });
   });
 
   it('gives a container without a saved size the minimum container size', () => {

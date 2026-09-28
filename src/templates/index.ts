@@ -103,6 +103,39 @@ function providerBlock(provider: Provider, args: Record<string, Expression>) {
   return { id: `provider.${name}.0`, name, args, trivia: { leadingComments: [] as string[] } };
 }
 
+/**
+ * What makes `aws_vpc.main`'s public subnets public: an internet gateway, a
+ * route table sending 0.0.0.0/0 to it, and that table associated with each
+ * subnet. The gateway and table sit inside the VPC; associations are top-level.
+ */
+function awsPublicRouting(
+  subnets: string[],
+  at: { gateway: CanvasPosition; table: CanvasPosition; associations: CanvasPosition[] },
+): ResourceNode[] {
+  return [
+    res('aws_internet_gateway', 'igw', { vpc_id: ref('aws_vpc.main.id') }, at.gateway, [
+      '# Internet access — the default route that makes the public subnets public',
+    ]),
+    res(
+      'aws_route_table',
+      'public',
+      {
+        vpc_id: ref('aws_vpc.main.id'),
+        route: block({ cidr_block: lit('0.0.0.0/0'), gateway_id: ref('aws_internet_gateway.igw.id') }),
+      },
+      at.table,
+    ),
+    ...subnets.map((subnet, i) =>
+      res(
+        'aws_route_table_association',
+        subnet,
+        { subnet_id: ref(`aws_subnet.${subnet}.id`), route_table_id: ref('aws_route_table.public.id') },
+        at.associations[i],
+      ),
+    ),
+  ];
+}
+
 // --- AWS · Web App -----------------------------------------------------------
 
 function buildAwsWebApp(appName: string): Record<string, string> {
@@ -122,7 +155,7 @@ function buildAwsWebApp(appName: string): Record<string, string> {
       'aws_vpc',
       'main',
       { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true), tags: obj({ Name: ref('var.app_name') }) },
-      { x: 40, y: 60, w: 680, h: 430 },
+      { x: 40, y: 60, w: 680, h: 500 },
       ['# Networking'],
     ),
     res(
@@ -186,6 +219,14 @@ function buildAwsWebApp(appName: string): Record<string, string> {
       },
       { x: 32, y: 280 },
     ),
+    ...awsPublicRouting(['public_a', 'public_b'], {
+      gateway: { x: 264, y: 280 },
+      table: { x: 264, y: 392 },
+      associations: [
+        { x: 790, y: 440 },
+        { x: 1030, y: 440 },
+      ],
+    }),
     res(
       'aws_instance',
       'web',
@@ -329,7 +370,7 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
       'aws_vpc',
       'main',
       { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true) },
-      { x: 40, y: 60, w: 700, h: 400 },
+      { x: 40, y: 60, w: 720, h: 430 },
       ['# Networking'],
     ),
     res(
@@ -364,6 +405,14 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
       },
       { x: 32, y: 248 },
     ),
+    ...awsPublicRouting(['public_a', 'public_b'], {
+      gateway: { x: 264, y: 248 },
+      table: { x: 496, y: 248 },
+      associations: [
+        { x: 290, y: 530 },
+        { x: 540, y: 530 },
+      ],
+    }),
     res(
       'aws_lb',
       'main',
@@ -375,7 +424,7 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
         security_groups: list([ref('aws_security_group.service.id')]),
       },
       // not inside a subnet: it spans both public subnets (see `subnets`)
-      { x: 40, y: 500 },
+      { x: 40, y: 530 },
       ['# Load balancing'],
     ),
     res(
@@ -1374,10 +1423,10 @@ export const TEMPLATES: TemplateDef[] = [
   {
     slug: 'aws-web-app',
     name: 'Web App on AWS',
-    description: 'VPC with two public subnets, an EC2 web server, RDS PostgreSQL and security groups.',
+    description: 'VPC with two public subnets behind an internet gateway, an EC2 web server, RDS PostgreSQL and security groups.',
     providers: ['aws'],
     tags: ['Web Apps'],
-    resourceCount: 7,
+    resourceCount: 11,
     build: buildAwsWebApp,
   },
   {
@@ -1395,7 +1444,7 @@ export const TEMPLATES: TemplateDef[] = [
     description: 'ECS Fargate service behind an ALB, with ECR registry and full VPC networking.',
     providers: ['aws'],
     tags: ['Containers', 'Web Apps'],
-    resourceCount: 11,
+    resourceCount: 15,
     build: buildAwsContainerStack,
   },
   {
