@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { hasOpenLayer } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { CanvasPane, focusRenameInput } from '@/features/editor/CanvasPane';
 import { useLayout } from '@/features/editor/layoutStore';
@@ -27,6 +28,50 @@ function CodePaneFallback() {
       <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
       Loading code editor…
     </section>
+  );
+}
+
+const CANVAS_TARGET = 'bp-canvas';
+const CODE_TARGET = 'bp-code';
+
+/** Focus `find()` as soon as it exists (the code pane loads lazily); else the fallback. */
+function focusWhenReady(find: () => HTMLElement | null, fallback: () => HTMLElement | null) {
+  const start = performance.now();
+  const tick = () => {
+    const el = find();
+    if (el) el.focus();
+    else if (performance.now() - start < 4000) requestAnimationFrame(tick);
+    else fallback()?.focus();
+  };
+  tick();
+}
+
+/** First Tab stops on the page: jump past the topbar and palette. */
+function SkipLinks() {
+  const toCanvas = (e: React.MouseEvent) => {
+    e.preventDefault();
+    document.getElementById(CANVAS_TARGET)?.focus();
+  };
+  const toCode = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const layout = useLayout.getState();
+    if (!layout.isOpen('code')) layout.toggle('code');
+    focusWhenReady(
+      () => document.querySelector<HTMLElement>(`#${CODE_TARGET} .monaco-editor textarea`),
+      () => document.getElementById(CODE_TARGET),
+    );
+  };
+  const cls =
+    'sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[90] focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-[13px] focus:font-semibold focus:text-primary-fg focus:shadow-lg focus:outline-2 focus:outline-offset-2 focus:outline-primary';
+  return (
+    <>
+      <a href={`#${CANVAS_TARGET}`} onClick={toCanvas} className={cls}>
+        Skip to canvas
+      </a>
+      <a href={`#${CODE_TARGET}`} onClick={toCode} className={cls}>
+        Skip to code
+      </a>
+    </>
   );
 }
 
@@ -76,12 +121,16 @@ export default function EditorPage() {
         return;
       }
       if (e.key === 'Escape') {
+        // a dialog, menu or panel on top owns Esc (the layer stack closes it)
+        if (e.defaultPrevented || hasOpenLayer()) return;
         if (useLayout.getState().drawer) useLayout.getState().closeDrawer();
         else if (useEditor.getState().selection) useEditor.getState().setSelection(null);
         return;
       }
       const mod = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
+      // behind a modal dialog only undo/redo still apply (dialog edits are undoable)
+      if (hasOpenLayer(['modal']) && !(mod && (key === 'z' || key === 'y'))) return;
       const selected = useEditor.getState().selection;
       if (mod && !e.shiftKey && (key === 'b' || key === 'j' || key === 'i')) {
         e.preventDefault();
@@ -143,13 +192,16 @@ export default function EditorPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <h1 className="sr-only">Cloud Blueprint editor</h1>
+      <SkipLinks />
       <Topbar />
       <div className="flex min-h-0 flex-1">
         {!compact && panels.palette ? <Palette /> : null}
-        <div ref={splitRef} className="flex min-w-0 flex-1">
+        <main ref={splitRef} className="flex min-w-0 flex-1" aria-label="Blueprint">
+          <h1 className="sr-only">Cloud Blueprint editor</h1>
           <div
-            className="relative min-w-0"
+            id={CANVAS_TARGET}
+            tabIndex={-1}
+            className="relative min-w-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
             style={{ width: !compact && panels.code ? `${100 - split}%` : '100%' }}
           >
             <CanvasPane />
@@ -169,7 +221,11 @@ export default function EditorPage() {
               </div>
             ) : null}
             {compact && drawer === 'code' ? (
-              <div className="bp-drawer-right absolute bottom-0 right-0 top-0 z-30 w-[min(560px,94%)] border-l shadow-lg">
+              <div
+                id={CODE_TARGET}
+                tabIndex={-1}
+                className="bp-drawer-right absolute bottom-0 right-0 top-0 z-30 w-[min(560px,94%)] border-l shadow-lg outline-none"
+              >
                 <Suspense fallback={<CodePaneFallback />}>
                   <CodePane />
                 </Suspense>
@@ -185,14 +241,19 @@ export default function EditorPage() {
                 className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60 active:bg-primary"
                 onPointerDown={startDrag}
               />
-              <div className="min-w-[300px]" style={{ width: `${split}%` }}>
+              <div
+                id={CODE_TARGET}
+                tabIndex={-1}
+                className="min-w-[300px] outline-none"
+                style={{ width: `${split}%` }}
+              >
                 <Suspense fallback={<CodePaneFallback />}>
                   <CodePane />
                 </Suspense>
               </div>
             </>
           ) : null}
-        </div>
+        </main>
       </div>
       <RulesEditor />
       <ExportPdfHost />
