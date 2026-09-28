@@ -11,6 +11,7 @@ import { Inspector } from '@/features/editor/Inspector';
 import { Palette } from '@/features/editor/Palette';
 import { Topbar } from '@/features/editor/Topbar';
 import { loadProjectIntoEditor, useEditor } from '@/features/editor/store';
+import { safeStorage } from '@/lib/storage';
 
 // Monaco is ~2 MB: split it out so the canvas paints while the code pane loads
 const CodePane = lazy(() =>
@@ -33,7 +34,7 @@ function CodePaneFallback() {
 const SPLIT_KEY = 'cb-split-pct';
 
 function readSplit(): number {
-  const v = Number(localStorage.getItem(SPLIT_KEY));
+  const v = Number(safeStorage.getItem(SPLIT_KEY));
   return Number.isFinite(v) && v >= 20 && v <= 70 ? v : 36;
 }
 
@@ -131,7 +132,7 @@ export default function EditorPage() {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       setSplit((v) => {
-        localStorage.setItem(SPLIT_KEY, String(Math.round(v)));
+        safeStorage.setItem(SPLIT_KEY, String(Math.round(v)));
         return v;
       });
     };
