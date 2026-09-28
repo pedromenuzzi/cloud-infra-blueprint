@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { Badge, Button, Input, Modal } from '@/components/ui';
 import type { Provider } from '@/ir/types';
-import { createProject, type Project } from '@/lib/storage';
+import { blankProjectName, createProject, uniqueProjectName, type Project } from '@/lib/storage';
 import { cn, slugify } from '@/lib/utils';
 import { PROVIDER_LABELS, ProviderDot } from '@/resources/icons';
 import { scratchProject, TEMPLATES, type TemplateDef } from '@/templates';
@@ -67,15 +67,25 @@ export function TemplateModal({
   );
 
   const create = (template?: TemplateDef, scratch?: Provider) => {
-    const projectName = name.trim() || (template ? template.name : 'my-app');
+    const typed = name.trim();
+    const projectName = typed
+      ? uniqueProjectName(typed)
+      : template
+        ? uniqueProjectName(template.name)
+        : blankProjectName(scratch ?? 'aws');
     const slug = slugify(projectName);
     const files = template ? template.build(slug) : scratchProject(scratch ?? 'aws', projectName);
-    const project = createProject({
-      name: projectName,
-      files,
-      templateSlug: template?.slug,
-      description: template?.description,
-    });
+    let project: Project;
+    try {
+      project = createProject({
+        name: projectName,
+        files,
+        templateSlug: template?.slug,
+        description: template?.description,
+      });
+    } catch {
+      return; // storage full — the storage notice says so; stay here
+    }
     onCreated(project);
   };
 

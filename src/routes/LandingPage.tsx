@@ -28,6 +28,7 @@ import { CATEGORY_COLORS, ProviderChip, ProviderDot, ResourceIcon } from '@/reso
 import { allDefs, getDef } from '@/resources/registry';
 import type { Category } from '@/resources/types';
 import { getTemplate, TEMPLATES } from '@/templates';
+import { scrollBehavior } from '@/lib/motion';
 
 /* ------------------------------------------------------------ hero demo */
 
@@ -117,7 +118,7 @@ function HeroDemo() {
   useEffect(() => {
     const el = codeRef.current;
     if (!el) return;
-    el.scrollTo({ top: Math.max(0, from * 18 - 36), behavior: 'smooth' });
+    el.scrollTo({ top: Math.max(0, from * 18 - 36), behavior: scrollBehavior() });
   }, [from]);
 
   const pos = new Map(HERO_NODES.map((n) => [n.id, n] as const));
@@ -199,7 +200,7 @@ function HeroDemo() {
                   >
                     <ResourceIcon category={def.category} type={def.type} size={34} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[9px] font-bold uppercase tracking-[0.07em]" style={{ color: c.solid }}>
+                      <span className="block truncate text-[9px] font-bold uppercase tracking-[0.07em]" style={{ color: `var(--cat-text-${def.category})` }}>
                         {def.shortName}
                       </span>
                       <span className="block truncate text-[12.5px] font-semibold leading-tight text-foreground">{n.id}</span>

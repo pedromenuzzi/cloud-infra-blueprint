@@ -326,7 +326,8 @@ export function ProviderChip({ provider, className }: { provider: Provider; clas
         className,
       )}
       style={{
-        color,
+        // brand color for the tint, an AA-contrast shade of it for the text
+        color: provider === 'other' ? 'var(--muted-foreground)' : `var(--${provider}-text, ${color})`,
         background: `color-mix(in srgb, ${color} 13%, transparent)`,
         boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
       }}

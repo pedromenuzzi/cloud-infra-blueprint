@@ -52,9 +52,10 @@ import { applyOps, type Op } from '@/ir/ops';
 import { ResourceGroups, wordFilter } from '@/features/editor/ResourcePicker';
 import { orderedFiles, useEditor } from '@/features/editor/store';
 import { copyText, exportZip } from '@/lib/download';
-import { shareUrl } from '@/lib/share';
-import { pickTerraformFiles, readTerraformFiles } from '@/lib/importTf';
-import { createProject, detectProviders, listProjects } from '@/lib/storage';
+import { REPO_URL } from '@/lib/links';
+import { shareLinkInfo } from '@/lib/share';
+import { importNote, pickTerraformFiles, readTerraformFiles } from '@/lib/importTf';
+import { createProject, detectProviders, listProjects, uniqueProjectName, type Project } from '@/lib/storage';
 import { cn, slugify, timeAgo } from '@/lib/utils';
 import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
@@ -102,6 +103,15 @@ function Item({
       {shortcut ? <Kbd>{shortcut}</Kbd> : null}
     </Command.Item>
   );
+}
+
+/** Store a new project; null when storage is full (the storage notice already says so). */
+function tryCreate(input: Parameters<typeof createProject>[0]): Project | null {
+  try {
+    return createProject(input);
+  } catch {
+    return null;
+  }
 }
 
 export function CommandPalette() {
@@ -294,12 +304,17 @@ export function CommandPalette() {
                       icon={Share2}
                       label="Copy share link"
                       onSelect={() =>
-                        run(() =>
-                          void copyText(shareUrl({ name: editor().projectName, files: editor().files })).then(
-                            () => showToast('Share link copied', 'success'),
+                        run(() => {
+                          const link = shareLinkInfo({ name: editor().projectName, files: editor().files });
+                          if (link.tooLarge) {
+                            showToast(link.warning!, 'error');
+                            return;
+                          }
+                          void copyText(link.url).then(
+                            () => showToast(link.warning ?? 'Share link copied', link.warning ? 'info' : 'success'),
                             () => showToast('Could not copy the link', 'error'),
-                          ),
-                        )
+                          );
+                        })
                       }
                     />
                   </Command.Group>
@@ -337,7 +352,13 @@ export function CommandPalette() {
 
                   <Command.Group heading="Files">
                     {orderedFiles(files).map((f) => (
-                      <Item key={f} value={`file ${f}`} icon={FileCode2} label={f} keywords={['open', 'tab']} onSelect={() => run(() => editor().setActiveFile(f))} />
+                      <Item key={f} value={`file ${f}`} icon={FileCode2} label={f} keywords={['open', 'tab']} onSelect={() =>
+                          run(() => {
+                            editor().setActiveFile(f);
+                            // a file picked while the code pane is hidden should show up
+                            if (!useLayout.getState().isOpen('code')) togglePanel('code');
+                          })
+                        } />
                     ))}
                   </Command.Group>
 
@@ -377,12 +398,13 @@ export function CommandPalette() {
                         showToast('No .tf files found in that selection', 'error');
                         return;
                       }
-                      const project = createProject({
+                      const project = tryCreate({
                         name: imported.name,
                         files: imported.files,
                         description: `Imported from ${Object.keys(imported.files).length} Terraform file(s).`,
                       });
-                      showToast(`Imported “${imported.name}”`, 'success');
+                      if (!project) return;
+                      showToast(importNote(imported) ?? `Imported “${imported.name}”`, 'success');
                       navigate(`/editor/${project.id}`);
                     })
                   }
@@ -400,13 +422,14 @@ export function CommandPalette() {
                     keywords={[t.description, ...t.tags, 'new', 'create']}
                     onSelect={() =>
                       run(() => {
-                        const project = createProject({
-                          name: t.name,
-                          files: t.build(slugify(t.name)),
+                        const name = uniqueProjectName(t.name);
+                        const project = tryCreate({
+                          name,
+                          files: t.build(slugify(name)),
                           templateSlug: t.slug,
                           description: t.description,
                         });
-                        navigate(`/editor/${project.id}`);
+                        if (project) navigate(`/editor/${project.id}`);
                       })
                     }
                   />
@@ -421,7 +444,7 @@ export function CommandPalette() {
                   value="nav-github"
                   icon={Github}
                   label="Source on GitHub"
-                  onSelect={() => run(() => window.open('https://github.com/pedromenuzzi/cloud-infra-blueprint', '_blank', 'noopener'))}
+                  onSelect={() => run(() => window.open(REPO_URL, '_blank', 'noopener'))}
                 />
               </Command.Group>
 

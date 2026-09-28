@@ -118,7 +118,8 @@ export function InternetNodeView() {
 /** CSS custom properties carrying the category color (light + dark variants). */
 function catVars(category: Category): CSSProperties {
   const c = CATEGORY_COLORS[category];
-  return { '--cat': c.solid, '--cat-light': c.from } as CSSProperties;
+  // --cat-text: an AA-contrast shade of the category color for labels
+  return { '--cat': c.solid, '--cat-light': c.from, '--cat-text': `var(--cat-text-${category})` } as CSSProperties;
 }
 
 function WarnBadge() {
@@ -147,7 +148,7 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
       <ResourceIcon category={data.category} type={data.resourceType} size={40} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1">
-          <span className="truncate text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat) dark:text-(--cat-light)">
+          <span className="truncate text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
             {data.typeLabel}
           </span>
           {data.provider !== 'other' ? <ProviderChip provider={data.provider} /> : null}
@@ -206,7 +207,7 @@ export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlo
       <div className="flex items-center gap-2 px-3 pt-2.5">
         <ResourceIcon category={data.category} type={data.resourceType} size={24} />
         <span className="truncate text-[12.5px] font-semibold text-foreground">{data.title}</span>
-        <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat) dark:text-(--cat-light)">
+        <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
           {data.typeLabel}
         </span>
         {data.subtitle ? (

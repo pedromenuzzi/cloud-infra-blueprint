@@ -13,6 +13,7 @@ import { Palette } from '@/features/editor/Palette';
 import { Topbar } from '@/features/editor/Topbar';
 import { loadProjectIntoEditor, useEditor } from '@/features/editor/store';
 import { safeStorage } from '@/lib/storage';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
 // Monaco is ~2 MB: split it out so the canvas paints while the code pane loads
 const CodePane = lazy(() =>
@@ -94,6 +95,7 @@ export default function EditorPage() {
   const drawer = useLayout((s) => s.drawer);
   const selection = useEditor((s) => s.selection);
   const securityPanel = useSecurityUi((s) => s.panelOpen);
+  useDocumentTitle(useEditor((s) => s.projectName));
 
   // compact layout below 1100px: canvas full-width, palette/code as drawers
   useEffect(() => {

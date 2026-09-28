@@ -45,6 +45,7 @@ import { showToast } from '@/components/Toast';
 import { Button, Kbd } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
 import { captureDiagram } from '@/features/export/captureDiagram';
+import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
 import { ref } from '@/ir/expr';
@@ -170,7 +171,7 @@ function buildFlow(
       parentId: r.parentId,
       ariaLabel: `${def?.displayName ?? r.type} ${r.name}${
         parent ? `, in ${getDef(parent.type)?.displayName ?? parent.type} ${parent.name}` : ''
-      }`,
+      }${warned.has(r.id) ? ', missing required settings' : ''}`,
     };
     if (container) {
       return {
@@ -742,7 +743,7 @@ function CanvasInner() {
       const ops = await computeTidyOps(state.ir, state.edges, isContainerType);
       setLayoutAnim(true);
       applyCanvasOps(ops);
-      setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: 450 }), 60);
+      setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(450) }), 60);
       setTimeout(() => setLayoutAnim(false), 520);
     } catch (err) {
       showToast(`Couldn't tidy the layout: ${(err as Error).message}`, 'error');
@@ -810,7 +811,7 @@ function CanvasInner() {
     autoPan.current = null;
     const vp = rf.getViewport();
     if (Math.abs(vp.x - after.x) < 2 && Math.abs(vp.y - after.y) < 2 && vp.zoom === after.zoom) {
-      void rf.setViewport(before, { duration: 300 });
+      void rf.setViewport(before, { duration: motionMs(300) });
     }
   }, [selection, rf]);
 
@@ -838,7 +839,7 @@ function CanvasInner() {
       const top = rect.top + pad;
       const bottom = rect.bottom - pad;
       if (br.x - tl.x > right - left || br.y - tl.y > bottom - top) {
-        void rf.setCenter(x + w / 2, y + h / 2, { zoom: rf.getZoom(), duration: 350 });
+        void rf.setCenter(x + w / 2, y + h / 2, { zoom: rf.getZoom(), duration: motionMs(350) });
         return;
       }
       const dx = br.x > right ? right - br.x : tl.x < left ? left - tl.x : 0;
@@ -848,7 +849,7 @@ function CanvasInner() {
       const next = { x: vp.x + dx, y: vp.y + dy, zoom: vp.zoom };
       // remember where the user was, to slide back when the inspector closes
       autoPan.current = { before: autoPan.current?.before ?? vp, after: next };
-      void rf.setViewport(next, { duration: 300 });
+      void rf.setViewport(next, { duration: motionMs(300) });
     },
     [rf, inspectorInset],
   );
@@ -866,9 +867,9 @@ function CanvasInner() {
 
   useEffect(() => {
     registerCanvasApi({
-      fitView: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: 350 }),
-      zoomIn: () => void rf.zoomIn({ duration: 200 }),
-      zoomOut: () => void rf.zoomOut({ duration: 200 }),
+      fitView: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) }),
+      zoomIn: () => void rf.zoomIn({ duration: motionMs(200) }),
+      zoomOut: () => void rf.zoomOut({ duration: motionMs(200) }),
       tidy,
       exportImage,
       captureDiagram: () => withCleanDiagram((bounds) => captureDiagram(bounds, useSecurityUi.getState().lens)),
@@ -939,7 +940,7 @@ function CanvasInner() {
     return [
       { id: 'add', label: 'Add resource here…', icon: Plus, shortcut: 'Dbl-click', onSelect: () => setQuickAdd(at) },
       'separator',
-      { id: 'fit', label: 'Fit view', icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: 350 }) },
+      { id: 'fit', label: 'Fit view', icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) }) },
       { id: 'tidy', label: 'Tidy up layout', icon: WandSparkles, onSelect: () => void tidy() },
       'separator',
       ...exportEntries,

@@ -20,29 +20,7 @@ interface Allow {
   owner: string;
 }
 
-const ALLOW: Allow[] = [
-  {
-    rule: 'color-contrast',
-    within: '.react-flow__node',
-    owner:
-      'nodes.tsx (lead): category label → text-(--cat-text) with --cat-text: var(--cat-text-<category>); ProviderChip below',
-  },
-  {
-    rule: 'color-contrast',
-    within: '[class*="rounded-[4px]"][class*="text-[9px]"]',
-    owner: 'ProviderChip (resources/icons.tsx): color: var(--<provider>-text) instead of the brand color',
-  },
-  {
-    rule: 'color-contrast',
-    within: '[class*="text-[9px]"][class*="tracking-[0.07em]"]',
-    owner: 'LandingPage hero art: category label color → var(--cat-text-<category>)',
-  },
-  {
-    rule: 'nested-interactive',
-    within: '[class*="cursor-pointer"][class*="rounded-[14px]"]',
-    owner: 'DashboardPage project card: clickable div wrapping buttons',
-  },
-];
+const ALLOW: Allow[] = [];
 
 interface Finding {
   id: string;
@@ -104,8 +82,8 @@ async function framesAfter(page: Page, button: string): Promise<number> {
 test.describe('reduced motion', () => {
   test('canvas toolbar zoom and fit view jump instead of animating', async ({ page }) => {
     await openSeedProject(page, { monaco: false });
-    // baseline: without the preference the viewport animates over many frames
-    expect(await framesAfter(page, 'Zoom in')).toBeGreaterThan(3);
+    // baseline: without the preference the viewport animates — a jump is 2 transforms (start, end)
+    expect(await framesAfter(page, 'Zoom in')).toBeGreaterThan(2);
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     expect(await framesAfter(page, 'Zoom in')).toBeLessThanOrEqual(2);

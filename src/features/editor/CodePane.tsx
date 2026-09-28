@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { lineColOf } from '@/hcl/parser';
+import { prefersReducedMotion } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { ensureMonacoSetup, monaco, setCompletionSource } from './monaco/setup';
 import { orderedFiles, useEditor } from './store';
@@ -93,7 +94,7 @@ export function CodePane() {
       insertSpaces: true,
       padding: { top: 10, bottom: 10 },
       renderLineHighlight: 'line',
-      smoothScrolling: true,
+      smoothScrolling: !prefersReducedMotion(),
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
       guides: { indentation: true },
       wordBasedSuggestions: 'off',
@@ -273,9 +274,15 @@ export function CodePane() {
 
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    tabsRef.current
-      ?.querySelector<HTMLElement>(`[data-file="${CSS.escape(activeFile)}"]`)
-      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // scroll the strip itself: scrollIntoView would also move the page and
+    // the browser's Tab starting point
+    const strip = tabsRef.current;
+    const tab = strip?.querySelector<HTMLElement>(`[data-file="${CSS.escape(activeFile)}"]`);
+    if (!strip || !tab) return;
+    const s = strip.getBoundingClientRect();
+    const t = tab.getBoundingClientRect();
+    if (t.left < s.left) strip.scrollLeft -= s.left - t.left + 8;
+    else if (t.right > s.right) strip.scrollLeft += t.right - s.right + 8;
   }, [activeFile]);
 
   const fileErrors = (file: string) =>

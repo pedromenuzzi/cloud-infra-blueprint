@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Check,
   ChevronDown,
   Code2,
@@ -28,7 +29,7 @@ import { showToast } from '@/components/Toast';
 import { Button, Kbd, LogoMark } from '@/components/ui';
 import { IS_MAC, MOD, usePalette } from '@/features/command/paletteStore';
 import { copyText, exportZip } from '@/lib/download';
-import { shareUrl } from '@/lib/share';
+import { shareLinkInfo } from '@/lib/share';
 import { cn } from '@/lib/utils';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { GRADE_COLORS, getAudit, useSecurityUi } from '@/features/security/securityStore';
@@ -100,10 +101,17 @@ function SecurityBadge() {
   );
 }
 
+const SAVE_ERROR_HINT: Record<'quota' | 'conflict' | 'deleted', string> = {
+  quota: 'Browser storage is full — export or delete projects; your edits are kept in this tab until then',
+  conflict: 'This project changed in another tab — choose which version to keep',
+  deleted: 'This project was deleted in another tab — restore it or keep it as a new project',
+};
+
 export function Topbar() {
   const projectName = useEditor((s) => s.projectName);
   const renameProject = useEditor((s) => s.renameProject);
   const saveState = useEditor((s) => s.saveState);
+  const saveError = useEditor((s) => s.saveError);
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
   const undo = useEditor((s) => s.undo);
@@ -126,8 +134,13 @@ export function Topbar() {
 
   const doShare = () => {
     const { projectName: name, files } = useEditor.getState();
-    void copyText(shareUrl({ name, files })).then(
-      () => showToast('Share link copied — anyone can open this project', 'success'),
+    const link = shareLinkInfo({ name, files });
+    if (link.tooLarge) {
+      showToast(link.warning!, 'error');
+      return;
+    }
+    void copyText(link.url).then(
+      () => showToast(link.warning ?? 'Share link copied — anyone can open this project', link.warning ? 'info' : 'success'),
       () => showToast('Could not copy the link', 'error'),
     );
   };
@@ -214,14 +227,21 @@ export function Topbar() {
 
       <span
         className={cn(
-          'hidden items-center gap-1 text-[11.5px] font-medium transition-colors sm:flex',
-          saveState === 'saved' ? 'text-faint' : 'text-muted',
+          'items-center gap-1 text-[11.5px] font-medium transition-colors',
+          saveState === 'error' ? 'flex text-danger' : 'hidden sm:flex',
+          saveState === 'saved' ? 'text-faint' : saveState === 'saving' ? 'text-muted' : '',
         )}
         role="status"
+        title={saveState === 'error' ? SAVE_ERROR_HINT[saveError ?? 'quota'] : undefined}
       >
         {saveState === 'saved' ? (
           <>
             <Check className="h-3.5 w-3.5 text-success" /> Saved
+          </>
+        ) : saveState === 'error' ? (
+          <>
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {saveError === 'quota' ? 'Not saved — storage full' : 'Not saved'}
           </>
         ) : (
           <>
