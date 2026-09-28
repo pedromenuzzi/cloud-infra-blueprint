@@ -2,17 +2,38 @@
  * Serverless sharing: the whole project (name + .tf files) is deflated and
  * packed into the URL fragment. Opening the link imports it as a local copy.
  * The fragment never leaves the browser (servers don't see `#…`).
+ *
+ * Links are untrusted input: decoding is size-capped (a tiny link can inflate
+ * to hundreds of MB) and the payload shape is validated strictly.
  */
-import { deflateSync, inflateSync, strFromU8, strToU8 } from 'fflate';
+import { deflateSync, Inflate, strFromU8, strToU8 } from 'fflate';
 
 export interface SharePayload {
   name: string;
   files: Record<string, string>;
 }
 
+const VERSION = 1;
+/** Inflated payload cap — the same order as the localStorage quota. */
+export const MAX_SHARE_BYTES = 5 * 1024 * 1024;
+/** Longest fragment we try to decode (browsers cap URLs around 2 MB anyway). */
+const MAX_ENCODED_CHARS = 2 * 1024 * 1024;
+const MAX_FILES = 500;
+/** Links longer than this get cut off by some chat apps, mail clients and browsers. */
+export const SHARE_URL_SOFT_LIMIT = 32 * 1024;
+/** A file name: letters, digits, `_`, `.`, `-` — and not just dots (`..`). */
+const FILE_NAME = /^(?!\.+$)[\p{L}\p{N}_.-]{1,120}$/u;
+
+export type ShareError = 'invalid' | 'too-large' | 'version';
+export type ShareDecodeResult = { ok: true; payload: SharePayload } | { ok: false; error: ShareError };
+
+class TooLarge extends Error {}
+
 function toBase64Url(bytes: Uint8Array): string {
   let bin = '';
-  for (const b of bytes) bin += String.fromCharCode(b);
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
@@ -24,26 +45,67 @@ function fromBase64Url(s: string): Uint8Array {
   return bytes;
 }
 
+/** Inflate, giving up as soon as the output passes `cap` bytes. */
+function inflateCapped(data: Uint8Array, cap: number): Uint8Array {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let done = false;
+  const inflater = new Inflate((chunk, final) => {
+    size += chunk.length;
+    if (size > cap) throw new TooLarge();
+    chunks.push(chunk);
+    if (final) done = true;
+  });
+  // small input slices bound how much one push can inflate (~1000:1 at most)
+  const STEP = 4096;
+  for (let i = 0; i < data.length; i += STEP) {
+    inflater.push(data.subarray(i, i + STEP), i + STEP >= data.length);
+  }
+  if (!done) throw new Error('truncated');
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const c of chunks) {
+    out.set(c, at);
+    at += c.length;
+  }
+  return out;
+}
+
 export function encodeShare(payload: SharePayload): string {
-  const json = JSON.stringify({ v: 1, n: payload.name, f: payload.files });
+  const json = JSON.stringify({ v: VERSION, n: payload.name, f: payload.files });
   return toBase64Url(deflateSync(strToU8(json), { level: 9 }));
 }
 
-export function decodeShare(encoded: string): SharePayload | null {
-  try {
-    const json = strFromU8(inflateSync(fromBase64Url(encoded)));
-    const data = JSON.parse(json) as { v: number; n: string; f: Record<string, string> };
-    if (!data || typeof data.n !== 'string' || typeof data.f !== 'object' || data.f === null) {
-      return null;
-    }
-    const files: Record<string, string> = {};
-    for (const [k, v] of Object.entries(data.f)) {
-      if (typeof v === 'string' && /^[\w.-]+$/.test(k)) files[k] = v;
-    }
-    return { name: data.n.slice(0, 80) || 'Shared project', files };
-  } catch {
-    return null;
+export function decodeShareResult(encoded: string): ShareDecodeResult {
+  if (!encoded || encoded.length > MAX_ENCODED_CHARS) {
+    return { ok: false, error: encoded ? 'too-large' : 'invalid' };
   }
+  let data: unknown;
+  try {
+    data = JSON.parse(strFromU8(inflateCapped(fromBase64Url(encoded), MAX_SHARE_BYTES)));
+  } catch (err) {
+    return { ok: false, error: err instanceof TooLarge ? 'too-large' : 'invalid' };
+  }
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) return { ok: false, error: 'invalid' };
+  const { v, n, f } = data as Record<string, unknown>;
+  if (typeof v === 'number' && v > VERSION) return { ok: false, error: 'version' };
+  if (v !== VERSION || typeof n !== 'string') return { ok: false, error: 'invalid' };
+  if (typeof f !== 'object' || f === null || Array.isArray(f)) return { ok: false, error: 'invalid' };
+  const entries = Object.entries(f);
+  if (entries.length > MAX_FILES || entries.some(([, text]) => typeof text !== 'string')) {
+    return { ok: false, error: 'invalid' };
+  }
+  const files: Record<string, string> = {};
+  for (const [name, text] of entries) {
+    if (FILE_NAME.test(name) && name !== '__proto__') files[name] = text as string;
+  }
+  return { ok: true, payload: { name: n.trim().slice(0, 80) || 'Shared project', files } };
+}
+
+/** Decoded payload, or null for anything invalid (see decodeShareResult for why). */
+export function decodeShare(encoded: string): SharePayload | null {
+  const result = decodeShareResult(encoded);
+  return result.ok ? result.payload : null;
 }
 
 export function shareUrl(payload: SharePayload): string {
@@ -51,8 +113,66 @@ export function shareUrl(payload: SharePayload): string {
   return `${base}#share=${encodeShare(payload)}`;
 }
 
-export function readShareFromLocation(): SharePayload | null {
-  const m = /#share=([A-Za-z0-9_-]+)/.exec(location.hash);
+export interface ShareLinkInfo {
+  url: string;
+  /** length of the URL in bytes (it's ASCII) */
+  bytes: number;
+  /** longer than SHARE_URL_SOFT_LIMIT: may get cut off when pasted around */
+  long: boolean;
+  /** too big for anyone to open (over the decode cap) */
+  tooLarge: boolean;
+  /** a sentence for a toast when the link is risky, else null */
+  warning: string | null;
+}
+
+/** The share URL plus a warning when it's too long to travel safely. */
+export function shareLinkInfo(payload: SharePayload): ShareLinkInfo {
+  const url = shareUrl(payload);
+  const bytes = url.length;
+  const tooLarge = strToU8(JSON.stringify({ v: VERSION, n: payload.name, f: payload.files })).length > MAX_SHARE_BYTES;
+  const long = bytes > SHARE_URL_SOFT_LIMIT;
+  const kb = Math.round(bytes / 1024);
+  const warning = tooLarge
+    ? 'This project is too large to share as a link — export a Terraform zip instead.'
+    : long
+      ? `This link is ${kb} KB — links over 32 KB can get cut off by chat apps and browsers. For big projects, share a Terraform zip.`
+      : null;
+  return { url, bytes, long, tooLarge, warning };
+}
+
+/**
+ * Stable content hash of a payload (cyrb53 over name + sorted files), used to
+ * spot a link that was already imported.
+ */
+export function shareHash(payload: SharePayload): string {
+  const text = JSON.stringify([
+    payload.name,
+    Object.keys(payload.files)
+      .sort()
+      .map((k) => [k, payload.files[k]]),
+  ]);
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+
+const SHARE_FRAGMENT = /^#share=(.*)$/s;
+
+/** null when the URL has no share fragment; otherwise the decoded (or failed) payload. */
+export function readShareFromLocation(): ShareDecodeResult | null {
+  const m = SHARE_FRAGMENT.exec(location.hash);
   if (!m) return null;
-  return decodeShare(m[1]);
+  return /^[A-Za-z0-9_-]+$/.test(m[1]) ? decodeShareResult(m[1]) : { ok: false, error: 'invalid' };
+}
+
+/** Drop the `#share=…` fragment without a navigation (keeps the router's history state). */
+export function clearShareFragment() {
+  history.replaceState(history.state, '', location.pathname + location.search);
 }
