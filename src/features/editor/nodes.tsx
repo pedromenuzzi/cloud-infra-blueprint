@@ -14,6 +14,7 @@ import {
 } from '@xyflow/react';
 import { AlertTriangle, Globe, Lock, Shield, ShieldEllipsis, ShieldOff } from 'lucide-react';
 import type { CSSProperties } from 'react';
+import type { Op } from '@/ir/ops';
 import type { Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS, ProviderChip, ResourceIcon } from '@/resources/icons';
@@ -178,18 +179,28 @@ export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlo
         handleClassName="!h-2.5 !w-2.5 !rounded-[3px] !border-(--cat) !bg-surface-1"
         onResizeEnd={(_e, params) => {
           // params.x/y are relative to the parent — the same space the IR stores
-          applyCanvasOps([
-            {
-              kind: 'move_node',
-              nodeId: id,
-              position: {
-                x: params.x,
-                y: params.y,
-                w: Math.round(params.width),
-                h: Math.round(params.height),
-              },
-            },
-          ]);
+          const x = Math.round(params.x);
+          const y = Math.round(params.y);
+          const ops: Op[] = [
+            { kind: 'move_node', nodeId: id, position: { x, y, w: Math.round(params.width), h: Math.round(params.height) } },
+          ];
+          // resizing from the top or left moves the origin; children are stored
+          // relative to it, so shift them back to stay where they were drawn
+          const { resources } = useEditor.getState().ir;
+          const self = resources.find((r) => r.id === id);
+          const dx = x - (self?.position?.x ?? x);
+          const dy = y - (self?.position?.y ?? y);
+          if (dx !== 0 || dy !== 0) {
+            for (const child of resources) {
+              if (child.parentId !== id || !child.position) continue;
+              ops.push({
+                kind: 'move_node',
+                nodeId: child.id,
+                position: { ...child.position, x: child.position.x - dx, y: child.position.y - dy },
+              });
+            }
+          }
+          applyCanvasOps(ops);
         }}
       />
       <div className="flex items-center gap-2 px-3 pt-2.5">

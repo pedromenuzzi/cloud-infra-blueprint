@@ -7,12 +7,14 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useEdgesState,
+  useKeyPress,
   useNodesState,
   useReactFlow,
   useUpdateNodeInternals,
   type Connection,
   type Edge,
   type Node,
+  type NodeChange,
   type OnSelectionChangeParams,
   type Rect,
   type Viewport,
@@ -124,11 +126,24 @@ function lensDecorations(ir: IR, audit: AuditResult) {
 
 export const PALETTE_MIME = 'application/x-blueprint-type';
 
+/** Why two resources can't be wired directly — with the usual indirection when there is one. */
+function connectHint(a: string, b: string): string {
+  const pair = new Set([a, b]);
+  if (pair.has('aws_instance') && pair.has('aws_iam_role')) {
+    return 'An EC2 instance uses a role through an aws_iam_instance_profile — add one in code';
+  }
+  return 'These resources have no direct attribute to connect';
+}
+
+/**
+ * Nodes and edges for the IR. Selection is applied separately (withSelection)
+ * so clicking a node doesn't rebuild the whole graph.
+ */
 function buildFlow(
-  state: Pick<ReturnType<typeof useEditor.getState>, 'ir' | 'edges' | 'warnings' | 'selection'>,
+  state: Pick<ReturnType<typeof useEditor.getState>, 'ir' | 'edges' | 'warnings'>,
   audit: AuditResult | null = null,
 ): { nodes: FlowNode[]; edges: Array<FlowEdgeType | SecFlowEdgeType> } {
-  const { ir, edges, warnings, selection } = state;
+  const { ir, edges, warnings } = state;
   const lens = audit ? lensDecorations(ir, audit) : null;
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
   const warned = new Set(warnings.map((w) => w.nodeId).filter(Boolean));
@@ -148,11 +163,14 @@ function buildFlow(
   const nodes: FlowNode[] = sorted.map((r) => {
     const def = getDef(r.type);
     const container = isContainerType(r.type);
+    const parent = r.parentId ? byId.get(r.parentId) : undefined;
     const common = {
       id: r.id,
       position: { x: r.position?.x ?? 0, y: r.position?.y ?? 0 },
       parentId: r.parentId,
-      selected: selection === r.id,
+      ariaLabel: `${def?.displayName ?? r.type} ${r.name}${
+        parent ? `, in ${getDef(parent.type)?.displayName ?? parent.type} ${parent.name}` : ''
+      }`,
     };
     if (container) {
       return {
@@ -208,7 +226,7 @@ function buildFlow(
     data: {
       field: e.field,
       kind: e.kind,
-      active: selection === e.source || selection === e.target,
+      active: false,
       dimmed: audit !== null,
     },
   }));
@@ -267,6 +285,27 @@ function buildFlow(
   return { nodes, edges: [...rfEdges, ...secEdges] };
 }
 
+type AnyFlowEdge = FlowEdgeType | SecFlowEdgeType;
+
+/**
+ * Selection flags for a fresh or existing node list. A multi-selection made
+ * on the canvas survives as long as it contains the primary selection (the
+ * one the inspector shows); otherwise only the primary is selected.
+ */
+function withSelection(list: FlowNode[], previous: FlowNode[], primary: string | null): FlowNode[] {
+  const kept = new Set(previous.filter((n) => n.selected).map((n) => n.id));
+  const want = primary && kept.has(primary) ? kept : new Set(primary ? [primary] : []);
+  return list.map((n) => (Boolean(n.selected) === want.has(n.id) ? n : { ...n, selected: want.has(n.id) }));
+}
+
+function withActiveEdges(list: AnyFlowEdge[], primary: string | null): AnyFlowEdge[] {
+  return list.map((e) => {
+    if (e.type !== 'flow' || !e.data) return e;
+    const active = primary !== null && (e.source === primary || e.target === primary);
+    return e.data.active === active ? e : ({ ...e, data: { ...e.data, active } } as AnyFlowEdge);
+  });
+}
+
 function CanvasInner() {
   const ir = useEditor((s) => s.ir);
   const irEdges = useEditor((s) => s.edges);
@@ -280,7 +319,9 @@ function CanvasInner() {
   const [tidying, setTidying] = useState(false);
   const [layoutAnim, setLayoutAnim] = useState(false);
   const [quickAdd, setQuickAdd] = useState<{ x: number; y: number } | null>(null);
-  const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string | null } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; nodeId: string | null; exportOnly?: boolean } | null>(
+    null,
+  );
   const [overview, setOverview] = useState(false);
   const panelsInspector = useLayout((s) => s.panels.inspector);
   const compact = useLayout((s) => s.compact);
@@ -298,10 +339,16 @@ function CanvasInner() {
   }
 
   useEffect(() => {
-    const built = buildFlow({ ir, edges: irEdges, warnings, selection }, lensOn ? getAudit(ir) : null);
-    setNodes(built.nodes);
-    setEdges(built.edges);
-  }, [ir, irEdges, warnings, selection, lensOn, setNodes, setEdges]);
+    const built = buildFlow({ ir, edges: irEdges, warnings }, lensOn ? getAudit(ir) : null);
+    const primary = useEditor.getState().selection;
+    setNodes((previous) => withSelection(built.nodes, previous, primary));
+    setEdges(withActiveEdges(built.edges, primary));
+  }, [ir, irEdges, warnings, lensOn, setNodes, setEdges]);
+
+  useEffect(() => {
+    setNodes((previous) => withSelection(previous, previous, selection));
+    setEdges((previous) => withActiveEdges(previous, selection));
+  }, [selection, setNodes, setEdges]);
 
   // React Flow can drop a node's measurement when its size changes (a container
   // growing around a moved child) and hidden tabs skip the first pass; re-measure
@@ -317,12 +364,85 @@ function CanvasInner() {
   const byId = useMemo(() => new Map(ir.resources.map((r) => [r.id, r] as const)), [ir]);
   const absRects = useMemo(() => computeAbsoluteRects(ir), [ir]);
 
-  const onSelectionChange = useCallback(
-    (params: OnSelectionChangeParams) => {
-      const id = params.nodes[0]?.id ?? null;
-      if (id !== useEditor.getState().selection) setSelection(id);
+  // arrow keys move selected nodes: persist them (one undo step per burst) like a drag
+  const lastArrowKey = useRef(0);
+  const keyboardMoved = useRef(new Set<string>());
+  const keyboardTimer = useRef<ReturnType<typeof setTimeout>>();
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<FlowNode>[]) => {
+      onNodesChange(changes);
+      if (Date.now() - lastArrowKey.current > 200) return;
+      for (const c of changes) {
+        if (c.type === 'position' && !c.dragging && c.position) keyboardMoved.current.add(c.id);
+      }
+      if (keyboardMoved.current.size === 0) return;
+      clearTimeout(keyboardTimer.current);
+      keyboardTimer.current = setTimeout(() => {
+        const moved = [...keyboardMoved.current];
+        keyboardMoved.current.clear();
+        const current = new Map(useEditor.getState().ir.resources.map((r) => [r.id, r] as const));
+        const ops: Op[] = moved.flatMap((id) => {
+          const node = rf.getNode(id);
+          const irNode = current.get(id);
+          if (!node || !irNode) return [];
+          const size = irNode.position?.w !== undefined ? { w: irNode.position.w, h: irNode.position.h } : {};
+          return [
+            {
+              kind: 'move_node' as const,
+              nodeId: id,
+              position: { x: Math.round(node.position.x), y: Math.round(node.position.y), ...size },
+            },
+          ];
+        });
+        if (ops.length > 0) applyCanvasOps(ops);
+      }, 400);
+    },
+    [applyCanvasOps, onNodesChange, rf],
+  );
+  useEffect(() => () => clearTimeout(keyboardTimer.current), []);
+
+  // another project opened from inside the editor (⌘K): show all of it
+  const projectId = useEditor((s) => s.projectId);
+  const shownProject = useRef(projectId);
+  useEffect(() => {
+    if (projectId === shownProject.current) return;
+    shownProject.current = projectId;
+    const t = setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1 }), 80);
+    return () => clearTimeout(t);
+  }, [projectId, rf]);
+
+  // Space + drag pans — even when the pointer starts on a node
+  const spaceHeld = useKeyPress('Space');
+
+  const [canvasWidth, setCanvasWidth] = useState(0);
+  useEffect(() => {
+    const el = wrapper.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setCanvasWidth(el.clientWidth));
+    observer.observe(el);
+    setCanvasWidth(el.clientWidth);
+    return () => observer.disconnect();
+  }, []);
+
+  /** set while a Shift-drag box selection is in progress */
+  const boxSelecting = useRef(false);
+
+  const syncSelection = useCallback(
+    (ids: string[]) => {
+      const current = useEditor.getState().selection;
+      const primary = ids.length === 0 ? null : current && ids.includes(current) ? current : ids[ids.length - 1];
+      if (primary !== current) setSelection(primary);
     },
     [setSelection],
+  );
+
+  const onSelectionChange = useCallback(
+    (params: OnSelectionChangeParams) => {
+      // the inspector shouldn't pop open (and pan the canvas) mid box-drag
+      if (boxSelecting.current) return;
+      syncSelection(params.nodes.map((n) => n.id).filter((id) => id !== INTERNET_NODE));
+    },
+    [syncSelection],
   );
 
   /** containers that may adopt `node`, deepest first */
@@ -349,6 +469,31 @@ function CanvasInner() {
           cx >= rect.x && cx <= rect.x + rect.w && cy >= rect.y && cy <= rect.y + rect.h;
         if (!inside) continue;
         if (!best || rect.depth > best.depth) best = rect;
+      }
+      return best;
+    },
+    [absRects, byId],
+  );
+
+  /**
+   * The deepest container under a point that `node` is not part of (neither
+   * its parent chain nor itself/its descendants) — dropping there misleads.
+   */
+  const foreignContainerAt = useCallback(
+    (node: ResourceNode, cx: number, cy: number): AbsRect | undefined => {
+      const ancestors = new Set<string>();
+      for (let cur = node.parentId, guard = 0; cur && guard < 12; cur = byId.get(cur)?.parentId, guard++) ancestors.add(cur);
+      const isSelfOrDescendant = (r: ResourceNode): boolean => {
+        for (let cur: ResourceNode | undefined = r, guard = 0; cur && guard < 12; cur = cur.parentId ? byId.get(cur.parentId) : undefined, guard++) {
+          if (cur.id === node.id) return true;
+        }
+        return false;
+      };
+      let best: AbsRect | undefined;
+      for (const rect of absRects.values()) {
+        if (!rect.isContainer || ancestors.has(rect.node.id) || isSelfOrDescendant(rect.node)) continue;
+        const inside = cx >= rect.x && cx <= rect.x + rect.w && cy >= rect.y && cy <= rect.y + rect.h;
+        if (inside && (!best || rect.depth > best.depth)) best = rect;
       }
       return best;
     },
@@ -413,10 +558,32 @@ function CanvasInner() {
                   nodeId: n.id,
                   position: { x: Math.round(abs.x), y: Math.round(abs.y), ...keepSize },
                 });
+                showToast(`Removed ${rule.arg} from ${n.id} — it's no longer in ${currentParent} (${MOD} Z to undo)`, 'info');
                 continue;
               }
             }
           }
+        }
+
+        // a drop over a container the node can't belong to would draw it inside
+        // something it isn't part of: set it down just beside that container
+        const over = group.length === 1 ? foreignContainerAt(irNode, abs.x + w / 2, abs.y + h / 2) : undefined;
+        if (over) {
+          const parentRect = irNode.parentId ? absRects.get(irNode.parentId) : undefined;
+          ops.push({
+            kind: 'move_node',
+            nodeId: n.id,
+            position: {
+              x: Math.round(over.x + over.w + 24 - (parentRect?.x ?? 0)),
+              y: Math.round(abs.y - (parentRect?.y ?? 0)),
+              ...keepSize,
+            },
+          });
+          showToast(
+            `${def?.shortName ?? irNode.type} can't go inside ${getDef(over.node.type)?.shortName ?? over.node.type} — placed next to it`,
+            'info',
+          );
+          continue;
         }
 
         ops.push({
@@ -427,7 +594,7 @@ function CanvasInner() {
       }
       if (ops.length > 0) applyCanvasOps(ops);
     },
-    [applyCanvasOps, byId, findContainerAt, rf],
+    [absRects, applyCanvasOps, byId, findContainerAt, foreignContainerAt, rf],
   );
 
   const onConnect = useCallback(
@@ -445,30 +612,52 @@ function CanvasInner() {
         return;
       }
 
-      const tryRule = (from: ResourceNode, to: ResourceNode): Op | null => {
+      const tryRule = (from: ResourceNode, to: ResourceNode): Op | 'connected' | null => {
         const def = getDef(from.type);
         const rule = def?.connections?.find((c) => c.targetTypes.includes(to.type));
         if (!rule) return null;
         const path = `${to.id}.${rule.attr}`;
+        const existing = from.args[rule.arg];
+        const pointsAtTarget = (e: Expression | undefined) => e?.kind === 'ref' && e.path.startsWith(`${to.id}.`);
         if (rule.mode === 'set') {
+          if (pointsAtTarget(existing)) return 'connected';
           return { kind: 'set_arg', nodeId: from.id, field: rule.arg, value: ref(path) };
         }
-        const existing = from.args[rule.arg];
+        // appending to an expression we don't model (var.ids, concat(…)) would break its type
+        if (existing && existing.kind !== 'list' && existing.kind !== 'ref') return null;
         const items: Expression[] =
           existing?.kind === 'list' ? [...existing.items] : existing ? [existing] : [];
-        if (items.some((i) => i.kind === 'ref' && i.path.startsWith(`${to.id}.`))) return null;
+        if (items.some(pointsAtTarget)) return 'connected';
         items.push(ref(path));
         return { kind: 'set_arg', nodeId: from.id, field: rule.arg, value: { kind: 'list', items } };
       };
 
       const op = tryRule(source, target) ?? tryRule(target, source);
+      if (op === 'connected') {
+        showToast('These resources are already connected', 'info');
+        return;
+      }
       if (!op) {
-        showToast('These resources have no direct attribute to connect', 'info');
+        showToast(connectHint(source.type, target.type), 'info');
         return;
       }
       applyCanvasOps([op]);
     },
     [applyCanvasOps, byId],
+  );
+
+  /** only offer drops on targets that one of the two resources can actually reference */
+  const isValidConnection = useCallback(
+    (c: Connection | Edge) => {
+      const a = c.source ? byId.get(c.source) : undefined;
+      const b = c.target ? byId.get(c.target) : undefined;
+      if (!a || !b || a.id === b.id) return false;
+      if (a.provider !== b.provider && a.provider !== 'other' && b.provider !== 'other') return false;
+      const links = (from: ResourceNode, to: ResourceNode) =>
+        getDef(from.type)?.connections?.some((rule) => rule.targetTypes.includes(to.type)) ?? false;
+      return links(a, b) || links(b, a);
+    },
+    [byId],
   );
 
   /** Delete key: nodes (with children + refs to them) and/or edges — always one undo step */
@@ -719,7 +908,7 @@ function CanvasInner() {
           shortcut: 'F2',
           onSelect: () => focusRenameInput(),
         },
-        { id: 'duplicate', label: 'Duplicate', icon: CopyPlus, shortcut: '⌘D', onSelect: () => duplicate(node.id) },
+        { id: 'duplicate', label: 'Duplicate', icon: CopyPlus, shortcut: `${MOD}D`, onSelect: () => duplicate(node.id) },
         {
           id: 'copy',
           label: 'Copy address',
@@ -740,6 +929,12 @@ function CanvasInner() {
         },
       ];
     }
+    const exportEntries: MenuEntry[] = [
+      { id: 'pdf', label: 'Export PDF document…', icon: FileText, onSelect: openExportPdf },
+      { id: 'png', label: 'Export as PNG', icon: ImageDown, onSelect: () => void exportImage('png') },
+      { id: 'svg', label: 'Export as SVG', icon: FileImage, onSelect: () => void exportImage('svg') },
+    ];
+    if (menu.exportOnly) return exportEntries;
     const at = { x: menu.x, y: menu.y };
     return [
       { id: 'add', label: 'Add resource here…', icon: Plus, shortcut: 'Dbl-click', onSelect: () => setQuickAdd(at) },
@@ -747,15 +942,16 @@ function CanvasInner() {
       { id: 'fit', label: 'Fit view', icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: 350 }) },
       { id: 'tidy', label: 'Tidy up layout', icon: WandSparkles, onSelect: () => void tidy() },
       'separator',
-      { id: 'pdf', label: 'Export PDF document…', icon: FileText, onSelect: openExportPdf },
-      { id: 'png', label: 'Export as PNG', icon: ImageDown, onSelect: () => void exportImage('png') },
-      { id: 'svg', label: 'Export as SVG', icon: FileImage, onSelect: () => void exportImage('svg') },
+      ...exportEntries,
     ];
   }, [menu, byId, duplicate, applyCanvasOps, rf, tidy, exportImage]);
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const stats = `${plural(ir.resources.length, 'resource')}, ${plural(irEdges.length, 'connection')}`;
   const inspectorOpen = panelsInspector && selection !== null && !(compact && drawer === 'code');
+  // the minimap sits bottom-right and slides left of the inspector; hide it
+  // rather than cover the toolbar on the bottom-left
+  const minimapFits = canvasWidth - (inspectorOpen ? inspectorInset() : 0) >= 176 + 320 + 48;
 
   return (
     <div
@@ -764,9 +960,13 @@ function CanvasInner() {
       data-testid="canvas"
       onDoubleClick={(e) => {
         const target = e.target as Element;
-        if (target.closest('.react-flow__pane') && !target.closest('.react-flow__node')) {
-          setQuickAdd({ x: e.clientX, y: e.clientY });
-        }
+        const onPane = target.closest('.react-flow__pane') && !target.closest('.react-flow__node');
+        // containers are nodes too: double-clicking inside one adds a resource into it
+        const inContainer = target.closest('.react-flow__node-container') && !target.closest('.react-flow__resize-control');
+        if ((onPane || inContainer) && !codeErrored) setQuickAdd({ x: e.clientX, y: e.clientY });
+      }}
+      onKeyDown={(e) => {
+        if (e.key.startsWith('Arrow')) lastArrowKey.current = Date.now();
       }}
     >
       <ReactFlow
@@ -774,7 +974,11 @@ function CanvasInner() {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        onNodeClick={(_e, node) => node.id !== INTERNET_NODE && requestAnimationFrame(() => focusNode(node.id))}
+        onNodeClick={(_e, node) => {
+          if (node.id === INTERNET_NODE) return;
+          setSelection(node.id);
+          requestAnimationFrame(() => focusNode(node.id));
+        }}
         onNodeContextMenu={(e, node) => {
           e.preventDefault();
           if (node.id === INTERNET_NODE) return;
@@ -788,21 +992,33 @@ function CanvasInner() {
         zoomOnDoubleClick={false}
         snapToGrid
         snapGrid={[8, 8]}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onSelectionChange={onSelectionChange}
+        onSelectionStart={() => {
+          boxSelecting.current = true;
+          document.body.style.userSelect = 'none';
+        }}
+        onSelectionEnd={() => {
+          boxSelecting.current = false;
+          document.body.style.userSelect = '';
+          syncSelection(rf.getNodes().filter((n) => n.selected && n.id !== INTERNET_NODE).map((n) => n.id));
+        }}
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
+        nodesDraggable={!codeErrored && !spaceHeld}
+        nodesConnectable={!codeErrored}
         onDelete={onDelete}
         onDrop={onDrop}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
         }}
-        deleteKeyCode={['Delete', 'Backspace']}
+        deleteKeyCode={codeErrored ? null : ['Delete', 'Backspace']}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
-        minZoom={0.2}
+        minZoom={0.05}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
         className="!bg-canvas"
@@ -820,10 +1036,10 @@ function CanvasInner() {
           onTidy={() => void tidy()}
           onExport={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
-            setMenu({ x: r.left, y: r.top - 88, nodeId: null });
+            setMenu({ x: r.left, y: r.top - 112, nodeId: null, exportOnly: true });
           }}
         />
-        {minimap ? (
+        {minimap && minimapFits ? (
           <MiniMap
             position="bottom-right"
             pannable
@@ -876,7 +1092,7 @@ function CanvasInner() {
               className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--surface-1))] px-3 py-1 text-center text-[11.5px] font-semibold text-warning shadow-xs"
             >
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              Code has errors — canvas shows the last valid state
+              Code has errors — fix them to edit the canvas again
             </span>
           ) : null}
           {!overview ? <EditorTips /> : null}
@@ -889,7 +1105,7 @@ function CanvasInner() {
           x={menu.x}
           y={menu.y}
           entries={menuEntries}
-          label={menu.nodeId ? 'Resource actions' : 'Canvas actions'}
+          label={menu.nodeId ? 'Resource actions' : menu.exportOnly ? 'Export' : 'Canvas actions'}
           onClose={() => setMenu(null)}
         />
       ) : null}
