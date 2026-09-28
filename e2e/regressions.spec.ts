@@ -119,6 +119,8 @@ test('deleting a project asks in an in-app dialog', async ({ page }) => {
 
 test('⌘K lists projects to open', async ({ page }) => {
   await page.goto('/dashboard');
+  // the shortcut is registered once the app has rendered
+  await expect(page.getByRole('button', { name: /Quick actions/ })).toBeVisible();
   await page.keyboard.press('Control+k');
   await page.getByPlaceholder('Search or run a command…').fill('production');
   await page.getByRole('option', { name: /production-web/ }).click();

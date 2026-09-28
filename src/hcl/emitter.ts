@@ -30,17 +30,26 @@ export function posComment(p: CanvasPosition): string {
   return base;
 }
 
-function quoteKey(key: string): string {
-  return IDENT_RE.test(key) ? key : JSON.stringify(key);
+export function quoteKey(key: string): string {
+  return IDENT_RE.test(key) ? key : `"${escapeString(key)}"`;
 }
 
-function escapeString(s: string): string {
+/** Body of a quoted HCL string. `${` / `%{` are escaped so literal text never becomes a template. */
+export function escapeString(s: string): string {
   return s
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r')
-    .replace(/\t/g, '\\t');
+    .replace(/\t/g, '\\t')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+    .replace(/\$\{/g, () => '$${')
+    .replace(/%\{/g, () => '%%{');
+}
+
+/** A block label: quoted unless the original spelled it as a bare identifier. */
+export function emitLabel(label: string, bare = false): string {
+  return bare && IDENT_RE.test(label) ? label : `"${escapeString(label)}"`;
 }
 
 /**
@@ -52,6 +61,8 @@ export function emitExpression(e: Expression, indent: string): string {
     case 'literal':
       if (e.value === null) return 'null';
       if (typeof e.value === 'string') return `"${escapeString(e.value)}"`;
+      // keep the source spelling (`1.50`, `1e3`, integers beyond 2^53) while it still means this value
+      if (e.text !== undefined && Number(e.text) === e.value) return e.text;
       return String(e.value);
     case 'ref':
       return e.path;
@@ -77,6 +88,25 @@ export function emitExpression(e: Expression, indent: string): string {
       // Handled by emitEntries — should not be emitted as a value.
       return '{}';
   }
+}
+
+/**
+ * Render a replacement value in the style of the text it replaces: a list
+ * spread over lines stays one item per line, an object written inline stays
+ * inline while it fits.
+ */
+export function emitValueLike(e: Expression, indent: string, previous: string): string {
+  const wasMultiline = previous.includes('\n');
+  if (e.kind === 'list' && wasMultiline && e.items.length > 0) {
+    const inner = e.items.map((item) => `${indent}  ${emitExpression(item, indent + '  ')},`);
+    return `[\n${inner.join('\n')}\n${indent}]`;
+  }
+  if (e.kind === 'object' && !wasMultiline) {
+    const parts = Object.entries(e.fields).map(([k, v]) => `${quoteKey(k)} = ${emitExpression(v, indent)}`);
+    const inline = parts.length > 0 ? `{ ${parts.join(', ')} }` : '{}';
+    if (inline.length <= 100 && !inline.includes('\n')) return inline;
+  }
+  return emitExpression(e, indent);
 }
 
 interface Entry {
@@ -163,7 +193,11 @@ function emitEntriesList(entries: Entry[], indent: string): string {
   return lines.join('\n');
 }
 
-function emitNestedBlock(name: string, body: Record<string, Expression>, indent: string): string[] {
+export function emitNestedBlock(
+  name: string,
+  body: Record<string, Expression>,
+  indent: string,
+): string[] {
   const inner = emitEntries(body, indent + '  ');
   if (!inner) return [`${indent}${name} {}`];
   return [`${indent}${name} {`, inner, `${indent}}`];
@@ -205,7 +239,7 @@ function emitTopBlock(
 
 export function emitResource(node: ResourceNode): string {
   return emitTopBlock(
-    `resource "${node.type}" "${node.name}"`,
+    `resource ${emitLabel(node.type)} ${emitLabel(node.name)}`,
     node.args,
     node.trivia,
     node.position,
@@ -213,15 +247,15 @@ export function emitResource(node: ResourceNode): string {
 }
 
 export function emitVariable(v: VariableDecl): string {
-  return emitTopBlock(`variable "${v.name}"`, v.args, v.trivia);
+  return emitTopBlock(`variable ${emitLabel(v.name)}`, v.args, v.trivia);
 }
 
 export function emitOutput(o: OutputDecl): string {
-  return emitTopBlock(`output "${o.name}"`, o.args, o.trivia);
+  return emitTopBlock(`output ${emitLabel(o.name)}`, o.args, o.trivia);
 }
 
 export function emitProvider(p: ProviderBlock): string {
-  return emitTopBlock(`provider "${p.name}"`, p.args, p.trivia);
+  return emitTopBlock(`provider ${emitLabel(p.name)}`, p.args, p.trivia);
 }
 
 export function emitRawBlock(b: RawBlock): string {

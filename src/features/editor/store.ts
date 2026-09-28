@@ -334,9 +334,12 @@ export const useEditor = create<EditorState>((set, get) => {
       }
       const { files, ir } = get();
       const outcome = applyOpsWithPatches(files, ir, ops);
-      if (hasErrors(outcome.diagnostics)) {
-        // never trade the user's text for a broken one
-        showToast("That change couldn't be applied without breaking the code — make it in the code pane", 'error');
+      // never trade the user's text for a broken (or wrongly spliced) one
+      if (outcome.refused || hasErrors(outcome.diagnostics)) {
+        showToast(
+          outcome.refused?.message ?? "That change couldn't be applied without breaking the code — make it in the code pane",
+          'error',
+        );
         return;
       }
       pushHistory({ ...files });

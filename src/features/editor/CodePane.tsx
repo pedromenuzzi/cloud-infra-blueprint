@@ -252,17 +252,18 @@ export function CodePane() {
         if (!node || (node.trivia.sourceFile ?? 'main.tf') !== file) continue;
         const range = node.trivia.rawTextRange;
         if (!range) continue;
+        // validation points at the argument or block header when it can; otherwise
+        // find the `resource` line (the range starts at the block's leading comments)
         const text = files[file] ?? '';
-        // the range starts at the block's leading comments; point at its `resource` line
         const header = text.slice(range.start, range.end).search(/^[ \t]*resource\b/m);
-        const pos = lineColOf(text, range.start + Math.max(0, header));
+        const pos = w.start ?? lineColOf(text, range.start + Math.max(0, header));
         markers.push({
           severity: monaco.MarkerSeverity.Warning,
           message: w.message,
           startLineNumber: pos.line,
-          startColumn: 1,
-          endLineNumber: pos.line,
-          endColumn: 80,
+          startColumn: w.start ? pos.col : 1,
+          endLineNumber: w.end?.line ?? pos.line,
+          endColumn: w.end?.col ?? 80,
         });
       }
       monaco.editor.setModelMarkers(model, 'blueprint', markers);

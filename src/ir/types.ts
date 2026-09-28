@@ -9,7 +9,8 @@
 export type Provider = 'aws' | 'azure' | 'gcp' | 'other';
 
 export type Expression =
-  | { kind: 'literal'; value: string | number | boolean | null }
+  /** `text` keeps a number's source spelling (`1.50`, `1e3`, big ints) so it re-emits verbatim */
+  | { kind: 'literal'; value: string | number | boolean | null; text?: string }
   | { kind: 'list'; items: Expression[] }
   /** `key = { ... }` attribute syntax */
   | { kind: 'object'; fields: Record<string, Expression> }
@@ -31,6 +32,55 @@ export interface TextRange {
   end: number;
 }
 
+/** Where one body entry (`key = value`, `key { }`, a verbatim sub-block) sits in its file. */
+export interface EntrySpan {
+  key: string;
+  kind: 'attr' | 'block' | 'raw';
+  /** first byte of the entry: its own-line comments, else its key line (a line start unless `inline`) */
+  start: number;
+  keyStart: number;
+  keyEnd: number;
+  /** attributes: the `=` and the value's text */
+  eq?: number;
+  valueStart?: number;
+  valueEnd?: number;
+  /** past the value / closing brace / same-line comment */
+  contentEnd: number;
+  /** past the newline that ends the entry (equals `contentEnd` when the line goes on) */
+  end: number;
+  /** shares its line with other tokens (single-line body, missing newline) */
+  inline: boolean;
+  /** nested blocks: spans of their own body */
+  body?: BodySpans;
+  /** 1-based position of the key, for diagnostics */
+  line: number;
+  col: number;
+}
+
+export interface BodySpans {
+  /** offset of `{` */
+  open: number;
+  /** offset of the matching `}` */
+  close: number;
+  entries: EntrySpan[];
+}
+
+/** Source spans of a top-level block — what lets the patcher touch single lines. */
+export interface BlockSpans {
+  /** first byte of the block keyword */
+  header: number;
+  /** 1-based position of the keyword, for diagnostics */
+  line: number;
+  col: number;
+  /** label tokens (quotes included when `quoted`) */
+  labels: Array<TextRange & { quoted: boolean }>;
+  /** the managed `# @blueprint:pos` comment (its text, not its line) */
+  pos?: TextRange;
+  /** end of the block text (just past `}`) */
+  textEnd: number;
+  body: BodySpans;
+}
+
 export interface Trivia {
   /** user comment lines attached directly above the block (verbatim, incl. `#`) */
   leadingComments: string[];
@@ -41,6 +91,12 @@ export interface Trivia {
   /** where the block lives in its source file — the key to minimal patching */
   rawTextRange?: TextRange;
   sourceFile?: string;
+  /** exact text of `rawTextRange` at parse time: lets the patcher detect stale ranges */
+  sourceText?: string;
+  /** offsets of the block's pieces at parse time (valid while `sourceText` still matches) */
+  spans?: BlockSpans;
+  /** parse errors inside the block (re-used when a patch leaves the block's text alone) */
+  diagnostics?: Diagnostic[];
 }
 
 export interface CanvasPosition {
