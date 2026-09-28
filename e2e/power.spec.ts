@@ -60,7 +60,7 @@ test.describe('editor power features', () => {
     await expect(page.locator('.react-flow__node[data-id="aws_iam_role.web_copy"]')).toBeVisible();
     await expect
       .poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf'] ?? '')
-      .toMatch(/resource "aws_iam_role" "web_copy"[\s\S]*name\s*=\s*"production_web-web-role-copy"/);
+      .toMatch(/resource "aws_iam_role" "web_copy"[\s\S]*name\s*=\s*"production-web-web-role-copy"/);
   });
 
   test('selection syncs between the canvas and the code', async ({ page }) => {
