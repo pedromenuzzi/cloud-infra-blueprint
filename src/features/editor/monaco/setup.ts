@@ -128,7 +128,7 @@ export function ensureMonacoSetup() {
     base: 'vs',
     inherit: true,
     rules: [
-      { token: 'comment', foreground: '94a3b8', fontStyle: 'italic' },
+      { token: 'comment', foreground: '5f6e84', fontStyle: 'italic' },
       { token: 'string', foreground: '047857' },
       { token: 'string.heredoc', foreground: '047857' },
       { token: 'keyword', foreground: '2563eb' },
@@ -142,8 +142,9 @@ export function ensureMonacoSetup() {
     colors: {
       'editor.background': '#ffffff',
       'editor.lineHighlightBackground': '#f8fafc',
-      'editorLineNumber.foreground': '#cbd5e1',
-      'editorLineNumber.activeForeground': '#64748b',
+      // line numbers are text: ≥ 4.5:1 on the editor and the current-line highlight
+      'editorLineNumber.foreground': '#64748b',
+      'editorLineNumber.activeForeground': '#1e293b',
       'editorIndentGuide.background1': '#f1f5f9',
     },
   });
@@ -152,7 +153,7 @@ export function ensureMonacoSetup() {
     base: 'vs-dark',
     inherit: true,
     rules: [
-      { token: 'comment', foreground: '64748b', fontStyle: 'italic' },
+      { token: 'comment', foreground: '8a99af', fontStyle: 'italic' },
       { token: 'string', foreground: '34d399' },
       { token: 'string.heredoc', foreground: '34d399' },
       { token: 'keyword', foreground: '60a5fa' },
@@ -166,8 +167,8 @@ export function ensureMonacoSetup() {
     colors: {
       'editor.background': '#0f172a',
       'editor.lineHighlightBackground': '#16233b',
-      'editorLineNumber.foreground': '#334155',
-      'editorLineNumber.activeForeground': '#94a3b8',
+      'editorLineNumber.foreground': '#7c8ba1',
+      'editorLineNumber.activeForeground': '#e2e8f0',
       'editorIndentGuide.background1': '#1e293b',
     },
   });

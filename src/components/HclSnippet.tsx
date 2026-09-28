@@ -75,7 +75,7 @@ export function HclSnippet({
           )}
         >
           {showLineNumbers ? (
-            <span className="mr-3 w-6 shrink-0 select-none text-right text-[10.5px] leading-[1.85] text-faint/70">
+            <span className="mr-3 w-6 shrink-0 select-none text-right text-[10.5px] leading-[1.85] text-faint">
               {i + 1}
             </span>
           ) : null}
