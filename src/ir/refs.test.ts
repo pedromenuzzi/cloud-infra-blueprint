@@ -129,6 +129,17 @@ data "aws_subnets" "all" {
     'outputs.tf': 'output "vpc" {\n  value = "${aws_vpc.main.id}"\n}\n',
   };
 
+  it('in resources, locals, modules, data sources and outputs — and nowhere else', () => {
+    const { ir } = parseProject(files);
+    const out = applyOpsWithPatches(files, ir, [{ kind: 'rename_resource', nodeId: 'aws_vpc.main', newName: 'core' }]);
+    expect(out.refused).toBeUndefined();
+    expect(out.files['main.tf']).toBe(
+      files['main.tf'].replace(/aws_vpc\.main\.(cidr_block|id|arn)/g, 'aws_vpc.core.$1').replace('"aws_vpc" "main"', '"aws_vpc" "core"'),
+    );
+    expect(out.files['outputs.tf']).toBe('output "vpc" {\n  value = "${aws_vpc.core.id}"\n}\n');
+    expect(out.files['main.tf']).not.toContain('moved');
+  });
+
   it('keeps untouched blocks as the same objects', () => {
     const { ir } = parseProject(files);
     const { ir: next, touched } = applyOps(ir, [{ kind: 'rename_resource', nodeId: 'aws_vpc.main', newName: 'core' }]);
