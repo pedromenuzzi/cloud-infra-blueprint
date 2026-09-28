@@ -151,7 +151,6 @@ export function CodePane() {
       models.clear();
       editorRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // dispose stale models when switching projects
@@ -223,7 +222,6 @@ export function CodePane() {
     flushReveal();
     const t = setTimeout(() => flashRef.current?.clear(), 1600);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, selectionOrigin, revealSeq]);
 
   // diagnostics → markers

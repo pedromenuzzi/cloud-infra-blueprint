@@ -962,7 +962,7 @@ function CanvasInner() {
       'separator',
       ...exportEntries,
     ];
-  }, [menu, byId, duplicate, applyCanvasOps, rf, tidy, exportImage]);
+  }, [menu, byId, duplicate, rf, tidy, exportImage]);
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const stats = `${plural(ir.resources.length, 'resource')}, ${plural(irEdges.length, 'connection')}`;
