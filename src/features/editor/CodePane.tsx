@@ -72,9 +72,15 @@ export function CodePane() {
 
   // create the editor once
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
     setCompletionSource(() => useEditor.getState().ir);
-    const editor = monaco.editor.create(containerRef.current, {
+    // Monaco holds on to the last editor it created; a host node we own (and
+    // detach on unmount) keeps that reference from pinning the whole page
+    const host = document.createElement('div');
+    host.style.height = '100%';
+    container.appendChild(host);
+    const editor = monaco.editor.create(host, {
       model: null,
       language: 'hcl',
       fontFamily: "'JetBrains Mono Variable', 'Cascadia Code', monospace",
@@ -117,6 +123,13 @@ export function CodePane() {
         if (hit && hit.id !== state.selection) state.setSelection(hit.id, 'code');
       }, 120);
     });
+    // one history for canvas and code: Monaco's own undo stack doesn't know
+    // about the edits the canvas makes to the text
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ, () => useEditor.getState().undo());
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ, () =>
+      useEditor.getState().redo(),
+    );
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyY, () => useEditor.getState().redo());
     editorRef.current = editor;
 
     // theme follows the app's dark class
@@ -132,6 +145,7 @@ export function CodePane() {
       clearTimeout(syncTimer);
       observer.disconnect();
       editor.dispose();
+      host.remove();
       for (const m of models.values()) m.dispose();
       models.clear();
       editorRef.current = null;
@@ -239,7 +253,10 @@ export function CodePane() {
         if (!node || (node.trivia.sourceFile ?? 'main.tf') !== file) continue;
         const range = node.trivia.rawTextRange;
         if (!range) continue;
-        const pos = lineColOf(files[file] ?? '', range.start);
+        const text = files[file] ?? '';
+        // the range starts at the block's leading comments; point at its `resource` line
+        const header = text.slice(range.start, range.end).search(/^[ \t]*resource\b/m);
+        const pos = lineColOf(text, range.start + Math.max(0, header));
         markers.push({
           severity: monaco.MarkerSeverity.Warning,
           message: w.message,
@@ -254,16 +271,26 @@ export function CodePane() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parseDiagnostics, warnings, filesRevision, projectId]);
 
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    tabsRef.current
+      ?.querySelector<HTMLElement>(`[data-file="${CSS.escape(activeFile)}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeFile]);
+
   const fileErrors = (file: string) =>
     parseDiagnostics.some((d) => d.file === file && d.severity === 'error');
 
   return (
     <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label="Terraform code">
-      <div className="flex items-center gap-0.5 overflow-x-auto border-b px-1.5 pt-1">
+      <div ref={tabsRef} className="flex items-center gap-0.5 overflow-x-auto border-b px-1.5 pt-1" role="tablist" aria-label="Files">
         {fileList.map((f) => (
           <button
             key={f}
             type="button"
+            role="tab"
+            aria-selected={activeFile === f}
+            data-file={f}
             onClick={() => setActiveFile(f)}
             className={cn(
               'relative shrink-0 rounded-t-[6px] border border-b-0 px-3 py-1.5 font-mono text-[11.5px] transition-colors',

@@ -12,6 +12,7 @@
  *   over by address) — parse errors freeze the canvas on the last good IR.
  */
 import { create } from 'zustand';
+import { showToast } from '@/components/Toast';
 import { applyOpsWithPatches } from '@/hcl/patch';
 import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
@@ -92,7 +93,10 @@ interface EditorState {
 
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
 let parseTimer: ReturnType<typeof setTimeout> | undefined;
-let lastHistoryPush = 0;
+/** files before the current burst of typing (already on the undo stack); a burst ends when the code parses */
+let codeBurstBase: Record<string, string> | null = null;
+
+const hasErrors = (diagnostics: Diagnostic[]) => diagnostics.some((d) => d.severity === 'error');
 
 export const useEditor = create<EditorState>((set, get) => {
   const persist = () => {
@@ -108,14 +112,37 @@ export const useEditor = create<EditorState>((set, get) => {
     }, 500);
   };
 
-  const pushHistory = (coalesce = false) => {
-    const now = Date.now();
-    if (coalesce && now - lastHistoryPush < 1500) return;
-    lastHistoryPush = now;
-    const { files, past } = get();
-    const next = [...past, { ...files }];
+  const pushHistory = (snapshot: Record<string, string> = { ...get().files }) => {
+    const next = [...get().past, snapshot];
     if (next.length > 60) next.shift();
     set({ past: next, future: [] });
+  };
+
+  /**
+   * Parse the typed code now instead of waiting for the debounce. Returns
+   * false (and flags the code) when it doesn't parse.
+   */
+  const commitCode = (): boolean => {
+    clearTimeout(parseTimer);
+    parseTimer = undefined;
+    const { ir: prev, files } = get();
+    const { ir, diagnostics } = parseProject(files);
+    if (hasErrors(diagnostics)) {
+      set({ parseDiagnostics: diagnostics, codeErrored: true });
+      return false;
+    }
+    codeBurstBase = null;
+    const derived = derive(ir, prev);
+    const selection = get().selection;
+    set({
+      ir: derived.ir,
+      edges: derived.edges,
+      warnings: derived.warnings,
+      parseDiagnostics: diagnostics,
+      codeErrored: false,
+      selection: derived.ir.resources.some((r) => r.id === selection) ? selection : null,
+    });
+    return true;
   };
 
   return {
@@ -138,6 +165,8 @@ export const useEditor = create<EditorState>((set, get) => {
 
     load(project) {
       clearTimeout(parseTimer);
+      parseTimer = undefined;
+      codeBurstBase = null;
       const { ir, diagnostics } = parseProject(project.files);
       const errored = diagnostics.some((d) => d.severity === 'error');
       const derived = derive(ir);
@@ -162,9 +191,23 @@ export const useEditor = create<EditorState>((set, get) => {
 
     applyCanvasOps(ops, select) {
       if (ops.length === 0) return;
+      // the IR only matches the text once the typed code has been parsed
+      if ((parseTimer !== undefined || codeBurstBase) && !commitCode()) {
+        showToast('Fix the errors in the code first — the canvas is read-only until it parses', 'error');
+        return;
+      }
+      if (get().codeErrored) {
+        showToast('Fix the errors in the code first — the canvas is read-only until it parses', 'error');
+        return;
+      }
       const { files, ir } = get();
-      pushHistory();
       const outcome = applyOpsWithPatches(files, ir, ops);
+      if (hasErrors(outcome.diagnostics)) {
+        // never trade the user's text for a broken one
+        showToast("That change couldn't be applied without breaking the code — make it in the code pane", 'error');
+        return;
+      }
+      pushHistory({ ...files });
       const derived = derive(outcome.ir, ir);
 
       let selection = select !== undefined ? select : get().selection;
@@ -180,7 +223,7 @@ export const useEditor = create<EditorState>((set, get) => {
         edges: derived.edges,
         warnings: derived.warnings,
         parseDiagnostics: outcome.diagnostics,
-        codeErrored: outcome.diagnostics.some((d) => d.severity === 'error'),
+        codeErrored: false,
         selection,
         ...(select !== undefined ? { selectionOrigin: 'canvas' as const } : {}),
       });
@@ -188,30 +231,15 @@ export const useEditor = create<EditorState>((set, get) => {
     },
 
     onCodeChange(file, text) {
+      if (!codeBurstBase) {
+        codeBurstBase = { ...get().files };
+        pushHistory(codeBurstBase);
+      }
       const files = { ...get().files, [file]: text };
       set({ files, saveState: 'saving' });
       persist();
       clearTimeout(parseTimer);
-      parseTimer = setTimeout(() => {
-        const { ir: prev } = get();
-        const { ir, diagnostics } = parseProject(get().files);
-        const errored = diagnostics.some((d) => d.severity === 'error');
-        if (errored) {
-          set({ parseDiagnostics: diagnostics, codeErrored: true });
-          return;
-        }
-        pushHistory(true);
-        const derived = derive(ir, prev);
-        const selection = get().selection;
-        set({
-          ir: derived.ir,
-          edges: derived.edges,
-          warnings: derived.warnings,
-          parseDiagnostics: diagnostics,
-          codeErrored: false,
-          selection: derived.ir.resources.some((r) => r.id === selection) ? selection : null,
-        });
-      }, 350);
+      parseTimer = setTimeout(commitCode, 350);
     },
 
     setActiveFile(file) {
@@ -251,6 +279,9 @@ export const useEditor = create<EditorState>((set, get) => {
     undo() {
       const { past, files } = get();
       if (past.length === 0) return;
+      clearTimeout(parseTimer);
+      parseTimer = undefined;
+      codeBurstBase = null;
       const previous = past[past.length - 1];
       const { ir, diagnostics } = parseProject(previous);
       const derived = derive(ir, get().ir);
@@ -263,7 +294,7 @@ export const useEditor = create<EditorState>((set, get) => {
         edges: derived.edges,
         warnings: derived.warnings,
         parseDiagnostics: diagnostics,
-        codeErrored: diagnostics.some((d) => d.severity === 'error'),
+        codeErrored: hasErrors(diagnostics),
         selection: null,
       });
       persist();
@@ -272,6 +303,9 @@ export const useEditor = create<EditorState>((set, get) => {
     redo() {
       const { future, files } = get();
       if (future.length === 0) return;
+      clearTimeout(parseTimer);
+      parseTimer = undefined;
+      codeBurstBase = null;
       const next = future[0];
       const { ir, diagnostics } = parseProject(next);
       const derived = derive(ir, get().ir);
@@ -284,7 +318,7 @@ export const useEditor = create<EditorState>((set, get) => {
         edges: derived.edges,
         warnings: derived.warnings,
         parseDiagnostics: diagnostics,
-        codeErrored: diagnostics.some((d) => d.severity === 'error'),
+        codeErrored: hasErrors(diagnostics),
         selection: null,
       });
       persist();
