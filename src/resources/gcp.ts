@@ -1,10 +1,12 @@
-import { block, lit, literalString } from '@/ir/expr';
+import { block, list, lit, literalString } from '@/ir/expr';
 import { blocksOf } from '@/security/model';
 import { defineResource } from './types';
 
 const litStr = literalString;
 
 const GCP_REGIONS = ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'];
+/** most GCP names: lowercase letters, digits and hyphens, starting with a letter, up to 63 */
+const rfc1035 = { maxLength: 63 };
 
 export const GCP_RESOURCES = [
   defineResource({
@@ -15,6 +17,7 @@ export const GCP_RESOURCES = [
     shortName: 'VPC Network',
     description: 'Global virtual network',
     container: true,
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'auto_create_subnetworks', type: 'boolean' },
@@ -32,9 +35,10 @@ export const GCP_RESOURCES = [
     description: 'Regional subnet',
     container: true,
     containment: [{ arg: 'network', parentTypes: ['google_compute_network'] }],
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
-      { name: 'ip_cidr_range', type: 'string', required: true, placeholder: '10.0.1.0/24' },
+      { name: 'ip_cidr_range', type: 'string', placeholder: '10.0.1.0/24' },
       { name: 'region', type: 'select', options: GCP_REGIONS },
       { name: 'network', type: 'string', refTo: ['google_compute_network'], required: true },
     ],
@@ -52,14 +56,22 @@ export const GCP_RESOURCES = [
     shortName: 'Firewall',
     description: 'Network firewall rule',
     containment: [{ arg: 'network', parentTypes: ['google_compute_network'] }],
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'network', type: 'string', refTo: ['google_compute_network'], required: true },
       { name: 'direction', type: 'select', options: ['INGRESS', 'EGRESS'] },
-      { name: 'priority', type: 'number', doc: '0–65535, lower wins (default 1000)' },
-      { name: 'source_ranges', type: 'list' },
+      { name: 'priority', type: 'number', min: 0, max: 65535, doc: '0–65535, lower wins (default 1000)' },
+      { name: 'source_ranges', type: 'list', doc: 'INGRESS needs source ranges or source tags' },
+      { name: 'source_tags', type: 'list' },
       { name: 'target_tags', type: 'list', doc: 'Applies to instances with these network tags (all if empty)' },
     ],
+    // HTTPS from inside the VPC only (10.128.0.0/9 = the default subnet ranges) — never the whole internet
+    defaults: {
+      direction: lit('INGRESS'),
+      source_ranges: list([lit('10.128.0.0/9')]),
+      allow: block({ protocol: lit('tcp'), ports: list([lit('443')]) }),
+    },
     connections: [
       { targetTypes: ['google_compute_network'], arg: 'network', attr: 'id', mode: 'set' },
     ],
@@ -82,6 +94,7 @@ export const GCP_RESOURCES = [
     containment: [
       { arg: 'network_interface', parentTypes: ['google_compute_subnetwork', 'google_compute_network'] },
     ],
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       {
@@ -92,7 +105,23 @@ export const GCP_RESOURCES = [
       },
       { name: 'zone', type: 'string', placeholder: 'us-central1-a' },
     ],
-    defaults: { machine_type: lit('e2-micro') },
+    // drop it in a subnetwork (or connect one) to fill network_interface
+    defaults: {
+      machine_type: lit('e2-micro'),
+      zone: lit('us-central1-a'),
+      boot_disk: block({ initialize_params: block({ image: lit('debian-cloud/debian-12') }) }),
+      network_interface: block({}),
+    },
+    blockConnections: [
+      {
+        targetTypes: ['google_compute_subnetwork'],
+        block: 'network_interface',
+        arg: 'subnetwork',
+        attr: 'id',
+        mode: 'set',
+      },
+      { targetTypes: ['google_compute_network'], block: 'network_interface', arg: 'network', attr: 'id', mode: 'set' },
+    ],
     subtitle: (args) => litStr(args.machine_type),
   }),
 
@@ -103,8 +132,9 @@ export const GCP_RESOURCES = [
     displayName: 'Cloud Storage Bucket',
     shortName: 'Cloud Storage',
     description: 'Object storage bucket',
+    naming: { minLength: 3, maxLength: 63 },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string', required: true, doc: 'Globally unique' },
       {
         name: 'location',
         type: 'select',
@@ -129,8 +159,9 @@ export const GCP_RESOURCES = [
     displayName: 'Cloud SQL Instance',
     shortName: 'Cloud SQL',
     description: 'Managed relational database',
+    naming: { maxLength: 80 },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string' },
       {
         name: 'database_version',
         type: 'select',
@@ -140,7 +171,11 @@ export const GCP_RESOURCES = [
       { name: 'region', type: 'select', options: GCP_REGIONS },
       { name: 'deletion_protection', type: 'boolean' },
     ],
-    defaults: { database_version: lit('POSTGRES_16') },
+    defaults: {
+      database_version: lit('POSTGRES_16'),
+      // the smallest shared-core machine (db-f1-micro is an Enterprise edition tier)
+      settings: block({ tier: lit('db-f1-micro'), edition: lit('ENTERPRISE') }),
+    },
     subtitle: (args) => litStr(args.database_version),
   }),
 
@@ -151,6 +186,7 @@ export const GCP_RESOURCES = [
     displayName: 'Backend Bucket',
     shortName: 'Backend Bucket',
     description: 'Serves a storage bucket through the LB',
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       {
@@ -176,13 +212,13 @@ export const GCP_RESOURCES = [
     displayName: 'URL Map',
     shortName: 'URL Map',
     description: 'Routes requests to backends',
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       {
         name: 'default_service',
         type: 'string',
         refTo: ['google_compute_backend_bucket'],
-        required: true,
       },
     ],
     connections: [
@@ -203,6 +239,7 @@ export const GCP_RESOURCES = [
     displayName: 'HTTP Proxy',
     shortName: 'HTTP Proxy',
     description: 'Terminates HTTP for the load balancer',
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'url_map', type: 'string', refTo: ['google_compute_url_map'], required: true },
@@ -220,6 +257,7 @@ export const GCP_RESOURCES = [
     displayName: 'Forwarding Rule',
     shortName: 'Forwarding Rule',
     description: 'Global anycast entry point',
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       {
@@ -252,6 +290,8 @@ export const GCP_RESOURCES = [
     displayName: 'Artifact Registry',
     shortName: 'Artifact Registry',
     description: 'Container image and package registry',
+    nameArg: 'repository_id',
+    naming: rfc1035,
     fields: [
       { name: 'repository_id', type: 'string', required: true },
       { name: 'format', type: 'select', options: ['DOCKER', 'NPM', 'MAVEN'], required: true },
@@ -268,6 +308,7 @@ export const GCP_RESOURCES = [
     displayName: 'Cloud Run Service',
     shortName: 'Cloud Run',
     description: 'Serverless containers',
+    naming: { maxLength: 49 },
     fields: [
       { name: 'name', type: 'string', required: true },
       {
@@ -282,7 +323,12 @@ export const GCP_RESOURCES = [
         options: ['INGRESS_TRAFFIC_ALL', 'INGRESS_TRAFFIC_INTERNAL_ONLY'],
       },
     ],
-    defaults: { location: lit('us-central1'), ingress: lit('INGRESS_TRAFFIC_ALL') },
+    defaults: {
+      location: lit('us-central1'),
+      ingress: lit('INGRESS_TRAFFIC_ALL'),
+      // Google's sample container — swap in your image
+      template: block({ containers: block({ image: lit('us-docker.pkg.dev/cloudrun/container/hello') }) }),
+    },
     subtitle: (args) => litStr(args.location),
   }),
 
@@ -293,6 +339,7 @@ export const GCP_RESOURCES = [
     displayName: 'Cloud DNS Zone',
     shortName: 'Cloud DNS',
     description: 'Managed DNS zone',
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'dns_name', type: 'string', required: true, placeholder: 'example.com.' },
@@ -307,8 +354,10 @@ export const GCP_RESOURCES = [
     displayName: 'DNS Record Set',
     shortName: 'DNS Record',
     description: 'DNS record in a managed zone',
+    // record names are fully qualified: "set.example.com."
+    naming: { style: 'dns' },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string', required: true, doc: 'Fully qualified, ending with "." (www.example.com.)' },
       {
         name: 'managed_zone',
         type: 'string',
@@ -317,10 +366,11 @@ export const GCP_RESOURCES = [
         required: true,
       },
       { name: 'type', type: 'select', options: ['A', 'AAAA', 'CNAME', 'TXT', 'MX'], required: true },
-      { name: 'ttl', type: 'number' },
+      { name: 'ttl', type: 'number', min: 0 },
       { name: 'rrdatas', type: 'list' },
     ],
-    defaults: { type: lit('A'), ttl: lit(300) },
+    // 192.0.2.0/24 is reserved for documentation — replace with the real target
+    defaults: { type: lit('A'), ttl: lit(300), rrdatas: list([lit('192.0.2.10')]) },
     connections: [
       { targetTypes: ['google_dns_managed_zone'], arg: 'managed_zone', attr: 'name', mode: 'set' },
     ],
@@ -335,9 +385,10 @@ export const GCP_RESOURCES = [
     shortName: 'Router',
     description: 'Regional router (needed for Cloud NAT)',
     containment: [{ arg: 'network', parentTypes: ['google_compute_network'] }],
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
-      { name: 'network', type: 'string', required: true, refTo: ['google_compute_network'] },
+      { name: 'network', type: 'string', refTo: ['google_compute_network'] },
       { name: 'region', type: 'select', options: GCP_REGIONS },
     ],
     connections: [
@@ -353,6 +404,7 @@ export const GCP_RESOURCES = [
     displayName: 'Cloud NAT',
     shortName: 'Cloud NAT',
     description: 'Outbound internet for private instances',
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       {
@@ -367,7 +419,6 @@ export const GCP_RESOURCES = [
         name: 'nat_ip_allocate_option',
         type: 'select',
         options: ['AUTO_ONLY', 'MANUAL_ONLY'],
-        required: true,
       },
       {
         name: 'source_subnetwork_ip_ranges_to_nat',
@@ -397,6 +448,7 @@ export const GCP_RESOURCES = [
     displayName: 'Cloud Function',
     shortName: 'Function',
     description: 'Serverless function (2nd gen)',
+    naming: rfc1035,
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'location', type: 'select', options: GCP_REGIONS, required: true },
@@ -423,6 +475,7 @@ export const GCP_RESOURCES = [
     shortName: 'GKE',
     description: 'Managed Kubernetes',
     container: true,
+    naming: { maxLength: 40 },
     containment: [
       { arg: 'subnetwork', parentTypes: ['google_compute_subnetwork'] },
       { arg: 'network', parentTypes: ['google_compute_network'] },
@@ -432,7 +485,7 @@ export const GCP_RESOURCES = [
       { name: 'location', type: 'select', options: GCP_REGIONS, doc: 'A region (or a zone for a zonal cluster)' },
       { name: 'network', type: 'string', refTo: ['google_compute_network'], refAttr: 'name' },
       { name: 'subnetwork', type: 'string', refTo: ['google_compute_subnetwork'], refAttr: 'name' },
-      { name: 'initial_node_count', type: 'number' },
+      { name: 'initial_node_count', type: 'number', min: 1 },
       { name: 'remove_default_node_pool', type: 'boolean', doc: 'Manage nodes with separate node pools' },
       { name: 'deletion_protection', type: 'boolean' },
     ],
@@ -452,10 +505,11 @@ export const GCP_RESOURCES = [
     shortName: 'Node Pool',
     description: 'Group of worker nodes for a GKE cluster',
     containment: [{ arg: 'cluster', parentTypes: ['google_container_cluster'] }],
+    naming: { maxLength: 40 },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string' },
       { name: 'cluster', type: 'string', required: true, refTo: ['google_container_cluster'] },
-      { name: 'node_count', type: 'number' },
+      { name: 'node_count', type: 'number', min: 0 },
     ],
     defaults: { node_count: lit(1), node_config: block({ machine_type: lit('e2-medium') }) },
     connections: [
@@ -472,6 +526,7 @@ export const GCP_RESOURCES = [
     displayName: 'Pub/Sub Topic',
     shortName: 'Pub/Sub',
     description: 'Asynchronous messaging topic',
+    naming: { minLength: 3, maxLength: 255 },
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'message_retention_duration', type: 'string', placeholder: '86400s' },
@@ -486,10 +541,11 @@ export const GCP_RESOURCES = [
     displayName: 'Pub/Sub Subscription',
     shortName: 'Subscription',
     description: 'Pull or push delivery from a topic',
+    naming: { minLength: 3, maxLength: 255 },
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'topic', type: 'string', required: true, refTo: ['google_pubsub_topic'] },
-      { name: 'ack_deadline_seconds', type: 'number' },
+      { name: 'ack_deadline_seconds', type: 'number', min: 10, max: 600 },
       { name: 'message_retention_duration', type: 'string', placeholder: '604800s' },
     ],
     defaults: { ack_deadline_seconds: lit(20) },
@@ -505,9 +561,10 @@ export const GCP_RESOURCES = [
     shortName: 'Memorystore',
     description: 'Managed Redis',
     containment: [{ arg: 'authorized_network', parentTypes: ['google_compute_network'] }],
+    naming: { maxLength: 40 },
     fields: [
       { name: 'name', type: 'string', required: true },
-      { name: 'memory_size_gb', type: 'number', required: true },
+      { name: 'memory_size_gb', type: 'number', required: true, min: 1, max: 300 },
       { name: 'tier', type: 'select', options: ['BASIC', 'STANDARD_HA'] },
       { name: 'region', type: 'select', options: GCP_REGIONS },
       { name: 'authorized_network', type: 'string', refTo: ['google_compute_network'] },
@@ -530,6 +587,7 @@ export const GCP_RESOURCES = [
     shortName: 'BigQuery',
     description: 'Analytics data warehouse dataset',
     nameArg: 'dataset_id',
+    naming: { style: 'underscore', maxLength: 1024 },
     fields: [
       { name: 'dataset_id', type: 'string', required: true, doc: 'Letters, numbers and underscores' },
       { name: 'location', type: 'select', options: ['US', 'EU', ...GCP_REGIONS] },
@@ -547,6 +605,7 @@ export const GCP_RESOURCES = [
     shortName: 'Service Account',
     description: 'Identity for workloads',
     nameArg: 'account_id',
+    naming: { minLength: 6, maxLength: 30 },
     fields: [
       { name: 'account_id', type: 'string', required: true, doc: '6–30 lowercase letters, digits, hyphens' },
       { name: 'display_name', type: 'string' },
@@ -562,6 +621,7 @@ export const GCP_RESOURCES = [
     shortName: 'Secret',
     description: 'Stores API keys, passwords and certificates',
     nameArg: 'secret_id',
+    naming: { maxLength: 255 },
     fields: [{ name: 'secret_id', type: 'string', required: true }],
     defaults: { replication: block({ auto: block({}) }) },
     subtitle: () => 'secret',

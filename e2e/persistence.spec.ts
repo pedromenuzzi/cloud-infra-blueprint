@@ -20,7 +20,7 @@ async function openSecondTab(page: Page, url: string) {
   await page.addInitScript(() => localStorage.setItem('cb-tips-dismissed', '1'));
   await page.goto(url);
   await waitForMonaco(page);
-  await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+  await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
 }
 
 test.describe('two tabs on one project', () => {
@@ -31,8 +31,8 @@ test.describe('two tabs on one project', () => {
     await openSecondTab(b, a.url());
 
     await palette(a).getByText('S3 Bucket').click();
-    await expect(canvasStats(a)).toHaveText(/^8 resources/);
-    await expect(canvasStats(b)).toHaveText(/^8 resources/);
+    await expect(canvasStats(a)).toHaveText(/^12 resources/);
+    await expect(canvasStats(b)).toHaveText(/^12 resources/);
   });
 
   test('edits in both tabs ask before anything is overwritten', async ({ context }) => {
@@ -135,9 +135,9 @@ test('blocked storage (site data disabled) keeps the editor working in memory', 
   await expect(page.getByRole('alert').filter({ hasText: 'Your browser blocks storage' })).toBeVisible();
   await page.getByRole('button', { name: `Open project ${SEED_PROJECT}` }).click();
   await waitForMonaco(page);
-  await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+  await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
   await palette(page).getByText('S3 Bucket').click();
-  await expect(canvasStats(page)).toHaveText(/^8 resources/);
+  await expect(canvasStats(page)).toHaveText(/^12 resources/);
 });
 
 test('corrupted storage is backed up and the dashboard still works', async ({ page }) => {
@@ -182,5 +182,5 @@ test('a chunk that vanished after a deploy reloads once, then shows the recovery
   await page.unroute(/\/assets\/EditorPage-[\w-]+\.js$/);
   await page.getByRole('button', { name: 'Reload' }).click();
   await waitForMonaco(page);
-  await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+  await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
 });

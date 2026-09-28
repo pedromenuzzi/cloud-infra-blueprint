@@ -28,7 +28,15 @@ describe('deleteResourcesOps', () => {
     const { ir, edges } = webApp();
     const { removed } = deleteResourcesOps(ir, edges, ['aws_vpc.main']);
     expect(removed.sort()).toEqual(
-      ['aws_instance.web', 'aws_security_group.web', 'aws_subnet.public_a', 'aws_subnet.public_b', 'aws_vpc.main'].sort(),
+      [
+        'aws_instance.web',
+        'aws_internet_gateway.igw',
+        'aws_route_table.public',
+        'aws_security_group.web',
+        'aws_subnet.public_a',
+        'aws_subnet.public_b',
+        'aws_vpc.main',
+      ].sort(),
     );
   });
 

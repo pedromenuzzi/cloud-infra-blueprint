@@ -19,7 +19,7 @@ async function drag(page: Page, id: string, dx: number, dy: number) {
 
 test.beforeEach(async ({ page }) => {
   await openSeedProject(page);
-  await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+  await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
 });
 
 test('the canvas is read-only while the code has errors, and nothing gets corrupted', async ({ page }) => {
@@ -46,7 +46,7 @@ test('the canvas is read-only while the code has errors, and nothing gets corrup
 test('Ctrl+Z in the code after a canvas edit undoes it cleanly', async ({ page }) => {
   await focusEndOfCode(page);
   await insertCode(page, 'resource "aws_sqs_queue" "typed" {}');
-  await expect(canvasStats(page)).toHaveText(/^8 resources/);
+  await expect(canvasStats(page)).toHaveText(/^12 resources/);
 
   await node(page, 'aws_vpc.main').click({ position: { x: 300, y: 12 } });
   await page.keyboard.press('F2');
@@ -63,15 +63,15 @@ test('Ctrl+Z in the code after a canvas edit undoes it cleanly', async ({ page }
   expect(text).toContain('resource "aws_instance" "web"');
   expect(text).toContain('resource "aws_security_group" "web"');
   await expect(page.getByText(/Code has errors/)).toBeHidden();
-  await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+  await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
 });
 
 test('the toolbar Undo reverts code typed in the editor', async ({ page }) => {
   await focusEndOfCode(page);
   await insertCode(page, 'resource "aws_sqs_queue" "typed" {}');
-  await expect(canvasStats(page)).toHaveText(/^8 resources/);
+  await expect(canvasStats(page)).toHaveText(/^12 resources/);
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+  await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
   await expect.poll(() => mainTf(page)).not.toContain('aws_sqs_queue');
 });
 
@@ -111,7 +111,7 @@ test('a box selection keeps every node, and Delete removes them all', async ({ p
   await expect(node(page, 'aws_db_instance.main')).toHaveClass(/selected/);
 
   await page.keyboard.press('Delete');
-  await expect(canvasStats(page)).toHaveText(/^5 resources/);
+  await expect(canvasStats(page)).toHaveText(/^9 resources/);
 });
 
 test('arrow keys move a node and the new position is saved', async ({ page }) => {

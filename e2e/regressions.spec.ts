@@ -25,15 +25,15 @@ test('the theme button opens a Light / Dark / System menu', async ({ page }) => 
 test.describe('editor', () => {
   test.beforeEach(async ({ page }) => {
     await openSeedProject(page);
-    await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+    await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
   });
 
   test('deleting a resource and undoing restores its connections', async ({ page }) => {
     await node(page, 'aws_security_group.web').click();
     await page.keyboard.press('Delete');
-    await expect(canvasStats(page)).toHaveText('6 resources, 0 connections');
+    await expect(canvasStats(page)).toHaveText('10 resources, 5 connections');
     await page.keyboard.press('Control+z');
-    await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+    await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
   });
 
   test('a resource can be dragged out of its container (and back into another)', async ({ page }) => {
@@ -139,7 +139,7 @@ test.describe('compact screens (1024px)', () => {
     await page.getByRole('button', { name: /^Resource palette/ }).click();
     const palette = page.getByRole('complementary', { name: 'Resource palette' });
     await palette.getByText('S3 Bucket', { exact: true }).click();
-    await expect(canvasStats(page)).toHaveText(/^8 resources/);
+    await expect(canvasStats(page)).toHaveText(/^12 resources/);
     await expect(palette).toBeHidden();
 
     await page.getByRole('button', { name: /^Code editor/ }).click();

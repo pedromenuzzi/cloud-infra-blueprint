@@ -71,7 +71,9 @@ describe('duplicateNode', () => {
     expect(first.node.id).toBe('aws_security_group.web_copy');
     expect(first.node.args.vpc_id).toEqual(web.args.vpc_id);
     expect(first.node.args.name).toEqual({ kind: 'literal', value: `${(web.args.name as { value: string }).value}-copy` });
-    expect(first.node.position).toMatchObject({ x: web.position!.x + 32, y: web.position!.y + 32 });
+    // next to the original, not on top of it
+    const moved = first.node.position!;
+    expect(Math.abs(moved.x - web.position!.x) >= NODE_W || Math.abs(moved.y - web.position!.y) >= NODE_H).toBe(true);
 
     const second = duplicateNode({ ...ir, resources: [...ir.resources, first.node] }, first.node);
     expect(second.node.id).toBe('aws_security_group.web_copy_2');

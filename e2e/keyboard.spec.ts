@@ -128,7 +128,7 @@ test.describe('command palette', () => {
 test.describe('editor navigation', () => {
   test('the resource palette is a single Tab stop with arrow-key navigation', async ({ page }) => {
     await openSeedProject(page, { monaco: false });
-    await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+    await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
     const palette = page.getByRole('complementary', { name: 'Resource palette' });
     const list = palette.getByRole('toolbar');
     const stops = await list.evaluate(
@@ -158,7 +158,7 @@ test.describe('editor navigation', () => {
     await expect(first).toBeFocused();
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
-    await expect(canvasStats(page)).toHaveText('8 resources, 2 connections');
+    await expect(canvasStats(page)).toHaveText('12 resources, 7 connections');
   });
 
   test('skip links jump to the canvas and to the code editor', async ({ page }) => {
