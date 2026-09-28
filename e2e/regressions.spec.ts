@@ -87,8 +87,9 @@ test.describe('editor', () => {
     const download = page.waitForEvent('download');
     await page.getByRole('menuitem', { name: 'Diagram as PNG' }).click();
     const { height } = pngSize(await readFile((await (await download).path())!));
-    // VPC is ~488px tall + 2×48px padding, rendered at 2× → never cropped to the child nodes
-    expect(height).toBeGreaterThan(1100);
+    // the whole VPC (its saved height + 2×48px padding, rendered at 2×) — never cropped to the child nodes
+    const vpcHeight = Number(/# @blueprint:pos=-?\d+,-?\d+,\d+,(\d+)\nresource "aws_vpc" "main"/.exec(await mainTf(page))![1]);
+    expect(height).toBeGreaterThanOrEqual((vpcHeight + 96) * 2 - 4);
   });
 });
 
