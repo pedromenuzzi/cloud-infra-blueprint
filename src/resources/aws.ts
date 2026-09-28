@@ -14,7 +14,7 @@ export const AWS_RESOURCES = [
     description: 'Isolated virtual network',
     container: true,
     fields: [
-      { name: 'cidr_block', type: 'string', required: true, placeholder: '10.0.0.0/16' },
+      { name: 'cidr_block', type: 'string', placeholder: '10.0.0.0/16' },
       { name: 'enable_dns_support', type: 'boolean' },
       { name: 'enable_dns_hostnames', type: 'boolean' },
       { name: 'tags', type: 'tags' },
@@ -34,12 +34,13 @@ export const AWS_RESOURCES = [
     containment: [{ arg: 'vpc_id', parentTypes: ['aws_vpc'] }],
     fields: [
       { name: 'vpc_id', type: 'string', required: true, refTo: ['aws_vpc'] },
-      { name: 'cidr_block', type: 'string', required: true, placeholder: '10.0.1.0/24' },
+      { name: 'cidr_block', type: 'string', placeholder: '10.0.1.0/24' },
       { name: 'availability_zone', type: 'string', placeholder: 'us-east-1a' },
       { name: 'map_public_ip_on_launch', type: 'boolean' },
       { name: 'tags', type: 'tags' },
     ],
     defaults: { cidr_block: lit('10.0.1.0/24') },
+    subnetCidr: { arg: 'cidr_block', parentArg: 'cidr_block' },
     connections: [{ targetTypes: ['aws_vpc'], arg: 'vpc_id', attr: 'id', mode: 'set' }],
     subtitle: (args) => litStr(args.cidr_block),
   }),
@@ -52,8 +53,9 @@ export const AWS_RESOURCES = [
     shortName: 'Security Group',
     description: 'Stateful firewall rules',
     containment: [{ arg: 'vpc_id', parentTypes: ['aws_vpc'] }],
+    naming: { maxLength: 255 },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string' },
       { name: 'description', type: 'string' },
       { name: 'vpc_id', type: 'string', refTo: ['aws_vpc'] },
       { name: 'tags', type: 'tags' },
@@ -76,11 +78,10 @@ export const AWS_RESOURCES = [
     description: 'Virtual machine',
     containment: [{ arg: 'subnet_id', parentTypes: ['aws_subnet'] }],
     fields: [
-      { name: 'ami', type: 'string', required: true, placeholder: 'ami-0c02fb55956c7d316' },
+      { name: 'ami', type: 'string', placeholder: 'ami-0c02fb55956c7d316' },
       {
         name: 'instance_type',
         type: 'select',
-        required: true,
         options: ['t3.micro', 't3.small', 't3.medium', 't3.large', 'm5.large', 'c5.large'],
       },
       { name: 'subnet_id', type: 'string', refTo: ['aws_subnet'] },
@@ -116,7 +117,6 @@ export const AWS_RESOURCES = [
       {
         name: 'engine',
         type: 'select',
-        required: true,
         options: ['postgres', 'mysql', 'mariadb'],
       },
       { name: 'engine_version', type: 'string', placeholder: '15.4' },
@@ -126,7 +126,7 @@ export const AWS_RESOURCES = [
         required: true,
         options: ['db.t3.micro', 'db.t3.small', 'db.t3.medium', 'db.m5.large'],
       },
-      { name: 'allocated_storage', type: 'number' },
+      { name: 'allocated_storage', type: 'number', min: 20, max: 65536, doc: 'GiB' },
       { name: 'username', type: 'string' },
       { name: 'password', type: 'string', doc: 'Prefer var.db_password over a literal' },
       {
@@ -159,8 +159,9 @@ export const AWS_RESOURCES = [
     displayName: 'S3 Bucket',
     shortName: 'S3',
     description: 'Object storage bucket',
+    naming: { minLength: 3, maxLength: 63 },
     fields: [
-      { name: 'bucket', type: 'string', required: true, placeholder: 'my-unique-bucket-name' },
+      { name: 'bucket', type: 'string', placeholder: 'my-unique-bucket-name', doc: 'Globally unique; AWS picks one when empty' },
       { name: 'force_destroy', type: 'boolean' },
       { name: 'tags', type: 'tags' },
     ],
@@ -174,8 +175,9 @@ export const AWS_RESOURCES = [
     displayName: 'IAM Role',
     shortName: 'IAM Role',
     description: 'Identity with assumable permissions',
+    naming: { maxLength: 64 },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string' },
       { name: 'assume_role_policy', type: 'string', required: true, doc: 'JSON policy document' },
       { name: 'tags', type: 'tags' },
     ],
@@ -194,8 +196,9 @@ export const AWS_RESOURCES = [
     displayName: 'Application Load Balancer',
     shortName: 'ALB',
     description: 'Load balancer for HTTP/TCP traffic',
+    naming: { maxLength: 32 },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string', doc: 'Letters, digits and hyphens, up to 32' },
       { name: 'internal', type: 'boolean' },
       {
         name: 'load_balancer_type',
@@ -221,9 +224,10 @@ export const AWS_RESOURCES = [
     shortName: 'Target Group',
     description: 'Routes requests to registered targets',
     containment: [{ arg: 'vpc_id', parentTypes: ['aws_vpc'] }],
+    naming: { maxLength: 32 },
     fields: [
-      { name: 'name', type: 'string', required: true },
-      { name: 'port', type: 'number', required: true },
+      { name: 'name', type: 'string', doc: 'Letters, digits and hyphens, up to 32' },
+      { name: 'port', type: 'number', min: 1, max: 65535 },
       { name: 'protocol', type: 'select', options: ['HTTP', 'HTTPS', 'TCP'] },
       { name: 'vpc_id', type: 'string', refTo: ['aws_vpc'] },
       { name: 'target_type', type: 'select', options: ['instance', 'ip', 'lambda'] },
@@ -245,7 +249,7 @@ export const AWS_RESOURCES = [
     description: 'Listens on a port and forwards to a target group',
     fields: [
       { name: 'load_balancer_arn', type: 'string', refTo: ['aws_lb'], refAttr: 'arn', required: true },
-      { name: 'port', type: 'number', required: true },
+      { name: 'port', type: 'number', min: 1, max: 65535 },
       { name: 'protocol', type: 'select', options: ['HTTP', 'HTTPS'] },
       { name: 'certificate_arn', type: 'string', doc: 'ACM certificate — required for HTTPS' },
       {
@@ -254,7 +258,15 @@ export const AWS_RESOURCES = [
         options: ['ELBSecurityPolicy-TLS13-1-2-2021-06', 'ELBSecurityPolicy-TLS13-1-3-2021-06'],
       },
     ],
-    defaults: { port: lit(80), protocol: lit('HTTP') },
+    defaults: {
+      port: lit(80),
+      protocol: lit('HTTP'),
+      // until it forwards to a target group, answer every request with a 404
+      default_action: block({
+        type: lit('fixed-response'),
+        fixed_response: block({ content_type: lit('text/plain'), status_code: lit('404') }),
+      }),
+    },
     connections: [
       { targetTypes: ['aws_lb'], arg: 'load_balancer_arn', attr: 'arn', mode: 'set' },
     ],
@@ -307,7 +319,7 @@ export const AWS_RESOURCES = [
         refTo: ['aws_ecs_task_definition'],
         refAttr: 'arn',
       },
-      { name: 'desired_count', type: 'number' },
+      { name: 'desired_count', type: 'number', min: 0 },
       { name: 'launch_type', type: 'select', options: ['FARGATE', 'EC2'] },
     ],
     defaults: { desired_count: lit(2), launch_type: lit('FARGATE') },
@@ -328,13 +340,23 @@ export const AWS_RESOURCES = [
     displayName: 'ECS Task Definition',
     shortName: 'Task Def',
     description: 'Blueprint for containers to run',
+    nameArg: 'family',
     fields: [
       { name: 'family', type: 'string', required: true },
       { name: 'cpu', type: 'select', options: ['256', '512', '1024', '2048'] },
       { name: 'memory', type: 'select', options: ['512', '1024', '2048', '4096'] },
       { name: 'network_mode', type: 'select', options: ['awsvpc', 'bridge', 'host'] },
+      { name: 'container_definitions', type: 'string', required: true, doc: 'JSON list of containers (jsonencode)' },
     ],
-    defaults: { cpu: lit('256'), memory: lit('512'), network_mode: lit('awsvpc') },
+    defaults: {
+      cpu: lit('256'),
+      memory: lit('512'),
+      network_mode: lit('awsvpc'),
+      requires_compatibilities: list([lit('FARGATE')]),
+      container_definitions: raw(
+        `jsonencode([{\n    name         = "app"\n    image        = "public.ecr.aws/nginx/nginx:latest"\n    essential    = true\n    portMappings = [{ containerPort = 80 }]\n  }])`,
+      ),
+    },
     subtitle: (args) => {
       const cpu = litStr(args.cpu);
       return cpu ? `${cpu} CPU units` : undefined;
@@ -357,7 +379,30 @@ export const AWS_RESOURCES = [
         options: ['PriceClass_100', 'PriceClass_200', 'PriceClass_All'],
       },
     ],
-    defaults: { enabled: lit(true) },
+    defaults: {
+      enabled: lit(true),
+      // placeholder origin: point domain_name at your site, bucket or load balancer
+      origin: block({
+        domain_name: lit('origin.example.com'),
+        origin_id: lit('origin'),
+        custom_origin_config: block({
+          http_port: lit(80),
+          https_port: lit(443),
+          origin_protocol_policy: lit('https-only'),
+          origin_ssl_protocols: list([lit('TLSv1.2')]),
+        }),
+      }),
+      default_cache_behavior: block({
+        allowed_methods: list([lit('GET'), lit('HEAD')]),
+        cached_methods: list([lit('GET'), lit('HEAD')]),
+        target_origin_id: lit('origin'),
+        viewer_protocol_policy: lit('redirect-to-https'),
+        // AWS managed cache policy "CachingOptimized"
+        cache_policy_id: lit('658327ea-f89d-4fab-a63d-7e88639e58f6'),
+      }),
+      restrictions: block({ geo_restriction: block({ restriction_type: lit('none') }) }),
+      viewer_certificate: block({ cloudfront_default_certificate: lit(true) }),
+    },
     subtitle: () => 'CDN',
   }),
 
@@ -383,10 +428,11 @@ export const AWS_RESOURCES = [
       { name: 'zone_id', type: 'string', refTo: ['aws_route53_zone'], refAttr: 'zone_id', required: true },
       { name: 'name', type: 'string', required: true },
       { name: 'type', type: 'select', options: ['A', 'AAAA', 'CNAME', 'TXT', 'MX'], required: true },
-      { name: 'ttl', type: 'number' },
-      { name: 'records', type: 'list' },
+      { name: 'ttl', type: 'number', min: 0 },
+      { name: 'records', type: 'list', doc: 'Or an alias block (load balancer, CloudFront…)' },
     ],
-    defaults: { type: lit('A'), ttl: lit(300) },
+    // 192.0.2.0/24 is reserved for documentation — replace with the real target
+    defaults: { type: lit('A'), ttl: lit(300), records: list([lit('192.0.2.10')]) },
     connections: [
       { targetTypes: ['aws_route53_zone'], arg: 'zone_id', attr: 'zone_id', mode: 'set' },
     ],
@@ -435,7 +481,7 @@ export const AWS_RESOURCES = [
     description: 'Outbound internet for private subnets',
     containment: [{ arg: 'subnet_id', parentTypes: ['aws_subnet'] }],
     fields: [
-      { name: 'subnet_id', type: 'string', required: true, refTo: ['aws_subnet'], doc: 'A public subnet' },
+      { name: 'subnet_id', type: 'string', refTo: ['aws_subnet'], doc: 'A public subnet' },
       { name: 'allocation_id', type: 'string', refTo: ['aws_eip'], label: 'Elastic IP' },
       { name: 'connectivity_type', type: 'select', options: ['public', 'private'] },
       { name: 'tags', type: 'tags' },
@@ -456,6 +502,7 @@ export const AWS_RESOURCES = [
     shortName: 'Lambda',
     description: 'Serverless function',
     nameArg: 'function_name',
+    naming: { maxLength: 64 },
     fields: [
       { name: 'function_name', type: 'string', required: true },
       { name: 'role', type: 'string', required: true, refTo: ['aws_iam_role'], refAttr: 'arn' },
@@ -475,8 +522,8 @@ export const AWS_RESOURCES = [
       },
       { name: 'handler', type: 'string', placeholder: 'index.handler' },
       { name: 'filename', type: 'string', placeholder: 'lambda.zip', doc: 'Deployment package (or use image_uri / s3_bucket)' },
-      { name: 'memory_size', type: 'number' },
-      { name: 'timeout', type: 'number', doc: 'Seconds (max 900)' },
+      { name: 'memory_size', type: 'number', min: 128, max: 10240, doc: 'MB' },
+      { name: 'timeout', type: 'number', min: 1, max: 900, doc: 'Seconds (max 900)' },
       { name: 'tags', type: 'tags' },
     ],
     defaults: {
@@ -498,6 +545,7 @@ export const AWS_RESOURCES = [
     shortName: 'API Gateway',
     description: 'HTTP or WebSocket API front door',
     container: true,
+    naming: { maxLength: 128 },
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'protocol_type', type: 'select', options: ['HTTP', 'WEBSOCKET'], required: true },
@@ -615,8 +663,9 @@ export const AWS_RESOURCES = [
     displayName: 'IAM Role Policy',
     shortName: 'Role Policy',
     description: 'Inline permissions attached to a role',
+    naming: { maxLength: 128 },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string' },
       { name: 'role', type: 'string', required: true, refTo: ['aws_iam_role'] },
       { name: 'policy', type: 'string', required: true, doc: 'JSON policy document' },
     ],
@@ -636,11 +685,12 @@ export const AWS_RESOURCES = [
     displayName: 'SQS Queue',
     shortName: 'SQS',
     description: 'Managed message queue',
+    naming: { maxLength: 80 },
     fields: [
       { name: 'name', type: 'string', doc: 'FIFO queue names must end in .fifo' },
       { name: 'fifo_queue', type: 'boolean' },
-      { name: 'visibility_timeout_seconds', type: 'number' },
-      { name: 'message_retention_seconds', type: 'number' },
+      { name: 'visibility_timeout_seconds', type: 'number', min: 0, max: 43200 },
+      { name: 'message_retention_seconds', type: 'number', min: 60, max: 1209600 },
       { name: 'tags', type: 'tags' },
     ],
     subtitle: (args) =>
@@ -654,6 +704,7 @@ export const AWS_RESOURCES = [
     displayName: 'SNS Topic',
     shortName: 'SNS',
     description: 'Pub/sub notification topic',
+    naming: { maxLength: 256 },
     fields: [
       { name: 'name', type: 'string' },
       { name: 'fifo_topic', type: 'boolean' },
@@ -695,10 +746,11 @@ export const AWS_RESOURCES = [
     displayName: 'DynamoDB Table',
     shortName: 'DynamoDB',
     description: 'Serverless key-value / document database',
+    naming: { minLength: 3, maxLength: 255 },
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'billing_mode', type: 'select', options: ['PAY_PER_REQUEST', 'PROVISIONED'] },
-      { name: 'hash_key', type: 'string', required: true, doc: 'Needs a matching attribute block' },
+      { name: 'hash_key', type: 'string', doc: 'Needs a matching attribute block' },
       { name: 'range_key', type: 'string' },
       { name: 'tags', type: 'tags' },
     ],
@@ -718,17 +770,17 @@ export const AWS_RESOURCES = [
     shortName: 'ElastiCache',
     description: 'Managed Redis or Memcached cache',
     nameArg: 'cluster_id',
+    naming: { maxLength: 50 },
     fields: [
-      { name: 'cluster_id', type: 'string', required: true },
-      { name: 'engine', type: 'select', options: ['redis', 'memcached'], required: true },
+      { name: 'cluster_id', type: 'string', required: true, doc: 'Lowercase letters, digits and hyphens, up to 50' },
+      { name: 'engine', type: 'select', options: ['redis', 'memcached'] },
       {
         name: 'node_type',
         type: 'select',
         options: ['cache.t4g.micro', 'cache.t4g.small', 'cache.t4g.medium', 'cache.m7g.large'],
-        required: true,
       },
-      { name: 'num_cache_nodes', type: 'number', required: true, doc: 'Must be 1 for Redis' },
-      { name: 'port', type: 'number' },
+      { name: 'num_cache_nodes', type: 'number', min: 1, max: 40, doc: 'Must be 1 for Redis' },
+      { name: 'port', type: 'number', min: 1, max: 65535 },
       { name: 'subnet_group_name', type: 'string' },
       {
         name: 'security_group_ids',
@@ -753,7 +805,7 @@ export const AWS_RESOURCES = [
     description: 'Managed encryption key',
     fields: [
       { name: 'description', type: 'string' },
-      { name: 'deletion_window_in_days', type: 'number', doc: '7–30 days' },
+      { name: 'deletion_window_in_days', type: 'number', min: 7, max: 30, doc: '7–30 days' },
       { name: 'enable_key_rotation', type: 'boolean' },
       { name: 'tags', type: 'tags' },
     ],
@@ -772,7 +824,7 @@ export const AWS_RESOURCES = [
       { name: 'name', type: 'string' },
       { name: 'description', type: 'string' },
       { name: 'kms_key_id', type: 'string', refTo: ['aws_kms_key'], refAttr: 'arn', label: 'KMS key' },
-      { name: 'recovery_window_in_days', type: 'number', doc: '0 deletes immediately, else 7–30' },
+      { name: 'recovery_window_in_days', type: 'number', min: 0, max: 30, doc: '0 deletes immediately, else 7–30' },
       { name: 'tags', type: 'tags' },
     ],
     connections: [{ targetTypes: ['aws_kms_key'], arg: 'kms_key_id', attr: 'arn', mode: 'set' }],
@@ -787,14 +839,19 @@ export const AWS_RESOURCES = [
     shortName: 'EKS',
     description: 'Managed Kubernetes control plane',
     container: true,
+    naming: { maxLength: 100 },
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'role_arn', type: 'string', required: true, refTo: ['aws_iam_role'], refAttr: 'arn' },
       { name: 'version', type: 'string', placeholder: '1.33', doc: 'Kubernetes minor version' },
       { name: 'tags', type: 'tags' },
     ],
-    defaults: { vpc_config: block({ subnet_ids: list([]) }) },
+    // connect two or more subnets to fill vpc_config.subnet_ids
+    defaults: { vpc_config: block({}) },
     connections: [{ targetTypes: ['aws_iam_role'], arg: 'role_arn', attr: 'arn', mode: 'set' }],
+    blockConnections: [
+      { targetTypes: ['aws_subnet'], block: 'vpc_config', arg: 'subnet_ids', attr: 'id', mode: 'append' },
+    ],
     subtitle: (args) => {
       const v = litStr(args.version);
       return v ? `Kubernetes ${v}` : 'Kubernetes';
@@ -840,8 +897,8 @@ export const AWS_RESOURCES = [
     fields: [
       { name: 'security_group_id', type: 'string', required: true, refTo: ['aws_security_group'] },
       { name: 'ip_protocol', type: 'select', options: ['tcp', 'udp', 'icmp', '-1'], required: true },
-      { name: 'from_port', type: 'number' },
-      { name: 'to_port', type: 'number' },
+      { name: 'from_port', type: 'number', min: -1, max: 65535 },
+      { name: 'to_port', type: 'number', min: -1, max: 65535 },
       { name: 'cidr_ipv4', type: 'string', placeholder: '10.0.0.0/16' },
       { name: 'referenced_security_group_id', type: 'string', refTo: ['aws_security_group'], label: 'From security group' },
       { name: 'description', type: 'string' },
@@ -864,8 +921,8 @@ export const AWS_RESOURCES = [
     fields: [
       { name: 'security_group_id', type: 'string', required: true, refTo: ['aws_security_group'] },
       { name: 'ip_protocol', type: 'select', options: ['-1', 'tcp', 'udp', 'icmp'], required: true },
-      { name: 'from_port', type: 'number' },
-      { name: 'to_port', type: 'number' },
+      { name: 'from_port', type: 'number', min: -1, max: 65535 },
+      { name: 'to_port', type: 'number', min: -1, max: 65535 },
       { name: 'cidr_ipv4', type: 'string', placeholder: '0.0.0.0/0' },
       { name: 'referenced_security_group_id', type: 'string', refTo: ['aws_security_group'], label: 'To security group' },
       { name: 'description', type: 'string' },
@@ -940,7 +997,7 @@ export const AWS_RESOURCES = [
     shortName: 'RT Association',
     description: 'Attaches a route table to a subnet',
     fields: [
-      { name: 'subnet_id', type: 'string', required: true, refTo: ['aws_subnet'] },
+      { name: 'subnet_id', type: 'string', refTo: ['aws_subnet'] },
       { name: 'route_table_id', type: 'string', required: true, refTo: ['aws_route_table'] },
     ],
     connections: [
@@ -981,8 +1038,9 @@ export const AWS_RESOURCES = [
     displayName: 'DB Subnet Group',
     shortName: 'DB Subnets',
     description: 'Private subnets (2+ AZs) where RDS places the database',
+    naming: { maxLength: 255 },
     fields: [
-      { name: 'name', type: 'string', required: true },
+      { name: 'name', type: 'string' },
       { name: 'subnet_ids', type: 'list', required: true, refTo: ['aws_subnet'], label: 'Subnets' },
       { name: 'tags', type: 'tags' },
     ],

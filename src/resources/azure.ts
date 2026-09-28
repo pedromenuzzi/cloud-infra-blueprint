@@ -1,10 +1,15 @@
-import { block, lit, literalString } from '@/ir/expr';
+import { block, list, lit, literalString } from '@/ir/expr';
 import { blocksOf } from '@/security/model';
 import { defineResource } from './types';
 
 const litStr = literalString;
 
 const AZURE_LOCATIONS = ['eastus', 'eastus2', 'westus2', 'westeurope', 'northeurope', 'brazilsouth'];
+/** where a resource dropped outside a resource group lands */
+export const AZURE_DEFAULT_LOCATION = 'eastus';
+/** dropped in a resource group (or a plan, a VNet…) a resource takes its location and resource group */
+const inheritScope = ['location', 'resource_group_name'];
+const located = { location: lit(AZURE_DEFAULT_LOCATION) };
 
 const rgField = {
   name: 'resource_group_name',
@@ -19,6 +24,8 @@ const locationField = {
   options: AZURE_LOCATIONS,
   required: true,
 };
+/** an all-zero tenant: valid syntax, obviously not a real tenant — replace it */
+export const KEY_VAULT_TENANT_PLACEHOLDER = '00000000-0000-0000-0000-000000000000';
 const rgContainment = [{ arg: 'resource_group_name', parentTypes: ['azurerm_resource_group'] }];
 const rgConnection = {
   targetTypes: ['azurerm_resource_group'],
@@ -54,11 +61,12 @@ export const AZURE_RESOURCES = [
     shortName: 'Resource Group',
     description: 'Logical container for Azure resources',
     container: true,
+    naming: { maxLength: 90 },
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
     ],
-    defaults: { location: lit('eastus') },
+    defaults: { ...located },
     subtitle: (args) => litStr(args.location),
   }),
 
@@ -71,12 +79,15 @@ export const AZURE_RESOURCES = [
     description: 'Isolated network in Azure',
     container: true,
     containment: rgContainment,
+    naming: { maxLength: 64 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
-      { name: 'address_space', type: 'list', required: true },
+      { name: 'address_space', type: 'list', placeholder: '10.0.0.0/16' },
       locationField,
       rgField,
     ],
+    defaults: { address_space: list([lit('10.0.0.0/16')]), ...located },
     connections: [rgConnection],
     subtitle: (args) => {
       const space = args.address_space;
@@ -94,6 +105,8 @@ export const AZURE_RESOURCES = [
     description: 'Subnet inside a VNet',
     container: true,
     containment: [{ arg: 'virtual_network_name', parentTypes: ['azurerm_virtual_network'] }],
+    naming: { maxLength: 80 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       rgField,
@@ -104,8 +117,10 @@ export const AZURE_RESOURCES = [
         refAttr: 'name',
         required: true,
       },
-      { name: 'address_prefixes', type: 'list', required: true },
+      { name: 'address_prefixes', type: 'list', placeholder: '10.0.1.0/24' },
     ],
+    defaults: { address_prefixes: list([lit('10.0.1.0/24')]) },
+    subnetCidr: { arg: 'address_prefixes', parentArg: 'address_space' },
     connections: [
       {
         targetTypes: ['azurerm_virtual_network'],
@@ -129,11 +144,14 @@ export const AZURE_RESOURCES = [
     shortName: 'NSG',
     description: 'Network traffic filter rules',
     containment: rgContainment,
+    naming: { maxLength: 80 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
       rgField,
     ],
+    defaults: { ...located },
     connections: [rgConnection],
     subtitle: (args) => {
       const n = blocksOf(args.security_rule).length;
@@ -149,12 +167,22 @@ export const AZURE_RESOURCES = [
     shortName: 'NIC',
     description: 'Virtual network interface for a VM',
     containment: rgContainment,
+    naming: { maxLength: 80 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
       rgField,
     ],
+    // connect a subnet to fill ip_configuration.subnet_id
+    defaults: {
+      ...located,
+      ip_configuration: block({ name: lit('internal'), private_ip_address_allocation: lit('Dynamic') }),
+    },
     connections: [rgConnection],
+    blockConnections: [
+      { targetTypes: ['azurerm_subnet'], block: 'ip_configuration', arg: 'subnet_id', attr: 'id', mode: 'set' },
+    ],
     subtitle: () => 'network interface',
   }),
 
@@ -166,6 +194,8 @@ export const AZURE_RESOURCES = [
     shortName: 'Azure VM',
     description: 'Linux virtual machine',
     containment: rgContainment,
+    naming: { maxLength: 64 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       {
@@ -174,17 +204,29 @@ export const AZURE_RESOURCES = [
         required: true,
         options: ['Standard_B1s', 'Standard_B2s', 'Standard_D2s_v3', 'Standard_D4s_v3'],
       },
-      { name: 'admin_username', type: 'string', required: true },
+      { name: 'admin_username', type: 'string' },
       locationField,
       rgField,
       {
         name: 'network_interface_ids',
         type: 'list',
+        required: true,
         refTo: ['azurerm_network_interface'],
         label: 'Network interfaces',
       },
     ],
-    defaults: { size: lit('Standard_B1s'), admin_username: lit('azureuser') },
+    defaults: {
+      size: lit('Standard_B1s'),
+      admin_username: lit('azureuser'),
+      ...located,
+      os_disk: block({ caching: lit('ReadWrite'), storage_account_type: lit('Standard_LRS') }),
+      source_image_reference: block({
+        publisher: lit('Canonical'),
+        offer: lit('ubuntu-24_04-lts'),
+        sku: lit('server'),
+        version: lit('latest'),
+      }),
+    },
     connections: [
       rgConnection,
       {
@@ -205,8 +247,10 @@ export const AZURE_RESOURCES = [
     shortName: 'Storage',
     description: 'Blob / file / queue storage',
     containment: rgContainment,
+    naming: { style: 'alnum', minLength: 3, maxLength: 24 },
+    inherit: inheritScope,
     fields: [
-      { name: 'name', type: 'string', required: true, doc: 'Lowercase letters and numbers only' },
+      { name: 'name', type: 'string', required: true, doc: '3–24 lowercase letters and numbers, globally unique' },
       rgField,
       locationField,
       { name: 'account_tier', type: 'select', options: ['Standard', 'Premium'], required: true },
@@ -217,13 +261,38 @@ export const AZURE_RESOURCES = [
         required: true,
       },
     ],
-    defaults: { account_tier: lit('Standard'), account_replication_type: lit('LRS') },
+    defaults: { account_tier: lit('Standard'), account_replication_type: lit('LRS'), ...located },
     connections: [rgConnection],
     subtitle: (args) => {
       const tier = litStr(args.account_tier);
       const repl = litStr(args.account_replication_type);
       return tier ? `${tier} ${repl ?? ''}`.trim() : undefined;
     },
+  }),
+
+  defineResource({
+    type: 'azurerm_storage_account_static_website',
+    provider: 'azure',
+    category: 'storage',
+    displayName: 'Static Website',
+    shortName: 'Static Website',
+    description: 'Serves a storage account’s $web container as a website',
+    fields: [
+      {
+        name: 'storage_account_id',
+        type: 'string',
+        required: true,
+        refTo: ['azurerm_storage_account'],
+        label: 'Storage account',
+      },
+      { name: 'index_document', type: 'string', placeholder: 'index.html' },
+      { name: 'error_404_document', type: 'string', placeholder: '404.html' },
+    ],
+    defaults: { index_document: lit('index.html'), error_404_document: lit('404.html') },
+    connections: [
+      { targetTypes: ['azurerm_storage_account'], arg: 'storage_account_id', attr: 'id', mode: 'set' },
+    ],
+    subtitle: (args) => litStr(args.index_document) ?? 'static website',
   }),
 
   defineResource({
@@ -234,20 +303,23 @@ export const AZURE_RESOURCES = [
     shortName: 'SQL Server',
     description: 'Managed SQL Server instance',
     containment: rgContainment,
+    naming: { maxLength: 63 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       rgField,
       locationField,
       { name: 'version', type: 'select', options: ['12.0'], required: true },
-      { name: 'administrator_login', type: 'string', required: true },
+      { name: 'administrator_login', type: 'string', doc: 'Or Microsoft Entra authentication' },
       {
         name: 'administrator_login_password',
         type: 'string',
+        // the schema marks it optional, but validate needs it unless azuread_administrator is Entra-only
         required: true,
         doc: 'Prefer var.sql_admin_password over a literal',
       },
     ],
-    defaults: { version: lit('12.0'), administrator_login: lit('sqladmin') },
+    defaults: { version: lit('12.0'), administrator_login: lit('sqladmin'), ...located },
     connections: [rgConnection],
     subtitle: () => 'SQL Server',
   }),
@@ -260,6 +332,7 @@ export const AZURE_RESOURCES = [
     shortName: 'CDN Profile',
     description: 'Container for CDN endpoints',
     containment: rgContainment,
+    naming: { maxLength: 260 },
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'location', type: 'select', options: [...AZURE_LOCATIONS, 'global'], required: true },
@@ -267,7 +340,7 @@ export const AZURE_RESOURCES = [
       {
         name: 'sku',
         type: 'select',
-        options: ['Standard_Microsoft', 'Standard_Akamai', 'Standard_Verizon'],
+        options: ['Standard_Microsoft'],
         required: true,
       },
     ],
@@ -284,6 +357,7 @@ export const AZURE_RESOURCES = [
     shortName: 'CDN Endpoint',
     description: 'Serves cached content from the edge',
     containment: rgContainment,
+    naming: { maxLength: 50 },
     fields: [
       { name: 'name', type: 'string', required: true },
       {
@@ -296,10 +370,23 @@ export const AZURE_RESOURCES = [
       { name: 'location', type: 'select', options: [...AZURE_LOCATIONS, 'global'], required: true },
       rgField,
     ],
-    defaults: { location: lit('global') },
+    // placeholder origin — connect a storage account to serve its static website
+    defaults: {
+      location: lit('global'),
+      origin: block({ name: lit('origin'), host_name: lit('www.example.com') }),
+    },
     connections: [
       rgConnection,
       { targetTypes: ['azurerm_cdn_profile'], arg: 'profile_name', attr: 'name', mode: 'set' },
+    ],
+    blockConnections: [
+      {
+        targetTypes: ['azurerm_storage_account'],
+        block: 'origin',
+        arg: 'host_name',
+        attr: 'primary_web_host',
+        mode: 'set',
+      },
     ],
     subtitle: () => 'CDN endpoint',
   }),
@@ -320,7 +407,7 @@ export const AZURE_RESOURCES = [
         required: true,
       },
       { name: 'sku_name', type: 'select', options: ['Basic', 'S0', 'S1', 'P1'] },
-      { name: 'max_size_gb', type: 'number' },
+      { name: 'max_size_gb', type: 'number', min: 1, max: 4096 },
     ],
     defaults: { sku_name: lit('Basic') },
     connections: [
@@ -337,6 +424,8 @@ export const AZURE_RESOURCES = [
     shortName: 'Public IP',
     description: 'Static or dynamic public IP address',
     containment: rgContainment,
+    naming: { maxLength: 80 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
@@ -344,7 +433,7 @@ export const AZURE_RESOURCES = [
       { name: 'allocation_method', type: 'select', options: ['Static', 'Dynamic'], required: true },
       { name: 'sku', type: 'select', options: ['Standard', 'Basic'] },
     ],
-    defaults: { allocation_method: lit('Static'), sku: lit('Standard') },
+    defaults: { allocation_method: lit('Static'), sku: lit('Standard'), ...located },
     connections: [rgConnection],
     subtitle: (args) => `${litStr(args.allocation_method) ?? 'Static'} IP`,
   }),
@@ -358,6 +447,8 @@ export const AZURE_RESOURCES = [
     description: 'Compute that hosts web and function apps',
     container: true,
     containment: rgContainment,
+    naming: { maxLength: 60 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
@@ -371,7 +462,7 @@ export const AZURE_RESOURCES = [
         doc: 'Y1 = Functions consumption plan',
       },
     ],
-    defaults: { os_type: lit('Linux'), sku_name: lit('B1') },
+    defaults: { os_type: lit('Linux'), sku_name: lit('B1'), ...located },
     connections: [rgConnection],
     subtitle: (args) => `${litStr(args.os_type) ?? 'Linux'} · ${litStr(args.sku_name) ?? 'B1'}`,
   }),
@@ -384,6 +475,8 @@ export const AZURE_RESOURCES = [
     shortName: 'Web App',
     description: 'Managed web application (App Service)',
     containment: planContainment,
+    naming: { minLength: 2, maxLength: 60 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true, doc: 'Globally unique (becomes <name>.azurewebsites.net)' },
       locationField,
@@ -391,7 +484,7 @@ export const AZURE_RESOURCES = [
       planField,
       { name: 'https_only', type: 'boolean' },
     ],
-    defaults: { https_only: lit(true), site_config: block({}) },
+    defaults: { https_only: lit(true), ...located, site_config: block({}) },
     connections: [planConnection, rgConnection],
     subtitle: () => 'web app',
   }),
@@ -404,6 +497,8 @@ export const AZURE_RESOURCES = [
     shortName: 'Function App',
     description: 'Serverless functions on App Service',
     containment: planContainment,
+    naming: { minLength: 2, maxLength: 60 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
@@ -412,7 +507,6 @@ export const AZURE_RESOURCES = [
       {
         name: 'storage_account_name',
         type: 'string',
-        required: true,
         refTo: ['azurerm_storage_account'],
         refAttr: 'name',
         doc: 'Or set storage_key_vault_secret_id instead',
@@ -423,7 +517,7 @@ export const AZURE_RESOURCES = [
         doc: 'Usually azurerm_storage_account.<name>.primary_access_key',
       },
     ],
-    defaults: { site_config: block({}) },
+    defaults: { ...located, site_config: block({}) },
     connections: [
       planConnection,
       rgConnection,
@@ -440,21 +534,26 @@ export const AZURE_RESOURCES = [
     shortName: 'AKS',
     description: 'Managed Kubernetes',
     containment: rgContainment,
+    naming: { maxLength: 63 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
       rgField,
-      { name: 'dns_prefix', type: 'string', required: true },
+      { name: 'dns_prefix', type: 'string', doc: 'Or dns_prefix_private_cluster' },
       { name: 'kubernetes_version', type: 'string', placeholder: '1.33' },
     ],
     defaults: {
       dns_prefix: lit('aks'),
+      ...located,
       default_node_pool: block({
         name: lit('default'),
         node_count: lit(1),
         vm_size: lit('Standard_B2s'),
       }),
       identity: block({ type: lit('SystemAssigned') }),
+      // required from azurerm 5: nodes come from the pools above, not node auto-provisioning
+      node_provisioning_profile: block({ mode: lit('Manual') }),
     },
     connections: [rgConnection],
     subtitle: (args) => {
@@ -471,14 +570,16 @@ export const AZURE_RESOURCES = [
     shortName: 'ACR',
     description: 'Private container image registry',
     containment: rgContainment,
+    naming: { style: 'alnum', minLength: 5, maxLength: 50 },
+    inherit: inheritScope,
     fields: [
-      { name: 'name', type: 'string', required: true, doc: 'Alphanumeric only, globally unique' },
+      { name: 'name', type: 'string', required: true, doc: '5–50 letters and numbers, globally unique' },
       locationField,
       rgField,
       { name: 'sku', type: 'select', options: ['Basic', 'Standard', 'Premium'], required: true },
       { name: 'admin_enabled', type: 'boolean' },
     ],
-    defaults: { sku: lit('Basic') },
+    defaults: { sku: lit('Basic'), ...located },
     connections: [rgConnection],
     subtitle: (args) => litStr(args.sku),
   }),
@@ -491,6 +592,8 @@ export const AZURE_RESOURCES = [
     shortName: 'Key Vault',
     description: 'Secrets, keys and certificates',
     containment: rgContainment,
+    naming: { minLength: 3, maxLength: 24 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true, doc: '3–24 chars, globally unique' },
       locationField,
@@ -499,13 +602,25 @@ export const AZURE_RESOURCES = [
         name: 'tenant_id',
         type: 'string',
         required: true,
-        doc: 'Usually data.azurerm_client_config.current.tenant_id',
+        placeholder: KEY_VAULT_TENANT_PLACEHOLDER,
+        doc: 'Placeholder — use your tenant id, usually data.azurerm_client_config.current.tenant_id (add `data "azurerm_client_config" "current" {}`)',
       },
       { name: 'sku_name', type: 'select', options: ['standard', 'premium'], required: true },
+      {
+        name: 'rbac_authorization_enabled',
+        type: 'boolean',
+        required: true,
+        doc: 'Azure RBAC instead of access policies (required from azurerm 5)',
+      },
       { name: 'purge_protection_enabled', type: 'boolean' },
-      { name: 'soft_delete_retention_days', type: 'number', doc: '7–90 days' },
+      { name: 'soft_delete_retention_days', type: 'number', min: 7, max: 90, doc: '7–90 days' },
     ],
-    defaults: { sku_name: lit('standard') },
+    defaults: {
+      tenant_id: lit(KEY_VAULT_TENANT_PLACEHOLDER),
+      sku_name: lit('standard'),
+      rbac_authorization_enabled: lit(true),
+      ...located,
+    },
     connections: [rgConnection],
     subtitle: () => 'secrets',
   }),
@@ -518,6 +633,8 @@ export const AZURE_RESOURCES = [
     shortName: 'PostgreSQL',
     description: 'Managed PostgreSQL',
     containment: rgContainment,
+    naming: { minLength: 3, maxLength: 63 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
@@ -528,7 +645,7 @@ export const AZURE_RESOURCES = [
         type: 'select',
         options: ['B_Standard_B1ms', 'GP_Standard_D2s_v3', 'MO_Standard_E4s_v3'],
       },
-      { name: 'storage_mb', type: 'number' },
+      { name: 'storage_mb', type: 'number', min: 32768, max: 33553408 },
       { name: 'administrator_login', type: 'string' },
       { name: 'administrator_password', type: 'string', doc: 'Prefer var.pg_admin_password over a literal' },
     ],
@@ -537,6 +654,7 @@ export const AZURE_RESOURCES = [
       sku_name: lit('B_Standard_B1ms'),
       storage_mb: lit(32768),
       administrator_login: lit('pgadmin'),
+      ...located,
     },
     connections: [rgConnection],
     subtitle: (args) => `PostgreSQL ${litStr(args.version) ?? ''}`.trim(),
@@ -550,15 +668,17 @@ export const AZURE_RESOURCES = [
     shortName: 'Redis',
     description: 'Managed in-memory cache',
     containment: rgContainment,
+    naming: { maxLength: 63 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true },
       locationField,
       rgField,
-      { name: 'capacity', type: 'number', required: true, doc: 'Size within the family (C: 0–6, P: 1–5)' },
+      { name: 'capacity', type: 'number', required: true, min: 0, max: 6, doc: 'Size within the family (C: 0–6, P: 1–5)' },
       { name: 'family', type: 'select', options: ['C', 'P'], required: true },
       { name: 'sku_name', type: 'select', options: ['Basic', 'Standard', 'Premium'], required: true },
     ],
-    defaults: { capacity: lit(0), family: lit('C'), sku_name: lit('Basic') },
+    defaults: { capacity: lit(0), family: lit('C'), sku_name: lit('Basic'), ...located },
     connections: [rgConnection],
     subtitle: (args) => litStr(args.sku_name),
   }),
@@ -572,13 +692,15 @@ export const AZURE_RESOURCES = [
     description: 'Container for queues and topics',
     container: true,
     containment: rgContainment,
+    naming: { minLength: 6, maxLength: 50 },
+    inherit: inheritScope,
     fields: [
       { name: 'name', type: 'string', required: true, doc: 'Globally unique' },
       locationField,
       rgField,
       { name: 'sku', type: 'select', options: ['Basic', 'Standard', 'Premium'], required: true },
     ],
-    defaults: { sku: lit('Standard') },
+    defaults: { sku: lit('Standard'), ...located },
     connections: [rgConnection],
     subtitle: (args) => litStr(args.sku),
   }),
@@ -594,7 +716,7 @@ export const AZURE_RESOURCES = [
     fields: [
       { name: 'name', type: 'string', required: true },
       { name: 'namespace_id', type: 'string', required: true, refTo: ['azurerm_servicebus_namespace'] },
-      { name: 'max_delivery_count', type: 'number' },
+      { name: 'max_delivery_count', type: 'number', min: 1 },
       { name: 'dead_lettering_on_message_expiration', type: 'boolean' },
     ],
     connections: [
