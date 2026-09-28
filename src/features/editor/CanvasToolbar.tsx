@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useSecurityUi } from '@/features/security/securityStore';
+import { motionMs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
 function ToolButton({
@@ -68,25 +69,25 @@ export function CanvasToolbar({
         role="toolbar"
         aria-label="Canvas controls"
       >
-        <ToolButton label="Zoom out" onClick={() => void rf.zoomOut({ duration: 200 })}>
+        <ToolButton label="Zoom out" onClick={() => void rf.zoomOut({ duration: motionMs(200) })}>
           <Minus className="h-3.5 w-3.5" />
         </ToolButton>
         <button
           type="button"
           data-tip="Reset to 100%"
           aria-label="Reset zoom"
-          onClick={() => void rf.zoomTo(1, { duration: 250 })}
+          onClick={() => void rf.zoomTo(1, { duration: motionMs(250) })}
           className="bp-tip h-7 w-11 rounded-[7px] text-center text-[11.5px] font-medium tabular-nums text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
         >
           {Math.round(zoom * 100)}%
         </button>
-        <ToolButton label="Zoom in" onClick={() => void rf.zoomIn({ duration: 200 })}>
+        <ToolButton label="Zoom in" onClick={() => void rf.zoomIn({ duration: motionMs(200) })}>
           <Plus className="h-3.5 w-3.5" />
         </ToolButton>
         <Divider />
         <ToolButton
           label="Fit view  ⇧1"
-          onClick={() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: 350 })}
+          onClick={() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) })}
         >
           <Maximize className="h-3.5 w-3.5" />
         </ToolButton>
