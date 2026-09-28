@@ -12,7 +12,7 @@ import {
   type Node,
   type NodeProps,
 } from '@xyflow/react';
-import { AlertTriangle, Globe, Lock, Shield, ShieldEllipsis, ShieldOff } from 'lucide-react';
+import { AlertTriangle, Globe, Lock, Shield, ShieldEllipsis, ShieldOff, ShieldQuestion } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import type { Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
@@ -22,7 +22,7 @@ import { useEditor } from './store';
 
 /** security-lens decorations (undefined when the lens is off) */
 export interface NodeSecurity {
-  exposure?: { level: 'internet' | 'restricted' | 'isolated'; ports: string[] };
+  exposure?: { level: 'internet' | 'unknown' | 'restricted' | 'isolated'; ports: string[] };
   /** SG / NACL / NSG / firewall rule summary */
   rules?: string;
   /** worst finding touching this node */
@@ -48,6 +48,10 @@ function SecurityChip({ security }: { security: NodeSecurity }) {
     tone = risky ? RISK_COLOR[security.risk!] : '#0ea5e9';
     icon = <Globe className="h-2.5 w-2.5" />;
     label = `Public :${security.exposure.ports.slice(0, 3).join(', :')}${security.exposure.ports.length > 3 ? '…' : ''}`;
+  } else if (security.exposure?.level === 'unknown') {
+    tone = '#f59e0b';
+    icon = <ShieldQuestion className="h-2.5 w-2.5" />;
+    label = 'Unverified';
   } else if (security.exposure?.level === 'restricted') {
     label = 'Private';
   } else if (security.exposure?.level === 'isolated') {

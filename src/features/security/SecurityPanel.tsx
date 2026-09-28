@@ -1,15 +1,15 @@
-import { ChevronDown, Globe, Lock, ScanEye, ShieldCheck, Sparkles, Wrench, X } from 'lucide-react';
-import { useState } from 'react';
+import { ChevronDown, Globe, Lock, ScanEye, ShieldCheck, ShieldQuestion, Sparkles, Wrench, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { showToast } from '@/components/Toast';
 import { Button } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
+import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
-import { applyOps, type Op } from '@/ir/ops';
 import { cn } from '@/lib/utils';
 import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
 import { SEVERITY_ORDER, type Finding, type Severity } from '@/security/audit';
-import { GRADE_COLORS, SEVERITY_COLORS, getAudit, useSecurityUi } from './securityStore';
+import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, getAudit, useSecurityUi } from './securityStore';
 
 const SEVERITY_LABEL: Record<Severity, string> = {
   critical: 'Critical',
@@ -21,6 +21,8 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 function nameOf(id: string) {
   return id.split('.').slice(1).join('.') || id;
 }
+
+const portList = (ports: string[]) => ports.map((p) => (/^\d/.test(p) ? `:${p}` : p)).join(', ');
 
 function ResourceChip({ id, onClick }: { id: string; onClick(): void }) {
   const type = id.split('.')[0];
@@ -73,9 +75,28 @@ export function SecurityPanel() {
   const setLens = useSecurityUi((s) => s.setLens);
   const setPanel = useSecurityUi((s) => s.setPanel);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
   const audit = getAudit(ir);
   const exposed = [...audit.topology.exposure].filter(([, e]) => e.level === 'internet');
+  const unknown = [...audit.topology.exposure].filter(([, e]) => e.level === 'unknown');
   const fixable = audit.findings.filter((f) => f.fix);
+
+  // Esc closes the panel — unless something above it (a dialog, a menu, a field) takes the key,
+  // or there is a selection / drawer for Esc to clear first
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      const target = e.target as HTMLElement;
+      const inPanel = panelRef.current?.contains(target) ?? false;
+      if (document.querySelector('[aria-modal="true"], [role="menu"]')) return;
+      if (!inPanel && target.closest('input, textarea, select, [contenteditable], .monaco-editor')) return;
+      if (!inPanel && (useEditor.getState().selection || useLayout.getState().drawer)) return;
+      if (inPanel) e.stopPropagation();
+      setPanel(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [setPanel]);
 
   const show = (id: string) => {
     useEditor.getState().setSelection(id, 'canvas');
@@ -89,24 +110,12 @@ export function SecurityPanel() {
     showToast(`Fixed — ${f.title.toLowerCase()}`, 'success');
   };
 
-  const fixAll = () => {
-    // chain fixes on a scratch IR so each one sees the previous result; apply as one undo step
-    let scratch = useEditor.getState().ir;
-    const ops: Op[] = [];
-    for (const f of fixable) {
-      const next = f.fix!.ops(scratch);
-      ops.push(...next);
-      scratch = applyOps(scratch, next).ir;
-    }
-    if (ops.length === 0) return;
-    applyCanvasOps(ops);
-    showToast(`Applied ${fixable.length} fixes — Ctrl Z to undo`, 'success');
-  };
-
   return (
+    // starts below the canvas's top-center stats pill so it never covers it
     <aside
+      ref={panelRef}
       aria-label="Security"
-      className="bp-drawer-left flex w-full flex-col overflow-hidden rounded-[14px] border bg-surface-1 shadow-xl"
+      className="bp-drawer-left mt-10 flex w-full flex-col overflow-hidden rounded-[14px] border bg-surface-1 shadow-xl"
     >
       <div className="flex items-center gap-2 border-b px-3.5 py-3">
         <ShieldCheck className="h-4 w-4 text-primary" />
@@ -173,18 +182,33 @@ export function SecurityPanel() {
           </h3>
           {exposed.length === 0 ? (
             <p className="flex items-center gap-1.5 text-[12px] text-muted">
-              <Lock className="h-3.5 w-3.5 text-success" /> Nothing is reachable from the internet.
+              <Lock className="h-3.5 w-3.5 text-success" />{' '}
+              {unknown.length ? 'Nothing is confirmed reachable from the internet.' : 'Nothing is reachable from the internet.'}
             </p>
           ) : (
             <ul className="space-y-1">
               {exposed.map(([id, e]) => (
                 <li key={id} className="flex items-center justify-between gap-2">
                   <ResourceChip id={id} onClick={() => show(id)} />
-                  <span className="shrink-0 font-mono text-[11px] text-muted">:{e.ports.join(', :')}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-muted">{portList(e.ports)}</span>
                 </li>
               ))}
             </ul>
           )}
+          {unknown.length > 0 ? (
+            <>
+              <h3 className="mb-1.5 mt-3 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
+                <ShieldQuestion className="h-3 w-3" /> Can't verify
+              </h3>
+              <ul className="space-y-1">
+                {unknown.map(([id, e]) => (
+                  <li key={id} className="flex items-center gap-2" title={e.reason}>
+                    <ResourceChip id={id} onClick={() => show(id)} />
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
         </section>
 
         <section className="px-3.5 pb-4 pt-4">
@@ -193,7 +217,7 @@ export function SecurityPanel() {
             {fixable.length > 1 ? (
               <button
                 type="button"
-                onClick={fixAll}
+                onClick={fixAllFindings}
                 className="flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:text-primary-hover"
               >
                 <Sparkles className="h-3 w-3" /> Fix all {fixable.length}

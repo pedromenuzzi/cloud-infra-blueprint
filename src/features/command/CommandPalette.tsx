@@ -47,8 +47,7 @@ import { Kbd } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { useLayout } from '@/features/editor/layoutStore';
-import { getAudit, useSecurityUi } from '@/features/security/securityStore';
-import { applyOps, type Op } from '@/ir/ops';
+import { fixAllFindings, getAudit, useSecurityUi } from '@/features/security/securityStore';
 import { ResourceGroups, wordFilter } from '@/features/editor/ResourcePicker';
 import { orderedFiles, useEditor } from '@/features/editor/store';
 import { copyText, exportZip } from '@/lib/download';
@@ -245,19 +244,7 @@ export function CommandPalette() {
                         icon={Wrench}
                         label={`Fix ${fixable} security issue${fixable === 1 ? '' : 's'}`}
                         keywords={['harden', 'remediate', 'auto fix']}
-                        onSelect={() =>
-                          run(() => {
-                            let scratch = editor().ir;
-                            const ops: Op[] = [];
-                            for (const f of getAudit(scratch).findings.filter((x) => x.fix)) {
-                              const next = f.fix!.ops(scratch);
-                              ops.push(...next);
-                              scratch = applyOps(scratch, next).ir;
-                            }
-                            if (ops.length) editor().applyCanvasOps(ops);
-                            showToast(`Applied ${fixable} security fixes — Ctrl Z to undo`, 'success');
-                          })
-                        }
+                        onSelect={() => run(fixAllFindings)}
                       />
                     ) : null}
                   </Command.Group>

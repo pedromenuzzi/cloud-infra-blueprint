@@ -9,12 +9,12 @@ import {
   Lock,
   Plus,
   ShieldCheck,
+  ShieldQuestion,
   Trash2,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getAudit, useSecurityUi } from '@/features/security/securityStore';
-import { ruleRisk } from '@/security/audit';
 import { OWNER_TYPES, peerLabel, portLabel, serviceName } from '@/security/model';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
@@ -408,6 +408,8 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
 /* ------------------------------------------------------------ inspector */
 
 const RISK_TONE = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#64748b' } as const;
+const EXPOSURE_TONE = { internet: '#0ea5e9', unknown: '#f59e0b', restricted: '#10b981', isolated: '#64748b' } as const;
+const portList = (ports: string[]) => ports.map((p) => (/^\d/.test(p) ? `:${p}` : p)).join(', ');
 
 /** Security summary for a workload: exposure, protecting groups, findings. */
 function ExposureCard({ node }: { node: ResourceNode }) {
@@ -417,26 +419,34 @@ function ExposureCard({ node }: { node: ResourceNode }) {
   const findings = audit.findings.filter((f) => f.resource === node.id);
   if (!exposure && findings.length === 0) return null;
   const inbound = audit.topology.flows.filter((f) => f.to === node.id);
-  const tone =
-    exposure?.level === 'internet' ? '#0ea5e9' : exposure?.level === 'restricted' ? '#10b981' : '#64748b';
+  const tone = EXPOSURE_TONE[exposure?.level ?? 'isolated'];
   return (
     <div className="rounded-[10px] border p-2.5" style={{ borderColor: `color-mix(in srgb, ${tone} 35%, transparent)` }}>
       {exposure ? (
         <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: tone }}>
-          {exposure.level === 'internet' ? <Globe className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+          {exposure.level === 'internet' ? (
+            <Globe className="h-3.5 w-3.5" />
+          ) : exposure.level === 'unknown' ? (
+            <ShieldQuestion className="h-3.5 w-3.5" />
+          ) : (
+            <Lock className="h-3.5 w-3.5" />
+          )}
           {exposure.level === 'internet'
-            ? `Internet-facing on :${exposure.ports.join(', :')}`
-            : exposure.level === 'restricted'
-              ? 'Private — reachable only as allowed below'
-              : 'No inbound traffic allowed'}
+            ? `Internet-facing on ${portList(exposure.ports)}`
+            : exposure.level === 'unknown'
+              ? "Exposure can't be verified"
+              : exposure.level === 'restricted'
+                ? 'Private — reachable only as allowed below'
+                : 'No inbound traffic allowed'}
         </div>
       ) : null}
+      {exposure?.reason ? <p className="mt-1 text-[11px] leading-snug text-muted">{exposure.reason}</p> : null}
       {inbound.length > 0 ? (
         <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted">
           {inbound.map((f) => (
             <li key={f.id} className="flex justify-between gap-2">
               <span className="truncate">from {f.from === 'internet' ? 'Internet' : f.from.split('.').slice(1).join('.')}</span>
-              <span className="shrink-0 font-mono">:{f.ports.join(', :')}</span>
+              <span className="shrink-0 font-mono">{portList(f.ports)}</span>
             </li>
           ))}
         </ul>
@@ -487,6 +497,7 @@ function RulesTab({ node }: { node: ResourceNode }) {
   const protects = audit.topology.protects.get(node.id) ?? [];
   const nacledSubnets = [...audit.topology.subnetNacls].filter(([, n]) => n.includes(node.id)).map(([s]) => s);
   const findings = audit.findings.filter((f) => f.resource === node.id);
+  const hidden = audit.topology.hidden.get(node.id) ?? [];
   const open = () => useSecurityUi.getState().openRules(node.id);
   const name = (id: string) => id.split('.').slice(1).join('.');
   return (
@@ -516,19 +527,27 @@ function RulesTab({ node }: { node: ResourceNode }) {
       ) : null}
       {(['inbound', 'outbound'] as const).map((direction) => {
         const list = rules.filter((r) => r.direction === direction);
-        if (node.type === 'google_compute_firewall' && list.length === 0) return null;
+        const unreadable = hidden.filter((h) => h.directions.includes(direction));
+        if (node.type === 'google_compute_firewall' && list.length === 0 && unreadable.length === 0) return null;
         return (
           <div key={direction}>
             <h4 className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
               {direction === 'inbound' ? <ArrowDownToLine className="h-3 w-3" /> : <ArrowUpFromLine className="h-3 w-3" />}
               {direction} <span className="font-medium normal-case tracking-normal">({list.length})</span>
             </h4>
+            {unreadable.length > 0 ? (
+              <p className="mb-1 text-[11.5px] text-warning">
+                Rules built with {unreadable.map((h) => h.reason).join(', ')} can't be shown — check them in code.
+              </p>
+            ) : null}
             {list.length === 0 ? (
-              <p className="text-[11.5px] text-faint">{direction === 'inbound' ? 'Nothing can connect in.' : 'No outbound traffic.'}</p>
+              unreadable.length === 0 ? (
+                <p className="text-[11.5px] text-faint">{direction === 'inbound' ? 'Nothing can connect in.' : 'No outbound traffic.'}</p>
+              ) : null
             ) : (
               <ul className="space-y-1">
                 {list.map((r) => {
-                  const risk = ruleRisk(r);
+                  const risk = audit.risks.get(r.id);
                   return (
                     <li key={r.id}>
                       <button
