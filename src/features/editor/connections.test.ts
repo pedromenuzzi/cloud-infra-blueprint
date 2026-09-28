@@ -98,3 +98,33 @@ describe('looksLikeTraversal', () => {
     expect(looksLikeTraversal('my value', ir)).toBe(false);
   });
 });
+
+describe('removeReferencesOps in nested blocks', () => {
+  it('drops a subnet from an EKS vpc_config without touching the rest', () => {
+    const { ir } = parseProject({
+      'main.tf': `resource "aws_subnet" "a" {
+  cidr_block = "10.0.1.0/24"
+}
+resource "aws_subnet" "b" {
+  cidr_block = "10.0.2.0/24"
+}
+resource "aws_eks_cluster" "k" {
+  name     = "k"
+  role_arn = "arn"
+  vpc_config {
+    subnet_ids = [aws_subnet.a.id, aws_subnet.b.id]
+  }
+}
+`,
+    });
+    const ops = removeReferencesOps(ir, [{ source: 'aws_eks_cluster.k', target: 'aws_subnet.a', field: 'vpc_config' }]);
+    expect(ops).toEqual([
+      {
+        kind: 'set_arg',
+        nodeId: 'aws_eks_cluster.k',
+        field: 'vpc_config',
+        value: { kind: 'block', body: { subnet_ids: { kind: 'list', items: [{ kind: 'ref', path: 'aws_subnet.b.id' }] } } },
+      },
+    ]);
+  });
+});

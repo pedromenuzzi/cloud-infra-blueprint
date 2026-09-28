@@ -117,7 +117,10 @@ describe('field bounds', () => {
     expect(fieldBoundsDiagnostics(node, def)).toEqual([]);
     node.args.allocated_storage = lit(-5);
     expect(fieldBoundsDiagnostics(node, def)).toEqual([
-      'aws_db_instance.instance: "allocated_storage" is -5 but must be between 20 and 65536',
+      {
+        field: 'allocated_storage',
+        message: 'aws_db_instance.instance: "allocated_storage" is -5 but must be between 20 and 65536',
+      },
     ]);
     node.args.allocated_storage = { kind: 'ref', path: 'var.storage' };
     expect(fieldBoundsDiagnostics(node, def)).toEqual([]);

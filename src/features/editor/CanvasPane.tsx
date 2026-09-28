@@ -48,7 +48,6 @@ import { captureDiagram } from '@/features/export/captureDiagram';
 import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
-import { ref } from '@/ir/expr';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
@@ -56,6 +55,7 @@ import { copyText } from '@/lib/download';
 import { detectProviders } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from '@/resources/icons';
+import { connectionOp, findConnectionRule } from '@/resources/connect';
 import { docsUrl, getDef, isContainerType } from '@/resources/registry';
 import type { ResourceDef } from '@/resources/types';
 import { registerCanvasApi } from './canvasApi';
@@ -529,14 +529,10 @@ function CanvasInner() {
           const nextParent = target?.node.id;
           if (nextParent !== currentParent) {
             if (nextParent && target) {
-              const rule = def.connections?.find((c) => c.targetTypes.includes(target.node.type));
-              if (rule && rule.mode === 'set') {
-                ops.push({
-                  kind: 'set_arg',
-                  nodeId: n.id,
-                  field: rule.arg,
-                  value: ref(`${target.node.id}.${rule.attr}`),
-                });
+              const rule = findConnectionRule(def, target.node.type);
+              const link = rule && rule.mode === 'set' ? connectionOp(irNode, target.node, rule) : null;
+              if (link) {
+                ops.push(link);
                 ops.push({
                   kind: 'move_node',
                   nodeId: n.id,
@@ -616,27 +612,30 @@ function CanvasInner() {
         return;
       }
 
-      const tryRule = (from: ResourceNode, to: ResourceNode): Op | 'connected' | null => {
-        const def = getDef(from.type);
-        const rule = def?.connections?.find((c) => c.targetTypes.includes(to.type));
+      const tryRule = (from: ResourceNode, to: ResourceNode): Op | 'connected' | 'complex' | null => {
+        const rule = findConnectionRule(getDef(from.type), to.type);
         if (!rule) return null;
-        const path = `${to.id}.${rule.attr}`;
-        const existing = from.args[rule.arg];
-        const pointsAtTarget = (e: Expression | undefined) => e?.kind === 'ref' && e.path.startsWith(`${to.id}.`);
-        if (rule.mode === 'set') {
-          if (pointsAtTarget(existing)) return 'connected';
-          return { kind: 'set_arg', nodeId: from.id, field: rule.arg, value: ref(path) };
+        // the argument lives in a nested block for some resources (EKS vpc_config.subnet_ids)
+        let existing: Expression | undefined;
+        if ('block' in rule) {
+          const holder = from.args[rule.block];
+          if (holder && holder.kind !== 'block' && holder.kind !== 'blocks') return 'complex';
+          existing = holder?.kind === 'block' ? holder.body[rule.arg] : holder?.kind === 'blocks' ? holder.items[0]?.[rule.arg] : undefined;
+        } else {
+          existing = from.args[rule.arg];
         }
+        const pointsAtTarget = (e: Expression | undefined) => e?.kind === 'ref' && e.path.startsWith(`${to.id}.`);
+        if (rule.mode === 'set' && pointsAtTarget(existing)) return 'connected';
         // appending to an expression we don't model (var.ids, concat(…)) would break its type
-        if (existing && existing.kind !== 'list' && existing.kind !== 'ref') return null;
-        const items: Expression[] =
-          existing?.kind === 'list' ? [...existing.items] : existing ? [existing] : [];
-        if (items.some(pointsAtTarget)) return 'connected';
-        items.push(ref(path));
-        return { kind: 'set_arg', nodeId: from.id, field: rule.arg, value: { kind: 'list', items } };
+        if (rule.mode === 'append' && existing && existing.kind !== 'list' && existing.kind !== 'ref') return 'complex';
+        return connectionOp(from, to, rule) ?? 'connected';
       };
 
       const op = tryRule(source, target) ?? tryRule(target, source);
+      if (op === 'complex') {
+        showToast('That argument is an expression — connect them in code', 'info');
+        return;
+      }
       if (op === 'connected') {
         showToast('These resources are already connected', 'info');
         return;
@@ -657,8 +656,7 @@ function CanvasInner() {
       const b = c.target ? byId.get(c.target) : undefined;
       if (!a || !b || a.id === b.id) return false;
       if (a.provider !== b.provider && a.provider !== 'other' && b.provider !== 'other') return false;
-      const links = (from: ResourceNode, to: ResourceNode) =>
-        getDef(from.type)?.connections?.some((rule) => rule.targetTypes.includes(to.type)) ?? false;
+      const links = (from: ResourceNode, to: ResourceNode) => findConnectionRule(getDef(from.type), to.type) !== undefined;
       return links(a, b) || links(b, a);
     },
     [byId],

@@ -41,7 +41,7 @@ between them.
 
 ### Built for speed
 
-- ⌘ **Command palette** (`⌘K` / `Ctrl+K`): add any of the 91 services, jump to a resource or
+- ⌘ **Command palette** (`⌘K` / `Ctrl+K`): add any of the 92 services, jump to a resource or
   file, tidy the layout, export, switch theme, start from a template.
 - ✨ **Quick add**: double-click the canvas to drop a service exactly there (nested into the
   VPC / subnet / group under the cursor).
@@ -83,10 +83,20 @@ pnpm dev        # http://localhost:5173
 ```
 
 ```bash
-pnpm test       # parser, round-trip, catalog, template + share-link suites
+pnpm test       # parser, round-trip fuzz, patcher, catalog, templates, security, storage, PDF
 pnpm typecheck
+pnpm lint       # ESLint (rules of hooks, no stray console/debugger)
 pnpm build      # static production build in dist/
 pnpm test:e2e   # Playwright against the production build (run `pnpm build` first)
+```
+
+The generated Terraform is checked with the real CLI too (CI runs this on every push):
+
+```bash
+pnpm templates:emit .tf-templates   # every starter template as .tf files
+pnpm catalog:emit .tf-catalog       # one project per provider with every palette resource
+bash scripts/terraform-validate.sh .tf-templates    # init + validate + fmt -check, per project
+bash scripts/terraform-validate.sh .tf-catalog
 ```
 
 First E2E run on a new machine: `pnpm exec playwright install --with-deps chromium`.
@@ -131,7 +141,7 @@ The app is a fully static SPA. Any free static host works:
 src/
 ├── ir/          # canonical IR types, ops, graph derivation, layout, validation
 ├── hcl/         # parser, emitter, minimal-patch engine (+ round-trip tests)
-├── resources/   # declarative multi-cloud catalog (91 resources: 43 AWS / 23 Azure / 25 GCP)
+├── resources/   # declarative multi-cloud catalog (92 resources: 43 AWS / 24 Azure / 25 GCP)
 ├── templates/   # 11 patterns: AWS web/static/ECS/serverless/secure 3-tier, Azure web/static, GCP web/run/static, multi-cloud DR
 ├── tutorials/   # step-by-step lessons (diagram + code, diff-highlighted)
 ├── security/    # security model, topology analysis, audit findings + fixes, rule editing

@@ -25,6 +25,7 @@ import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
 import { cn, tfName } from '@/lib/utils';
 import { PROVIDER_LABELS, ResourceIcon } from '@/resources/icons';
+import { withinBounds } from '@/resources/fieldRules';
 import { docsUrl, getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
 import { canvasApi } from './canvasApi';
@@ -203,11 +204,16 @@ function NumberField({ node, field }: { node: ResourceNode; field: FieldDef }) {
     <Input
       key={`${node.id}:${field.name}:${current}`}
       type="number"
+      min={field.min}
+      max={field.max}
       defaultValue={current}
       onBlur={(e) => {
         const v = e.target.value.trim();
         if (v === current) return;
-        if (v !== '' && !Number.isFinite(Number(v))) {
+        if (v !== '' && (!Number.isFinite(Number(v)) || !withinBounds(field, Number(v)))) {
+          if (v !== '' && Number.isFinite(Number(v))) {
+            showToast(`${field.name} must be ${field.min ?? '…'}–${field.max ?? '…'}`, 'error');
+          }
           e.target.value = current;
           return;
         }

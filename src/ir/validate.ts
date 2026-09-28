@@ -2,6 +2,7 @@
  * Semantic validation layered above the parser: missing required fields,
  * dangling references, cross-cloud references.
  */
+import { fieldBoundsDiagnostics } from '@/resources/fieldRules';
 import type { ResourceDef } from '@/resources/types';
 import { collectRefs, refTargetAddress } from './expr';
 import type { Diagnostic, IR, ResourceNode } from './types';
@@ -54,6 +55,10 @@ export function validateProject(
             ...markerAt(node, value === undefined ? undefined : field.name),
           });
         }
+      }
+      // numbers typed in code or imported that the inspector would have refused
+      for (const { field, message } of fieldBoundsDiagnostics(node, def)) {
+        out.push({ file, severity: 'warning', message, nodeId: node.id, ...markerAt(node, field) });
       }
     }
 

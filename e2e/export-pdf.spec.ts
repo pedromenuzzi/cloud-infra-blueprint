@@ -155,14 +155,14 @@ test.describe('PDF document export', () => {
     await page.mouse.up();
     await page.keyboard.up('Shift');
     const selected = page.locator('.react-flow__node.selected');
-    await expect(selected).toHaveCount(7);
+    await expect(selected).toHaveCount(11);
 
     const { pdf } = await exportPdf(page);
     const [diagram] = pageContents(pdf);
     // no selection rings (2 px strokes in a category color) and no active-edge labels
     expect(diagram).not.toMatch(/ 2(?:\.\d+)? w (?:0\.976 0\.451 0\.086|0\.576 0\.2 0\.918|0\.863 0\.149 0\.149) RG/);
     expect(textRuns(diagram)).not.toContain('subnet_id');
-    await expect(selected).toHaveCount(7);
+    await expect(selected).toHaveCount(11);
   });
 
   test('exports a large project quickly, without freezing the tab, in readable tiles', async ({ page }) => {

@@ -11,3 +11,5 @@ coverage/
 test-results/
 playwright-report/
 .tf-templates/
+.tf-catalog/
+.tf-out/

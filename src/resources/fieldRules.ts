@@ -13,8 +13,9 @@ export function withinBounds(field: Pick<FieldDef, 'min' | 'max'>, value: number
   return (field.min === undefined || value >= field.min) && (field.max === undefined || value <= field.max);
 }
 
-export function fieldBoundsDiagnostics(node: ResourceNode, def: ResourceDef): string[] {
-  const out: string[] = [];
+/** One message per number field whose literal value is outside its bounds. */
+export function fieldBoundsDiagnostics(node: ResourceNode, def: ResourceDef): Array<{ field: string; message: string }> {
+  const out: Array<{ field: string; message: string }> = [];
   for (const field of def.fields) {
     if (field.type !== 'number' || (field.min === undefined && field.max === undefined)) continue;
     const value = node.args[field.name];
@@ -25,7 +26,7 @@ export function fieldBoundsDiagnostics(node: ResourceNode, def: ResourceDef): st
         : field.min !== undefined
           ? `at least ${field.min}`
           : `at most ${field.max}`;
-    out.push(`${node.id}: "${field.name}" is ${value.value} but must be ${range}`);
+    out.push({ field: field.name, message: `${node.id}: "${field.name}" is ${value.value} but must be ${range}` });
   }
   return out;
 }
