@@ -3,7 +3,7 @@ import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
 import { getDef } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
-import { deleteResourcesOps, removeReferencesOps } from './connections';
+import { deleteResourcesOps, looksLikeTraversal, removeReferencesOps } from './connections';
 import { useEditor } from './store';
 
 function webApp() {
@@ -68,5 +68,25 @@ describe('editor store: delete then undo', () => {
     useEditor.getState().undo();
     expect(useEditor.getState().files).toEqual(files);
     expect(useEditor.getState().edges.length).toBe(edgesBefore);
+  });
+});
+
+describe('looksLikeTraversal', () => {
+  const { ir } = parseProject({
+    'main.tf': 'resource "aws_subnet" "public_a" {\n  cidr_block = "10.0.1.0/24"\n}\n',
+  });
+
+  it('turns references to existing resources and variables into refs', () => {
+    expect(looksLikeTraversal('aws_subnet.public_a.id', ir)).toBe(true);
+    expect(looksLikeTraversal('aws_subnet.public_a[0].id', ir)).toBe(true);
+    expect(looksLikeTraversal('var.region', ir)).toBe(true);
+    expect(looksLikeTraversal('data.aws_ami.ubuntu.id', ir)).toBe(true);
+  });
+
+  it('keeps look-alike strings as strings', () => {
+    expect(looksLikeTraversal('lambda_function.lambda_handler', ir)).toBe(false);
+    expect(looksLikeTraversal('lambda_function.zip', ir)).toBe(false);
+    expect(looksLikeTraversal('aws_subnet.missing.id', ir)).toBe(false);
+    expect(looksLikeTraversal('my value', ir)).toBe(false);
   });
 });

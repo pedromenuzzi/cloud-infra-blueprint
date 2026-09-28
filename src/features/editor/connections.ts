@@ -76,9 +76,17 @@ export function deleteResourcesOps(
   return { ops, removed: [...removed] };
 }
 
-/** True when a string the user typed should be committed as a bare reference. */
-export function looksLikeTraversal(text: string): boolean {
+/**
+ * True when a string the user typed should be committed as a bare reference:
+ * `var.x` / `local.x` / `module.x` / `data.x`, or an attribute of a resource
+ * that exists in the project. Anything else stays a string — a Lambda handler
+ * like `lambda_function.lambda_handler` or a file name like `app_bundle.zip`
+ * looks like a traversal but isn't one.
+ */
+export function looksLikeTraversal(text: string, ir: IR): boolean {
   if (/\s/.test(text)) return false;
   if (/^(var|local|module|data)\.[\w][\w.-]*$/.test(text)) return true;
-  return /^[a-z][a-z0-9]*_[a-z0-9_]+\.[\w-]+(\.[\w.[\]"*-]+)*$/.test(text);
+  if (!/^[a-z][a-z0-9]*_[a-z0-9_]+\.[\w-]+(\[[^\]]*\])?(\.[\w.[\]"*-]+)*$/.test(text)) return false;
+  const address = refTargetAddress(text.replace(/\[[^\]]*\]/, ''));
+  return address !== null && ir.resources.some((r) => r.id === address);
 }

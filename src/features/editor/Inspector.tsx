@@ -21,7 +21,7 @@ import { Badge, Button, Field, Input, Select } from '@/components/ui';
 import { emitResource } from '@/hcl/emitter';
 import { exprPreview, lit, literalString, ref } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
-import type { Expression, ResourceNode } from '@/ir/types';
+import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
 import { cn, tfName } from '@/lib/utils';
 import { PROVIDER_LABELS, ResourceIcon } from '@/resources/icons';
@@ -40,15 +40,26 @@ function useOps() {
   return useEditor((s) => s.applyCanvasOps);
 }
 
-function commitTextOp(node: ResourceNode, field: string, text: string): Op | null {
+function commitTextOp(ir: IR, node: ResourceNode, field: string, text: string): Op | null {
   const trimmed = text.trim();
   const current = node.args[field];
   if (trimmed === '') {
     return current ? { kind: 'unset_arg', nodeId: node.id, field } : null;
   }
-  const value: Expression = looksLikeTraversal(trimmed) ? ref(trimmed) : lit(trimmed);
+  const value: Expression = looksLikeTraversal(trimmed, ir) ? ref(trimmed) : lit(trimmed);
   if (current && exprPreview(current) === exprPreview(value)) return null;
   return { kind: 'set_arg', nodeId: node.id, field, value };
+}
+
+/** Enter commits (by blurring), Escape puts the original value back first so the blur commits nothing. */
+function editKeys(original: string) {
+  return (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') e.currentTarget.blur();
+    else if (e.key === 'Escape') {
+      e.currentTarget.value = original;
+      e.currentTarget.blur();
+    }
+  };
 }
 
 function RawValueNote({ expr }: { expr: Expression }) {
@@ -116,12 +127,10 @@ function StringOrRefField({ node, field }: { node: ResourceNode; field: FieldDef
       defaultValue={currentText}
       placeholder={field.placeholder}
       onBlur={(e) => {
-        const op = commitTextOp(node, field.name, e.target.value);
+        const op = commitTextOp(ir, node, field.name, e.target.value);
         if (op) applyOps([op]);
       }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-      }}
+      onKeyDown={editKeys(currentText)}
     />
   );
 }
@@ -137,11 +146,17 @@ function SelectField({ node, field }: { node: ResourceNode; field: FieldDef }) {
       value={current}
       onChange={(e) => {
         const v = e.target.value;
-        applyOps([
+        const ops: Op[] = [
           v === ''
             ? { kind: 'unset_arg', nodeId: node.id, field: field.name }
             : { kind: 'set_arg', nodeId: node.id, field: field.name, value: lit(v) },
-        ]);
+        ];
+        // another engine's version (postgres 15.4 on mysql) would fail at apply
+        if (field.name === 'engine' && node.args.engine_version) {
+          ops.push({ kind: 'unset_arg', nodeId: node.id, field: 'engine_version' });
+          showToast('Cleared engine_version — set one that exists for the new engine', 'info');
+        }
+        applyOps(ops);
       }}
     >
       <option value="">— none —</option>
@@ -192,15 +207,17 @@ function NumberField({ node, field }: { node: ResourceNode; field: FieldDef }) {
       onBlur={(e) => {
         const v = e.target.value.trim();
         if (v === current) return;
+        if (v !== '' && !Number.isFinite(Number(v))) {
+          e.target.value = current;
+          return;
+        }
         applyOps([
           v === ''
             ? { kind: 'unset_arg', nodeId: node.id, field: field.name }
             : { kind: 'set_arg', nodeId: node.id, field: field.name, value: lit(Number(v)) },
         ]);
       }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-      }}
+      onKeyDown={editKeys(current)}
     />
   );
 }
@@ -277,7 +294,7 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
               if (e.key === 'Enter' && draft.trim()) {
                 commit([
                   ...items,
-                  looksLikeTraversal(draft.trim()) ? ref(draft.trim()) : lit(draft.trim()),
+                  looksLikeTraversal(draft.trim(), ir) ? ref(draft.trim()) : lit(draft.trim()),
                 ]);
                 setDraft('');
               }
@@ -292,7 +309,7 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
               if (!draft.trim()) return;
               commit([
                 ...items,
-                looksLikeTraversal(draft.trim()) ? ref(draft.trim()) : lit(draft.trim()),
+                looksLikeTraversal(draft.trim(), ir) ? ref(draft.trim()) : lit(draft.trim()),
               ]);
               setDraft('');
             }}
@@ -307,11 +324,12 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
 
 function TagsField({ node, field }: { node: ResourceNode; field: FieldDef }) {
   const applyOps = useOps();
-  const expr = node.args[field.name];
-  if (expr && expr.kind !== 'object') return <RawValueNote expr={expr} />;
-  const entries = expr?.kind === 'object' ? Object.entries(expr.fields) : [];
   const [k, setK] = useState('');
   const [v, setV] = useState('');
+  const expr = node.args[field.name];
+  // e.g. `tags = var.common_tags` — hooks above stay unconditional
+  if (expr && expr.kind !== 'object') return <RawValueNote expr={expr} />;
+  const entries = expr?.kind === 'object' ? Object.entries(expr.fields) : [];
 
   const commit = (fields: Record<string, Expression>) => {
     applyOps([
@@ -345,8 +363,12 @@ function TagsField({ node, field }: { node: ResourceNode; field: FieldDef }) {
         </span>
       ))}
       <div className="flex gap-1.5">
-        <Input className="h-7.5 w-2/5" placeholder="key" value={k} onChange={(e) => setK(e.target.value)} />
-        <Input className="h-7.5 flex-1" placeholder="value" value={v} onChange={(e) => setV(e.target.value)} />
+        <span className="w-2/5 shrink-0">
+          <Input className="h-7.5" placeholder="key" aria-label="Tag key" value={k} onChange={(e) => setK(e.target.value)} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <Input className="h-7.5" placeholder="value" aria-label="Tag value" value={v} onChange={(e) => setV(e.target.value)} />
+        </span>
         <Button
           variant="outline"
           size="icon"
@@ -622,9 +644,7 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
             }
             applyOps([{ kind: 'rename_resource', nodeId: node.id, newName: next }], `${node.type}.${next}`);
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
+          onKeyDown={editKeys(node.name)}
         />
       </Field>
 
@@ -766,9 +786,7 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
               renameProject(e.target.value);
             }
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
+          onKeyDown={editKeys(projectName)}
         />
       </Field>
 
@@ -835,6 +853,7 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
 export function Inspector() {
   const selection = useEditor((s) => s.selection);
   const ir = useEditor((s) => s.ir);
+  const codeErrored = useEditor((s) => s.codeErrored);
   const [tabChoice, setTab] = useState<Tab>('properties');
   const node = selection ? ir.resources.find((r) => r.id === selection) : undefined;
   const isOwner = node ? OWNER_TYPES[node.type] !== undefined : false;
@@ -916,17 +935,23 @@ export function Inspector() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {codeErrored ? (
+            <p role="status" className="border-b bg-warning/10 px-3.5 py-2 text-[11.5px] font-medium text-warning">
+              Read-only until the code parses — fix the errors in the code pane.
+            </p>
+          ) : null}
+          <fieldset disabled={codeErrored} className="min-h-0 flex-1 overflow-y-auto">
             {tab === 'rules' ? <RulesTab node={node} /> : null}
             {tab === 'properties' ? <PropertiesTab node={node} /> : null}
             {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
             {tab === 'code' ? <CodeTab node={node} /> : null}
-          </div>
+          </fieldset>
 
           <div className="border-t p-3">
             <Button
               variant="outline"
               size="sm"
+              disabled={codeErrored}
               className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
               onClick={() => useEditor.getState().deleteResources([node.id])}
             >
