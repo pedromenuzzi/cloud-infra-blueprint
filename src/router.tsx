@@ -1,17 +1,21 @@
-import { lazy, Suspense, useEffect } from 'react';
-import { createBrowserRouter, Outlet, useNavigate } from 'react-router-dom';
-import { ToastViewport, showToast } from '@/components/Toast';
+import { Suspense } from 'react';
+import { createBrowserRouter, Outlet, useMatch } from 'react-router-dom';
+import { AppErrorScreen } from '@/components/AppErrorScreen';
+import { ToastViewport } from '@/components/Toast';
 import { ConfirmHost } from '@/components/Confirm';
+import { ShareLinkHost } from '@/components/ShareLinkHost';
+import { StorageNotices } from '@/components/StorageNotices';
 import { CommandHost } from '@/features/command/CommandHost';
-import { createProject } from '@/lib/storage';
-import { readShareFromLocation } from '@/lib/share';
+import { lazyWithReload } from '@/lib/chunkReload';
 
-const LandingPage = lazy(() => import('./routes/LandingPage'));
-const DashboardPage = lazy(() => import('./routes/DashboardPage'));
-const EditorPage = lazy(() => import('./routes/EditorPage'));
-const TutorialsPage = lazy(() => import('./routes/TutorialsPage'));
-const TutorialPlayerPage = lazy(() => import('./routes/TutorialPlayerPage'));
-const NotFoundPage = lazy(() => import('./routes/NotFoundPage'));
+const LandingPage = lazyWithReload(() => import('./routes/LandingPage'));
+const DashboardPage = lazyWithReload(() => import('./routes/DashboardPage'));
+const EditorPage = lazyWithReload(() => import('./routes/EditorPage'));
+const TutorialsPage = lazyWithReload(() => import('./routes/TutorialsPage'));
+const TutorialPlayerPage = lazyWithReload(() => import('./routes/TutorialPlayerPage'));
+const NotFoundPage = lazyWithReload(() => import('./routes/NotFoundPage'));
+// shares the editor store's chunk — only loaded on /editor
+const ProjectConflictHost = lazyWithReload(() => import('@/components/ProjectConflictHost'));
 
 function RouteFallback() {
   return (
@@ -22,30 +26,22 @@ function RouteFallback() {
 }
 
 function Root() {
-  const navigate = useNavigate();
-
-  // serverless share links: #share=<deflated project>
-  useEffect(() => {
-    const shared = readShareFromLocation();
-    if (!shared) return;
-    history.replaceState(null, '', location.pathname + location.search);
-    const project = createProject({
-      name: shared.name,
-      files: shared.files,
-      description: 'Imported from a share link.',
-    });
-    showToast(`Imported “${shared.name}” from share link`, 'success');
-    navigate(`/editor/${project.id}`, { replace: true });
-  }, [navigate]);
-
+  const inEditor = useMatch('/editor/:id') !== null;
   return (
     <>
       <Suspense fallback={<RouteFallback />}>
         <Outlet />
       </Suspense>
       <ToastViewport />
+      <StorageNotices />
       <CommandHost />
       <ConfirmHost />
+      <ShareLinkHost />
+      {inEditor ? (
+        <Suspense fallback={null}>
+          <ProjectConflictHost />
+        </Suspense>
+      ) : null}
     </>
   );
 }
@@ -55,13 +51,21 @@ export const router = createBrowserRouter(
     {
       path: '/',
       element: <Root />,
+      // a crash in the shell itself
+      errorElement: <AppErrorScreen />,
       children: [
-        { index: true, element: <LandingPage /> },
-        { path: 'dashboard', element: <DashboardPage /> },
-        { path: 'editor/:id', element: <EditorPage /> },
-        { path: 'tutorials', element: <TutorialsPage /> },
-        { path: 'tutorials/:slug', element: <TutorialPlayerPage /> },
-        { path: '*', element: <NotFoundPage /> },
+        {
+          // a crash in any page (or a chunk gone after a deploy) keeps the shell
+          errorElement: <AppErrorScreen />,
+          children: [
+            { index: true, element: <LandingPage /> },
+            { path: 'dashboard', element: <DashboardPage /> },
+            { path: 'editor/:id', element: <EditorPage /> },
+            { path: 'tutorials', element: <TutorialsPage /> },
+            { path: 'tutorials/:slug', element: <TutorialPlayerPage /> },
+            { path: '*', element: <NotFoundPage /> },
+          ],
+        },
       ],
     },
   ],

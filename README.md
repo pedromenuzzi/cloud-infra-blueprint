@@ -10,6 +10,10 @@
   Terraform code in perfect sync — AWS, Azure and GCP, running entirely in your browser.
 </p>
 
+<p align="center">
+  <a href="https://pedromenuzzi.github.io/cloud-infra-blueprint/"><b>Open the live app →</b></a>
+</p>
+
 ---
 
 ## What it does
@@ -26,13 +30,18 @@ between them.
   (`vpc_security_group_ids`, `target`, …); deleting it removes the reference.
 - 💾 **No account, no server**: projects auto-save to your browser. Share a whole project
   as a URL. Export a ready-to-`terraform apply` zip.
+- 🛡️ **Security audit**: findings ranked by severity with plain-language explanations and
+  one-click fixes, a canvas lens that highlights what's exposed to the internet, and a
+  firewall rule editor for AWS security groups / NACLs, Azure NSGs and GCP firewalls.
+- 📄 **PDF export**: a shareable architecture document — the diagram plus a readable summary
+  of resources, connections, security findings and the code — generated in the browser.
 - 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the
   diagram and the code side by side with the new lines highlighted — any step opens in
   the editor.
 
 ### Built for speed
 
-- ⌘ **Command palette** (`⌘K` / `Ctrl+K`): add any of the 83 services, jump to a resource or
+- ⌘ **Command palette** (`⌘K` / `Ctrl+K`): add any of the 91 services, jump to a resource or
   file, tidy the layout, export, switch theme, start from a template.
 - ✨ **Quick add**: double-click the canvas to drop a service exactly there (nested into the
   VPC / subnet / group under the cursor).
@@ -42,6 +51,8 @@ between them.
 - 🖱️ **Right-click actions**: show in code, rename (`F2`), duplicate (`⌘D`), copy address,
   Terraform docs, delete.
 - 📥 **Import** existing Terraform: drop `.tf` files, a folder or a `.zip` on the dashboard.
+  The root module is imported; `modules/` directories are skipped for now (modules aren't
+  supported yet), and so are `.terraform/`, state files and the lock file.
 - 🖼️ **Export** the diagram as PNG or SVG, alongside the Terraform zip.
 - 🎨 **A real icon system**: every service has its own glyph on a category-colored tile;
   floating edges attach to the nearest side and animate the data flow of the selection.
@@ -91,7 +102,14 @@ The app is a fully static SPA. Any free static host works:
 | **Vercel** | Import the repo → framework "Vite" → deploy. (`vercel.json` already handles SPA rewrites.) |
 | **Netlify** | Import the repo → build `pnpm build`, publish `dist`. (`public/_redirects` included.) |
 | **Cloudflare Pages** | Import → build `pnpm build`, output `dist`. |
-| **GitHub Pages** | Enable *Settings → Pages → Source: GitHub Actions*. The included [`deploy-pages.yml`](.github/workflows/deploy-pages.yml) builds with the right base path on every push to `main`. |
+| **GitHub Pages** | Enable *Settings → Pages → Source: GitHub Actions*. The included [`deploy-pages.yml`](.github/workflows/deploy-pages.yml) builds with the right base path and deploys once the CI workflow (typecheck, tests, build, E2E) passes on `main`. |
+
+> **Deep links on GitHub Pages return HTTP 404.** Pages has no rewrite rules, so the
+> workflow copies `index.html` to `404.html`: a deep link such as `/editor/…` or
+> `/tutorials/…` renders correctly and survives a refresh, but the response status is 404
+> (crawlers and link checkers will report it). This can't be fixed on Pages. Vercel and
+> Netlify serve those routes with **200** thanks to the included `vercel.json` and
+> `public/_redirects`.
 
 ## Tech
 
@@ -113,14 +131,15 @@ The app is a fully static SPA. Any free static host works:
 src/
 ├── ir/          # canonical IR types, ops, graph derivation, layout, validation
 ├── hcl/         # parser, emitter, minimal-patch engine (+ round-trip tests)
-├── resources/   # declarative multi-cloud catalog (83 resources: 36 AWS / 22 Azure / 25 GCP)
-├── templates/   # 10 patterns: AWS web/static/ECS/serverless, Azure web/static, GCP web/run/static, multi-cloud DR
+├── resources/   # declarative multi-cloud catalog (91 resources: 43 AWS / 23 Azure / 25 GCP)
+├── templates/   # 11 patterns: AWS web/static/ECS/serverless/secure 3-tier, Azure web/static, GCP web/run/static, multi-cloud DR
 ├── tutorials/   # step-by-step lessons (diagram + code, diff-highlighted)
-├── features/    # editor (canvas, code, palette, inspector, topbar), templates modal
-├── routes/      # landing, dashboard, editor, 404
-├── components/  # design-system UI kit, thumbnails, theme toggle, toasts
-└── lib/         # localStorage projects, zip export, share links, utils
-e2e/             # Playwright specs (editor, navigation, share links)
+├── security/    # security model, topology analysis, audit findings + fixes, rule editing
+├── features/    # editor (canvas, code, palette, inspector, topbar), security panel, PDF export, templates modal
+├── routes/      # landing, dashboard, editor, tutorials, 404
+├── components/  # design-system UI kit, thumbnails, theme toggle, toasts, app shell (errors, share links, storage notices)
+└── lib/         # localStorage projects, Terraform import, zip export, share links, PDF writer, utils
+e2e/             # Playwright specs (editor, navigation, share links, import, persistence, PDF, regressions)
 ```
 
 ## Extending

@@ -21,7 +21,16 @@ import type { Op } from '@/ir/ops';
 import type { Diagnostic, IR, IREdge } from '@/ir/types';
 import { emptyIR } from '@/ir/types';
 import { validateProject } from '@/ir/validate';
-import { getProject, updateProject, type Project } from '@/lib/storage';
+import {
+  createProject,
+  getProject,
+  PROJECTS_KEY,
+  restoreProject,
+  sameFiles,
+  uniqueProjectName,
+  updateProject,
+  type Project,
+} from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
 import { deleteResourcesOps } from './connections';
 
@@ -74,11 +83,24 @@ interface EditorState {
   /** bumped by revealInCode so the code pane scrolls + flashes the block */
   revealSeq: number;
   activeFile: string;
-  saveState: 'saved' | 'saving';
+  /** 'error': the last save failed (see saveError) — edits stay in memory until it's resolved */
+  saveState: 'saved' | 'saving' | 'error';
+  /** why saving failed: storage full, or the project changed / was deleted in another tab */
+  saveError: 'quota' | 'conflict' | 'deleted' | null;
+  /** another tab changed or deleted this project while this one had unsaved edits */
+  conflict: 'changed' | 'deleted' | null;
   past: Array<Record<string, string>>;
   future: Array<Record<string, string>>;
 
-  load(project: Project): void;
+  /** `keepView` keeps the open file + selection when they still exist (reload from another tab) */
+  load(project: Project, options?: { keepView?: boolean }): void;
+  /**
+   * Settle a conflict: 'reload' takes the other tab's version, 'overwrite'
+   * keeps this tab's, 'restore' puts a deleted project back, 'fork' saves this
+   * tab's copy as a new project, 'discard' drops it. Returns the id of the
+   * project the editor should show next (null after 'discard').
+   */
+  resolveConflict(choice: 'reload' | 'overwrite' | 'restore' | 'fork' | 'discard'): string | null;
   applyCanvasOps(ops: Op[], select?: string | null): void;
   onCodeChange(file: string, text: string): void;
   setActiveFile(file: string): void;
@@ -98,18 +120,43 @@ let codeBurstBase: Record<string, string> | null = null;
 
 const hasErrors = (diagnostics: Diagnostic[]) => diagnostics.some((d) => d.severity === 'error');
 
+/* persistence bookkeeping for the open project */
+/** the stored project as this tab last loaded or wrote it — its `rev` guards against stale writes */
+let stored: Project | null = null;
+/** edits not written yet (pending debounce, or a write that failed) */
+let dirty = false;
+/** writes pending edits now; true when nothing is left unsaved (set up by the store) */
+let saveNow: () => boolean = () => true;
+
 export const useEditor = create<EditorState>((set, get) => {
+  const save = (): boolean => {
+    clearTimeout(persistTimer);
+    persistTimer = undefined;
+    const { projectId: id, files, projectName, conflict } = get();
+    if (!id || !dirty) return !dirty;
+    if (conflict) return false; // waiting for the user's choice — never overwrite silently
+    const result = updateProject(id, { files, name: projectName }, { expectedRev: stored?.rev ?? 0 });
+    if (result.ok) {
+      stored = result.project;
+      dirty = false;
+      set({ saveState: 'saved', saveError: null });
+      return true;
+    }
+    if (result.reason === 'quota') set({ saveState: 'error', saveError: 'quota' });
+    else if (result.reason === 'missing') set({ saveState: 'error', saveError: 'deleted', conflict: 'deleted' });
+    else set({ saveState: 'error', saveError: 'conflict', conflict: 'changed' });
+    return false;
+  };
+  saveNow = save;
+
   const persist = () => {
     const { projectId } = get();
     if (!projectId) return;
+    dirty = true;
+    if (get().conflict) return;
     set({ saveState: 'saving' });
     clearTimeout(persistTimer);
-    persistTimer = setTimeout(() => {
-      const { projectId: id, files: current } = get();
-      if (!id) return;
-      updateProject(id, { files: current });
-      set({ saveState: 'saved' });
-    }, 500);
+    persistTimer = setTimeout(save, 500);
   };
 
   const pushHistory = (snapshot: Record<string, string> = { ...get().files }) => {
@@ -160,17 +207,35 @@ export const useEditor = create<EditorState>((set, get) => {
     revealSeq: 0,
     activeFile: 'main.tf',
     saveState: 'saved',
+    saveError: null,
+    conflict: null,
     past: [],
     future: [],
 
-    load(project) {
+    load(input, options = {}) {
+      const keep = options.keepView === true && get().projectId === input.id;
+      let project = input;
+      if (!keep && dirty) {
+        // a pending save belongs to the project on screen — write it before replacing it
+        const saved = save();
+        if (input.id === get().projectId) {
+          // reopening the same project: keep edits that couldn't be stored rather than
+          // reload an older copy; otherwise what was just written is newer than `input`
+          if (!saved) return;
+          project = getProject(input.id) ?? input;
+        }
+      }
+      clearTimeout(persistTimer);
       clearTimeout(parseTimer);
       parseTimer = undefined;
       codeBurstBase = null;
+      stored = project;
+      dirty = false;
       const { ir, diagnostics } = parseProject(project.files);
       const errored = diagnostics.some((d) => d.severity === 'error');
       const derived = derive(ir);
       const fileList = orderedFiles(project.files);
+      const { selection, activeFile } = get();
       set({
         projectId: project.id,
         projectName: project.name,
@@ -181,12 +246,79 @@ export const useEditor = create<EditorState>((set, get) => {
         warnings: derived.warnings,
         parseDiagnostics: diagnostics,
         codeErrored: errored,
-        selection: null,
-        activeFile: fileList.includes('main.tf') ? 'main.tf' : (fileList[0] ?? 'main.tf'),
+        selection: keep && derived.ir.resources.some((r) => r.id === selection) ? selection : null,
+        activeFile:
+          keep && fileList.includes(activeFile)
+            ? activeFile
+            : fileList.includes('main.tf')
+              ? 'main.tf'
+              : (fileList[0] ?? 'main.tf'),
         saveState: 'saved',
+        saveError: null,
+        conflict: null,
         past: [],
         future: [],
       });
+    },
+
+    resolveConflict(choice) {
+      const { projectId: id, projectName, files } = get();
+      if (!id) return null;
+      const current = getProject(id);
+      const gone = () => {
+        set({ conflict: 'deleted', saveState: 'error', saveError: 'deleted' });
+        return id;
+      };
+      switch (choice) {
+        case 'reload':
+          if (!current) return gone();
+          get().load(current, { keepView: true });
+          return id;
+        case 'overwrite':
+          if (!current) return gone();
+          stored = current; // their revision becomes the base; ours is written over it
+          dirty = true;
+          set({ conflict: null });
+          save();
+          return id;
+        case 'restore': {
+          const now = new Date().toISOString();
+          const base: Project = stored ?? { id, name: projectName, files, providers: [], createdAt: now, updatedAt: now };
+          const result = restoreProject({ ...base, id, name: projectName, files });
+          if (result.ok) {
+            stored = result.project;
+            dirty = false;
+            set({ conflict: null, saveState: 'saved', saveError: null });
+          } else if (result.reason === 'conflict') {
+            set({ conflict: 'changed', saveState: 'error', saveError: 'conflict' });
+          } else {
+            set({ saveState: 'error', saveError: 'quota' });
+          }
+          return id;
+        }
+        case 'fork':
+          try {
+            const project = createProject({
+              name: uniqueProjectName(projectName),
+              files,
+              description: stored?.description,
+              templateSlug: stored?.templateSlug,
+            });
+            dirty = false;
+            set({ conflict: null });
+            get().load(project);
+            return project.id;
+          } catch {
+            set({ saveState: 'error', saveError: 'quota' });
+            return id;
+          }
+        case 'discard':
+          clearTimeout(persistTimer);
+          dirty = false;
+          stored = null;
+          set({ conflict: null, saveState: 'saved', saveError: null, projectId: null });
+          return null;
+      }
     },
 
     applyCanvasOps(ops, select) {
@@ -254,7 +386,9 @@ export const useEditor = create<EditorState>((set, get) => {
       const { projectId } = get();
       const clean = name.trim() || 'Untitled';
       set({ projectName: clean });
-      if (projectId) updateProject(projectId, { name: clean });
+      if (!projectId) return;
+      dirty = true;
+      save();
     },
 
     deleteResources(ids) {
@@ -328,6 +462,60 @@ export const useEditor = create<EditorState>((set, get) => {
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as unknown as { __editorStore: unknown }).__editorStore = useEditor;
+}
+
+/** Write the pending (debounced) save right away. True when nothing is left unsaved. */
+export function flushPendingSave(): boolean {
+  return saveNow();
+}
+
+/**
+ * Another tab wrote the projects. Reload the open project when this tab has
+ * nothing unsaved; otherwise raise a conflict for the user to settle.
+ */
+function onStorageChanged(e: StorageEvent) {
+  if (e.key !== PROJECTS_KEY && e.key !== null) return;
+  const state = useEditor.getState();
+  if (!state.projectId || state.conflict) return;
+  const current = getProject(state.projectId);
+  if (!current) {
+    clearTimeout(persistTimer);
+    dirty = true; // what's on screen now exists nowhere else
+    useEditor.setState({ conflict: 'deleted', saveState: 'error', saveError: 'deleted' });
+    return;
+  }
+  if ((current.rev ?? 0) === (stored?.rev ?? 0)) {
+    // another project changed; if ours failed for lack of space, retry — room may have been freed
+    if (dirty && state.saveError === 'quota') saveNow();
+    return;
+  }
+  if (stored && sameFiles(current.files, stored.files)) {
+    // metadata only (e.g. renamed on the dashboard): adopt it and keep local edits
+    stored = current;
+    if (current.name !== state.projectName) useEditor.setState({ projectName: current.name });
+    return;
+  }
+  if (!dirty) {
+    state.load(current, { keepView: true });
+    return;
+  }
+  clearTimeout(persistTimer);
+  useEditor.setState({ conflict: 'changed', saveState: 'error', saveError: 'conflict' });
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', onStorageChanged);
+  // without a flush, the last half-second of edits is lost on reload / close / tab switch
+  window.addEventListener('pagehide', () => saveNow());
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveNow();
+  });
+  window.addEventListener('beforeunload', (e) => {
+    if (saveNow()) return;
+    // edits that can't be stored (storage full / unresolved conflict): let the browser ask
+    e.preventDefault();
+    e.returnValue = '';
+  });
 }
 
 export function loadProjectIntoEditor(id: string): boolean {

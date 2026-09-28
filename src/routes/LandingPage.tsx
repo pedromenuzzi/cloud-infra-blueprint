@@ -20,14 +20,14 @@ import { hlLine } from '@/components/HclSnippet';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button, Kbd, Logo } from '@/components/ui';
-import { createProject, listProjects } from '@/lib/storage';
+import { REPO_URL } from '@/lib/links';
+import { createProject, openDemoProject, uniqueProjectName } from '@/lib/storage';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn, slugify } from '@/lib/utils';
 import { CATEGORY_COLORS, ProviderChip, ProviderDot, ResourceIcon } from '@/resources/icons';
 import { allDefs, getDef } from '@/resources/registry';
 import type { Category } from '@/resources/types';
 import { getTemplate, TEMPLATES } from '@/templates';
-
-const REPO_URL = 'https://github.com/pedromenuzzi/cloud-infra-blueprint';
 
 /* ------------------------------------------------------------ hero demo */
 
@@ -323,6 +323,7 @@ function FeatureTile({ icon: Icon, category }: { icon: LucideIcon; category: Cat
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  useDocumentTitle(null);
   const resourceCount = useMemo(() => allDefs().length, []);
   const showcase = useMemo(
     () =>
@@ -333,32 +334,29 @@ export default function LandingPage() {
     [],
   );
 
+  // only ever the seeded demo (tagged `demo`), never one of the user's own projects
   const openDemo = () => {
-    const existing = listProjects().find((p) => p.templateSlug === 'aws-web-app');
-    if (existing) {
-      navigate(`/editor/${existing.id}`);
-      return;
+    try {
+      navigate(`/editor/${openDemoProject().id}`);
+    } catch {
+      /* storage full — the storage notice says so */
     }
-    const template = getTemplate('aws-web-app')!;
-    const project = createProject({
-      name: 'production-web',
-      description: 'Demo project — a classic VPC + EC2 + RDS web stack.',
-      files: template.build('production-web'),
-      templateSlug: template.slug,
-    });
-    navigate(`/editor/${project.id}`);
   };
 
   const startTemplate = (slug: string) => {
     const t = getTemplate(slug);
     if (!t) return;
-    const project = createProject({
-      name: t.name,
-      files: t.build(slugify(t.name)),
-      templateSlug: t.slug,
-      description: t.description,
-    });
-    navigate(`/editor/${project.id}`);
+    try {
+      const project = createProject({
+        name: uniqueProjectName(t.name),
+        files: t.build(slugify(t.name)),
+        templateSlug: t.slug,
+        description: t.description,
+      });
+      navigate(`/editor/${project.id}`);
+    } catch {
+      /* storage full — the storage notice says so */
+    }
   };
 
   return (

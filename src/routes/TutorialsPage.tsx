@@ -3,17 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { AppRail } from '@/components/AppRail';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { Badge } from '@/components/ui';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { PROVIDER_LABELS } from '@/resources/icons';
 import { TUTORIALS } from '@/tutorials';
 
 export default function TutorialsPage() {
   const navigate = useNavigate();
+  useDocumentTitle('Tutorials');
 
   return (
     <div className="flex h-full">
       <AppRail active="tutorials" />
       <main className="min-w-0 flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-6xl px-8 py-8">
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
           <h1 className="text-[26px] font-bold tracking-[-0.01em]">Tutorials</h1>
           <p className="mt-1 text-[13.5px] text-muted">
             Learn Terraform by watching the diagram and the code move together — every step is a

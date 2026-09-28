@@ -1,11 +1,12 @@
 import { ArrowLeft, ArrowRight, Check, ExternalLink } from 'lucide-react';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { diffAddedLines, HclSnippet } from '@/components/HclSnippet';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Badge, Button, LogoMark } from '@/components/ui';
-import { createProject } from '@/lib/storage';
+import { createProject, findProjectByOrigin, uniqueProjectName } from '@/lib/storage';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn } from '@/lib/utils';
 import { getTutorial } from '@/tutorials';
 
@@ -39,8 +40,28 @@ export default function TutorialPlayerPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const tutorial = slug ? getTutorial(slug) : undefined;
+  useDocumentTitle(tutorial ? `${tutorial.title} — Tutorials` : 'Tutorials');
 
-  const [stepIdx, setStepIdx] = useState(0);
+  // the step lives in the URL (?step=2, 1-based) so a refresh or a shared link keeps it
+  const [params, setParams] = useSearchParams();
+  const total = tutorial?.steps.length ?? 1;
+  const requested = Number.parseInt(params.get('step') ?? '1', 10);
+  const stepIdx = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), total) - 1 : 0;
+  const setStepIdx = useCallback(
+    (next: number | ((i: number) => number)) => {
+      const i = typeof next === 'function' ? next(stepIdx) : next;
+      setParams(
+        (prev) => {
+          const out = new URLSearchParams(prev);
+          if (i <= 0) out.delete('step');
+          else out.set('step', String(i + 1));
+          return out;
+        },
+        { replace: true },
+      );
+    },
+    [setParams, stepIdx],
+  );
   const step = tutorial?.steps[stepIdx];
   const [activeFile, setActiveFile] = useState('main.tf');
 
@@ -62,46 +83,65 @@ export default function TutorialPlayerPage() {
   if (!tutorial || !step) return null;
 
   const openInEditor = () => {
-    const project = createProject({
-      name: `${tutorial.title} — step ${stepIdx + 1}`,
-      files: { ...step.files },
-      description: `From the "${tutorial.title}" tutorial.`,
-    });
-    navigate(`/editor/${project.id}`);
+    // reuse the untouched copy of this step made earlier instead of piling up duplicates
+    const origin = `tutorial:${tutorial.slug}:${stepIdx + 1}`;
+    const existing = findProjectByOrigin(origin, step.files);
+    if (existing) {
+      navigate(`/editor/${existing.id}`);
+      return;
+    }
+    try {
+      const project = createProject({
+        name: uniqueProjectName(`${tutorial.title} — step ${stepIdx + 1}`),
+        files: { ...step.files },
+        description: `From the "${tutorial.title}" tutorial.`,
+        origin,
+      });
+      navigate(`/editor/${project.id}`);
+    } catch {
+      /* storage full — the storage notice says so */
+    }
   };
 
   const files = orderFiles(step.files);
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b bg-surface-1 px-3">
-        <Link to="/" aria-label="Home" className="rounded-sm p-1 hover:bg-surface-2">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-surface-1 px-2 sm:gap-3 sm:px-3">
+        <Link to="/" aria-label="Home" className="shrink-0 rounded-sm p-1 hover:bg-surface-2">
           <LogoMark size={22} />
         </Link>
         <Link
           to="/tutorials"
-          className="flex items-center gap-1.5 text-[13px] text-muted hover:text-foreground"
+          aria-label="Tutorials"
+          className="flex shrink-0 items-center gap-1.5 text-[13px] text-muted hover:text-foreground"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> Tutorials
+          <ArrowLeft className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Tutorials</span>
         </Link>
-        <span className="text-faint">/</span>
-        <h1 className="truncate text-[13.5px] font-semibold">{tutorial.title}</h1>
-        <Badge variant={tutorial.level === 'Beginner' ? 'success' : 'default'}>
-          {tutorial.level}
-        </Badge>
+        <span className="hidden text-faint sm:inline">/</span>
+        <h1 className="min-w-0 truncate text-[13.5px] font-semibold">{tutorial.title}</h1>
+        <span className="hidden shrink-0 md:inline-flex">
+          <Badge variant={tutorial.level === 'Beginner' ? 'success' : 'default'}>{tutorial.level}</Badge>
+        </span>
         <div className="flex-1" />
-        <span className="text-[12px] text-faint">
+        <span className="hidden shrink-0 text-[12px] text-faint sm:inline">
           Step {stepIdx + 1} of {tutorial.steps.length}
         </span>
-        <Button size="sm" onClick={openInEditor}>
-          Open this step in the editor <ExternalLink className="h-3.5 w-3.5" />
+        <Button size="sm" className="shrink-0" onClick={openInEditor} aria-label="Open this step in the editor">
+          <span className="hidden lg:inline">Open this step in the editor</span>
+          <span className="lg:hidden">Open in editor</span>
+          <ExternalLink className="h-3.5 w-3.5" />
         </Button>
         <ThemeToggle />
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      {/* phones: lesson stacked above the diagram + code, the page scrolls */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
         {/* lesson column */}
-        <aside className="flex w-80 shrink-0 flex-col border-r bg-surface-1" aria-label="Lesson">
+        <aside
+          className="flex shrink-0 flex-col border-b bg-surface-1 md:w-80 md:border-b-0 md:border-r"
+          aria-label="Lesson"
+        >
           <nav className="border-b p-3" aria-label="Steps">
             {tutorial.steps.map((s, i) => (
               <button
@@ -132,7 +172,7 @@ export default function TutorialPlayerPage() {
             ))}
           </nav>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <div className="min-h-0 flex-1 p-4 md:overflow-y-auto">
             <h2 className="text-[15px] font-semibold">{step.title}</h2>
             {step.body.map((p, i) => (
               <p key={i} className="mt-3 text-[13px] leading-relaxed text-muted">
@@ -141,7 +181,7 @@ export default function TutorialPlayerPage() {
             ))}
           </div>
 
-          <div className="flex items-center justify-between border-t p-3">
+          <div className="flex items-center justify-between gap-2 border-t p-3">
             <Button
               variant="outline"
               size="sm"
@@ -175,7 +215,10 @@ export default function TutorialPlayerPage() {
 
         {/* diagram + code */}
         <main className="flex min-w-0 flex-1 flex-col">
-          <section className="bp-dots relative h-[42%] shrink-0 border-b bg-canvas p-4" aria-label="Diagram">
+          <section
+            className="bp-dots relative h-64 shrink-0 border-b bg-canvas p-4 md:h-[42%]"
+            aria-label="Diagram"
+          >
             <ProjectThumbnail
               key={`${tutorial.slug}-${stepIdx}`}
               files={step.files}
@@ -187,7 +230,7 @@ export default function TutorialPlayerPage() {
             </span>
           </section>
 
-          <section className="flex min-h-0 flex-1 flex-col" aria-label="Code">
+          <section className="flex min-h-[360px] flex-1 flex-col md:min-h-0" aria-label="Code">
             <div className="flex items-center gap-0.5 overflow-x-auto border-b bg-surface-1 px-1.5 pt-1">
               {files.map((f) => (
                 <button

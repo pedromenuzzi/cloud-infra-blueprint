@@ -1,20 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('@/lib/storage', () => ({
-  getProject: vi.fn(),
-  updateProject: vi.fn(),
-}));
-
-const { useEditor } = await import('./store');
-const { useToasts } = await import('@/components/Toast');
+import { useToasts } from '@/components/Toast';
+import { createProject } from '@/lib/storage';
+import { useEditor } from './store';
 
 const MAIN = `resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
 }
 `;
 
+// storage falls back to memory outside the browser
 function load(files: Record<string, string> = { 'main.tf': MAIN }) {
-  useEditor.getState().load({ id: 'p1', name: 'test', files } as never);
+  useEditor.getState().load(createProject({ name: 'test', files }));
 }
 
 const move = { kind: 'move_node' as const, nodeId: 'aws_vpc.main', position: { x: 120, y: 80, w: 400, h: 300 } };
