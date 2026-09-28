@@ -3,6 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { CanvasPane, focusRenameInput } from '@/features/editor/CanvasPane';
 import { useLayout } from '@/features/editor/layoutStore';
+import { RulesEditor } from '@/features/security/RulesEditor';
+import { SecurityPanel } from '@/features/security/SecurityPanel';
+import { useSecurityUi } from '@/features/security/securityStore';
 import { Inspector } from '@/features/editor/Inspector';
 import { Palette } from '@/features/editor/Palette';
 import { Topbar } from '@/features/editor/Topbar';
@@ -43,6 +46,7 @@ export default function EditorPage() {
   const compact = useLayout((s) => s.compact);
   const drawer = useLayout((s) => s.drawer);
   const selection = useEditor((s) => s.selection);
+  const securityPanel = useSecurityUi((s) => s.panelOpen);
 
   // compact layout below 1100px: canvas full-width, palette/code as drawers
   useEffect(() => {
@@ -153,6 +157,11 @@ export default function EditorPage() {
                 <Inspector />
               </div>
             ) : null}
+            {securityPanel && drawer !== 'palette' ? (
+              <div className="absolute bottom-[68px] left-3 top-3 z-20 flex w-[min(340px,calc(100%-24px))]">
+                <SecurityPanel />
+              </div>
+            ) : null}
             {compact && drawer === 'palette' ? (
               <div className="bp-drawer-left absolute bottom-0 left-0 top-0 z-30 flex shadow-lg">
                 <Palette />
@@ -184,6 +193,7 @@ export default function EditorPage() {
           ) : null}
         </div>
       </div>
+      <RulesEditor />
     </div>
   );
 }

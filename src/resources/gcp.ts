@@ -1,4 +1,5 @@
 import { block, lit, literalString } from '@/ir/expr';
+import { blocksOf } from '@/security/model';
 import { defineResource } from './types';
 
 const litStr = literalString;
@@ -46,7 +47,7 @@ export const GCP_RESOURCES = [
   defineResource({
     type: 'google_compute_firewall',
     provider: 'gcp',
-    category: 'network',
+    category: 'identity',
     displayName: 'Firewall Rule',
     shortName: 'Firewall',
     description: 'Network firewall rule',
@@ -55,12 +56,20 @@ export const GCP_RESOURCES = [
       { name: 'name', type: 'string', required: true },
       { name: 'network', type: 'string', refTo: ['google_compute_network'], required: true },
       { name: 'direction', type: 'select', options: ['INGRESS', 'EGRESS'] },
+      { name: 'priority', type: 'number', doc: '0–65535, lower wins (default 1000)' },
       { name: 'source_ranges', type: 'list' },
+      { name: 'target_tags', type: 'list', doc: 'Applies to instances with these network tags (all if empty)' },
     ],
     connections: [
       { targetTypes: ['google_compute_network'], arg: 'network', attr: 'id', mode: 'set' },
     ],
-    subtitle: (args) => litStr(args.direction) ?? 'firewall',
+    subtitle: (args) => {
+      const ports = [...blocksOf(args.allow), ...blocksOf(args.deny)].flatMap((b) =>
+        b.ports?.kind === 'list' ? b.ports.items.map((p) => litStr(p) ?? '?') : [litStr(b.protocol) ?? 'all'],
+      );
+      const dir = (litStr(args.direction) ?? 'INGRESS') === 'EGRESS' ? 'out' : 'in';
+      return ports.length ? `${dir} · ${ports.slice(0, 4).join(', ')}` : dir;
+    },
   }),
 
   defineResource({

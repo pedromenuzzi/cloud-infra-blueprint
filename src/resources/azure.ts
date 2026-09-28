@@ -1,4 +1,5 @@
 import { block, lit, literalString } from '@/ir/expr';
+import { blocksOf } from '@/security/model';
 import { defineResource } from './types';
 
 const litStr = literalString;
@@ -123,7 +124,7 @@ export const AZURE_RESOURCES = [
   defineResource({
     type: 'azurerm_network_security_group',
     provider: 'azure',
-    category: 'network',
+    category: 'identity',
     displayName: 'Network Security Group',
     shortName: 'NSG',
     description: 'Network traffic filter rules',
@@ -134,7 +135,10 @@ export const AZURE_RESOURCES = [
       rgField,
     ],
     connections: [rgConnection],
-    subtitle: () => 'firewall',
+    subtitle: (args) => {
+      const n = blocksOf(args.security_rule).length;
+      return n ? `${n} rule${n === 1 ? '' : 's'}` : 'no inline rules';
+    },
   }),
 
   defineResource({
@@ -597,5 +601,28 @@ export const AZURE_RESOURCES = [
       { targetTypes: ['azurerm_servicebus_namespace'], arg: 'namespace_id', attr: 'id', mode: 'set' },
     ],
     subtitle: () => 'queue',
+  }),
+
+  defineResource({
+    type: 'azurerm_subnet_network_security_group_association',
+    provider: 'azure',
+    category: 'identity',
+    displayName: 'Subnet NSG Association',
+    shortName: 'NSG Association',
+    description: 'Applies a network security group to a subnet',
+    fields: [
+      { name: 'subnet_id', type: 'string', required: true, refTo: ['azurerm_subnet'] },
+      {
+        name: 'network_security_group_id',
+        type: 'string',
+        required: true,
+        refTo: ['azurerm_network_security_group'],
+      },
+    ],
+    connections: [
+      { targetTypes: ['azurerm_subnet'], arg: 'subnet_id', attr: 'id', mode: 'set' },
+      { targetTypes: ['azurerm_network_security_group'], arg: 'network_security_group_id', attr: 'id', mode: 'set' },
+    ],
+    subtitle: () => 'subnet ↔ NSG',
   }),
 ];

@@ -1,4 +1,5 @@
 import { block, list, lit, literalString, raw } from '@/ir/expr';
+import { blocksOf } from '@/security/model';
 import { defineResource } from './types';
 
 const litStr = literalString;
@@ -46,7 +47,7 @@ export const AWS_RESOURCES = [
   defineResource({
     type: 'aws_security_group',
     provider: 'aws',
-    category: 'network',
+    category: 'identity',
     displayName: 'Security Group',
     shortName: 'Security Group',
     description: 'Stateful firewall rules',
@@ -58,7 +59,12 @@ export const AWS_RESOURCES = [
       { name: 'tags', type: 'tags' },
     ],
     connections: [{ targetTypes: ['aws_vpc'], arg: 'vpc_id', attr: 'id', mode: 'set' }],
-    subtitle: (args) => litStr(args.description) ?? 'firewall',
+    subtitle: (args) => {
+      const inbound = blocksOf(args.ingress).length;
+      const outbound = blocksOf(args.egress).length;
+      if (inbound + outbound === 0) return litStr(args.description) ?? 'no inline rules';
+      return `${inbound} inbound · ${outbound} outbound`;
+    },
   }),
 
   defineResource({
@@ -241,6 +247,12 @@ export const AWS_RESOURCES = [
       { name: 'load_balancer_arn', type: 'string', refTo: ['aws_lb'], refAttr: 'arn', required: true },
       { name: 'port', type: 'number', required: true },
       { name: 'protocol', type: 'select', options: ['HTTP', 'HTTPS'] },
+      { name: 'certificate_arn', type: 'string', doc: 'ACM certificate — required for HTTPS' },
+      {
+        name: 'ssl_policy',
+        type: 'select',
+        options: ['ELBSecurityPolicy-TLS13-1-2-2021-06', 'ELBSecurityPolicy-TLS13-1-3-2021-06'],
+      },
     ],
     defaults: { port: lit(80), protocol: lit('HTTP') },
     connections: [
@@ -815,6 +827,169 @@ export const AWS_RESOURCES = [
     subtitle: (args) => {
       const it = args.instance_types;
       return it?.kind === 'list' && it.items[0] ? litStr(it.items[0]) : 'worker nodes';
+    },
+  }),
+
+  defineResource({
+    type: 'aws_vpc_security_group_ingress_rule',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'SG Ingress Rule',
+    shortName: 'Ingress Rule',
+    description: 'One inbound rule of a security group (recommended over inline rules)',
+    fields: [
+      { name: 'security_group_id', type: 'string', required: true, refTo: ['aws_security_group'] },
+      { name: 'ip_protocol', type: 'select', options: ['tcp', 'udp', 'icmp', '-1'], required: true },
+      { name: 'from_port', type: 'number' },
+      { name: 'to_port', type: 'number' },
+      { name: 'cidr_ipv4', type: 'string', placeholder: '10.0.0.0/16' },
+      { name: 'referenced_security_group_id', type: 'string', refTo: ['aws_security_group'], label: 'From security group' },
+      { name: 'description', type: 'string' },
+    ],
+    defaults: { ip_protocol: lit('tcp'), from_port: lit(443), to_port: lit(443), cidr_ipv4: lit('10.0.0.0/16') },
+    connections: [{ targetTypes: ['aws_security_group'], arg: 'security_group_id', attr: 'id', mode: 'set' }],
+    subtitle: (args) => {
+      const from = args.from_port?.kind === 'literal' ? args.from_port.value : undefined;
+      return `${litStr(args.ip_protocol) ?? 'tcp'}${from !== undefined ? ` :${from}` : ''} in`;
+    },
+  }),
+
+  defineResource({
+    type: 'aws_vpc_security_group_egress_rule',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'SG Egress Rule',
+    shortName: 'Egress Rule',
+    description: 'One outbound rule of a security group',
+    fields: [
+      { name: 'security_group_id', type: 'string', required: true, refTo: ['aws_security_group'] },
+      { name: 'ip_protocol', type: 'select', options: ['-1', 'tcp', 'udp', 'icmp'], required: true },
+      { name: 'from_port', type: 'number' },
+      { name: 'to_port', type: 'number' },
+      { name: 'cidr_ipv4', type: 'string', placeholder: '0.0.0.0/0' },
+      { name: 'referenced_security_group_id', type: 'string', refTo: ['aws_security_group'], label: 'To security group' },
+      { name: 'description', type: 'string' },
+    ],
+    defaults: { ip_protocol: lit('-1'), cidr_ipv4: lit('0.0.0.0/0') },
+    connections: [{ targetTypes: ['aws_security_group'], arg: 'security_group_id', attr: 'id', mode: 'set' }],
+    subtitle: (args) => `${litStr(args.ip_protocol) === '-1' ? 'all' : (litStr(args.ip_protocol) ?? 'all')} out`,
+  }),
+
+  defineResource({
+    type: 'aws_network_acl',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'Network ACL',
+    shortName: 'NACL',
+    description: 'Stateless subnet firewall with numbered allow / deny rules',
+    containment: [{ arg: 'vpc_id', parentTypes: ['aws_vpc'] }],
+    fields: [
+      { name: 'vpc_id', type: 'string', required: true, refTo: ['aws_vpc'] },
+      { name: 'subnet_ids', type: 'list', refTo: ['aws_subnet'], label: 'Subnets' },
+      { name: 'tags', type: 'tags' },
+    ],
+    defaults: {
+      ingress: block({
+        rule_no: lit(100),
+        action: lit('allow'),
+        protocol: lit('tcp'),
+        from_port: lit(443),
+        to_port: lit(443),
+        cidr_block: lit('0.0.0.0/0'),
+      }),
+      egress: block({
+        rule_no: lit(100),
+        action: lit('allow'),
+        protocol: lit('tcp'),
+        from_port: lit(1024),
+        to_port: lit(65535),
+        cidr_block: lit('0.0.0.0/0'),
+      }),
+    },
+    connections: [
+      { targetTypes: ['aws_vpc'], arg: 'vpc_id', attr: 'id', mode: 'set' },
+      { targetTypes: ['aws_subnet'], arg: 'subnet_ids', attr: 'id', mode: 'append' },
+    ],
+    subtitle: (args) => `${blocksOf(args.ingress).length + blocksOf(args.egress).length} rules`,
+  }),
+
+  defineResource({
+    type: 'aws_route_table',
+    provider: 'aws',
+    category: 'network',
+    displayName: 'Route Table',
+    shortName: 'Route Table',
+    description: 'Routes for subnets — a 0.0.0.0/0 route to an internet gateway makes them public',
+    containment: [{ arg: 'vpc_id', parentTypes: ['aws_vpc'] }],
+    fields: [
+      { name: 'vpc_id', type: 'string', required: true, refTo: ['aws_vpc'] },
+      { name: 'tags', type: 'tags' },
+    ],
+    connections: [{ targetTypes: ['aws_vpc'], arg: 'vpc_id', attr: 'id', mode: 'set' }],
+    subtitle: (args) => {
+      const routes = blocksOf(args.route);
+      return routes.length ? `${routes.length} route${routes.length === 1 ? '' : 's'}` : 'local only';
+    },
+  }),
+
+  defineResource({
+    type: 'aws_route_table_association',
+    provider: 'aws',
+    category: 'network',
+    displayName: 'Route Table Association',
+    shortName: 'RT Association',
+    description: 'Attaches a route table to a subnet',
+    fields: [
+      { name: 'subnet_id', type: 'string', required: true, refTo: ['aws_subnet'] },
+      { name: 'route_table_id', type: 'string', required: true, refTo: ['aws_route_table'] },
+    ],
+    connections: [
+      { targetTypes: ['aws_subnet'], arg: 'subnet_id', attr: 'id', mode: 'set' },
+      { targetTypes: ['aws_route_table'], arg: 'route_table_id', attr: 'id', mode: 'set' },
+    ],
+    subtitle: () => 'subnet ↔ routes',
+  }),
+
+  defineResource({
+    type: 'aws_s3_bucket_public_access_block',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'S3 Public Access Block',
+    shortName: 'Public Access Block',
+    description: 'Guarantees a bucket can never be made public',
+    fields: [
+      { name: 'bucket', type: 'string', required: true, refTo: ['aws_s3_bucket'] },
+      { name: 'block_public_acls', type: 'boolean' },
+      { name: 'block_public_policy', type: 'boolean' },
+      { name: 'ignore_public_acls', type: 'boolean' },
+      { name: 'restrict_public_buckets', type: 'boolean' },
+    ],
+    defaults: {
+      block_public_acls: lit(true),
+      block_public_policy: lit(true),
+      ignore_public_acls: lit(true),
+      restrict_public_buckets: lit(true),
+    },
+    connections: [{ targetTypes: ['aws_s3_bucket'], arg: 'bucket', attr: 'id', mode: 'set' }],
+    subtitle: () => 'never public',
+  }),
+
+  defineResource({
+    type: 'aws_db_subnet_group',
+    provider: 'aws',
+    category: 'database',
+    displayName: 'DB Subnet Group',
+    shortName: 'DB Subnets',
+    description: 'Private subnets (2+ AZs) where RDS places the database',
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'subnet_ids', type: 'list', required: true, refTo: ['aws_subnet'], label: 'Subnets' },
+      { name: 'tags', type: 'tags' },
+    ],
+    connections: [{ targetTypes: ['aws_subnet'], arg: 'subnet_ids', attr: 'id', mode: 'append' }],
+    subtitle: (args) => {
+      const n = args.subnet_ids?.kind === 'list' ? args.subnet_ids.items.length : 0;
+      return `${n} subnet${n === 1 ? '' : 's'}`;
     },
   }),
 ];

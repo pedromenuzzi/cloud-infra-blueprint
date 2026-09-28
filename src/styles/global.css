@@ -251,6 +251,71 @@
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--cat) 16%, transparent);
 }
 
+/* security lens */
+.bp-dim {
+  opacity: 0.38;
+  filter: saturate(0.4);
+  transition:
+    opacity 200ms,
+    filter 200ms;
+}
+.bp-dim:hover {
+  opacity: 0.9;
+  filter: none;
+}
+.bp-risk {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, #ef4444 70%, transparent),
+    0 8px 24px -8px color-mix(in srgb, #ef4444 50%, transparent);
+}
+.bp-internet {
+  border-color: color-mix(in srgb, #0ea5e9 55%, transparent);
+  animation: bp-node-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+@keyframes bp-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+.react-flow .bp-secflow {
+  stroke-dasharray: 7 5;
+  animation: bp-dash 1s linear infinite;
+  filter: drop-shadow(0 0 2px color-mix(in srgb, currentColor 40%, transparent));
+}
+.bp-switch {
+  appearance: none;
+  width: 34px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  position: relative;
+  cursor: pointer;
+  transition: background 150ms;
+}
+.bp-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 150ms;
+}
+.bp-switch:checked {
+  background: var(--primary);
+}
+.bp-switch:checked::after {
+  transform: translateX(14px);
+}
+.bp-switch:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 /* floating inspector + compact-mode drawers */
 @keyframes bp-slide-right {
   from {

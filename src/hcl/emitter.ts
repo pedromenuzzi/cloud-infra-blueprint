@@ -103,24 +103,42 @@ function emitEntriesList(entries: Entry[], indent: string): string {
   const lines: string[] = [];
   let run: Entry[] = [];
 
+  // Like `terraform fmt`: only single-line assignments align, and a comment line
+  // or a multi-line value (`tags = {`, `jsonencode({`) ends the alignment chain.
   const flushRun = () => {
     if (run.length === 0) return;
-    const width = Math.max(...run.map((en) => quoteKey(en.key).length));
-    for (const en of run) {
-      if (en.comments) for (const c of en.comments) lines.push(`${indent}${c}`);
-      const key = quoteKey(en.key);
-      const value = emitExpression(en.expr, indent);
-      const pad = ' '.repeat(width - key.length);
-      const trailing = en.trailing ? `  ${en.trailing}` : '';
-      lines.push(`${indent}${key}${pad} = ${value}${trailing}`);
+    const rendered = run.map((en) => ({ en, key: quoteKey(en.key), value: emitExpression(en.expr, indent) }));
+    let chain: typeof rendered = [];
+    const flushChain = () => {
+      const width = Math.max(0, ...chain.map((r) => r.key.length));
+      for (const r of chain) {
+        const trailing = r.en.trailing ? `  ${r.en.trailing}` : '';
+        lines.push(`${indent}${r.key}${' '.repeat(width - r.key.length)} = ${r.value}${trailing}`);
+      }
+      chain = [];
+    };
+    for (const r of rendered) {
+      if (r.en.comments?.length) {
+        flushChain();
+        for (const c of r.en.comments) lines.push(`${indent}${c}`);
+      }
+      if (r.value.includes('\n')) {
+        flushChain();
+        const trailing = r.en.trailing ? `  ${r.en.trailing}` : '';
+        lines.push(`${indent}${r.key} = ${r.value}${trailing}`);
+      } else {
+        chain.push(r);
+      }
     }
+    flushChain();
     run = [];
   };
 
   for (const en of entries) {
     if (isBlockish(en.expr) || isRawEntryKey(en.key)) {
       flushRun();
-      if (lines.length > 0) lines.push('');
+      // one blank line between entries and blocks (the previous block already left one)
+      if (lines.length > 0 && lines[lines.length - 1] !== '') lines.push('');
       if (en.comments) for (const c of en.comments) lines.push(`${indent}${c}`);
       if (en.expr.kind === 'block') {
         lines.push(...emitNestedBlock(en.key, en.expr.body, indent));

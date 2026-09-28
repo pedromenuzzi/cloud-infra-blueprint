@@ -18,6 +18,7 @@ const FILTERS = [
   'Static Sites',
   'Containers',
   'Serverless',
+  'Security',
   'Data',
 ] as const;
 type Filter = (typeof FILTERS)[number];
