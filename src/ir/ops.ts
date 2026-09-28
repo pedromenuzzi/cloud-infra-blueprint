@@ -1,8 +1,10 @@
 /**
  * Ops — atomic IR mutations originated by the canvas / inspector.
  * `applyOps` is pure: it returns a new IR plus the set of block ids whose
- * HCL text must be re-emitted (the minimal-patch working set).
+ * HCL text must be re-emitted (the minimal-patch working set). Untouched
+ * blocks keep their object identity, which is how the patcher skips them.
  */
+import { renameInHcl, renameInRecord } from './expr';
 import type { CanvasPosition, Expression, IR, ResourceNode } from './types';
 import { resourceAddress } from './types';
 
@@ -16,55 +18,12 @@ export type Op =
 
 export interface ApplyResult {
   ir: IR;
-  /** ids of blocks whose text changed (resources / variables / outputs / providers) */
+  /** ids of blocks whose text changed (resources / variables / outputs / providers / extras) */
   touched: Set<string>;
   /** old ids of removed resources */
   removed: Set<string>;
   /** rename map: old id → new id */
   renamed: Map<string, string>;
-}
-
-function mapExpression(e: Expression, fn: (path: string) => string): Expression {
-  switch (e.kind) {
-    case 'ref':
-      return { kind: 'ref', path: fn(e.path) };
-    case 'list':
-      return { kind: 'list', items: e.items.map((i) => mapExpression(i, fn)) };
-    case 'object':
-      return { kind: 'object', fields: mapRecord(e.fields, fn) };
-    case 'block':
-      return { kind: 'block', body: mapRecord(e.body, fn) };
-    case 'blocks':
-      return { kind: 'blocks', items: e.items.map((b) => mapRecord(b, fn)) };
-    default:
-      return e;
-  }
-}
-
-function mapRecord(
-  r: Record<string, Expression>,
-  fn: (path: string) => string,
-): Record<string, Expression> {
-  const out: Record<string, Expression> = {};
-  for (const [k, v] of Object.entries(r)) out[k] = mapExpression(v, fn);
-  return out;
-}
-
-function exprMentions(e: Expression, address: string): boolean {
-  switch (e.kind) {
-    case 'ref':
-      return e.path === address || e.path.startsWith(`${address}.`);
-    case 'list':
-      return e.items.some((i) => exprMentions(i, address));
-    case 'object':
-      return Object.values(e.fields).some((v) => exprMentions(v, address));
-    case 'block':
-      return Object.values(e.body).some((v) => exprMentions(v, address));
-    case 'blocks':
-      return e.items.some((b) => Object.values(b).some((v) => exprMentions(v, address)));
-    default:
-      return false;
-  }
 }
 
 export function applyOps(ir: IR, ops: Op[]): ApplyResult {
@@ -80,6 +39,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
   const removed = new Set<string>();
   const renamed = new Map<string, string>();
 
+  // Duplicate addresses are a Terraform error (the parser flags them); ops act on the first.
   const findIndex = (id: string) => next.resources.findIndex((r) => r.id === id);
 
   for (const op of ops) {
@@ -127,33 +87,32 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
         const i = findIndex(op.nodeId);
         if (i === -1) break;
         const node = next.resources[i];
-        const newName = op.newName;
-        const oldAddress = node.id;
-        const newAddress = resourceAddress(node.type, newName);
-        if (newAddress === oldAddress) break;
-        const rewrite = (path: string) =>
-          path === oldAddress
-            ? newAddress
-            : path.startsWith(`${oldAddress}.`)
-              ? `${newAddress}${path.slice(oldAddress.length)}`
-              : path;
+        const from = node.id;
+        const to = resourceAddress(node.type, op.newName);
+        if (to === from) break;
 
-        next.resources[i] = { ...node, id: newAddress, name: newName };
-        touched.add(newAddress);
-        renamed.set(oldAddress, newAddress);
-        if (touched.has(oldAddress)) touched.delete(oldAddress);
+        const renamedNode: ResourceNode = { ...node, id: to, name: op.newName };
+        renamed.set(from, to);
+        touched.delete(from);
+        touched.add(to);
 
-        // rewrite references everywhere
-        next.resources = next.resources.map((r) => {
-          if (r.id === newAddress) return next.resources[i];
-          if (!Object.values(r.args).some((e) => exprMentions(e, oldAddress))) return r;
-          touched.add(r.id);
-          return { ...r, args: mapRecord(r.args, rewrite) };
-        });
-        next.outputs = next.outputs.map((o) => {
-          if (!Object.values(o.args).some((e) => exprMentions(e, oldAddress))) return o;
-          touched.add(o.id);
-          return { ...o, args: mapRecord(o.args, rewrite) };
+        // Rewrite references everywhere: bare refs, traversals inside raw
+        // expressions (functions, templates, jsonencode…) and verbatim blocks.
+        const retarget = <T extends { id: string; args: Record<string, Expression> }>(b: T): T => {
+          const args = renameInRecord(b.args, from, to);
+          if (args === b.args) return b;
+          touched.add(b.id);
+          return { ...b, args };
+        };
+        next.resources = next.resources.map((r, j) => (j === i ? renamedNode : retarget(r)));
+        next.variables = next.variables.map(retarget);
+        next.outputs = next.outputs.map(retarget);
+        next.providers = next.providers.map(retarget);
+        next.extras = next.extras.map((b) => {
+          const text = renameInHcl(b.text, from, to);
+          if (text === b.text) return b;
+          touched.add(b.id);
+          return { ...b, text };
         });
         break;
       }

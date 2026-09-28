@@ -239,14 +239,15 @@ export function CodePane() {
         if (!node || (node.trivia.sourceFile ?? 'main.tf') !== file) continue;
         const range = node.trivia.rawTextRange;
         if (!range) continue;
-        const pos = lineColOf(files[file] ?? '', range.start);
+        // validation points at the argument / block header; the range start may be a comment line
+        const pos = w.start ?? lineColOf(files[file] ?? '', range.start);
         markers.push({
           severity: monaco.MarkerSeverity.Warning,
           message: w.message,
           startLineNumber: pos.line,
-          startColumn: 1,
-          endLineNumber: pos.line,
-          endColumn: 80,
+          startColumn: w.start ? pos.col : 1,
+          endLineNumber: w.end?.line ?? pos.line,
+          endColumn: w.end?.col ?? 80,
         });
       }
       monaco.editor.setModelMarkers(model, 'blueprint', markers);
