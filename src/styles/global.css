@@ -13,7 +13,8 @@
   --surface-2: #f1f5f9;
   --foreground: #0f172a;
   --muted-foreground: #475569;
-  --faint-foreground: #94a3b8;
+  /* ≥ 4.5:1 on surface-1/-2 and the canvas (was #94a3b8, 2.56:1) */
+  --faint-foreground: #5f6e84;
   --border: #e2e8f0;
   --border-strong: #cbd5e1;
 
@@ -21,6 +22,31 @@
   --primary-hover: #1d4ed8;
   --primary-foreground: #ffffff;
   --primary-soft: #eff6ff;
+
+  /*
+   * Text variants (AA ≥ 4.5:1 on surfaces and on their own /12–/14 tints).
+   * `text-primary`, `text-success`, `text-aws`… resolve to these through
+   * --text-color-* below; fills and borders keep the brand colors.
+   */
+  --primary-text: #2563eb;
+  --primary-text-hover: #1d4ed8;
+  --success-text: #036c4e;
+  --warning-text: #9a4a06;
+  --danger-text: #b91c1c;
+  --aws-text: #9c4700;
+  --azure-text: #005a9e;
+  --gcp-text: #1d5bc4;
+  --multi-text: #6d28d9;
+
+  /* canvas category labels: AA on the node card and on the container tint */
+  --cat-text-compute: #9a3412;
+  --cat-text-storage: #166534;
+  --cat-text-network: #7e22ce;
+  --cat-text-database: #4338ca;
+  --cat-text-containers: #115e59;
+  --cat-text-integration: #be185d;
+  --cat-text-identity: #b91c1c;
+  --cat-text-edge: #0369a1;
 
   /* Blueprint canvas */
   --canvas-bg: #eef4fb;
@@ -39,20 +65,47 @@
   --shadow-lg: 0 12px 32px rgb(15 23 42 / 0.14), 0 4px 10px rgb(15 23 42 / 0.06);
 }
 
+:root {
+  /* native controls (select popups, date pickers, scrollbars) follow the theme */
+  color-scheme: light;
+}
+
 .dark {
+  color-scheme: dark;
   --background: #0b1220;
   --surface-1: #0f172a;
   --surface-2: #1e293b;
   --foreground: #f1f5f9;
   --muted-foreground: #94a3b8;
-  --faint-foreground: #64748b;
+  /* ≥ 4.5:1 on surface-1/-2 (was #64748b, 3.75:1) */
+  --faint-foreground: #8a99af;
   --border: #223045;
   --border-strong: #33445e;
 
+  /* filled buttons: white on #2563eb is 5.2:1; hover goes darker, not lighter */
   --primary: #2563eb;
-  --primary-hover: #3b82f6;
+  --primary-hover: #1d4ed8;
   --primary-foreground: #ffffff;
   --primary-soft: #172554;
+
+  --primary-text: #60a5fa;
+  --primary-text-hover: #93c5fd;
+  --success-text: #34d399;
+  --warning-text: #fbbf24;
+  --danger-text: #f87171;
+  --aws-text: #ff9900;
+  --azure-text: #60aef0;
+  --gcp-text: #7baaf7;
+  --multi-text: #a78bfa;
+
+  --cat-text-compute: #fb923c;
+  --cat-text-storage: #4ade80;
+  --cat-text-network: #c084fc;
+  --cat-text-database: #818cf8;
+  --cat-text-containers: #2dd4bf;
+  --cat-text-integration: #f472b6;
+  --cat-text-identity: #f87171;
+  --cat-text-edge: #38bdf8;
 
   --canvas-bg: #0a1428;
   --canvas-grid: #16294a;
@@ -91,11 +144,25 @@
   --color-success: #10b981;
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
+  /* fills that carry white text (white on #ef4444 is only 3.8:1) */
+  --color-danger-solid: #dc2626;
+  --color-danger-solid-hover: #b91c1c;
 
   --color-aws: #ff9900;
   --color-azure: #0078d4;
   --color-gcp: #4285f4;
   --color-multi: #7c3aed;
+
+  /* Tailwind resolves text-* from --text-color-* before --color-* */
+  --text-color-primary: var(--primary-text);
+  --text-color-primary-hover: var(--primary-text-hover);
+  --text-color-success: var(--success-text);
+  --text-color-warning: var(--warning-text);
+  --text-color-danger: var(--danger-text);
+  --text-color-aws: var(--aws-text);
+  --text-color-azure: var(--azure-text);
+  --text-color-gcp: var(--gcp-text);
+  --text-color-multi: var(--multi-text);
 
   --color-canvas: var(--canvas-bg);
   --color-canvas-grid: var(--canvas-grid);
@@ -595,11 +662,18 @@
   border-radius: 2px;
 }
 
+/*
+ * Reduced motion: CSS animations end at once (and loops stop — a 1 ms
+ * infinite loop reads as flicker). JS-driven motion (viewport pans, smooth
+ * scrolling) goes through motionMs() / scrollBehavior() in src/lib/motion.ts.
+ */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
   }
 }

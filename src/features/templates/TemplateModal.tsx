@@ -84,6 +84,7 @@ export function TemplateModal({
       open={open}
       onClose={onClose}
       wide
+      label="Start from a template"
       title={
         <div>
           <h2 className="text-[17px] font-bold">Start from a template</h2>
@@ -93,19 +94,21 @@ export function TemplateModal({
         </div>
       }
     >
-      <div className="px-5 pb-5 pt-4">
+      <div className="px-5 pb-5 pt-4 max-sm:px-4">
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative min-w-56 flex-1">
+          <div className="relative min-w-0 flex-1 basis-56">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
             <Input
+              autoFocus
               className="pl-8"
               placeholder="Search templates…"
+              aria-label="Search templates"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
           <Input
-            className="w-52"
+            className="w-52 max-sm:w-full"
             placeholder="Project name (optional)"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -118,6 +121,7 @@ export function TemplateModal({
             <button
               key={f}
               type="button"
+              aria-pressed={filter === f}
               onClick={() => setFilter(f)}
               className={cn(
                 'rounded-full border px-3 py-1 text-[12px] font-medium transition-colors',
@@ -173,7 +177,7 @@ export function TemplateModal({
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
           <span className="text-[12.5px] text-muted">Or start from scratch:</span>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {(['aws', 'azure', 'gcp'] as const).map((p) => (
               <Button key={p} variant="outline" size="sm" onClick={() => create(undefined, p)}>
                 <ProviderDot provider={p} /> {PROVIDER_LABELS[p]}

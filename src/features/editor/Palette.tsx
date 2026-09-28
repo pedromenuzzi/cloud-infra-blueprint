@@ -1,5 +1,5 @@
 import { ChevronDown, Plus, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { Input, Kbd } from '@/components/ui';
 import { MOD } from '@/features/command/paletteStore';
 import type { Provider } from '@/ir/types';
@@ -16,7 +16,11 @@ import { useEditor } from './store';
 
 const PROVIDERS: Provider[] = ['aws', 'azure', 'gcp'];
 
-function PaletteItem({ def }: { def: ResourceDef }) {
+/** roving-tabindex keys: one Tab stop for the whole list, arrows move inside */
+const itemKey = (def: ResourceDef) => `res:${def.type}`;
+const headerKey = (category: Category) => `cat:${category}`;
+
+function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
 
   const addAtFreeSpot = () => {
@@ -37,13 +41,16 @@ function PaletteItem({ def }: { def: ResourceDef }) {
     <button
       type="button"
       draggable
+      tabIndex={active ? 0 : -1}
+      data-rove={itemKey(def)}
+      aria-label={`Add ${def.displayName} (${def.type})`}
       onDragStart={(e) => {
         e.dataTransfer.setData(PALETTE_MIME, def.type);
         e.dataTransfer.effectAllowed = 'copy';
       }}
       onClick={addAtFreeSpot}
       title={`${def.displayName} — drag to the canvas or click to add\n${def.description ?? ''}`}
-      className="group flex w-full cursor-grab items-center gap-2.5 rounded-[8px] border border-transparent px-2 py-1.5 text-left transition-colors hover:border-border hover:bg-surface-2 active:cursor-grabbing"
+      className="group flex w-full cursor-grab items-center gap-2.5 rounded-[8px] border border-transparent px-2 py-1.5 text-left transition-colors outline-none hover:border-border hover:bg-surface-2 focus-visible:border-primary focus-visible:bg-surface-2 active:cursor-grabbing"
     >
       <ResourceIcon category={def.category} type={def.type} size={28} />
       <span className="min-w-0 flex-1">
@@ -54,7 +61,7 @@ function PaletteItem({ def }: { def: ResourceDef }) {
           {def.type}
         </span>
       </span>
-      <Plus className="h-3.5 w-3.5 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100" />
+      <Plus className="h-3.5 w-3.5 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
     </button>
   );
 }
@@ -110,27 +117,97 @@ export function Palette() {
       .filter((g) => g.defs.length > 0);
   }, [provider, query]);
 
+  // the list is one Tab stop; ↑/↓/Home/End move between categories and resources
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const uid = useId();
+  const isOpen = (category: Category) => query.trim() !== '' || !collapsed.has(category);
+  const keys = groups.flatMap((g) => [headerKey(g.category), ...(isOpen(g.category) ? g.defs.map(itemKey) : [])]);
+  const current = activeKey !== null && keys.includes(activeKey) ? activeKey : keys[0];
+
+  const focusKey = (key: string | undefined) => {
+    if (!key) return;
+    setActiveKey(key);
+    listRef.current?.querySelector<HTMLElement>(`[data-rove="${CSS.escape(key)}"]`)?.focus();
+  };
+
+  const onListKeyDown = (e: React.KeyboardEvent) => {
+    const key = (e.target as HTMLElement).closest<HTMLElement>('[data-rove]')?.dataset.rove;
+    if (!key) return;
+    const i = keys.indexOf(key);
+    let next: string | undefined;
+    if (e.key === 'ArrowDown') next = keys[Math.min(i + 1, keys.length - 1)];
+    else if (e.key === 'ArrowUp') next = keys[Math.max(i - 1, 0)];
+    else if (e.key === 'Home') next = keys[0];
+    else if (e.key === 'End') next = keys[keys.length - 1];
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      // ← on a resource: up to its category; ←/→ on a category: collapse / expand
+      const group = groups.find((g) => key === headerKey(g.category) || g.defs.some((d) => itemKey(d) === key));
+      if (!group) return;
+      if (key !== headerKey(group.category)) {
+        if (e.key === 'ArrowLeft') next = headerKey(group.category);
+      } else if (query.trim() === '' && isOpen(group.category) === (e.key === 'ArrowLeft')) {
+        toggleCategory(group.category);
+      } else if (e.key === 'ArrowRight') {
+        next = keys[i + 1];
+      }
+    } else return;
+    e.preventDefault();
+    focusKey(next);
+  };
+
+  const onProviderKeyDown = (e: React.KeyboardEvent) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step && e.key !== 'Home' && e.key !== 'End') return;
+    e.preventDefault();
+    const i = PROVIDERS.indexOf(provider);
+    const next =
+      e.key === 'Home'
+        ? PROVIDERS[0]!
+        : e.key === 'End'
+          ? PROVIDERS[PROVIDERS.length - 1]!
+          : PROVIDERS[(i + step + PROVIDERS.length) % PROVIDERS.length]!;
+    setProvider(next);
+    document.getElementById(`${uid}-tab-${next}`)?.focus();
+  };
+
   return (
     <aside
       className="flex w-60 shrink-0 flex-col border-r bg-surface-1"
       aria-label="Resource palette"
     >
+      <h2 className="sr-only">Resource palette</h2>
       <div className="border-b p-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
           <Input
             className="h-8 pl-8"
             placeholder="Search resources…"
+            aria-label="Search resources"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                focusKey(keys.find((k) => k.startsWith('res:')) ?? keys[0]);
+              }
+            }}
           />
         </div>
-        <div className="mt-2.5 flex gap-1" role="tablist" aria-label="Cloud provider">
+        <div
+          className="mt-2.5 flex gap-1"
+          role="tablist"
+          aria-label="Cloud provider"
+          onKeyDown={onProviderKeyDown}
+        >
           {PROVIDERS.map((p) => (
             <button
               key={p}
+              id={`${uid}-tab-${p}`}
               role="tab"
               aria-selected={provider === p}
+              aria-controls={`${uid}-panel`}
+              tabIndex={provider === p ? 0 : -1}
               type="button"
               onClick={() => setProvider(p)}
               title={`${counts[p]} ${PROVIDER_LABELS[p]} resources`}
@@ -149,33 +226,52 @@ export function Palette() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
-        {groups.map((g) => {
-          const open = query.trim() !== '' || !collapsed.has(g.category);
-          return (
-            <div key={g.category} className="mb-2">
-              <h3>
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  onClick={() => toggleCategory(g.category)}
-                  className="flex w-full items-center gap-1.5 rounded-[6px] px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint transition-colors hover:text-muted"
-                >
-                  <ChevronDown className={cn('h-3 w-3 transition-transform', !open && '-rotate-90')} />
-                  <span className="flex-1 text-left">{CATEGORY_LABELS[g.category]}</span>
-                  <span className="font-medium normal-case tracking-normal">{g.defs.length}</span>
-                </button>
-              </h3>
-              {open ? (
-                <div className="space-y-0.5">
-                  {g.defs.map((d) => (
-                    <PaletteItem key={d.type} def={d} />
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+      <div
+        id={`${uid}-panel`}
+        role="tabpanel"
+        aria-labelledby={`${uid}-tab-${provider}`}
+        className="min-h-0 flex-1 overflow-y-auto p-2"
+      >
+        <div
+          ref={listRef}
+          role="toolbar"
+          aria-orientation="vertical"
+          aria-label={`${PROVIDER_LABELS[provider]} resources — arrow keys to move, Enter to add`}
+          onKeyDown={onListKeyDown}
+          onFocus={(e) => {
+            const key = (e.target as HTMLElement).dataset.rove;
+            if (key) setActiveKey(key);
+          }}
+        >
+          {groups.map((g) => {
+            const open = isOpen(g.category);
+            return (
+              <div key={g.category} className="mb-2">
+                <h3>
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    tabIndex={current === headerKey(g.category) ? 0 : -1}
+                    data-rove={headerKey(g.category)}
+                    onClick={() => toggleCategory(g.category)}
+                    className="flex w-full items-center gap-1.5 rounded-[6px] px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint outline-none transition-colors hover:text-muted focus-visible:bg-surface-2 focus-visible:text-foreground focus-visible:ring-1 focus-visible:ring-primary"
+                  >
+                    <ChevronDown className={cn('h-3 w-3 transition-transform', !open && '-rotate-90')} />
+                    <span className="flex-1 text-left">{CATEGORY_LABELS[g.category]}</span>
+                    <span className="font-medium normal-case tracking-normal">{g.defs.length}</span>
+                  </button>
+                </h3>
+                {open ? (
+                  <div className="space-y-0.5">
+                    {g.defs.map((d) => (
+                      <PaletteItem key={d.type} def={d} active={current === itemKey(d)} />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
         {groups.length === 0 ? (
           <p className="px-2 py-6 text-center text-[12px] text-faint">No resources match.</p>
         ) : null}
