@@ -14,6 +14,7 @@ import { useEditor } from '@/features/editor/store';
 import { exprPreview, lit } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
 import type { ResourceNode } from '@/ir/types';
+import { scrollBehavior } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
@@ -183,7 +184,11 @@ function PeerEditor({
           onChange={(e) => setCustom(e.target.value)}
           onBlur={() => setCustom(null)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setCustom(null);
+            if (e.key === 'Escape') {
+              // this field's own Escape: don't also close the dialog
+              e.preventDefault();
+              setCustom(null);
+            }
             if (e.key === 'Enter' && valid(custom)) {
               set({ kind: 'cidr', value: custom.trim() });
               setCustom(null);
@@ -594,7 +599,7 @@ export function RulesEditor() {
             ? `Added as a ${addStyle.type} resource, like this ${KIND_INFO[kind].title.toLowerCase()}'s other rules.`
             : null,
     );
-    requestAnimationFrame(() => tableRef.current?.scrollTo({ top: tableRef.current.scrollHeight, behavior: 'smooth' }));
+    requestAnimationFrame(() => tableRef.current?.scrollTo({ top: tableRef.current.scrollHeight, behavior: scrollBehavior() }));
   };
 
   return (
