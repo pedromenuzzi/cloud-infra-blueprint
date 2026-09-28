@@ -218,24 +218,58 @@ export function ensureMonacoSetup() {
         return { suggestions };
       }
 
-      // value position → references to existing resources / variables
-      if (/=\s*[\w.]*$/.test(line)) {
+      // value position → what fits this argument: its options, references of
+      // the types it takes (with the right attribute), variables
+      const value = /^\s*([\w-]+)\s*=\s*(\[[^\]]*?)?([\w.]*)$/.exec(line);
+      if (value) {
+        const [, arg, inList, token] = value;
+        const tokenRange = new monaco.Range(
+          position.lineNumber,
+          position.column - token.length,
+          position.lineNumber,
+          position.column,
+        );
         const ir = irSource();
-        for (const r of ir.resources) {
-          suggestions.push({
-            label: `${r.id}.id`,
-            kind: monaco.languages.CompletionItemKind.Reference,
-            insertText: `${r.id}.id`,
-            detail: getDef(r.type)?.displayName,
-            range,
-          });
+        const type = enclosingResourceType(model, position.lineNumber);
+        const field = type ? getDef(type)?.fields.find((f) => f.name === arg) : undefined;
+        if (field?.options && !inList) {
+          for (const option of field.options) {
+            suggestions.push({
+              label: `"${option}"`,
+              kind: monaco.languages.CompletionItemKind.EnumMember,
+              insertText: `"${option}"`,
+              range: tokenRange,
+              sortText: `0${option}`,
+            });
+          }
+        }
+        if (field?.type === 'boolean') {
+          for (const b of ['true', 'false']) {
+            suggestions.push({ label: b, kind: monaco.languages.CompletionItemKind.Value, insertText: b, range: tokenRange });
+          }
+        }
+        // plain values (instance_type, cidr_block…) don't take resource references
+        if (!field || field.refTo) {
+          const attr = field?.refAttr ?? 'id';
+          for (const r of ir.resources) {
+            if (field?.refTo && !field.refTo.includes(r.type)) continue;
+            suggestions.push({
+              label: `${r.id}.${attr}`,
+              kind: monaco.languages.CompletionItemKind.Reference,
+              insertText: `${r.id}.${attr}`,
+              detail: getDef(r.type)?.displayName,
+              range: tokenRange,
+              sortText: `1${r.id}`,
+            });
+          }
         }
         for (const v of ir.variables) {
           suggestions.push({
             label: `var.${v.name}`,
             kind: monaco.languages.CompletionItemKind.Variable,
             insertText: `var.${v.name}`,
-            range,
+            range: tokenRange,
+            sortText: `2${v.name}`,
           });
         }
         return { suggestions };
