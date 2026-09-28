@@ -338,11 +338,38 @@
   animation: bp-slide-left 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-.bp-exporting .react-flow .react-flow__handle,
-.bp-exporting .react-flow__resize-control {
-  opacity: 0 !important;
+/* ---------------------------------------------------------------------------
+ * Diagram capture (PNG / SVG export). `.bp-exporting` is set on <html> while
+ * html-to-image copies the canvas, reading computed styles at once: nothing
+ * may be mid-transition (a 160 ms border/shadow fade caught half-way leaks the
+ * previous theme or a selection ring), and no selection or hover chrome may
+ * show. (The PDF reads the diagram's geometry instead — captureDiagram.ts —
+ * and gets its light palette through a `.bp-force-light` probe.)
+ * ------------------------------------------------------------------------- */
+.bp-exporting .react-flow *,
+.bp-exporting .react-flow *::before,
+.bp-exporting .react-flow *::after {
   transition: none !important;
+  animation: none !important;
 }
+.bp-exporting .react-flow .react-flow__handle,
+.bp-exporting .react-flow__resize-control,
+.bp-exporting .react-flow__nodesselection {
+  opacity: 0 !important;
+}
+.bp-exporting .react-flow .bp-node:hover {
+  transform: none !important;
+}
+.bp-exporting .react-flow .bp-node-selected {
+  border-color: var(--node-border) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+.bp-exporting .react-flow .bp-container-selected {
+  border-style: dashed !important;
+  border-color: color-mix(in srgb, var(--cat) 45%, transparent) !important;
+  box-shadow: none !important;
+}
+/* ------------------------------------------------------------------------- */
 
 /* smooth re-layout after "Tidy up" */
 .bp-layout-anim .react-flow__node {
