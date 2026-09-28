@@ -5,6 +5,15 @@
   "type": "module",
   "packageManager": "pnpm@10.26.1",
   "description": "Design cloud infrastructure visually. Ship Terraform instantly. Free, open source, runs entirely in your browser.",
+  "license": "MIT",
+  "homepage": "https://pedromenuzzi.github.io/cloud-infra-blueprint/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pedromenuzzi/cloud-infra-blueprint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pedromenuzzi/cloud-infra-blueprint/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
