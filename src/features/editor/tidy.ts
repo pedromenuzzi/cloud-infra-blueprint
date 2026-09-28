@@ -42,6 +42,14 @@ export async function computeTidyOps(
     return false;
   };
 
+  // each level is laid out on its own (see layoutOptions), so an edge only
+  // shapes the layout of the container that holds both of its ends
+  const siblingEdges = (parentId: string | undefined, ids: Set<string>): ElkExtendedEdge[] =>
+    validEdges
+      .filter((e) => ids.has(e.source) && ids.has(e.target))
+      .filter((e) => (byId.get(e.source)?.parentId ?? undefined) === parentId && (byId.get(e.target)?.parentId ?? undefined) === parentId)
+      .map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] }));
+
   const toElk = (r: ResourceNode): ElkNode => {
     const kids = children.get(r.id) ?? [];
     const container = isContainerType(r.type) || kids.length > 0;
@@ -56,7 +64,9 @@ export async function computeTidyOps(
     return {
       id: r.id,
       children: kids.map(toElk),
+      edges: siblingEdges(r.id, new Set(kids.map((k) => k.id))),
       layoutOptions: {
+        ...levelOptions,
         'elk.padding': '[top=56,left=28,bottom=28,right=28]',
         'elk.nodeSize.constraints': 'MINIMUM_SIZE',
         'elk.nodeSize.minimum': `(${CONTAINER_MIN_W}, ${CONTAINER_MIN_H})`,
@@ -64,14 +74,28 @@ export async function computeTidyOps(
     };
   };
 
+  // Each level is laid out separately: unconnected siblings inside a VPC or
+  // subnet are packed into a grid-like block instead of one tall layer.
+  const levelOptions = {
+    'elk.algorithm': 'layered',
+    'elk.direction': 'RIGHT',
+    'elk.hierarchyHandling': 'SEPARATE_CHILDREN',
+    'elk.separateConnectedComponents': 'true',
+    'elk.aspectRatio': '1.8',
+    'elk.spacing.componentComponent': '36',
+    'elk.layered.spacing.nodeNodeBetweenLayers': '72',
+    'elk.spacing.nodeNode': '36',
+    'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
+    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+  };
+
   // containment already shows parent links; an edge into your own ancestor only confuses ELK
   const validEdges = edges
     .filter((e) => byId.has(e.source) && byId.has(e.target))
     .filter((e) => !isAncestor(e.target, e.source) && !isAncestor(e.source, e.target));
 
-  // Group top-level trees into connected components. ELK (with nested
-  // hierarchy) won't pack disconnected parts itself — it stacks them in a
-  // tall column — so each component is laid out on its own and packed below.
+  // Group top-level trees into connected components (edges between their
+  // descendants count too); each is laid out on its own and packed below.
   const rootOf = (id: string) => {
     let cur = id;
     for (let guard = 0; guard < 20; guard++) {
@@ -98,30 +122,13 @@ export async function computeTidyOps(
     components.set(key, [...(components.get(key) ?? []), r]);
   }
 
-  const layoutOptions = {
-    'elk.algorithm': 'layered',
-    'elk.direction': 'RIGHT',
-    'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-    'elk.layered.spacing.nodeNodeBetweenLayers': '72',
-    'elk.spacing.nodeNode': '36',
-    'elk.layered.nodePlacement.strategy': 'BRANDES_KOEPF',
-    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-    'elk.padding': '[top=0,left=0,bottom=0,right=0]',
-  };
+  const layoutOptions = { ...levelOptions, 'elk.padding': '[top=0,left=0,bottom=0,right=0]' };
   const laidOut = await Promise.all(
     [...components.values()].map(async (group) => {
-      const ids = new Set<string>();
-      const collect = (r: ResourceNode) => {
-        ids.add(r.id);
-        for (const c of children.get(r.id) ?? []) collect(c);
-      };
-      group.forEach(collect);
       const graph: ElkNode = {
         id: '__root__',
         children: group.map(toElk),
-        edges: validEdges
-          .filter((e) => ids.has(e.source) && ids.has(e.target))
-          .map((e): ElkExtendedEdge => ({ id: e.id, sources: [e.source], targets: [e.target] })),
+        edges: siblingEdges(undefined, new Set(group.map((r) => r.id))),
         layoutOptions,
       };
       return elk.layout(graph);
