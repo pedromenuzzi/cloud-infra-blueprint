@@ -87,6 +87,38 @@ async function expectAccessible(page: Page, screen: string) {
   expect(findings, `${screen}: serious/critical axe violations`).toEqual([]);
 }
 
+/** Click a canvas-toolbar button; count the distinct viewport transforms painted over 600 ms. */
+async function framesAfter(page: Page, button: string): Promise<number> {
+  return page.evaluate(async (label) => {
+    const viewport = document.querySelector<HTMLElement>('.react-flow__viewport')!;
+    const seen = new Set<string>();
+    document.querySelector<HTMLButtonElement>(`[aria-label^="${label}"]`)!.click();
+    const start = performance.now();
+    await new Promise<void>((done) => {
+      const tick = () => {
+        seen.add(viewport.style.transform);
+        if (performance.now() - start < 600) requestAnimationFrame(tick);
+        else done();
+      };
+      tick();
+    });
+    return seen.size;
+  }, button);
+}
+
+test.describe('reduced motion', () => {
+  test('canvas toolbar zoom and fit view jump instead of animating', async ({ page }) => {
+    await openSeedProject(page, { monaco: false });
+    // baseline: without the preference the viewport animates over many frames
+    expect(await framesAfter(page, 'Zoom in')).toBeGreaterThan(3);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(await framesAfter(page, 'Zoom in')).toBeLessThanOrEqual(2);
+    expect(await framesAfter(page, 'Fit view')).toBeLessThanOrEqual(2);
+    expect(await framesAfter(page, 'Reset zoom')).toBeLessThanOrEqual(2);
+  });
+});
+
 for (const theme of ['light', 'dark'] as const) {
   test.describe(`${theme} theme`, () => {
     test.beforeEach(async ({ page }) => {
