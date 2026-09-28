@@ -84,9 +84,9 @@ function readSort(): Sort {
 const ACTION_BUTTON = 'h-7 w-7';
 
 /**
- * A project card. The whole card is one "open" button stretched underneath
- * the content; the actions are siblings on top of it (no nested controls),
- * visible on hover, on keyboard focus, and always on touch screens.
+ * A project card. The whole card is one "open" button stretched over the
+ * content; the actions are siblings above it (no nested controls), visible
+ * on hover, on keyboard focus, and always on touch screens.
  */
 const ProjectCard = memo(function ProjectCard({
   project,
@@ -115,13 +115,7 @@ const ProjectCard = memo(function ProjectCard({
       aria-labelledby={titleId}
       className="group relative overflow-hidden rounded-[14px] border bg-surface-1 shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-lg"
     >
-      <button
-        type="button"
-        onClick={() => onOpen(project.id)}
-        aria-label={`Open project ${project.name}`}
-        className="absolute inset-0 z-0 rounded-[14px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
-      />
-      <div className="pointer-events-none relative">
+      <div className="relative">
         <div className="bp-dots relative overflow-hidden border-b bg-canvas px-4 py-3">
           <ProjectThumbnail
             files={project.files}
@@ -141,7 +135,7 @@ const ProjectCard = memo(function ProjectCard({
               autoFocus
               aria-label="Rename project"
               defaultValue={project.name}
-              className="pointer-events-auto relative z-10 -mx-1 h-7 px-1 text-[14.5px] font-semibold"
+              className="relative z-10 -mx-1 h-7 px-1 text-[14.5px] font-semibold"
               onFocus={(e) => e.currentTarget.select()}
               onBlur={(e) => commitRename(e.currentTarget.value)}
               onKeyDown={(e) => {
@@ -170,6 +164,13 @@ const ProjectCard = memo(function ProjectCard({
           </div>
         </div>
       </div>
+      {/* after the content so its focus ring paints on top; the actions sit above it */}
+      <button
+        type="button"
+        onClick={() => onOpen(project.id)}
+        aria-label={`Open project ${project.name}`}
+        className="absolute inset-0 z-[1] rounded-[14px] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+      />
       <div
         className="absolute right-2.5 top-2.5 z-10 flex gap-0.5 rounded-[9px] border bg-surface-1/95 p-0.5 opacity-0 shadow-sm backdrop-blur transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
         role="group"

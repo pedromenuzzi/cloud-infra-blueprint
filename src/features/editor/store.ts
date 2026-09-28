@@ -190,9 +190,13 @@ export const useEditor = create<EditorState>((set, get) => {
       let project = input;
       if (!keep && dirty) {
         // a pending save belongs to the project on screen — write it before replacing it
-        save();
-        // reopening the same project: what was just written is newer than `input`
-        if (input.id === get().projectId) project = getProject(input.id) ?? input;
+        const saved = save();
+        if (input.id === get().projectId) {
+          // reopening the same project: keep edits that couldn't be stored rather than
+          // reload an older copy; otherwise what was just written is newer than `input`
+          if (!saved) return;
+          project = getProject(input.id) ?? input;
+        }
       }
       clearTimeout(persistTimer);
       clearTimeout(parseTimer);

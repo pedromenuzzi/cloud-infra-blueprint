@@ -172,6 +172,10 @@ describe('editor persistence', () => {
     expect(state().saveError).toBe('quota');
     expect(store.flushPendingSave()).toBe(false);
 
+    // reopening the project (dashboard → editor) keeps the unsaved edits on screen
+    store.loadProjectIntoEditor(p.id);
+    expect(state().files['main.tf']).toContain('xxxx');
+
     // another tab frees space (deletes a project): the pending save goes through
     ls.quota = Number.POSITIVE_INFINITY;
     otherTab(() => storage.createProject({ name: 'other', files: {} }));

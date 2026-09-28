@@ -122,6 +122,24 @@ test.describe('full storage', () => {
   });
 });
 
+test('blocked storage (site data disabled) keeps the editor working in memory', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    });
+  });
+  await page.goto('/dashboard');
+  await expect(page.getByRole('alert').filter({ hasText: 'Your browser blocks storage' })).toBeVisible();
+  await page.getByRole('button', { name: `Open project ${SEED_PROJECT}` }).click();
+  await waitForMonaco(page);
+  await expect(canvasStats(page)).toHaveText('7 resources, 2 connections');
+  await palette(page).getByText('S3 Bucket').click();
+  await expect(canvasStats(page)).toHaveText(/^8 resources/);
+});
+
 test('corrupted storage is backed up and the dashboard still works', async ({ page }) => {
   await page.addInitScript(() => {
     if (sessionStorage.getItem('seeded-corruption')) return;
