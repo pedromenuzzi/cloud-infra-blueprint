@@ -1,9 +1,18 @@
 import { Command } from 'cmdk';
 import { useMemo } from 'react';
+import { useLayer } from '@/components/ui';
 import type { Provider } from '@/ir/types';
 import { PROVIDER_LABELS, ProviderChip, ResourceIcon } from '@/resources/icons';
 import { allDefs } from '@/resources/registry';
 import { CATEGORY_LABELS, CATEGORY_ORDER, type ResourceDef } from '@/resources/types';
+
+/** AA text on the chip's tint (ProviderChip's inline brand color is too light as text) */
+const CHIP_TEXT: Record<Provider, string> = {
+  aws: 'text-aws!',
+  azure: 'text-azure!',
+  gcp: 'text-gcp!',
+  other: 'text-muted!',
+};
 
 /**
  * cmdk filter: every query word must appear (as a substring) in the item's
@@ -73,7 +82,7 @@ export function ResourceGroups({
                 </span>
                 <span className="block truncate font-mono text-[10.5px] text-faint">{def.type}</span>
               </span>
-              <ProviderChip provider={def.provider} />
+              <ProviderChip provider={def.provider} className={CHIP_TEXT[def.provider]} />
             </Command.Item>
           ))}
         </Command.Group>
@@ -92,6 +101,8 @@ export function ResourcePicker({
   onClose(): void;
   preferred?: Provider[];
 }) {
+  // a layer, so Esc closes this popover first and page shortcuts stand down
+  useLayer(true, onClose);
   return (
     <Command
       label="Add a resource"

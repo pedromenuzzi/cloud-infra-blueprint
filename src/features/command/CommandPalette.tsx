@@ -43,7 +43,7 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
-import { Kbd } from '@/components/ui';
+import { focusIsLost, Kbd, restoreFocus, useLayer } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { useLayout } from '@/features/editor/layoutStore';
@@ -60,7 +60,7 @@ import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
 import { useTheme } from '@/theme/useTheme';
-import { MOD, usePalette } from './paletteStore';
+import { MOD, takePaletteReturnFocus, usePalette } from './paletteStore';
 
 function Item({
   value,
@@ -130,11 +130,20 @@ export function CommandPalette() {
   );
   const preferred = useMemo(() => (editorReady ? detectProviders(files) : []), [editorReady, files]);
 
+  // in the layer stack so page shortcuts stand down; cmdk (Radix) closes itself on Esc
+  useLayer(open);
+
   useEffect(() => {
-    if (!open) {
-      setSearch('');
-      setPage('root');
-    }
+    if (open) return;
+    setSearch('');
+    setPage('root');
+    // cmdk's dialog has no trigger to refocus, so focus would drop to <body>:
+    // give it back to what had it (after Radix's own unmount-focus, a 0 ms timer)
+    const target = takePaletteReturnFocus();
+    const timer = setTimeout(() => {
+      if (focusIsLost()) restoreFocus(target);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [open]);
 
   const run = (fn: () => unknown) => {

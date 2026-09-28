@@ -6,8 +6,11 @@ const SECTIONS: Array<{ title: string; items: Array<[string, string[]]> }> = [
   {
     title: 'Anywhere',
     items: [
+      // inside the code editor MOD K belongs to Monaco's chords — use MOD ⇧ P there
       ['Command palette', [MOD, 'K']],
+      ['Command palette (also in code)', [MOD, '⇧', 'P']],
       ['Keyboard shortcuts', ['?']],
+      ['Close dialog, menu or panel', ['Esc']],
     ],
   },
   {
@@ -19,8 +22,19 @@ const SECTIONS: Array<{ title: string; items: Array<[string, string[]]> }> = [
       ['Rename selected', ['F2']],
       ['Delete selected', ['Del']],
       ['Fit view', ['⇧', '1']],
-      ['Pan', ['Space', 'Drag']],
-      ['Multi-select', ['⇧', 'Drag']],
+      ['Pan', ['Drag empty canvas']],
+      ['Pan over resources', ['Space', 'Drag']],
+      ['Zoom', ['Scroll']],
+      ['Box-select', ['⇧', 'Drag']],
+      ['Add to selection', [MOD, 'Click']],
+    ],
+  },
+  {
+    title: 'Resource palette',
+    items: [
+      ['Move between resources', ['↑', '↓']],
+      ['Collapse / expand a category', ['←', '→']],
+      ['Add the focused resource', ['Enter']],
     ],
   },
   {
@@ -53,9 +67,9 @@ export function ShortcutsDialog() {
       onClose={() => setOpen(false)}
       wide
       title={
-        <span className="flex items-center gap-2 text-[15px] font-semibold">
-          <Keyboard className="h-4 w-4 text-muted" /> Keyboard shortcuts
-        </span>
+        <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+          <Keyboard className="h-4 w-4 text-muted" aria-hidden="true" /> Keyboard shortcuts
+        </h2>
       }
     >
       <div className="grid gap-x-8 gap-y-5 p-5 sm:grid-cols-2">
