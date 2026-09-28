@@ -1,7 +1,8 @@
 /**
- * A small PDF 1.4 writer: pages of text, vector shapes, RGB images, links and
- * bookmarks. Coordinates are in points with the origin at the TOP-left of the
- * page (y grows down) and are flipped when written. Text uses the standard
+ * A small PDF 1.4 writer: pages of text, vector shapes and paths (with
+ * gradients, opacity and clipping), RGB images, links and bookmarks.
+ * Coordinates are in points with the origin at the TOP-left of the page (y
+ * grows down) and are flipped when written. Text uses the standard
  * Helvetica / Courier fonts, so nothing is embedded; see metrics.ts.
  *
  *   const doc = new PdfDocument({ title: 'My infra' });
@@ -11,6 +12,7 @@
  */
 import { zlibSync } from 'fflate';
 import { encodeWinAnsi, textWidth, type PdfFont } from './metrics';
+import type { PathSeg } from './svgPath';
 
 /** '#rrggbb' */
 export type PdfColor = string;
@@ -22,6 +24,10 @@ export interface ShapeStyle {
   dash?: number[];
   /** corner radius (rect only) */
   radius?: number;
+  lineCap?: 'butt' | 'round' | 'square';
+  lineJoin?: 'miter' | 'round' | 'bevel';
+  /** 0–1, multiplied with the page's current opacity */
+  opacity?: number;
 }
 
 export interface TextStyle {
@@ -30,6 +36,22 @@ export interface TextStyle {
   color?: PdfColor;
   /** `x` is the left edge, the right edge or the center of the text */
   align?: 'left' | 'right' | 'center';
+  /** 0–1, multiplied with the page's current opacity */
+  opacity?: number;
+}
+
+/** maps path coordinates onto the page: (x, y) → (dx + x·scale, dy + y·scale) */
+export interface PathTransform {
+  dx: number;
+  dy: number;
+  scale: number;
+}
+
+export interface Gradient {
+  from: PdfColor;
+  to: PdfColor;
+  /** CSS angle: 0 = towards the top, 90 = towards the right */
+  angle: number;
 }
 
 export interface PdfImage {
@@ -114,6 +136,13 @@ export class PdfPage {
   readonly links: PageLink[] = [];
   /** @internal image ids drawn on this page */
   readonly images = new Set<number>();
+  /** @internal opacity → graphics state name */
+  readonly gstates = new Map<number, string>();
+  /** @internal gradient key → shading name + dictionary */
+  readonly shadings = new Map<string, { name: string; dict: string }>();
+  /** current opacity (save/restore keep a stack, like the graphics state) */
+  private alpha = 1;
+  private readonly alphaStack: number[] = [];
 
   constructor(
     readonly width: number,
@@ -126,9 +155,16 @@ export class PdfPage {
     return this.height - v;
   }
 
+  private gs(alpha: number): string {
+    const a = Math.round(Math.max(0, Math.min(1, alpha)) * 1000) / 1000;
+    let name = this.gstates.get(a);
+    if (!name) this.gstates.set(a, (name = `GS${this.gstates.size}`));
+    return `/${name} gs`;
+  }
+
   /** draw text with its baseline at `y` */
   text(text: string, x: number, y: number, style: TextStyle = {}): void {
-    const { font = 'regular', size = 10, color = '#000000', align = 'left' } = style;
+    const { font = 'regular', size = 10, color = '#000000', align = 'left', opacity } = style;
     const codes = encodeWinAnsi(text);
     if (codes.length === 0) return;
     let left = x;
@@ -137,37 +173,92 @@ export class PdfPage {
       left = align === 'right' ? x - w : x - w / 2;
     }
     const hex = codes.map((c) => c.toString(16).padStart(2, '0')).join('');
-    this.ops.push(
-      `BT /${FONTS[font].res} ${num(size)} Tf ${rgb(color)} rg ${num(left)} ${num(this.y(y))} Td <${hex}> Tj ET`,
-    );
+    const op = `BT /${FONTS[font].res} ${num(size)} Tf ${rgb(color)} rg ${num(left)} ${num(this.y(y))} Td <${hex}> Tj ET`;
+    this.ops.push(opacity !== undefined && opacity < 1 ? `q ${this.gs(this.alpha * opacity)} ${op} Q` : op);
   }
 
-  rect(x: number, y: number, w: number, h: number, style: ShapeStyle): void {
-    const r = Math.min(style.radius ?? 0, w / 2, h / 2);
-    if (r <= 0) {
-      this.paint(`${num(x)} ${num(this.y(y + h))} ${num(w)} ${num(h)} re`, style);
-      return;
-    }
+  private rectPath(x: number, y: number, w: number, h: number, radius = 0): string {
+    const r = Math.max(0, Math.min(radius, w / 2, h / 2));
+    if (r <= 0) return `${num(x)} ${num(this.y(y + h))} ${num(w)} ${num(h)} re`;
     const k = r * KAPPA;
     const b = this.y(y + h);
     const t = this.y(y);
     const R = x + w;
     const P = (px: number, py: number) => `${num(px)} ${num(py)}`;
-    this.paint(
-      [
-        `${P(x + r, b)} m`,
-        `${P(R - r, b)} l`,
-        `${P(R - r + k, b)} ${P(R, b + r - k)} ${P(R, b + r)} c`,
-        `${P(R, t - r)} l`,
-        `${P(R, t - r + k)} ${P(R - r + k, t)} ${P(R - r, t)} c`,
-        `${P(x + r, t)} l`,
-        `${P(x + r - k, t)} ${P(x, t - r + k)} ${P(x, t - r)} c`,
-        `${P(x, b + r)} l`,
-        `${P(x, b + r - k)} ${P(x + r - k, b)} ${P(x + r, b)} c`,
-        'h',
-      ].join(' '),
-      style,
-    );
+    return [
+      `${P(x + r, b)} m`,
+      `${P(R - r, b)} l`,
+      `${P(R - r + k, b)} ${P(R, b + r - k)} ${P(R, b + r)} c`,
+      `${P(R, t - r)} l`,
+      `${P(R, t - r + k)} ${P(R - r + k, t)} ${P(R - r, t)} c`,
+      `${P(x + r, t)} l`,
+      `${P(x + r - k, t)} ${P(x, t - r + k)} ${P(x, t - r)} c`,
+      `${P(x, b + r)} l`,
+      `${P(x, b + r - k)} ${P(x + r - k, b)} ${P(x + r, b)} c`,
+      'h',
+    ].join(' ');
+  }
+
+  rect(x: number, y: number, w: number, h: number, style: ShapeStyle): void {
+    this.paint(this.rectPath(x, y, w, h, style.radius), style);
+  }
+
+  /** an SVG-style path (see svgPath.ts), mapped onto the page by `t` */
+  path(segs: readonly PathSeg[], style: ShapeStyle, t: PathTransform = { dx: 0, dy: 0, scale: 1 }): void {
+    const X = (v: number) => num(t.dx + v * t.scale);
+    const Y = (v: number) => num(this.y(t.dy + v * t.scale));
+    const out: string[] = [];
+    for (const s of segs) {
+      if (s.op === 'M') out.push(`${X(s.x)} ${Y(s.y)} m`);
+      else if (s.op === 'L') out.push(`${X(s.x)} ${Y(s.y)} l`);
+      else if (s.op === 'C') out.push(`${X(s.x1)} ${Y(s.y1)} ${X(s.x2)} ${Y(s.y2)} ${X(s.x)} ${Y(s.y)} c`);
+      else out.push('h');
+    }
+    if (out.length === 0 || !out[0].endsWith(' m')) return;
+    this.paint(out.join(' '), style);
+  }
+
+  /** a rectangle filled with a two-color linear gradient */
+  gradientRect(x: number, y: number, w: number, h: number, g: Gradient, radius = 0): void {
+    const key = `${g.from}|${g.to}|${g.angle}`;
+    let sh = this.shadings.get(key);
+    if (!sh) {
+      // the gradient line of CSS linear-gradient(angle) across a unit box, y down
+      const a = (g.angle * Math.PI) / 180;
+      const dx = Math.sin(a);
+      const dy = -Math.cos(a);
+      const half = (Math.abs(dx) + Math.abs(dy)) / 2;
+      const c = (v: number) => num(Math.round(v * 1000) / 1000);
+      const dict = `<< /ShadingType 2 /ColorSpace /DeviceRGB /Coords [${c(0.5 - dx * half)} ${c(0.5 - dy * half)} ${c(0.5 + dx * half)} ${c(
+        0.5 + dy * half,
+      )}] /Function << /FunctionType 2 /Domain [0 1] /C0 [${rgb(g.from)}] /C1 [${rgb(g.to)}] /N 1 >> /Extend [true true] >>`;
+      sh = { name: `Sh${this.shadings.size}`, dict };
+      this.shadings.set(key, sh);
+    }
+    const alpha = this.alpha < 1 ? ` ${this.gs(this.alpha)}` : '';
+    this.ops.push(`q${alpha} ${this.rectPath(x, y, w, h, radius)} W n ${num(w)} 0 0 ${num(-h)} ${num(x)} ${num(this.y(y))} cm /${sh.name} sh Q`);
+  }
+
+  /** save the graphics state (clip, opacity); pair with restore() */
+  save(): void {
+    this.alphaStack.push(this.alpha);
+    this.ops.push('q');
+  }
+
+  restore(): void {
+    this.alpha = this.alphaStack.pop() ?? 1;
+    this.ops.push('Q');
+  }
+
+  /** clip everything drawn until restore() to a (rounded) rectangle */
+  clipRect(x: number, y: number, w: number, h: number, radius = 0): void {
+    this.ops.push(`${this.rectPath(x, y, w, h, radius)} W n`);
+  }
+
+  /** multiply the opacity of everything drawn until restore() */
+  setOpacity(alpha: number): void {
+    this.alpha *= alpha;
+    this.ops.push(this.gs(this.alpha));
   }
 
   circle(cx: number, cy: number, r: number, style: ShapeStyle): void {
@@ -194,11 +285,19 @@ export class PdfPage {
     this.paint(`${path.join(' ')} h`, style);
   }
 
-  line(x1: number, y1: number, x2: number, y2: number, style: { color: PdfColor; width?: number; dash?: number[] }): void {
+  line(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    style: { color: PdfColor; width?: number; dash?: number[]; opacity?: number; lineCap?: ShapeStyle['lineCap'] },
+  ): void {
     this.paint(`${num(x1)} ${num(this.y(y1))} m ${num(x2)} ${num(this.y(y2))} l`, {
       stroke: style.color,
       lineWidth: style.width,
       dash: style.dash,
+      opacity: style.opacity,
+      lineCap: style.lineCap,
     });
   }
 
@@ -219,7 +318,10 @@ export class PdfPage {
 
   private paint(path: string, style: ShapeStyle): void {
     const parts = ['q'];
+    if (style.opacity !== undefined && style.opacity < 1) parts.push(this.gs(this.alpha * style.opacity));
     if (style.stroke) parts.push(`${num(style.lineWidth ?? 1)} w ${rgb(style.stroke)} RG`);
+    if (style.lineCap) parts.push(`${['butt', 'round', 'square'].indexOf(style.lineCap)} J`);
+    if (style.lineJoin) parts.push(`${['miter', 'round', 'bevel'].indexOf(style.lineJoin)} j`);
     if (style.dash?.length) parts.push(`[${style.dash.map(num).join(' ')}] 0 d`);
     if (style.fill) parts.push(`${rgb(style.fill)} rg`);
     parts.push(path, style.fill && style.stroke ? 'B' : style.fill ? 'f' : 'S', 'Q');
@@ -299,6 +401,14 @@ export class PdfDocument {
   }
 
   save(): Uint8Array {
+    const steps = this.saveSteps();
+    let step = steps.next();
+    while (!step.done) step = steps.next();
+    return step.value;
+  }
+
+  /** save() a page at a time: it yields after compressing each page, so a caller can hand the thread back */
+  *saveSteps(): Generator<void, Uint8Array> {
     const out = new ByteSink();
     const offsets: number[] = [];
     let next = 1;
@@ -350,7 +460,7 @@ export class PdfDocument {
     const fontRes = Object.entries(fontObj)
       .map(([font, id]) => `/${FONTS[font as PdfFont].res} ${id} 0 R`)
       .join(' ');
-    this.pageList.forEach((page, i) => {
+    for (const [i, page] of this.pageList.entries()) {
       const annots = page.links.map((l) => {
         const id = alloc();
         const x2 = l.x + l.w;
@@ -360,11 +470,13 @@ export class PdfDocument {
         return id;
       });
       const xobjects = [...page.images].map((imgId) => `/Im${imgId} ${imageObj.get(imgId)} 0 R`).join(' ');
+      const gstates = [...page.gstates].map(([alpha, name]) => `/${name} << /Type /ExtGState /ca ${num(alpha)} /CA ${num(alpha)} >>`).join(' ');
+      const shadings = [...page.shadings.values()].map((s) => `/${s.name} ${s.dict}`).join(' ');
       write(
         pageObj[i],
         `<< /Type /Page /Parent ${PAGES} 0 R /MediaBox [0 0 ${num(page.width)} ${num(page.height)}] /Resources << /Font << ${fontRes} >>${
           xobjects ? ` /XObject << ${xobjects} >>` : ''
-        } /ProcSet [/PDF /Text /ImageC] >> /Contents ${contentObj[i]} 0 R${
+        }${gstates ? ` /ExtGState << ${gstates} >>` : ''}${shadings ? ` /Shading << ${shadings} >>` : ''} /ProcSet [/PDF /Text /ImageC] >> /Contents ${contentObj[i]} 0 R${
           annots.length ? ` /Annots [${annots.map((a) => `${a} 0 R`).join(' ')}]` : ''
         } >>`,
       );
@@ -373,7 +485,8 @@ export class PdfDocument {
       const raw = content.concat();
       if (this.compress) writeStream(contentObj[i], ' /Filter /FlateDecode', zlibSync(raw, { level: 6 }));
       else writeStream(contentObj[i], '', raw);
-    });
+      yield;
+    }
 
     write(PAGES, `<< /Type /Pages /Kids [${pageObj.map((id) => `${id} 0 R`).join(' ')}] /Count ${this.pageList.length} >>`);
 

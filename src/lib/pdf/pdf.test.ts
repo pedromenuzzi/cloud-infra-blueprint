@@ -1,7 +1,8 @@
 import { unzlibSync, zlibSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { encodeWinAnsi, fitText, textWidth, wrapText } from './metrics';
-import { expectWellFormed, latin1, pdfText } from './testing';
+import { encodeWinAnsi, fitText, splitToWidth, textWidth, unsupportedChars, wrapText } from './metrics';
+import { parseSvgPath, pathEnd, pointOnPath, shapePathData, type PathSeg } from './svgPath';
+import { expectWellFormed, latin1, pdfLayout, pdfText } from './testing';
 import { PdfDocument } from './writer';
 
 describe('pdf metrics', () => {
@@ -39,6 +40,86 @@ describe('pdf metrics', () => {
     expect(cut.endsWith('…')).toBe(true);
     expect(textWidth(cut, 'bold', 10)).toBeLessThanOrEqual(50);
     expect(fitText('short', 50, 'bold', 10)).toBe('short');
+    // long input stays fast (linear) and still fits
+    const long = fitText('x'.repeat(20_000), 80, 'mono', 7);
+    expect(textWidth(long, 'mono', 7)).toBeLessThanOrEqual(80);
+  });
+
+  it('splits by rendered width: transliterations count as the glyphs they become, surrogate pairs stay whole', () => {
+    // '→' prints as '->' (two glyphs): 10 arrows are 20 Courier cells, not 10
+    const arrows = splitToWidth('→'.repeat(10), 7 * 0.6 * 12, 'mono', 7);
+    expect(arrows.map((p) => [...p].length)).toEqual([6, 4]);
+    for (const p of arrows) expect(textWidth(p, 'mono', 7)).toBeLessThanOrEqual(7 * 0.6 * 12 + 1e-9);
+
+    const emoji = splitToWidth('ab😀cd😀ef', 7 * 0.6 * 3, 'mono', 7);
+    expect(emoji.join('')).toBe('ab😀cd😀ef');
+    for (const p of emoji) expect(p).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+    expect(splitToWidth('', 50, 'mono', 7)).toEqual(['']);
+  });
+
+  it('lists the characters the standard fonts cannot print', () => {
+    expect(unsupportedChars('Produção — café, naïve')).toEqual([]);
+    expect(unsupportedChars('Infra 生产 🚀 שלום?')).toEqual(['生', '产', '🚀', 'ש', 'ל', 'ו', 'ם']);
+    // transliterated symbols print fine
+    expect(unsupportedChars('a → b ≥ c')).toEqual([]);
+  });
+});
+
+describe('svg paths', () => {
+  const round = (segs: PathSeg[]) => JSON.parse(JSON.stringify(segs, (_k, v) => (typeof v === 'number' ? Math.round(v * 100) / 100 : v)));
+
+  it('reads absolute and relative commands, implicit repeats and compact numbers', () => {
+    expect(round(parseSvgPath('M10,20 l5-5h10v10H0V0z'))).toEqual([
+      { op: 'M', x: 10, y: 20 },
+      { op: 'L', x: 15, y: 15 },
+      { op: 'L', x: 25, y: 15 },
+      { op: 'L', x: 25, y: 25 },
+      { op: 'L', x: 0, y: 25 },
+      { op: 'L', x: 0, y: 0 },
+      { op: 'Z' },
+    ]);
+    // "M 0 0 1 1" continues as a line; ".5.5" is two numbers
+    expect(round(parseSvgPath('M0 0 1 1 L.5.5'))).toEqual([
+      { op: 'M', x: 0, y: 0 },
+      { op: 'L', x: 1, y: 1 },
+      { op: 'L', x: 0.5, y: 0.5 },
+    ]);
+    // React Flow bézier edges
+    expect(round(parseSvgPath('M100,50 C150,50 150,120 200,120'))).toEqual([
+      { op: 'M', x: 100, y: 50 },
+      { op: 'C', x1: 150, y1: 50, x2: 150, y2: 120, x: 200, y: 120 },
+    ]);
+  });
+
+  it('turns quadratics, smooth curves and arcs into cubics', () => {
+    const q = parseSvgPath('M0,0 Q10,10 20,0 T40,0');
+    expect(q.map((s) => s.op)).toEqual(['M', 'C', 'C']);
+    expect(round([q[1]])).toEqual([{ op: 'C', x1: 6.67, y1: 6.67, x2: 13.33, y2: 6.67, x: 20, y: 0 }]);
+    const s = parseSvgPath('M0,0 C0,10 10,10 10,0 S20,-10 20,0');
+    expect(round([s[2]])).toEqual([{ op: 'C', x1: 10, y1: -10, x2: 20, y2: -10, x: 20, y: 0 }]);
+    // a half circle of radius 10 (compact arc flags as lucide writes them)
+    const arc = parseSvgPath('M0,10 a10 10 0 01 20 0');
+    expect(arc.map((x) => x.op)).toEqual(['M', 'C', 'C']);
+    const top = pointOnPath([arc[0], arc[1]], 1)!;
+    expect(top.x).toBeCloseTo(10, 5);
+    expect(top.y).toBeCloseTo(0, 5);
+  });
+
+  it('converts basic shapes to path data', () => {
+    const attrs = (a: Record<string, string>) => (name: string) => a[name] ?? null;
+    expect(parseSvgPath(shapePathData('circle', attrs({ cx: '12', cy: '12', r: '10' }))!).filter((x) => x.op === 'C')).toHaveLength(4);
+    expect(shapePathData('rect', attrs({ x: '2', y: '3', width: '20', height: '10' }))).toBe('M2,3 H22 V13 H2 Z');
+    expect(parseSvgPath(shapePathData('rect', attrs({ width: '20', height: '10', rx: '2' }))!).length).toBeGreaterThan(8);
+    expect(shapePathData('line', attrs({ x1: '1', y1: '2', x2: '3', y2: '4' }))).toBe('M1,2 L3,4');
+    expect(shapePathData('polygon', attrs({ points: '0,0 10,0 5,8' }))).toBe('M0,0 L10,0 L5,8 Z');
+    expect(shapePathData('text', attrs({}))).toBeUndefined();
+  });
+
+  it('finds where an edge arrives and from which direction', () => {
+    const end = pathEnd(parseSvgPath('M0,0 C50,0 50,100 100,100'))!;
+    expect(end).toMatchObject({ x: 100, y: 100 });
+    expect(end.dx).toBeCloseTo(1, 5);
+    expect(end.dy).toBeCloseTo(0, 5);
   });
 });
 
@@ -72,6 +153,33 @@ describe('pdf writer', () => {
     // Unicode title in the metadata, WinAnsi on the page
     expect(text).toContain('/Title <FEFF0049006e006600720061002000640065002000700072006f0064007500e700e3006f>');
     expect(pdfText(bytes)).toBe('Olá, visão geral');
+  });
+
+  it('draws paths, gradients, clips and translucent shapes', () => {
+    const doc = new PdfDocument({}, false);
+    const page = doc.addPage(200, 200);
+    page.path(parseSvgPath('M0,0 L10,0 L10,10 Z'), { fill: '#ff0000', lineCap: 'round', lineJoin: 'round' }, { dx: 20, dy: 30, scale: 2 });
+    page.gradientRect(10, 10, 40, 40, { from: '#fb923c', to: '#ea580c', angle: 145 }, 8);
+    page.gradientRect(60, 10, 40, 40, { from: '#fb923c', to: '#ea580c', angle: 145 }, 8);
+    page.rect(10, 60, 50, 20, { fill: '#000000', opacity: 0.5 });
+    page.save();
+    page.clipRect(0, 100, 100, 50, 4);
+    page.setOpacity(0.4);
+    page.text('dimmed', 10, 120, { opacity: 0.5 });
+    page.restore();
+
+    const bytes = doc.save();
+    expectWellFormed(bytes);
+    const text = latin1(bytes);
+    // one shading reused by both tiles, declared on the page
+    expect(text.match(/\/Sh0 sh/g)).toHaveLength(2);
+    expect(text).toMatch(/\/Shading << \/Sh0 << \/ShadingType 2 /);
+    // opacities multiply: 0.4 group × 0.5 text = 0.2
+    expect(text).toMatch(/\/ExtGState << .*\/ca 0\.5 .*\/ca 0\.4 .*\/ca 0\.2 /);
+    expect(text).toContain('20 170 m 40 170 l 40 150 l h');
+    expect(text).toContain('1 J 1 j');
+    const { runs } = pdfLayout(bytes);
+    expect(runs).toEqual([expect.objectContaining({ text: 'dimmed', clipped: true, x: 10, y: 120 })]);
   });
 
   it('deflates page content by default', () => {

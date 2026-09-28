@@ -758,14 +758,21 @@ function CanvasInner() {
   /**
    * Run `capture` on a clean diagram (no selection glow, resize handles or
    * animated edges) with its full bounds; null when the canvas is empty.
+   * Clears both the editor's selection and React Flow's (a box selection
+   * selects many nodes) and puts both back afterwards.
    */
   const withCleanDiagram = useCallback(
     async <T,>(capture: (bounds: Rect) => Promise<T>): Promise<T | null> => {
       const flowNodes = rf.getNodes();
       if (flowNodes.length === 0) return null;
       const { selection: previous, setSelection: select } = useEditor.getState();
+      const selectedNodes = new Set(flowNodes.filter((n) => n.selected).map((n) => n.id));
+      const selectedEdges = new Set(rf.getEdges().filter((e) => e.selected).map((e) => e.id));
+      const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       select(null);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      if (selectedNodes.size > 0) rf.setNodes((ns) => ns.map((n) => (n.selected ? { ...n, selected: false } : n)));
+      if (selectedEdges.size > 0) rf.setEdges((es) => es.map((e) => (e.selected ? { ...e, selected: false } : e)));
+      await frames();
       try {
         // bounds from absolute positions + measured sizes of every node (children included)
         let minX = Infinity;
@@ -785,6 +792,12 @@ function CanvasInner() {
         return await capture({ x: minX, y: minY, width: maxX - minX, height: maxY - minY });
       } finally {
         if (previous) select(previous);
+        if (selectedNodes.size > 0 || selectedEdges.size > 0) {
+          // after the canvas has rebuilt its nodes for the restored editor selection
+          await frames();
+          if (selectedNodes.size > 0) rf.setNodes((ns) => ns.map((n) => (selectedNodes.has(n.id) && !n.selected ? { ...n, selected: true } : n)));
+          if (selectedEdges.size > 0) rf.setEdges((es) => es.map((e) => (selectedEdges.has(e.id) && !e.selected ? { ...e, selected: true } : e)));
+        }
       }
     },
     [rf],
@@ -875,7 +888,8 @@ function CanvasInner() {
       zoomOut: () => void rf.zoomOut({ duration: motionMs(200) }),
       tidy,
       exportImage,
-      captureDiagram: () => withCleanDiagram((bounds) => captureDiagram(bounds, useSecurityUi.getState().lens)),
+      captureDiagram: (options) =>
+        withCleanDiagram((bounds) => captureDiagram(rf, bounds, useSecurityUi.getState().lens, options)),
       addResource: (type, screen) => {
         const def = getDef(type);
         if (def) placeResource(def, rf.screenToFlowPosition(screen ?? viewportCenter()));
