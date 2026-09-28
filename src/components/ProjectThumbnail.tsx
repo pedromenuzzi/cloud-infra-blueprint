@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react';
-import { useId, useMemo } from 'react';
+import { memo, useId, useMemo } from 'react';
 import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
 import { autoLayout, CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
@@ -51,8 +51,11 @@ export function computeAbsoluteRects(ir: IR): Map<string, AbsRect> {
   return rects;
 }
 
-/** Mini architecture render used on project & template cards and the landing hero. */
-export function ProjectThumbnail({
+/**
+ * Mini architecture render used on project & template cards and the landing hero.
+ * Memoized: a dashboard with hundreds of cards re-renders only what changed.
+ */
+export const ProjectThumbnail = memo(function ProjectThumbnail({
   files,
   className,
   interactiveTitle,
@@ -230,4 +233,4 @@ export function ProjectThumbnail({
         })}
     </svg>
   );
-}
+});

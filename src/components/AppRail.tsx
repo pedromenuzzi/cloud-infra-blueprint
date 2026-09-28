@@ -2,6 +2,7 @@ import { Github, GraduationCap, Home, LayoutTemplate } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button, LogoMark } from '@/components/ui';
+import { REPO_URL } from '@/lib/links';
 import { cn } from '@/lib/utils';
 
 export function AppRail({
@@ -51,7 +52,7 @@ export function AppRail({
       </Button>
       <div className="flex-1" />
       <a
-        href="https://github.com/pedromenuzzi/cloud-infra-blueprint"
+        href={REPO_URL}
         target="_blank"
         rel="noreferrer"
         className="flex h-8 w-8 items-center justify-center rounded-sm text-muted hover:bg-surface-2 hover:text-foreground"

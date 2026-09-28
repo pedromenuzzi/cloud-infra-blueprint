@@ -103,7 +103,8 @@ test('a blank project explains how to start', async ({ page }) => {
 
 test('deleting a project asks in an in-app dialog', async ({ page }) => {
   await page.goto('/dashboard');
-  const card = page.getByRole('button', { name: `Open project ${SEED_PROJECT}` });
+  // the card is an article: an "open" button plus sibling actions (no nested controls)
+  const card = page.getByRole('article', { name: SEED_PROJECT });
   await card.hover();
   await card.getByRole('button', { name: 'Delete project' }).click();
   const dialog = page.getByRole('alertdialog', { name: /Delete “production-web”/ });
