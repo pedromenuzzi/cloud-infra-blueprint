@@ -1,11 +1,13 @@
 @import 'tailwindcss';
 
-@custom-variant dark (&:where(.dark, .dark *));
+/* .bp-force-light opts a subtree out of dark mode (the PDF export captures the canvas in light) */
+@custom-variant dark (&:where(.dark, .dark *):not(:where(.bp-force-light, .bp-force-light *)));
 
 /* ---------------------------------------------------------------------------
  * Cloud Blueprint design tokens (canonical: ui-mockups/06-design-system.png)
  * ------------------------------------------------------------------------- */
-:root {
+:root,
+.bp-force-light {
   --background: #f8fafc;
   --surface-1: #ffffff;
   --surface-2: #f1f5f9;

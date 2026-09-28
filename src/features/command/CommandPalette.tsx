@@ -13,6 +13,7 @@ import {
   Download,
   FileCode2,
   FileImage,
+  FileText,
   FileUp,
   FolderOpen,
   Github,
@@ -44,6 +45,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { Kbd } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
+import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { useLayout } from '@/features/editor/layoutStore';
 import { getAudit, useSecurityUi } from '@/features/security/securityStore';
 import { applyOps, type Op } from '@/ir/ops';
@@ -275,6 +277,7 @@ export function CommandPalette() {
                         })
                       }
                     />
+                    <Item value="export-pdf" icon={FileText} label="Export PDF document" keywords={['pdf', 'document', 'report', 'share', 'print']} onSelect={() => run(openExportPdf)} />
                     <Item value="export-png" icon={ImageDown} label="Export diagram as PNG" keywords={['image', 'download']} onSelect={() => run(() => void canvasApi()?.exportImage('png'))} />
                     <Item value="export-svg" icon={FileImage} label="Export diagram as SVG" keywords={['image', 'vector']} onSelect={() => run(() => void canvasApi()?.exportImage('svg'))} />
                     <Item

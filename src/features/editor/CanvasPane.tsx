@@ -14,6 +14,7 @@ import {
   type Edge,
   type Node,
   type OnSelectionChangeParams,
+  type Rect,
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -24,6 +25,7 @@ import {
   Copy,
   CopyPlus,
   FileImage,
+  FileText,
   ImageDown,
   LayoutTemplate,
   Maximize,
@@ -40,6 +42,8 @@ import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { showToast } from '@/components/Toast';
 import { Button, Kbd } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { captureDiagram } from '@/features/export/captureDiagram';
+import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
 import { ref } from '@/ir/expr';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
@@ -558,14 +562,14 @@ function CanvasInner() {
     }
   }, [applyCanvasOps, rf, tidying]);
 
-  const exportImage = useCallback(
-    async (format: 'png' | 'svg') => {
+  /**
+   * Run `capture` on a clean diagram (no selection glow, resize handles or
+   * animated edges) with its full bounds; null when the canvas is empty.
+   */
+  const withCleanDiagram = useCallback(
+    async <T,>(capture: (bounds: Rect) => Promise<T>): Promise<T | null> => {
       const flowNodes = rf.getNodes();
-      if (flowNodes.length === 0) {
-        showToast('Nothing to export yet — add a resource first', 'info');
-        return;
-      }
-      // capture a clean diagram: no selection glow, resize handles or animated edges
+      if (flowNodes.length === 0) return null;
       const { selection: previous, setSelection: select } = useEditor.getState();
       select(null);
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -585,16 +589,27 @@ function CanvasInner() {
           maxX = Math.max(maxX, x + w);
           maxY = Math.max(maxY, y + h);
         }
-        const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-        await exportDiagramImage(bounds, format, useEditor.getState().projectName);
-        showToast(`Diagram exported as ${format.toUpperCase()}`, 'success');
-      } catch (err) {
-        showToast(`Export failed: ${(err as Error).message}`, 'error');
+        return await capture({ x: minX, y: minY, width: maxX - minX, height: maxY - minY });
       } finally {
         if (previous) select(previous);
       }
     },
     [rf],
+  );
+
+  const exportImage = useCallback(
+    async (format: 'png' | 'svg') => {
+      try {
+        const done = await withCleanDiagram((bounds) =>
+          exportDiagramImage(bounds, format, useEditor.getState().projectName).then(() => true),
+        );
+        if (done) showToast(`Diagram exported as ${format.toUpperCase()}`, 'success');
+        else showToast('Nothing to export yet — add a resource first', 'info');
+      } catch (err) {
+        showToast(`Export failed: ${(err as Error).message}`, 'error');
+      }
+    },
+    [withCleanDiagram],
   );
 
   const autoPan = useRef<{ before: Viewport; after: Viewport } | null>(null);
@@ -667,6 +682,7 @@ function CanvasInner() {
       zoomOut: () => void rf.zoomOut({ duration: 200 }),
       tidy,
       exportImage,
+      captureDiagram: () => withCleanDiagram((bounds) => captureDiagram(bounds, useSecurityUi.getState().lens)),
       addResource: (type, screen) => {
         const def = getDef(type);
         if (def) placeResource(def, rf.screenToFlowPosition(screen ?? viewportCenter()));
@@ -676,7 +692,7 @@ function CanvasInner() {
       toggleMinimap,
     });
     return () => registerCanvasApi(null);
-  }, [duplicate, exportImage, focusNode, placeResource, rf, tidy, toggleMinimap, viewportCenter]);
+  }, [duplicate, exportImage, focusNode, placeResource, rf, tidy, toggleMinimap, viewportCenter, withCleanDiagram]);
 
   // code → canvas: a resource picked in the editor scrolls into view
   useEffect(() => {
@@ -731,6 +747,7 @@ function CanvasInner() {
       { id: 'fit', label: 'Fit view', icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: 350 }) },
       { id: 'tidy', label: 'Tidy up layout', icon: WandSparkles, onSelect: () => void tidy() },
       'separator',
+      { id: 'pdf', label: 'Export PDF document…', icon: FileText, onSelect: openExportPdf },
       { id: 'png', label: 'Export as PNG', icon: ImageDown, onSelect: () => void exportImage('png') },
       { id: 'svg', label: 'Export as SVG', icon: FileImage, onSelect: () => void exportImage('svg') },
     ];

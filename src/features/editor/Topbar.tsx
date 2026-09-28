@@ -5,6 +5,7 @@ import {
   Download,
   FileArchive,
   FileImage,
+  FileText,
   ImageDown,
   Loader2,
   PanelLeft,
@@ -25,6 +26,7 @@ import { MOD, usePalette } from '@/features/command/paletteStore';
 import { copyText, exportZip } from '@/lib/download';
 import { shareUrl } from '@/lib/share';
 import { cn } from '@/lib/utils';
+import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { GRADE_COLORS, getAudit, useSecurityUi } from '@/features/security/securityStore';
 import { canvasApi } from './canvasApi';
 import { useLayout, type PanelId } from './layoutStore';
@@ -231,6 +233,8 @@ export function Topbar() {
           label="Export"
           onClose={() => setExportMenu(null)}
           entries={[
+            { id: 'pdf', label: 'PDF document to share…', icon: FileText, onSelect: openExportPdf },
+            'separator',
             { id: 'zip', label: 'Terraform files (.zip)', icon: FileArchive, onSelect: doExportZip },
             'separator',
             { id: 'png', label: 'Diagram as PNG', icon: ImageDown, onSelect: () => void canvasApi()?.exportImage('png') },

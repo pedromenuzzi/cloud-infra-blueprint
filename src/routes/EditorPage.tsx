@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { CanvasPane, focusRenameInput } from '@/features/editor/CanvasPane';
 import { useLayout } from '@/features/editor/layoutStore';
+import { ExportPdfHost } from '@/features/export/ExportPdfDialog';
 import { RulesEditor } from '@/features/security/RulesEditor';
 import { SecurityPanel } from '@/features/security/SecurityPanel';
 import { useSecurityUi } from '@/features/security/securityStore';
@@ -194,6 +195,7 @@ export default function EditorPage() {
         </div>
       </div>
       <RulesEditor />
+      <ExportPdfHost />
     </div>
   );
 }
