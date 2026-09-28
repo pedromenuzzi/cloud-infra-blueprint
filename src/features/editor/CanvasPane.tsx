@@ -115,7 +115,10 @@ function lensDecorations(ir: IR, audit: AuditResult) {
     if (t.subnets.has(r.id)) sec.subnet = t.subnets.get(r.id);
     if (t.subnetNacls.has(r.id)) sec.nacls = t.subnetNacls.get(r.id)!.length;
     const exposure = t.exposure.get(r.id);
-    if (exposure) sec.exposure = { level: exposure.level, ports: exposure.ports };
+    const risky = sec.risk === 'critical' || sec.risk === 'high';
+    // a "Private" chip next to a high finding (a publicly accessible database…) reads as all-clear
+    const calm = exposure?.level === 'restricted' || exposure?.level === 'isolated';
+    if (exposure && !(risky && calm)) sec.exposure = { level: exposure.level, ports: exposure.ports };
     const relevant =
       rules || exposure || sec.risk || inFlow.has(r.id) || isContainerType(r.type) || isRuleResource(r.type);
     sec.dim = !relevant;
