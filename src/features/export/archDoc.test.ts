@@ -1,15 +1,84 @@
-import { zlibSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
+import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
 import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
-import { expectWellFormed, pdfText } from '@/lib/pdf/testing';
-import { getDef } from '@/resources/registry';
+import type { IR, IREdge } from '@/ir/types';
+import { parseSvgPath } from '@/lib/pdf/svgPath';
+import { expectWellFormed, latin1, pdfLayout, pdfPages, pdfText } from '@/lib/pdf/testing';
+import { allDefs, getDef, isContainerType } from '@/resources/registry';
+import { CATEGORY_ORDER } from '@/resources/types';
 import { auditSecurity } from '@/security/audit';
 import { TEMPLATES } from '@/templates';
-import { buildArchitecturePdf, keySettings, providerSummary, redactSecrets, type ArchDocInput, type DocSections } from './archDoc';
+import {
+  BOTTOM_SPACE,
+  buildArchitecturePdf,
+  buildArchitecturePdfAsync,
+  FOOTER_BASELINE,
+  keySettings,
+  MIN_TILE_SCALE,
+  providerSummary,
+  redactSecrets,
+  sourceLines,
+  type ArchDocInput,
+  type DocSections,
+} from './archDoc';
+import { LIGHT_PALETTE, type DiagramVector } from './diagramVector';
 
 const ALL: DocSections = { inventory: true, connections: true, security: true, code: true };
 const WHEN = new Date(2026, 8, 28, 9, 5);
+const MARGIN = 40;
+
+/** the geometry the canvas would report for `ir` (what captureDiagram reads off React Flow) */
+function fakeDiagram(ir: IR, edges: IREdge[], lens = false): DiagramVector {
+  const rects = computeAbsoluteRects(ir);
+  const all = [...rects.values()];
+  const minX = Math.min(...all.map((r) => r.x));
+  const minY = Math.min(...all.map((r) => r.y));
+  const maxX = Math.max(...all.map((r) => r.x + r.w));
+  const maxY = Math.max(...all.map((r) => r.y + r.h));
+  const center = (id: string) => {
+    const r = rects.get(id)!;
+    return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+  };
+  return {
+    bounds: { x: minX, y: minY, width: maxX - minX, height: maxY - minY },
+    nodes: [...all]
+      .sort((a, b) => a.depth - b.depth)
+      .map((r) => {
+        const def = getDef(r.node.type);
+        return {
+          id: r.node.id,
+          kind: isContainerType(r.node.type) ? ('container' as const) : ('resource' as const),
+          x: r.x,
+          y: r.y,
+          w: r.w,
+          h: r.h,
+          title: r.node.name,
+          subtitle: def?.subtitle?.(r.node.args) ?? def?.displayName,
+          typeLabel: def?.shortName ?? r.node.type,
+          category: def?.category ?? 'compute',
+          provider: r.node.provider,
+          glyph: 'g',
+          warn: false,
+          security: lens ? { exposure: { level: 'internet' as const, ports: ['80', '443'] }, risk: 'high' as const } : undefined,
+        };
+      }),
+    edges: edges
+      .filter((e) => rects.has(e.source) && rects.has(e.target))
+      .map((e) => {
+        const a = center(e.source);
+        const b = center(e.target);
+        return {
+          id: e.id,
+          kind: e.kind === 'security' ? ('security' as const) : ('ref' as const),
+          path: parseSvgPath(`M${a.x},${a.y} C${(a.x + b.x) / 2},${a.y} ${(a.x + b.x) / 2},${b.y} ${b.x},${b.y}`),
+        };
+      }),
+    glyphs: { g: { strokeWidth: 2, parts: [{ path: parseSvgPath('M4,4 L20,20 M20,4 L4,20'), fill: false, stroke: true }] } },
+    palette: LIGHT_PALETTE,
+    lens,
+  };
+}
 
 function inputFor(files: Record<string, string>, overrides: Partial<ArchDocInput> = {}): ArchDocInput {
   const { ir } = parseProject(files);
@@ -20,14 +89,7 @@ function inputFor(files: Record<string, string>, overrides: Partial<ArchDocInput
     edges,
     files: Object.entries(files),
     audit: auditSecurity(ir),
-    diagram: {
-      width: 4,
-      height: 2,
-      scale: 2,
-      data: zlibSync(new Uint8Array(4 * 2 * 3).fill(200)),
-      background: '#eef4fb',
-      lens: false,
-    },
+    diagram: ir.resources.length ? fakeDiagram(ir, edges) : null,
     sections: ALL,
     paper: 'a4',
     generatedAt: WHEN,
@@ -35,6 +97,71 @@ function inputFor(files: Record<string, string>, overrides: Partial<ArchDocInput
     ...overrides,
   };
 }
+
+/** pages holding the diagram (they clip the drawing to the diagram box) */
+function diagramPageSet(bytes: Uint8Array): Set<number> {
+  const out = new Set<number>([0]);
+  for (const p of pdfPages(bytes)) if (p.content.split('\n').some((l) => l.endsWith(' W n'))) out.add(p.index);
+  return out;
+}
+
+/** nothing runs past the right margin or into the footer */
+function expectLaidOut(bytes: Uint8Array, label: string) {
+  const { pages, runs, shapes } = pdfLayout(bytes);
+  const diagram = diagramPageSet(bytes);
+  for (const r of runs) {
+    if (r.clipped) continue;
+    const page = pages[r.page];
+    const where = `${label}: page ${r.page + 1} "${r.text}"`;
+    expect(r.x, where).toBeGreaterThanOrEqual(MARGIN - 0.5);
+    expect(r.x + r.width, where).toBeLessThanOrEqual(page.width - MARGIN + 0.5);
+    const fromBottom = page.height - r.y;
+    if (Math.abs(fromBottom - FOOTER_BASELINE) < 0.01) continue;
+    expect(fromBottom, where).toBeGreaterThanOrEqual(diagram.has(r.page) ? FOOTER_BASELINE + 8 : BOTTOM_SPACE - 0.01);
+  }
+  for (const s of shapes) {
+    if (s.clipped) continue;
+    const page = pages[s.page];
+    const where = `${label}: shape on page ${s.page + 1}`;
+    expect(s.minX, where).toBeGreaterThanOrEqual(MARGIN - 1);
+    expect(s.maxX, where).toBeLessThanOrEqual(page.width - MARGIN + 1);
+    expect(page.height - s.maxY, where).toBeGreaterThanOrEqual(diagram.has(s.page) ? FOOTER_BASELINE + 8 : BOTTOM_SPACE - 1);
+  }
+}
+
+const COLUMN_TITLES = new Set(
+  ['Resource', 'Service', 'Configuration', 'Placement', 'Name', 'Type', 'Default', 'Description', 'Value', 'From', 'To', 'Ports', 'Reach', 'Uses', 'Through'].map(
+    (t) => t.toUpperCase(),
+  ),
+);
+
+/** headings, section titles and table headers always have content under them on their page */
+function expectNoStrandedHeadings(bytes: Uint8Array, label: string) {
+  const { pages, runs } = pdfLayout(bytes);
+  const content = runs.filter((r) => !r.clipped && Math.abs(pages[r.page].height - r.y - FOOTER_BASELINE) > 0.01);
+  const isSection = (r: (typeof runs)[number]) => r.font === 'bold' && r.size === 16;
+  const isHeading = (r: (typeof runs)[number]) => r.font === 'bold' && r.size === 10.5;
+  const isColumn = (r: (typeof runs)[number]) => r.font === 'bold' && r.size === 6.8 && COLUMN_TITLES.has(r.text);
+  const sections = content.filter(isSection);
+  const isSubtitle = (r: (typeof runs)[number]) => sections.some((s) => s.page === r.page && r.y > s.y && r.y - s.y < 20);
+  for (const h of content.filter((r) => isSection(r) || isHeading(r) || isColumn(r))) {
+    const body = content.filter(
+      (r) => r.page === h.page && r.y > h.y + 1 && !isSection(r) && !isHeading(r) && !isColumn(r) && !isSubtitle(r),
+    );
+    expect(body.length, `${label}: "${h.text}" is alone at the bottom of page ${h.page + 1}`).toBeGreaterThan(0);
+  }
+}
+
+/** one resource of every category, plus one the catalog doesn't know */
+function everyCategory(): string {
+  const picks = CATEGORY_ORDER.map((c) => allDefs().find((d) => d.category === c && !d.container && d.provider === 'aws') ?? allDefs().find((d) => d.category === c)!);
+  return [
+    ...picks.map((d, i) => `resource "${d.type}" "r${i}" {\n  name = "r${i}"\n}\n`),
+    'resource "aws_unknown_widget" "x" {\n  name = "x"\n}\n',
+  ].join('\n');
+}
+
+const notesOf = (lines: number) => Array.from({ length: lines }, (_, i) => `Note line ${i + 1}: keep this design in review.`).join('\n');
 
 describe('architecture document', () => {
   for (const t of TEMPLATES) {
@@ -49,6 +176,8 @@ describe('architecture document', () => {
       }
       for (const r of input.ir.resources) expect(text, r.id).toContain(r.name);
       expect(text).toMatch(/Page 1 of \d+/);
+      expectLaidOut(bytes, t.slug);
+      expectNoStrandedHeadings(bytes, t.slug);
     });
   }
 
@@ -71,6 +200,19 @@ describe('architecture document', () => {
     const text = pdfText(bytes);
     expect(text).toContain('The diagram could not be rendered.');
     expect(text).toContain('Proposta para revisão — versão 2.');
+  });
+
+  it('draws the diagram as searchable vectors in the light palette', () => {
+    const input = inputFor(TEMPLATES[0].build('demo'));
+    const bytes = buildArchitecturePdf(input);
+    const [first] = pdfPages(bytes);
+    const { runs } = pdfLayout(bytes);
+    const onDiagram = runs.filter((r) => r.page === 0 && r.clipped).map((r) => r.text);
+    for (const r of input.ir.resources) expect(onDiagram, r.id).toContain(r.name);
+    // node cards: white fill, light border (#d5deea) — never the dark theme's #243a5c
+    expect(first.content).toContain('0.835 0.871 0.918 RG');
+    expect(first.content).not.toContain('0.141 0.227 0.361');
+    expect(latin1(bytes)).not.toContain('/Subtype /Image');
   });
 
   describe('secrets', () => {
@@ -212,9 +354,175 @@ resource "aws_instance" "web" {
     expect(settings.some((s) => s.startsWith('tags'))).toBe(false);
   });
 
+  it('cuts a huge setting to a few lines so the ones after it still show', () => {
+    const input = inputFor(
+      { 'main.tf': `resource "aws_instance" "web" {\n  ami           = "${'ami-0123456789abcdef-'.repeat(100)}"\n  instance_type = "t3.large"\n}\n` },
+      { sections: { ...ALL, code: false } },
+    );
+    const bytes = buildArchitecturePdf(input);
+    const text = pdfText(bytes);
+    expect(text).toContain('instance_type: t3.large');
+    const amiLines = text.split('\n').filter((l) => l.includes('ami-0123456789abcdef'));
+    expect(amiLines.length).toBeLessThanOrEqual(3);
+    expect(amiLines[amiLines.length - 1].endsWith('…')).toBe(true);
+    expectLaidOut(bytes, 'huge setting');
+  });
+
   it('resolves provider regions through variable defaults', () => {
     const { ir } = parseProject(TEMPLATES.find((t) => t.slug === 'aws-web-app')!.build('demo'));
     const aws = providerSummary(ir).find((p) => p.provider === 'aws');
     expect(aws?.regions).toEqual(['us-east-1']);
+  });
+
+  describe('layout', () => {
+    it('keeps every page inside its margins and above the footer, and no heading alone at a page bottom', { timeout: 60_000 }, () => {
+      const files = { 'main.tf': everyCategory() };
+      for (const paper of ['a4', 'letter'] as const) {
+        for (let lines = 0; lines <= 60; lines += 3) {
+          const input = inputFor(files, { paper, notes: notesOf(lines) });
+          const bytes = buildArchitecturePdf(input);
+          const label = `${paper}, ${lines} note lines`;
+          expectLaidOut(bytes, label);
+          expectNoStrandedHeadings(bytes, label);
+        }
+      }
+    });
+
+    it('lays out every template on both papers, with notes of several lengths', { timeout: 60_000 }, () => {
+      for (const t of TEMPLATES) {
+        for (const paper of ['a4', 'letter'] as const) {
+          for (const lines of [0, 14, 29]) {
+            const bytes = buildArchitecturePdf(inputFor(t.build('demo'), { paper, notes: notesOf(lines) }));
+            const label = `${t.slug}, ${paper}, ${lines} note lines`;
+            expectLaidOut(bytes, label);
+            expectNoStrandedHeadings(bytes, label);
+          }
+        }
+      }
+    });
+
+    it('flows long notes across pages instead of cutting them', () => {
+      const bytes = buildArchitecturePdf(inputFor(TEMPLATES[0].build('demo'), { notes: notesOf(150) }));
+      const text = pdfText(bytes);
+      for (let i = 1; i <= 150; i++) expect(text).toContain(`Note line ${i}:`);
+      expect(text).toContain('NOTES (CONTINUED)');
+      expectLaidOut(bytes, '150 note lines');
+    });
+
+    it('wraps a long list of regions', () => {
+      const regions = ['eastus', 'westus', 'westeurope', 'northeurope', 'brazilsouth', 'japaneast', 'uksouth', 'francecentral', 'germanywestcentral', 'australiaeast', 'canadacentral', 'koreacentral', 'southindia', 'swedencentral', 'norwayeast', 'switzerlandnorth'];
+      const files = { 'main.tf': regions.map((r, i) => `resource "azurerm_resource_group" "g${i}" {\n  name     = "g${i}"\n  location = "${r}"\n}\n`).join('\n') };
+      const bytes = buildArchitecturePdf(inputFor(files));
+      expect(pdfText(bytes)).toContain('switzerlandnorth');
+      expectLaidOut(bytes, '16 regions');
+    });
+
+    it('wraps the legend on a portrait page with the security lens on', () => {
+      // a tall diagram picks a portrait page
+      const tall = Array.from({ length: 12 }, (_, i) => `# @blueprint:pos=0,${i * 110}\nresource "aws_instance" "i${i}" {\n  ami = "ami-1"\n}\n`).join('\n');
+      const input = inputFor({ 'main.tf': tall });
+      const bytes = buildArchitecturePdf({ ...input, diagram: fakeDiagram(input.ir, input.edges, true) });
+      const [first] = pdfPages(bytes);
+      expect(first.width).toBeLessThan(first.height);
+      expect(pdfText(bytes)).toContain('Allowed traffic (security lens)');
+      expectLaidOut(bytes, 'portrait lens legend');
+    });
+
+    it('fits long appendix file names and resource names', () => {
+      const long = `${'very-long-module-directory-name/'.repeat(6)}main.tf`;
+      const files = { [long]: `resource "aws_instance" "${'x'.repeat(120)}" {\n  ami = "ami-1"\n}\n` };
+      const bytes = buildArchitecturePdf(inputFor(files));
+      expectLaidOut(bytes, 'long names');
+    });
+  });
+
+  describe('Terraform source appendix', () => {
+    it('keeps the line numbers of the file when layout comments are left out', () => {
+      const text = '# @blueprint:pos=0,0\nresource "aws_s3_bucket" "b" {\n  bucket = "b"\n}\n# @blueprint:pos=10,10\nresource "aws_sqs_queue" "q" {}\n';
+      expect(sourceLines(text).map((l) => l.no)).toEqual([2, 3, 4, 6]);
+      const bytes = buildArchitecturePdf(inputFor({ 'main.tf': text }));
+      const { runs } = pdfLayout(bytes);
+      const code = runs.filter((r) => r.font === 'mono' && r.size === 7);
+      const numberOf = (line: string) => {
+        const run = code.find((r) => r.text === line)!;
+        return code.find((r) => r.page === run.page && Math.abs(r.y - run.y) < 0.01 && r.x < run.x)?.text;
+      };
+      expect(numberOf('resource "aws_s3_bucket" "b" {')).toBe('2');
+      expect(numberOf('resource "aws_sqs_queue" "q" {}')).toBe('6');
+    });
+
+    it('splits long lines by printed width and widens the gutter for 5-digit line numbers', () => {
+      const long = `  description = "${'a → b ≥ c 😀 '.repeat(30)}"`;
+      const text = `${'# @blueprint:pos=0,0\n'.repeat(10_000)}resource "aws_s3_bucket" "b" {\n${long}\n}\n`;
+      const bytes = buildArchitecturePdf(inputFor({ 'main.tf': text }));
+      const { runs } = pdfLayout(bytes);
+      const at = runs.findIndex((r) => r.text === '10002');
+      const end = runs.findIndex((r) => r.text === '10003');
+      expect(at).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(at);
+      const chunks = runs.slice(at + 1, end);
+      expect(chunks.length).toBeGreaterThan(1);
+      expectLaidOut(bytes, 'long code lines');
+      // the chunks put back together are the whole line, as printed
+      expect(chunks.map((r) => r.text).join('')).toBe(long.replace(/→/g, '->').replace(/≥/g, '>=').replace(/😀/g, '?'));
+    });
+  });
+
+  it('links the table of contents to where each section starts, like its bookmark', () => {
+    const bytes = buildArchitecturePdf(inputFor(TEMPLATES[0].build('demo')));
+    const text = latin1(bytes);
+    const bookmarks = new Map<string, { page: number; top: number }>();
+    const pages = pdfPages(bytes);
+    const pageIds = /\/Type \/Pages \/Kids \[([^\]]*)\]/.exec(text)![1].match(/\d+(?= 0 R)/g)!.map(Number);
+    for (const m of text.matchAll(/\/Title <FEFF([0-9a-f]*)> \/Parent \d+ 0 R[^/]*(?:\/(?:Prev|Next) \d+ 0 R )*\/Dest \[(\d+) 0 R \/XYZ 0 ([-\d.]+) null\]/g)) {
+      const title = String.fromCharCode(...(m[1].match(/..../g) ?? []).map((h) => parseInt(h, 16)));
+      bookmarks.set(title, { page: pageIds.indexOf(Number(m[2])), top: Number(m[3]) });
+    }
+    const overview = pages[1];
+    const tocLinks = overview.links.filter((l) => l.dest);
+    expect(tocLinks.length).toBeGreaterThanOrEqual(5);
+    for (const title of ['Resource inventory', 'Connections & traffic', 'Security review', 'Terraform source']) {
+      const mark = bookmarks.get(title)!;
+      expect(mark, title).toBeDefined();
+      expect(tocLinks.some((l) => l.dest!.page === mark.page && Math.abs(l.dest!.top - mark.top) < 0.01), title).toBe(true);
+    }
+  });
+
+  describe('large diagrams', () => {
+    function grid(n: number): string {
+      return Array.from({ length: n }, (_, i) => `# @blueprint:pos=${(i % 16) * 240},${Math.floor(i / 16) * 120}\nresource "aws_instance" "node${i}" {\n  ami           = "ami-${i}"\n  instance_type = "t3.micro"\n}\n`).join('\n');
+    }
+
+    it('tiles a diagram too big for one page, keeping node text readable', { timeout: 30_000 }, () => {
+      const input = inputFor({ 'main.tf': grid(250) });
+      const t0 = performance.now();
+      const bytes = buildArchitecturePdf(input);
+      expect(performance.now() - t0).toBeLessThan(5_000);
+      expectWellFormed(bytes);
+      const { pages, runs } = pdfLayout(bytes);
+      const tileIndexes = new Set(runs.filter((r) => /^Diagram — area \d+ of \d+$/.test(r.text)).map((r) => r.page));
+      const tiles = pages.filter((p) => tileIndexes.has(p.index));
+      expect(tiles.length).toBeGreaterThan(1);
+      const onTiles = runs.filter((r) => tileIndexes.has(r.page) && r.clipped);
+      // every node shows on at least one area page, at ≥ ~5 pt
+      for (const r of input.ir.resources) expect(onTiles.some((t) => t.text === r.name), r.name).toBe(true);
+      for (const t of onTiles) expect(t.size, t.text).toBeGreaterThanOrEqual(9 * MIN_TILE_SCALE - 0.01);
+      // the overview page links each numbered area to its page
+      expect(pages[0].links.filter((l) => l.dest && tileIndexes.has(l.dest.page))).toHaveLength(tiles.length);
+      expectLaidOut(bytes, '250 nodes');
+    });
+
+    it('builds step by step, and can be cancelled', { timeout: 30_000 }, async () => {
+      const input = inputFor({ 'main.tf': grid(60) });
+      const stages: string[] = [];
+      const bytes = await buildArchitecturePdfAsync(input, { onStage: (s) => stages.push(s) });
+      expect(bytes).toEqual(buildArchitecturePdf(input));
+      expect(stages[0]).toBe('Drawing the diagram…');
+      expect(stages.length).toBeGreaterThan(3);
+
+      const controller = new AbortController();
+      const run = buildArchitecturePdfAsync(input, { signal: controller.signal, onStage: () => controller.abort() });
+      await expect(run).rejects.toMatchObject({ name: 'AbortError' });
+    });
   });
 });

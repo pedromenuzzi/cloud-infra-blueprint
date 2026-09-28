@@ -695,7 +695,8 @@ function CanvasInner() {
       zoomOut: () => void rf.zoomOut({ duration: 200 }),
       tidy,
       exportImage,
-      captureDiagram: () => withCleanDiagram((bounds) => captureDiagram(bounds, useSecurityUi.getState().lens)),
+      captureDiagram: (options) =>
+        withCleanDiagram((bounds) => captureDiagram(rf, bounds, useSecurityUi.getState().lens, options)),
       addResource: (type, screen) => {
         const def = getDef(type);
         if (def) placeResource(def, rf.screenToFlowPosition(screen ?? viewportCenter()));

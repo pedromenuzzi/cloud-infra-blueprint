@@ -1,4 +1,5 @@
-import type { DiagramImage } from '@/features/export/archDoc';
+import type { CaptureOptions } from '@/features/export/captureDiagram';
+import type { DiagramVector } from '@/features/export/diagramVector';
 
 /**
  * Canvas actions that need the React Flow instance (viewport math, export),
@@ -12,8 +13,8 @@ export interface CanvasApi {
   /** re-layout every resource (one undo step) */
   tidy(): Promise<void>;
   exportImage(format: 'png' | 'svg'): Promise<void>;
-  /** the whole diagram as pixels for the PDF document; null when the canvas is empty */
-  captureDiagram(): Promise<DiagramImage | null>;
+  /** the whole diagram as vector geometry for the PDF document; null when the canvas is empty */
+  captureDiagram(options?: CaptureOptions): Promise<DiagramVector | null>;
   /** add a catalog resource — at a screen point, or the viewport center */
   addResource(type: string, screen?: { x: number; y: number }): void;
   duplicate(nodeId: string): void;
