@@ -3,7 +3,7 @@
  * Terraform files. After instantiation they are plain resources the user can
  * customize freely — no lock-in, no magic.
  */
-import { block, lit, list, obj, raw, ref } from '@/ir/expr';
+import { block, blocks, lit, list, obj, raw, ref } from '@/ir/expr';
 import { emitProject } from '@/hcl/emitter';
 import type {
   CanvasPosition,
@@ -142,13 +142,29 @@ function buildAwsWebApp(appName: string): Record<string, string> {
         name: lit(`${app}-web-sg`),
         description: lit('Allow HTTP/HTTPS in, Postgres to the DB'),
         vpc_id: ref('aws_vpc.main.id'),
-        ingress: block({
-          description: lit('HTTP'),
-          from_port: lit(80),
-          to_port: lit(80),
-          protocol: lit('tcp'),
-          cidr_blocks: list([lit('0.0.0.0/0')]),
-        }),
+        ingress: blocks([
+          {
+            description: lit('HTTP'),
+            from_port: lit(80),
+            to_port: lit(80),
+            protocol: lit('tcp'),
+            cidr_blocks: list([lit('0.0.0.0/0')]),
+          },
+          {
+            description: lit('HTTPS'),
+            from_port: lit(443),
+            to_port: lit(443),
+            protocol: lit('tcp'),
+            cidr_blocks: list([lit('0.0.0.0/0')]),
+          },
+          {
+            description: lit('Postgres between the web server and the DB'),
+            from_port: lit(5432),
+            to_port: lit(5432),
+            protocol: lit('tcp'),
+            self: lit(true),
+          },
+        ]),
         egress: block({
           from_port: lit(0),
           to_port: lit(0),
@@ -410,7 +426,7 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
         memory: lit('512'),
         network_mode: lit('awsvpc'),
         container_definitions: raw(
-          `jsonencode([{\n    name      = "app"\n    image     = "\${aws_ecr_repository.app.repository_url}:latest"\n    essential = true\n    portMappings = [{ containerPort = 3000 }]\n  }])`,
+          `jsonencode([{\n    name         = "app"\n    image        = "\${aws_ecr_repository.app.repository_url}:latest"\n    essential    = true\n    portMappings = [{ containerPort = 3000 }]\n  }])`,
         ),
       },
       { x: 1180, y: 300 },
@@ -539,6 +555,259 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
     output('api_url', ref('aws_apigatewayv2_stage.default.invoke_url'), 'Base URL of the HTTP API'),
   );
 
+  return emitProject(ir);
+}
+
+// --- AWS · Secure 3-tier ------------------------------------------------------
+
+function buildAwsSecure3Tier(appName: string): Record<string, string> {
+  const app = tfName(appName).replace(/_/g, '-');
+  const ir: IR = emptyIR();
+
+  ir.variables.push(
+    variable('region', { description: 'AWS region', type: 'string', default: lit('us-east-1') }),
+    variable('certificate_arn', { description: 'ACM certificate for the HTTPS listener', type: 'string' }),
+    variable('db_password', { description: 'Master password for the database', type: 'string', sensitive: true }),
+  );
+  ir.providers.push(providerBlock('aws', { region: ref('var.region') }));
+  ir.extras.push(versionsBlock(['aws']));
+
+  const subnet = (name: string, cidr: string, az: string, x: number, y: number) =>
+    res(
+      'aws_subnet',
+      name,
+      { vpc_id: ref('aws_vpc.main.id'), cidr_block: lit(cidr), availability_zone: lit(az) },
+      { x, y, w: 400, h: 150 },
+    );
+  const sgRule = (description: string, port: number, source: Record<string, Expression>) => ({
+    description: lit(description),
+    from_port: lit(port),
+    to_port: lit(port),
+    protocol: lit('tcp'),
+    ...source,
+  });
+  const internet = { cidr_blocks: list([lit('0.0.0.0/0')]) };
+  const assoc = (name: string, subnetName: string, table: string, x: number) =>
+    res(
+      'aws_route_table_association',
+      name,
+      { subnet_id: ref(`aws_subnet.${subnetName}.id`), route_table_id: ref(`aws_route_table.${table}.id`) },
+      { x, y: 730 },
+    );
+
+  ir.resources.push(
+    // --- edge: the only thing the internet can reach
+    res(
+      'aws_lb',
+      'web',
+      {
+        name: lit(`${app}-alb`),
+        internal: lit(false),
+        load_balancer_type: lit('application'),
+        subnets: list([ref('aws_subnet.public_a.id'), ref('aws_subnet.public_b.id')]),
+        security_groups: list([ref('aws_security_group.alb.id')]),
+        drop_invalid_header_fields: lit(true),
+      },
+      { x: 40, y: 120 },
+      ['# Edge — the load balancer is the only internet-facing resource'],
+    ),
+    res(
+      'aws_lb_listener',
+      'https',
+      {
+        load_balancer_arn: ref('aws_lb.web.arn'),
+        port: lit(443),
+        protocol: lit('HTTPS'),
+        ssl_policy: lit('ELBSecurityPolicy-TLS13-1-2-2021-06'),
+        certificate_arn: ref('var.certificate_arn'),
+        default_action: block({ type: lit('forward'), target_group_arn: ref('aws_lb_target_group.app.arn') }),
+      },
+      { x: 40, y: 250 },
+    ),
+    res(
+      'aws_lb_listener',
+      'http_redirect',
+      {
+        load_balancer_arn: ref('aws_lb.web.arn'),
+        port: lit(80),
+        protocol: lit('HTTP'),
+        default_action: block({
+          type: lit('redirect'),
+          redirect: block({ port: lit('443'), protocol: lit('HTTPS'), status_code: lit('HTTP_301') }),
+        }),
+      },
+      { x: 40, y: 350 },
+    ),
+    res(
+      'aws_lb_target_group',
+      'app',
+      {
+        name: lit(`${app}-tg`),
+        port: lit(8080),
+        protocol: lit('HTTP'),
+        vpc_id: ref('aws_vpc.main.id'),
+        target_type: lit('instance'),
+      },
+      { x: 40, y: 460 },
+    ),
+
+    // --- network
+    res(
+      'aws_vpc',
+      'main',
+      { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true), tags: obj({ Name: lit(app) }) },
+      { x: 320, y: 40, w: 1380, h: 640 },
+      ['# Network — public, app and data tiers across two AZs'],
+    ),
+    subnet('public_a', '10.0.1.0/24', 'us-east-1a', 32, 64),
+    subnet('public_b', '10.0.2.0/24', 'us-east-1b', 456, 64),
+    subnet('app_a', '10.0.11.0/24', 'us-east-1a', 32, 250),
+    subnet('app_b', '10.0.12.0/24', 'us-east-1b', 456, 250),
+    subnet('db_a', '10.0.21.0/24', 'us-east-1a', 32, 436),
+    subnet('db_b', '10.0.22.0/24', 'us-east-1b', 456, 436),
+    res('aws_internet_gateway', 'igw', { vpc_id: ref('aws_vpc.main.id') }, { x: 1140, y: 276 }),
+    res('aws_eip', 'nat', { domain: lit('vpc') }, { x: 1760, y: 100 }),
+    res(
+      'aws_nat_gateway',
+      'nat',
+      { subnet_id: ref('aws_subnet.public_a.id'), allocation_id: ref('aws_eip.nat.id'), connectivity_type: lit('public') },
+      { x: 24, y: 52 },
+    ),
+    res(
+      'aws_route_table',
+      'public',
+      {
+        vpc_id: ref('aws_vpc.main.id'),
+        route: block({ cidr_block: lit('0.0.0.0/0'), gateway_id: ref('aws_internet_gateway.igw.id') }),
+      },
+      { x: 1140, y: 64 },
+    ),
+    res(
+      'aws_route_table',
+      'private',
+      {
+        vpc_id: ref('aws_vpc.main.id'),
+        route: block({ cidr_block: lit('0.0.0.0/0'), nat_gateway_id: ref('aws_nat_gateway.nat.id') }),
+      },
+      { x: 1140, y: 170 },
+    ),
+    assoc('public_a', 'public_a', 'public', 320),
+    assoc('public_b', 'public_b', 'public', 560),
+    assoc('app_a', 'app_a', 'private', 800),
+    assoc('app_b', 'app_b', 'private', 1040),
+
+    // --- security: each tier only accepts traffic from the tier in front of it
+    res(
+      'aws_security_group',
+      'alb',
+      {
+        name: lit(`${app}-alb-sg`),
+        description: lit('Public HTTPS (and HTTP → HTTPS redirect) to the load balancer'),
+        vpc_id: ref('aws_vpc.main.id'),
+        ingress: blocks([sgRule('HTTPS from the internet', 443, internet), sgRule('HTTP, redirected to HTTPS', 80, internet)]),
+        egress: block(sgRule('To the app tier', 8080, { cidr_blocks: list([lit('10.0.0.0/16')]) })),
+      },
+      { x: 900, y: 64 },
+      ['# Security — each tier only accepts traffic from the tier in front of it'],
+    ),
+    res(
+      'aws_security_group',
+      'app',
+      {
+        name: lit(`${app}-app-sg`),
+        description: lit('App servers: only the load balancer can reach them'),
+        vpc_id: ref('aws_vpc.main.id'),
+        ingress: block(sgRule('From the load balancer', 8080, { security_groups: list([ref('aws_security_group.alb.id')]) })),
+        egress: block({
+          description: lit('Outbound through the NAT gateway'),
+          from_port: lit(0),
+          to_port: lit(0),
+          protocol: lit('-1'),
+          cidr_blocks: list([lit('0.0.0.0/0')]),
+        }),
+      },
+      { x: 900, y: 270 },
+    ),
+    res(
+      'aws_security_group',
+      'db',
+      {
+        name: lit(`${app}-db-sg`),
+        description: lit('Database: only the app tier can reach it'),
+        vpc_id: ref('aws_vpc.main.id'),
+        ingress: block(sgRule('PostgreSQL from the app tier', 5432, { security_groups: list([ref('aws_security_group.app.id')]) })),
+      },
+      { x: 900, y: 460 },
+    ),
+    res(
+      'aws_network_acl',
+      'db',
+      {
+        vpc_id: ref('aws_vpc.main.id'),
+        subnet_ids: list([ref('aws_subnet.db_a.id'), ref('aws_subnet.db_b.id')]),
+        ingress: blocks([
+          { rule_no: lit(100), action: lit('allow'), protocol: lit('tcp'), from_port: lit(5432), to_port: lit(5432), cidr_block: lit('10.0.11.0/24') },
+          { rule_no: lit(110), action: lit('allow'), protocol: lit('tcp'), from_port: lit(5432), to_port: lit(5432), cidr_block: lit('10.0.12.0/24') },
+        ]),
+        egress: block({
+          rule_no: lit(100),
+          action: lit('allow'),
+          protocol: lit('tcp'),
+          from_port: lit(1024),
+          to_port: lit(65535),
+          cidr_block: lit('10.0.0.0/16'),
+        }),
+      },
+      { x: 1140, y: 460 },
+    ),
+
+    // --- compute & data
+    res(
+      'aws_instance',
+      'app',
+      {
+        ami: lit('ami-0c02fb55956c7d316'),
+        instance_type: lit('t3.micro'),
+        subnet_id: ref('aws_subnet.app_a.id'),
+        vpc_security_group_ids: list([ref('aws_security_group.app.id')]),
+        metadata_options: block({ http_endpoint: lit('enabled'), http_tokens: lit('required') }),
+        root_block_device: block({ encrypted: lit(true) }),
+      },
+      { x: 24, y: 52 },
+      ['# Compute — private app server, IMDSv2 only'],
+    ),
+    res(
+      'aws_db_subnet_group',
+      'main',
+      { name: lit(`${app}-db`), subnet_ids: list([ref('aws_subnet.db_a.id'), ref('aws_subnet.db_b.id')]) },
+      { x: 1760, y: 570 },
+    ),
+    res(
+      'aws_db_instance',
+      'main',
+      {
+        identifier: lit(`${app}-db`),
+        engine: lit('postgres'),
+        engine_version: lit('16'),
+        instance_class: lit('db.t3.micro'),
+        allocated_storage: lit(20),
+        username: lit('appuser'),
+        password: ref('var.db_password'),
+        db_subnet_group_name: ref('aws_db_subnet_group.main.name'),
+        vpc_security_group_ids: list([ref('aws_security_group.db.id')]),
+        storage_encrypted: lit(true),
+        publicly_accessible: lit(false),
+        skip_final_snapshot: lit(true),
+      },
+      { x: 1760, y: 460 },
+      ['# Data — private, encrypted PostgreSQL'],
+    ),
+  );
+
+  ir.outputs.push(
+    output('alb_dns_name', ref('aws_lb.web.dns_name'), 'Public entry point'),
+    output('db_endpoint', ref('aws_db_instance.main.endpoint'), 'Private database endpoint'),
+  );
   return emitProject(ir);
 }
 
@@ -1119,6 +1388,15 @@ export const TEMPLATES: TemplateDef[] = [
     tags: ['Serverless', 'Web Apps'],
     resourceCount: 9,
     build: buildAwsServerlessApi,
+  },
+  {
+    slug: 'aws-secure-3tier',
+    name: 'Secure 3-tier on AWS',
+    description: 'Reference architecture that scores an A: HTTPS-only ALB, private app and data tiers, chained security groups, NACLs, NAT, encrypted RDS.',
+    providers: ['aws'],
+    tags: ['Web Apps', 'Security'],
+    resourceCount: 27,
+    build: buildAwsSecure3Tier,
   },
   {
     slug: 'azure-web-app',

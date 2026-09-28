@@ -1,5 +1,21 @@
-import { ArrowDownLeft, ArrowUpRight, Copy, Plus, Trash2, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ArrowUpRight,
+  Copy,
+  Globe,
+  Lock,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { getAudit, useSecurityUi } from '@/features/security/securityStore';
+import { ruleRisk } from '@/security/audit';
+import { OWNER_TYPES, peerLabel, portLabel, serviceName } from '@/security/model';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
 import { emitResource } from '@/hcl/emitter';
@@ -16,7 +32,7 @@ import { looksLikeTraversal, removeConnectionOps } from './connections';
 import { useLayout } from './layoutStore';
 import { orderedFiles, useEditor } from './store';
 
-type Tab = 'properties' | 'connections' | 'code';
+type Tab = 'rules' | 'properties' | 'connections' | 'code';
 
 /* ------------------------------------------------------------- field rows */
 
@@ -391,6 +407,188 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
 
 /* ------------------------------------------------------------ inspector */
 
+const RISK_TONE = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#64748b' } as const;
+
+/** Security summary for a workload: exposure, protecting groups, findings. */
+function ExposureCard({ node }: { node: ResourceNode }) {
+  const ir = useEditor((s) => s.ir);
+  const audit = getAudit(ir);
+  const exposure = audit.topology.exposure.get(node.id);
+  const findings = audit.findings.filter((f) => f.resource === node.id);
+  if (!exposure && findings.length === 0) return null;
+  const inbound = audit.topology.flows.filter((f) => f.to === node.id);
+  const tone =
+    exposure?.level === 'internet' ? '#0ea5e9' : exposure?.level === 'restricted' ? '#10b981' : '#64748b';
+  return (
+    <div className="rounded-[10px] border p-2.5" style={{ borderColor: `color-mix(in srgb, ${tone} 35%, transparent)` }}>
+      {exposure ? (
+        <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: tone }}>
+          {exposure.level === 'internet' ? <Globe className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+          {exposure.level === 'internet'
+            ? `Internet-facing on :${exposure.ports.join(', :')}`
+            : exposure.level === 'restricted'
+              ? 'Private — reachable only as allowed below'
+              : 'No inbound traffic allowed'}
+        </div>
+      ) : null}
+      {inbound.length > 0 ? (
+        <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted">
+          {inbound.map((f) => (
+            <li key={f.id} className="flex justify-between gap-2">
+              <span className="truncate">from {f.from === 'internet' ? 'Internet' : f.from.split('.').slice(1).join('.')}</span>
+              <span className="shrink-0 font-mono">:{f.ports.join(', :')}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {exposure && exposure.owners.length > 0 ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          <span className="text-[10.5px] font-semibold uppercase tracking-wide text-faint">Protected by</span>
+          {exposure.owners.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => useSecurityUi.getState().openRules(o)}
+              className="rounded-full border bg-surface-2 px-1.5 py-px font-mono text-[10.5px] text-foreground hover:border-border-strong"
+              title="Edit rules"
+            >
+              {o.split('.').slice(1).join('.')}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {findings.map((f) => (
+        <div key={f.id} className="mt-2 flex items-start gap-1.5 text-[11.5px]">
+          <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: RISK_TONE[f.severity] }} />
+          <span className="min-w-0 flex-1 text-foreground">{f.title}</span>
+          {f.fix ? (
+            <button
+              type="button"
+              onClick={() => {
+                const ops = f.fix!.ops(useEditor.getState().ir);
+                if (ops.length) useEditor.getState().applyCanvasOps(ops);
+              }}
+              className="shrink-0 font-semibold text-primary hover:underline"
+            >
+              {f.fix.label}
+            </button>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Rules summary for SGs / NACLs / NSGs / firewalls; the full editor opens in a modal. */
+function RulesTab({ node }: { node: ResourceNode }) {
+  const ir = useEditor((s) => s.ir);
+  const audit = getAudit(ir);
+  const rules = audit.topology.rules.get(node.id) ?? [];
+  const protects = audit.topology.protects.get(node.id) ?? [];
+  const nacledSubnets = [...audit.topology.subnetNacls].filter(([, n]) => n.includes(node.id)).map(([s]) => s);
+  const findings = audit.findings.filter((f) => f.resource === node.id);
+  const open = () => useSecurityUi.getState().openRules(node.id);
+  const name = (id: string) => id.split('.').slice(1).join('.');
+  return (
+    <div className="space-y-3.5 p-3.5">
+      {findings.length > 0 ? (
+        <div className="space-y-1.5">
+          {findings.map((f) => (
+            <div key={f.id} className="rounded-[9px] border p-2" style={{ borderColor: `color-mix(in srgb, ${RISK_TONE[f.severity]} 40%, transparent)`, background: `color-mix(in srgb, ${RISK_TONE[f.severity]} 6%, transparent)` }}>
+              <div className="flex items-start gap-1.5 text-[11.5px] font-semibold" style={{ color: RISK_TONE[f.severity] }}>
+                <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" /> {f.title}
+              </div>
+              {f.fix ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ops = f.fix!.ops(useEditor.getState().ir);
+                    if (ops.length) useEditor.getState().applyCanvasOps(ops);
+                  }}
+                  className="mt-1 pl-5 text-[11.5px] font-semibold text-primary hover:underline"
+                >
+                  {f.fix.label}
+                </button>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {(['inbound', 'outbound'] as const).map((direction) => {
+        const list = rules.filter((r) => r.direction === direction);
+        if (node.type === 'google_compute_firewall' && list.length === 0) return null;
+        return (
+          <div key={direction}>
+            <h4 className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
+              {direction === 'inbound' ? <ArrowDownToLine className="h-3 w-3" /> : <ArrowUpFromLine className="h-3 w-3" />}
+              {direction} <span className="font-medium normal-case tracking-normal">({list.length})</span>
+            </h4>
+            {list.length === 0 ? (
+              <p className="text-[11.5px] text-faint">{direction === 'inbound' ? 'Nothing can connect in.' : 'No outbound traffic.'}</p>
+            ) : (
+              <ul className="space-y-1">
+                {list.map((r) => {
+                  const risk = ruleRisk(r);
+                  return (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        onClick={open}
+                        className="flex w-full items-center gap-2 rounded-[8px] border bg-surface-1 px-2 py-1.5 text-left transition-colors hover:border-border-strong"
+                      >
+                        {r.action === 'deny' ? (
+                          <span className="rounded-[4px] bg-danger/12 px-1 text-[9.5px] font-bold uppercase text-danger">deny</span>
+                        ) : null}
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[12px] font-semibold">
+                            {serviceName(r)} <span className="font-mono text-[11px] font-normal text-muted">{portLabel(r)}</span>
+                          </span>
+                          <span className="block truncate text-[11px] text-muted">
+                            {direction === 'inbound' ? 'from ' : 'to '}
+                            {r.peers.map((p) => peerLabel(p, name)).join(', ') || '—'}
+                          </span>
+                        </span>
+                        {risk ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: RISK_TONE[risk.severity] }} aria-label={risk.title} /> : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+      <Button className="w-full" size="sm" onClick={open}>
+        <ShieldCheck className="h-3.5 w-3.5" /> Edit rules
+      </Button>
+      {protects.length > 0 || nacledSubnets.length > 0 ? (
+        <div>
+          <h4 className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">Applies to</h4>
+          <div className="flex flex-wrap gap-1">
+            {[...protects, ...nacledSubnets].map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  useEditor.getState().setSelection(id, 'canvas');
+                  canvasApi()?.focusNode(id);
+                }}
+                className="rounded-full border bg-surface-2 px-2 py-0.5 font-mono text-[10.5px] hover:border-border-strong"
+              >
+                {id}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-[11.5px] leading-relaxed text-faint">
+          Not attached to anything yet — connect it to an instance, load balancer or database on the canvas.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function PropertiesTab({ node }: { node: ResourceNode }) {
   const applyOps = useOps();
   const ir = useEditor((s) => s.ir);
@@ -400,6 +598,7 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
 
   return (
     <div className="space-y-3.5 p-3.5">
+      <ExposureCard node={node} />
       {/* the block label, not the `name` argument most resources also have */}
       <Field
         label="Terraform name"
@@ -636,8 +835,16 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
 export function Inspector() {
   const selection = useEditor((s) => s.selection);
   const ir = useEditor((s) => s.ir);
-  const [tab, setTab] = useState<Tab>('properties');
+  const [tabChoice, setTab] = useState<Tab>('properties');
   const node = selection ? ir.resources.find((r) => r.id === selection) : undefined;
+  const isOwner = node ? OWNER_TYPES[node.type] !== undefined : false;
+  const tabs: Tab[] = isOwner ? ['rules', 'properties', 'connections', 'code'] : ['properties', 'connections', 'code'];
+  const tab: Tab = tabs.includes(tabChoice) ? tabChoice : 'properties';
+  // security groups & co open on their rules
+  useEffect(() => {
+    if (isOwner) setTab('rules');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node?.id]);
   const def = node ? getDef(node.type) : undefined;
 
   if (!node) return null;
@@ -691,7 +898,7 @@ export function Inspector() {
               </p>
             ) : null}
             <div className="mt-3 flex rounded-sm border bg-surface-2 p-0.5" role="tablist">
-              {(['properties', 'connections', 'code'] as Tab[]).map((t) => (
+              {tabs.map((t) => (
                 <button
                   key={t}
                   role="tab"
@@ -710,6 +917,7 @@ export function Inspector() {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
+            {tab === 'rules' ? <RulesTab node={node} /> : null}
             {tab === 'properties' ? <PropertiesTab node={node} /> : null}
             {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
             {tab === 'code' ? <CodeTab node={node} /> : null}

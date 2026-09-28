@@ -6,9 +6,11 @@ import {
   Maximize,
   Minus,
   Plus,
+  ScanEye,
   WandSparkles,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useSecurityUi } from '@/features/security/securityStore';
 import { cn } from '@/lib/utils';
 
 function ToolButton({
@@ -57,6 +59,8 @@ export function CanvasToolbar({
 }) {
   const rf = useReactFlow();
   const zoom = useStore((s) => s.transform[2]);
+  const lens = useSecurityUi((s) => s.lens);
+  const toggleLens = useSecurityUi((s) => s.toggleLens);
   return (
     <Panel position="bottom-left">
       <div
@@ -94,6 +98,9 @@ export function CanvasToolbar({
           )}
         </ToolButton>
         <Divider />
+        <ToolButton label={lens ? 'Hide security lens' : 'Security lens'} pressed={lens} onClick={toggleLens}>
+          <ScanEye className="h-3.5 w-3.5" />
+        </ToolButton>
         <ToolButton label={minimap ? 'Hide minimap' : 'Show minimap'} pressed={minimap} onClick={onToggleMinimap}>
           <MapIcon className="h-3.5 w-3.5" />
         </ToolButton>

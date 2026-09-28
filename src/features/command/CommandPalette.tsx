@@ -13,6 +13,7 @@ import {
   Download,
   FileCode2,
   FileImage,
+  FileText,
   FileUp,
   FolderOpen,
   Github,
@@ -29,11 +30,14 @@ import {
   PanelRight,
   Plus,
   Redo2,
+  ScanEye,
   Share2,
+  ShieldCheck,
   Sun,
   Trash2,
   Undo2,
   WandSparkles,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -41,7 +45,10 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { Kbd } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
+import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { useLayout } from '@/features/editor/layoutStore';
+import { getAudit, useSecurityUi } from '@/features/security/securityStore';
+import { applyOps, type Op } from '@/ir/ops';
 import { ResourceGroups, wordFilter } from '@/features/editor/ResourcePicker';
 import { orderedFiles, useEditor } from '@/features/editor/store';
 import { copyText, exportZip } from '@/lib/download';
@@ -114,6 +121,9 @@ export function CommandPalette() {
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
   const editorReady = inEditor && projectId !== null;
+  const ir = useEditor((s) => s.ir);
+  const audit = editorReady ? getAudit(ir) : null;
+  const fixable = audit ? audit.findings.filter((f) => f.fix).length : 0;
   const projects = useMemo(
     () => (open ? listProjects().filter((p) => !(inEditor && p.id === projectId)) : []),
     [open, inEditor, projectId],
@@ -213,6 +223,45 @@ export function CommandPalette() {
                     ) : null}
                   </Command.Group>
 
+                  <Command.Group heading="Security">
+                    <Item
+                      value="security-audit"
+                      icon={ShieldCheck}
+                      label="Security audit"
+                      hint={audit?.grade ? `grade ${audit.grade}` : undefined}
+                      keywords={['score', 'findings', 'issues', 'vulnerabilities', 'check']}
+                      onSelect={() => run(() => useSecurityUi.getState().setPanel(true))}
+                    />
+                    <Item
+                      value="security-lens"
+                      icon={ScanEye}
+                      label="Toggle security lens"
+                      keywords={['exposure', 'internet', 'traffic', 'flows', 'ports']}
+                      onSelect={() => run(() => useSecurityUi.getState().toggleLens())}
+                    />
+                    {fixable > 0 ? (
+                      <Item
+                        value="security-fix-all"
+                        icon={Wrench}
+                        label={`Fix ${fixable} security issue${fixable === 1 ? '' : 's'}`}
+                        keywords={['harden', 'remediate', 'auto fix']}
+                        onSelect={() =>
+                          run(() => {
+                            let scratch = editor().ir;
+                            const ops: Op[] = [];
+                            for (const f of getAudit(scratch).findings.filter((x) => x.fix)) {
+                              const next = f.fix!.ops(scratch);
+                              ops.push(...next);
+                              scratch = applyOps(scratch, next).ir;
+                            }
+                            if (ops.length) editor().applyCanvasOps(ops);
+                            showToast(`Applied ${fixable} security fixes — Ctrl Z to undo`, 'success');
+                          })
+                        }
+                      />
+                    ) : null}
+                  </Command.Group>
+
                   <Command.Group heading="Edit & export">
                     <Item value="undo" icon={Undo2} label="Undo" shortcut={`${MOD} Z`} disabled={!canUndo} onSelect={() => run(() => editor().undo())} />
                     <Item value="redo" icon={Redo2} label="Redo" shortcut={`${MOD} ⇧ Z`} disabled={!canRedo} onSelect={() => run(() => editor().redo())} />
@@ -228,6 +277,7 @@ export function CommandPalette() {
                         })
                       }
                     />
+                    <Item value="export-pdf" icon={FileText} label="Export PDF document" keywords={['pdf', 'document', 'report', 'share', 'print']} onSelect={() => run(openExportPdf)} />
                     <Item value="export-png" icon={ImageDown} label="Export diagram as PNG" keywords={['image', 'download']} onSelect={() => run(() => void canvasApi()?.exportImage('png'))} />
                     <Item value="export-svg" icon={FileImage} label="Export diagram as SVG" keywords={['image', 'vector']} onSelect={() => run(() => void canvasApi()?.exportImage('svg'))} />
                     <Item

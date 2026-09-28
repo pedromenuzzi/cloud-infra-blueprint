@@ -14,6 +14,7 @@ import {
   type Edge,
   type Node,
   type OnSelectionChangeParams,
+  type Rect,
   type Viewport,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -24,6 +25,7 @@ import {
   Copy,
   CopyPlus,
   FileImage,
+  FileText,
   ImageDown,
   LayoutTemplate,
   Maximize,
@@ -40,11 +42,13 @@ import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { showToast } from '@/components/Toast';
 import { Button, Kbd } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { captureDiagram } from '@/features/export/captureDiagram';
+import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
 import { ref } from '@/ir/expr';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
-import type { Expression, ResourceNode } from '@/ir/types';
+import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
 import { detectProviders } from '@/lib/storage';
 import { cn } from '@/lib/utils';
@@ -63,21 +67,69 @@ import { computeTidyOps } from './tidy';
 import {
   ContainerNodeView,
   FlowEdge,
+  InternetNodeView,
   ResourceNodeView,
+  SecFlowEdge,
   type FlowEdgeType,
   type FlowNode,
+  type NodeSecurity,
+  type SecFlowData,
+  type SecFlowEdgeType,
 } from './nodes';
+import { getAudit, useSecurityUi } from '@/features/security/securityStore';
+import type { AuditResult } from '@/security/audit';
+import { ruleRisk } from '@/security/audit';
+import { isRuleResource } from '@/security/model';
 import { useEditor } from './store';
 
-const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView };
-const edgeTypes = { flow: FlowEdge };
+const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, internet: InternetNodeView };
+const edgeTypes = { flow: FlowEdge, secflow: SecFlowEdge };
+
+export const INTERNET_NODE = '__internet__';
+
+/** Security-lens decorations per resource, derived from the audit. */
+function lensDecorations(ir: IR, audit: AuditResult) {
+  const t = audit.topology;
+  const order = ['critical', 'high', 'medium', 'low'] as const;
+  const risk = new Map<string, NodeSecurity['risk']>();
+  const bump = (id: string, sev: NodeSecurity['risk']) => {
+    const cur = risk.get(id);
+    if (!cur || order.indexOf(sev!) < order.indexOf(cur)) risk.set(id, sev);
+  };
+  for (const f of audit.findings) {
+    bump(f.resource, f.severity);
+    for (const r of f.related) bump(r, f.severity);
+  }
+  const inFlow = new Set(t.flows.flatMap((f) => [f.from, f.to]));
+  const decorations = new Map<string, NodeSecurity>();
+  for (const r of ir.resources) {
+    const sec: NodeSecurity = { risk: risk.get(r.id) };
+    const rules = t.rules.get(r.id);
+    if (rules) {
+      const inbound = rules.filter((x) => x.direction === 'inbound').length;
+      sec.rules = `${inbound} in · ${rules.length - inbound} out`;
+    }
+    if (t.subnets.has(r.id)) sec.subnet = t.subnets.get(r.id);
+    if (t.subnetNacls.has(r.id)) sec.nacls = t.subnetNacls.get(r.id)!.length;
+    const exposure = t.exposure.get(r.id);
+    if (exposure) sec.exposure = { level: exposure.level, ports: exposure.ports };
+    const relevant =
+      rules || exposure || sec.risk || inFlow.has(r.id) || isContainerType(r.type) || isRuleResource(r.type);
+    sec.dim = !relevant;
+    decorations.set(r.id, sec);
+  }
+  return decorations;
+}
+
 
 export const PALETTE_MIME = 'application/x-blueprint-type';
 
 function buildFlow(
   state: Pick<ReturnType<typeof useEditor.getState>, 'ir' | 'edges' | 'warnings' | 'selection'>,
-): { nodes: FlowNode[]; edges: FlowEdgeType[] } {
+  audit: AuditResult | null = null,
+): { nodes: FlowNode[]; edges: Array<FlowEdgeType | SecFlowEdgeType> } {
   const { ir, edges, warnings, selection } = state;
+  const lens = audit ? lensDecorations(ir, audit) : null;
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
   const warned = new Set(warnings.map((w) => w.nodeId).filter(Boolean));
 
@@ -114,6 +166,7 @@ function buildFlow(
           provider: r.provider,
           category: def?.category ?? 'network',
           warn: warned.has(r.id),
+          security: lens?.get(r.id),
         },
         width: r.position?.w ?? CONTAINER_MIN_W,
         height: r.position?.h ?? CONTAINER_MIN_H,
@@ -136,6 +189,7 @@ function buildFlow(
         provider: r.provider,
         category: def?.category ?? 'compute',
         warn: warned.has(r.id),
+        security: lens?.get(r.id),
       },
     } satisfies FlowNode;
   });
@@ -151,10 +205,66 @@ function buildFlow(
       height: 16,
       color: e.kind === 'security' ? 'var(--edge-security)' : 'var(--edge-ref)',
     },
-    data: { field: e.field, kind: e.kind, active: selection === e.source || selection === e.target },
+    data: {
+      field: e.field,
+      kind: e.kind,
+      active: selection === e.source || selection === e.target,
+      dimmed: audit !== null,
+    },
   }));
 
-  return { nodes, edges: rfEdges };
+  if (!audit) return { nodes, edges: rfEdges };
+
+  // --- security lens: the internet as a node, allowed traffic as animated edges
+  const flows = audit.topology.flows;
+  const name = (id: string) => (id === 'internet' ? 'Internet' : id.split('.').slice(1).join('.'));
+  const secEdges: SecFlowEdgeType[] = flows.map((f) => {
+    const rules = [...audit.topology.rules.values()].flat().filter((r) => f.rules.includes(r.id));
+    const risky = rules.some((r) => {
+      const risk = ruleRisk(r);
+      return risk && (risk.severity === 'critical' || risk.severity === 'high');
+    });
+    const tone: SecFlowData['tone'] = f.from === 'internet' ? (risky ? 'danger' : 'public') : 'internal';
+    const color = tone === 'danger' ? '#ef4444' : tone === 'public' ? '#0ea5e9' : '#10b981';
+    return {
+      id: `sec:${f.id}`,
+      source: f.from === 'internet' ? INTERNET_NODE : f.from,
+      target: f.to,
+      type: 'secflow',
+      zIndex: 5,
+      selectable: false,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color },
+      data: {
+        ports: f.ports,
+        tone,
+        explain:
+          f.from === 'internet'
+            ? `Anyone on the internet can reach ${name(f.to)} on ${f.ports.join(', ')}`
+            : `${name(f.from)} → ${name(f.to)} allowed on ${f.ports.join(', ')}`,
+      },
+    };
+  });
+
+  if (flows.some((f) => f.from === 'internet')) {
+    const rects = computeAbsoluteRects(ir);
+    const all = [...rects.values()];
+    const targets = flows.filter((f) => f.from === 'internet').map((f) => rects.get(f.to)).filter((r) => r !== undefined);
+    const minX = Math.min(...all.map((r) => r.x));
+    const centerY = targets.reduce((sum, r) => sum + r.y + r.h / 2, 0) / Math.max(1, targets.length);
+    nodes.push({
+      id: INTERNET_NODE,
+      type: 'internet',
+      position: { x: minX - 300, y: Math.round(centerY - NODE_H / 2) },
+      width: 184,
+      height: NODE_H,
+      draggable: false,
+      selectable: false,
+      connectable: false,
+      deletable: false,
+      data: {},
+    });
+  }
+  return { nodes, edges: [...rfEdges, ...secEdges] };
 }
 
 function CanvasInner() {
@@ -177,7 +287,8 @@ function CanvasInner() {
   const drawer = useLayout((s) => s.drawer);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeType>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeType | SecFlowEdgeType>([]);
+  const lensOn = useSecurityUi((s) => s.lens);
   const rf = useReactFlow();
   const updateNodeInternals = useUpdateNodeInternals();
   const wrapper = useRef<HTMLDivElement>(null);
@@ -187,10 +298,10 @@ function CanvasInner() {
   }
 
   useEffect(() => {
-    const built = buildFlow({ ir, edges: irEdges, warnings, selection });
+    const built = buildFlow({ ir, edges: irEdges, warnings, selection }, lensOn ? getAudit(ir) : null);
     setNodes(built.nodes);
     setEdges(built.edges);
-  }, [ir, irEdges, warnings, selection, setNodes, setEdges]);
+  }, [ir, irEdges, warnings, selection, lensOn, setNodes, setEdges]);
 
   // React Flow can drop a node's measurement when its size changes (a container
   // growing around a moved child) and hidden tabs skip the first pass; re-measure
@@ -451,14 +562,14 @@ function CanvasInner() {
     }
   }, [applyCanvasOps, rf, tidying]);
 
-  const exportImage = useCallback(
-    async (format: 'png' | 'svg') => {
+  /**
+   * Run `capture` on a clean diagram (no selection glow, resize handles or
+   * animated edges) with its full bounds; null when the canvas is empty.
+   */
+  const withCleanDiagram = useCallback(
+    async <T,>(capture: (bounds: Rect) => Promise<T>): Promise<T | null> => {
       const flowNodes = rf.getNodes();
-      if (flowNodes.length === 0) {
-        showToast('Nothing to export yet — add a resource first', 'info');
-        return;
-      }
-      // capture a clean diagram: no selection glow, resize handles or animated edges
+      if (flowNodes.length === 0) return null;
       const { selection: previous, setSelection: select } = useEditor.getState();
       select(null);
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -478,16 +589,27 @@ function CanvasInner() {
           maxX = Math.max(maxX, x + w);
           maxY = Math.max(maxY, y + h);
         }
-        const bounds = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
-        await exportDiagramImage(bounds, format, useEditor.getState().projectName);
-        showToast(`Diagram exported as ${format.toUpperCase()}`, 'success');
-      } catch (err) {
-        showToast(`Export failed: ${(err as Error).message}`, 'error');
+        return await capture({ x: minX, y: minY, width: maxX - minX, height: maxY - minY });
       } finally {
         if (previous) select(previous);
       }
     },
     [rf],
+  );
+
+  const exportImage = useCallback(
+    async (format: 'png' | 'svg') => {
+      try {
+        const done = await withCleanDiagram((bounds) =>
+          exportDiagramImage(bounds, format, useEditor.getState().projectName).then(() => true),
+        );
+        if (done) showToast(`Diagram exported as ${format.toUpperCase()}`, 'success');
+        else showToast('Nothing to export yet — add a resource first', 'info');
+      } catch (err) {
+        showToast(`Export failed: ${(err as Error).message}`, 'error');
+      }
+    },
+    [withCleanDiagram],
   );
 
   const autoPan = useRef<{ before: Viewport; after: Viewport } | null>(null);
@@ -560,6 +682,7 @@ function CanvasInner() {
       zoomOut: () => void rf.zoomOut({ duration: 200 }),
       tidy,
       exportImage,
+      captureDiagram: () => withCleanDiagram((bounds) => captureDiagram(bounds, useSecurityUi.getState().lens)),
       addResource: (type, screen) => {
         const def = getDef(type);
         if (def) placeResource(def, rf.screenToFlowPosition(screen ?? viewportCenter()));
@@ -569,7 +692,7 @@ function CanvasInner() {
       toggleMinimap,
     });
     return () => registerCanvasApi(null);
-  }, [duplicate, exportImage, focusNode, placeResource, rf, tidy, toggleMinimap, viewportCenter]);
+  }, [duplicate, exportImage, focusNode, placeResource, rf, tidy, toggleMinimap, viewportCenter, withCleanDiagram]);
 
   // code → canvas: a resource picked in the editor scrolls into view
   useEffect(() => {
@@ -624,6 +747,7 @@ function CanvasInner() {
       { id: 'fit', label: 'Fit view', icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: 350 }) },
       { id: 'tidy', label: 'Tidy up layout', icon: WandSparkles, onSelect: () => void tidy() },
       'separator',
+      { id: 'pdf', label: 'Export PDF document…', icon: FileText, onSelect: openExportPdf },
       { id: 'png', label: 'Export as PNG', icon: ImageDown, onSelect: () => void exportImage('png') },
       { id: 'svg', label: 'Export as SVG', icon: FileImage, onSelect: () => void exportImage('svg') },
     ];
@@ -650,9 +774,10 @@ function CanvasInner() {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        onNodeClick={(_e, node) => requestAnimationFrame(() => focusNode(node.id))}
+        onNodeClick={(_e, node) => node.id !== INTERNET_NODE && requestAnimationFrame(() => focusNode(node.id))}
         onNodeContextMenu={(e, node) => {
           e.preventDefault();
+          if (node.id === INTERNET_NODE) return;
           setSelection(node.id);
           setMenu({ x: e.clientX, y: e.clientY, nodeId: node.id });
         }}

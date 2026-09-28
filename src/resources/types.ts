@@ -45,7 +45,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   database: 'Database',
   containers: 'Containers',
   integration: 'Messaging & APIs',
-  identity: 'Identity & Security',
+  identity: 'Security & Identity',
   edge: 'Edge & DNS',
 };
 

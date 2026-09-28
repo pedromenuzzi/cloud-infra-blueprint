@@ -5,6 +5,7 @@ import {
   Download,
   FileArchive,
   FileImage,
+  FileText,
   ImageDown,
   Loader2,
   PanelLeft,
@@ -12,6 +13,7 @@ import {
   Redo2,
   Search,
   Share2,
+  ShieldCheck,
   Undo2,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
@@ -24,6 +26,8 @@ import { MOD, usePalette } from '@/features/command/paletteStore';
 import { copyText, exportZip } from '@/lib/download';
 import { shareUrl } from '@/lib/share';
 import { cn } from '@/lib/utils';
+import { openExportPdf } from '@/features/export/ExportPdfDialog';
+import { GRADE_COLORS, getAudit, useSecurityUi } from '@/features/security/securityStore';
 import { canvasApi } from './canvasApi';
 import { useLayout, type PanelId } from './layoutStore';
 import { useEditor } from './store';
@@ -52,6 +56,35 @@ function IconToggle({
       )}
     >
       {children}
+    </button>
+  );
+}
+
+function SecurityBadge() {
+  const ir = useEditor((s) => s.ir);
+  const open = useSecurityUi((s) => s.panelOpen);
+  const setPanel = useSecurityUi((s) => s.setPanel);
+  const audit = getAudit(ir);
+  const urgent = audit.counts.critical + audit.counts.high;
+  const color = audit.grade ? GRADE_COLORS[audit.grade] : undefined;
+  return (
+    <button
+      type="button"
+      onClick={() => setPanel(!open)}
+      aria-pressed={open}
+      aria-label={`Security${audit.grade ? ` grade ${audit.grade}` : ''}${urgent ? `, ${urgent} urgent issues` : ''}`}
+      title="Security audit"
+      className={cn(
+        'flex h-8 items-center gap-1.5 rounded-md border px-2 text-[12px] font-semibold transition-colors hover:border-border-strong',
+        open ? 'bg-primary-soft' : 'bg-surface-1',
+      )}
+    >
+      <ShieldCheck className="h-4 w-4" style={{ color }} />
+      <span className="hidden text-muted md:inline">Security</span>
+      <span style={{ color }}>{audit.grade ?? '—'}</span>
+      {urgent > 0 ? (
+        <span className="rounded-full bg-danger px-1.5 text-[10px] font-bold leading-4 text-white">{urgent}</span>
+      ) : null}
     </button>
   );
 }
@@ -153,6 +186,8 @@ export function Topbar() {
         </IconToggle>
       </span>
 
+      <SecurityBadge />
+
       <div className="flex items-center" role="group" aria-label="Panels">
         {panelToggles.map((p) => (
           <IconToggle key={p.id} label={p.label} pressed={isOpen(p.id)} onClick={() => toggle(p.id)}>
@@ -198,6 +233,8 @@ export function Topbar() {
           label="Export"
           onClose={() => setExportMenu(null)}
           entries={[
+            { id: 'pdf', label: 'PDF document to share…', icon: FileText, onSelect: openExportPdf },
+            'separator',
             { id: 'zip', label: 'Terraform files (.zip)', icon: FileArchive, onSelect: doExportZip },
             'separator',
             { id: 'png', label: 'Diagram as PNG', icon: ImageDown, onSelect: () => void canvasApi()?.exportImage('png') },

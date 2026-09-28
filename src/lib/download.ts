@@ -30,11 +30,14 @@ export function exportZip(name: string, files: Record<string, string>) {
   entries['README.md'] = strToU8(terraformReadme(name, names));
 
   const zipped = zipSync(entries, { level: 6 });
-  const blob = new Blob([zipped.slice().buffer], { type: 'application/zip' });
+  downloadBlob(new Blob([zipped.slice().buffer], { type: 'application/zip' }), `${slugify(name)}-terraform.zip`);
+}
+
+export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${slugify(name)}-terraform.zip`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();

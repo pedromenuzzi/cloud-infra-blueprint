@@ -193,12 +193,15 @@ export function Modal({
   title,
   children,
   wide,
+  label,
 }: {
   open: boolean;
   onClose(): void;
   title?: ReactNode;
   children: ReactNode;
   wide?: boolean;
+  /** accessible name of the dialog */
+  label?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -224,6 +227,7 @@ export function Modal({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
+        aria-label={label}
         className={cn(
           'bp-modal-in w-full rounded-lg border bg-surface-1 shadow-lg',
           wide ? 'max-w-3xl' : 'max-w-md',
