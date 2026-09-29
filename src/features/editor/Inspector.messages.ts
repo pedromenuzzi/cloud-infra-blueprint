@@ -130,8 +130,8 @@ export const inspectorMessages = defineMessages(
     nothingIn: 'Nada consegue se conectar.',
     nothingOut: 'Nenhum tráfego de saída.',
     deny: 'negar',
-    peersFrom: 'de ',
-    peersTo: 'para ',
+    peersFrom: 'Origem: ',
+    peersTo: 'Destino: ',
     appliesTo: 'Aplica-se a',
     notAttached:
       'Ainda não está ligado a nada — conecte-o a uma instância, a um balanceador de carga ou a um banco de dados no canvas.',

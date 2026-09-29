@@ -625,7 +625,11 @@ function RulesTab({ node }: { node: ResourceNode }) {
                         ) : null}
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[12px] font-semibold">
-                            {serviceName(r)} <span className="font-mono text-[11px] font-normal text-muted">{portText(portLabel(r))}</span>
+                            {serviceName(r)}{' '}
+                            {/* "All traffic" already says which ports */}
+                            {r.protocol === 'all' && r.fromPort === null && !r.portsExpr ? null : (
+                              <span className="font-mono text-[11px] font-normal text-muted">{portText(portLabel(r))}</span>
+                            )}
                           </span>
                           <span className="block truncate text-[11px] text-muted">
                             {direction === 'inbound' ? m.peersFrom : m.peersTo}
@@ -904,6 +908,7 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
   const isOwner = node ? OWNER_TYPES[node.type] !== undefined : false;
   const tabs: Tab[] = isOwner ? ['rules', 'properties', 'connections'] : ['properties', 'connections'];
   const tab: Tab = tabs.includes(tabChoice) ? tabChoice : 'properties';
+  const compactCode = tabs.length > 2;
   // security groups & co open on their rules
   useEffect(() => {
     if (isOwner) setTab('rules');
@@ -935,7 +940,8 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
             <div className="flex items-center gap-2.5">
               <ResourceIcon category={def?.category ?? 'compute'} type={node.type} size={38} />
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-[13.5px] font-semibold leading-tight">
+                {/* long names ("Grupo de segurança de rede") wrap to a second line rather than lose their end */}
+                <h2 className="line-clamp-2 break-words text-[13.5px] font-semibold leading-tight">
                   {def ? resourceName(node.type) : node.type}
                 </h2>
                 <code className="block truncate font-mono text-[10.5px] text-faint" data-testid="inspector-address">
@@ -995,7 +1001,9 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
                     type="button"
                     onClick={() => setTab(t)}
                     className={cn(
-                      'min-w-0 flex-1 truncate rounded-[5px] px-1.5 py-1 text-[11.5px] font-semibold capitalize transition-colors',
+                      'min-w-0 truncate rounded-[5px] px-1.5 py-1 text-[11.5px] font-semibold capitalize transition-colors',
+                      // three tabs: each as wide as its word, so "Propriedades" and "Connections" fit
+                      compactCode ? 'flex-auto' : 'flex-1',
                       tab === t ? 'bg-surface-1 text-foreground shadow-xs' : 'text-muted hover:text-foreground',
                     )}
                   >
@@ -1007,11 +1015,16 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
               <button
                 type="button"
                 title={lm.codeButtonTitle}
+                aria-label={compactCode ? lm.codeButton : undefined}
                 onClick={() => useEditor.getState().revealInCode(node.id)}
-                className="flex shrink-0 items-center gap-1 rounded-sm border bg-surface-2 px-2 text-[11.5px] font-semibold text-muted transition-colors hover:border-primary/40 hover:text-primary"
+                className={cn(
+                  'flex shrink-0 items-center gap-1 rounded-sm border bg-surface-2 text-[11.5px] font-semibold text-muted transition-colors hover:border-primary/40 hover:text-primary',
+                  compactCode ? 'px-1.5' : 'px-2',
+                )}
               >
                 <Code2 className="h-3.5 w-3.5" />
-                {lm.codeButton}
+                {/* with three tabs the row has room for the icon only */}
+                {compactCode ? null : lm.codeButton}
               </button>
             </div>
           </div>

@@ -1148,7 +1148,7 @@ function EditorTips() {
     ['?', m.tips.shortcuts],
   ];
   return (
-    <div className="bp-pop-in w-64 max-w-full rounded-[12px] border bg-surface-1/95 p-3 shadow-lg backdrop-blur-md" role="note" aria-label={m.tipsLabel}>
+    <div className="bp-pop-in w-72 max-w-full rounded-[12px] border bg-surface-1/95 p-3 shadow-lg backdrop-blur-md" role="note" aria-label={m.tipsLabel}>
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-primary" />
           <span className="flex-1 text-[12.5px] font-semibold">{m.proTips}</span>
