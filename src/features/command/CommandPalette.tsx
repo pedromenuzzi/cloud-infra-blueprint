@@ -48,6 +48,7 @@ import { focusIsLost, Kbd, restoreFocus, useLayer } from '@/components/ui';
 import { ALIGN_ACTIONS, alignActionBlocker } from '@/features/editor/alignActions';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
+import { LayoutCommands } from '@/features/editor/layoutCommands';
 import { useLayout } from '@/features/editor/layoutStore';
 import { openGithubImport } from '@/features/import/githubImportStore';
 import { fixAllFindings, getAudit, useSecurityUi } from '@/features/security/securityStore';
@@ -339,6 +340,7 @@ export function CommandPalette() {
                     <Item value="toggle-palette" icon={PanelLeft} label="Toggle resource palette" shortcut={`${MOD} B`} onSelect={() => run(() => togglePanel('palette'))} />
                     <Item value="toggle-code" icon={Code2} label="Toggle code editor" shortcut={`${MOD} J`} onSelect={() => run(() => togglePanel('code'))} />
                     <Item value="toggle-inspector" icon={PanelRight} label="Toggle inspector" shortcut={`${MOD} I`} onSelect={() => run(() => togglePanel('inspector'))} />
+                    <LayoutCommands render={(c) => <Item key={c.value} value={c.value} icon={c.icon} label={c.label} keywords={c.keywords} onSelect={() => run(c.run)} />} />
                   </Command.Group>
 
                   {resources.length > 0 ? (

@@ -2,6 +2,7 @@ import { ChevronDown, Plus, Search } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
 import { Input, Kbd } from '@/components/ui';
 import { MOD } from '@/features/command/paletteStore';
+import { useMessages } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
 import { detectProviders } from '@/lib/storage';
 import { cn } from '@/lib/utils';
@@ -10,7 +11,10 @@ import { defsByProvider } from '@/resources/registry';
 import { CATEGORY_LABELS, type Category, type ResourceDef } from '@/resources/types';
 import { PALETTE_MIME } from './CanvasPane';
 import { canvasApi } from './canvasApi';
+import { paletteDragStarted } from './canvasDrag';
+import { layoutMessages } from './layout.messages';
 import { useLayout } from './layoutStore';
+import { HidePanelButton, PanelGrip } from './PanelChrome';
 import { buildNewNode } from './newNode';
 import { useEditor } from './store';
 
@@ -47,6 +51,8 @@ function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
       onDragStart={(e) => {
         e.dataTransfer.setData(PALETTE_MIME, def.type);
         e.dataTransfer.effectAllowed = 'copy';
+        // panels floating over the canvas let the drop through
+        paletteDragStarted();
       }}
       onClick={addAtFreeSpot}
       title={`${def.displayName} — drag to the canvas or click to add\n${def.description ?? ''}`}
@@ -77,6 +83,8 @@ function readCollapsed(): Set<Category> {
 }
 
 export function Palette() {
+  const m = useMessages(layoutMessages);
+  const side = useLayout((s) => s.paletteSide);
   // open on the project's own cloud
   const [provider, setProvider] = useState<Provider>(
     () => detectProviders(useEditor.getState().files).find((p) => PROVIDERS.includes(p)) ?? 'aws',
@@ -173,10 +181,17 @@ export function Palette() {
 
   return (
     <aside
-      className="flex w-60 shrink-0 flex-col border-r bg-surface-1"
+      className={cn('flex w-60 shrink-0 flex-col bg-surface-1', side === 'left' ? 'border-r' : 'border-l')}
       aria-label="Resource palette"
     >
       <h2 className="sr-only">Resource palette</h2>
+      <div className="flex items-center gap-1 border-b py-1 pl-1.5 pr-2">
+        <PanelGrip panel="palette" />
+        <span className="flex-1 truncate text-[11px] font-bold uppercase tracking-wider text-faint" aria-hidden="true">
+          {m.resourcesTitle}
+        </span>
+        <HidePanelButton panel="palette" />
+      </div>
       <div className="border-b p-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />

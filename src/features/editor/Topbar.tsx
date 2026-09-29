@@ -3,6 +3,7 @@ import {
   Check,
   ChevronDown,
   Code2,
+  Columns3,
   Download,
   Eye,
   FileArchive,
@@ -20,8 +21,10 @@ import {
   Search,
   Share2,
   ShieldCheck,
+  SlidersHorizontal,
   Sun,
   Undo2,
+  Workflow,
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -38,8 +41,11 @@ import { shareLinkInfo, viewLinkInfo } from '@/lib/share';
 import { cn } from '@/lib/utils';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { GRADE_COLORS, getAudit, useSecurityUi } from '@/features/security/securityStore';
+import { useMessages } from '@/i18n/messages';
 import { useTheme } from '@/theme/useTheme';
 import { canvasApi } from './canvasApi';
+import { layoutMessages } from './layout.messages';
+import { LayoutMenu } from './LayoutMenu';
 import { useLayout, type PanelId } from './layoutStore';
 import { useEditor } from './store';
 
@@ -49,15 +55,16 @@ function IconToggle({
   emphasis,
   onClick,
   children,
+  ...rest
 }: {
   label: string;
   /** a toggle (aria-pressed); omit for a plain button */
   pressed?: boolean;
   /** plain button drawn like a pressed toggle */
   emphasis?: boolean;
-  onClick(): void;
+  onClick(e: React.MouseEvent<HTMLButtonElement>): void;
   children: ReactNode;
-}) {
+} & Pick<React.ButtonHTMLAttributes<HTMLButtonElement>, 'aria-haspopup' | 'aria-expanded'>) {
   return (
     <button
       type="button"
@@ -65,6 +72,7 @@ function IconToggle({
       aria-pressed={pressed}
       title={label}
       onClick={onClick}
+      {...rest}
       className={cn(
         'flex h-8 w-8 shrink-0 items-center justify-center rounded-sm transition-colors',
         pressed || emphasis
@@ -123,8 +131,12 @@ export function Topbar() {
   const redo = useEditor((s) => s.redo);
   const toggle = useLayout((s) => s.toggle);
   // re-render on any layout change; isOpen() answers per mode (side panel vs drawer)
-  useLayout((s) => `${s.compact}:${s.drawer}:${s.panels.palette}${s.panels.code}${s.panels.inspector}`);
+  useLayout((s) => `${s.compact}:${s.drawer}:${s.panels.palette}${s.panels.canvas}${s.panels.code}${s.panels.inspector}`);
   const isOpen = useLayout.getState().isOpen;
+  const paletteSide = useLayout((s) => s.paletteSide);
+  const lm = useMessages(layoutMessages);
+  /** the Layout popover, opened from its button (or the ⋯ menu on phones) */
+  const [layoutMenu, setLayoutMenu] = useState<HTMLElement | null>(null);
   const openPalette = usePalette((s) => s.setOpen);
   const { theme, setTheme } = useTheme();
   const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
@@ -164,9 +176,14 @@ export function Topbar() {
   };
 
   const panelToggles: Array<{ id: PanelId; label: string; icon: ReactNode }> = [
-    { id: 'palette', label: `Resource palette (${MOD}B)`, icon: <PanelLeft className="h-4 w-4" /> },
+    {
+      id: 'palette',
+      label: `Resource palette (${MOD}B)`,
+      icon: paletteSide === 'left' ? <PanelLeft className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />,
+    },
+    { id: 'canvas', label: lm.section.canvas, icon: <Workflow className="h-4 w-4" /> },
     { id: 'code', label: `Code editor (${MOD}J)`, icon: <Code2 className="h-4 w-4" /> },
-    { id: 'inspector', label: `Inspector (${MOD}I)`, icon: <PanelRight className="h-4 w-4" /> },
+    { id: 'inspector', label: `Inspector (${MOD}I)`, icon: <SlidersHorizontal className="h-4 w-4" /> },
   ];
 
   const moreEntries = (small: boolean): MenuEntry[] => [
@@ -190,11 +207,17 @@ export function Topbar() {
           {
             id: 'inspector',
             label: 'Inspector',
-            icon: PanelRight,
+            icon: SlidersHorizontal,
             shortcut: `${MOD} I`,
             checked: isOpen('inspector'),
             toggle: true,
             onSelect: () => toggle('inspector'),
+          },
+          {
+            id: 'layout',
+            label: lm.layoutMore,
+            icon: Columns3,
+            onSelect: () => setLayoutMenu(document.querySelector<HTMLElement>('[data-more-actions]')),
           },
         ]
       : []),
@@ -293,12 +316,26 @@ export function Topbar() {
 
       <div className="flex shrink-0 items-center" role="group" aria-label="Panels">
         {panelToggles.map((p) => (
-          <span key={p.id} className={cn('contents', p.id === 'inspector' && 'max-sm:hidden')}>
+          <span key={p.id} className={cn('contents', (p.id === 'inspector' || p.id === 'canvas') && 'max-sm:hidden')}>
             <IconToggle label={p.label} pressed={isOpen(p.id)} onClick={() => toggle(p.id)}>
               {p.icon}
             </IconToggle>
           </span>
         ))}
+        <span className="contents max-sm:hidden">
+          <IconToggle
+            label={lm.layout}
+            emphasis={layoutMenu !== null}
+            aria-haspopup="dialog"
+            aria-expanded={layoutMenu !== null}
+            onClick={(e) => {
+              const trigger = e.currentTarget;
+              setLayoutMenu((open) => (open ? null : trigger));
+            }}
+          >
+            <Columns3 className="h-4 w-4" />
+          </IconToggle>
+        </span>
       </div>
 
       <span className="hidden lg:contents">
@@ -353,6 +390,7 @@ export function Topbar() {
           aria-haspopup="menu"
           aria-expanded={moreMenu !== null}
           title="More actions"
+          data-more-actions
           className="shrink-0"
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
@@ -364,6 +402,7 @@ export function Topbar() {
         </Button>
       </span>
 
+      {layoutMenu ? <LayoutMenu anchor={layoutMenu} onClose={() => setLayoutMenu(null)} /> : null}
       {moreMenu ? (
         <ContextMenu
           x={moreMenu.x}
