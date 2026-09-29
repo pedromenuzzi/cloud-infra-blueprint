@@ -30,6 +30,7 @@ import {
   PanelRight,
   Plus,
   Redo2,
+  Route,
   ScanEye,
   Share2,
   ShieldCheck,
@@ -253,6 +254,15 @@ export function CommandPalette() {
                       keywords={['score', 'findings', 'issues', 'vulnerabilities', 'check']}
                       onSelect={() => run(() => useSecurityUi.getState().setPanel(true))}
                     />
+                    {selection && audit?.topology.access.get(selection)?.open.length ? (
+                      <Item
+                        value="security-why"
+                        icon={Route}
+                        label={`Why is ${selection.split('.').slice(1).join('.')} reachable?`}
+                        keywords={['exposure', 'path', 'explain', 'internet', 'route', 'access']}
+                        onSelect={() => run(() => useSecurityUi.getState().explain(selection))}
+                      />
+                    ) : null}
                     <Item
                       value="security-lens"
                       icon={ScanEye}

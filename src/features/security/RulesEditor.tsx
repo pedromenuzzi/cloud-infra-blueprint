@@ -7,7 +7,7 @@
 import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Code2, Info, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
-import { Modal } from '@/components/ui';
+import { Modal, tabbables } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
@@ -266,6 +266,7 @@ function RuleRow({
   groups,
   vpcCidr,
   risk,
+  highlighted,
   apply,
   onLastFirewallRule,
 }: {
@@ -275,6 +276,8 @@ function RuleRow({
   groups: ResourceNode[];
   vpcCidr?: string;
   risk?: RuleRisk;
+  /** the row the editor was opened for (a step of an access path) */
+  highlighted?: boolean;
   apply(ops: Op[]): void;
   onLastFirewallRule(at: { x: number; y: number }): void;
 }) {
@@ -295,7 +298,16 @@ function RuleRow({
   const multiPeer = kind === 'sg' && !(rule.origin.kind === 'resource' && resourceId.startsWith('aws_vpc_security_group_'));
 
   return (
-    <tr className={cn('border-t transition-colors hover:bg-surface-2/40', readOnly && 'bg-surface-2/40')} data-rule={rule.id}>
+    <tr
+      className={cn(
+        'border-t transition-colors hover:bg-surface-2/40',
+        readOnly && 'bg-surface-2/40',
+        highlighted && 'bg-primary-soft shadow-[inset_3px_0_0_var(--primary)] hover:bg-primary-soft',
+      )}
+      data-rule={rule.id}
+      data-highlighted={highlighted ? '' : undefined}
+      tabIndex={highlighted ? -1 : undefined}
+    >
       {kind === 'nacl' || kind === 'nsg' ? (
         <Cell className="w-16">
           <PriorityInput rule={rule} kind={kind} owner={node} disabled={readOnly} onCommit={(priority) => update({ priority })} />
@@ -548,6 +560,7 @@ function Notice({ tone = 'info', children }: { tone?: 'info' | 'warn'; children:
 
 export function RulesEditor() {
   const owner = useSecurityUi((s) => s.editing);
+  const focusRule = useSecurityUi((s) => s.focusRule);
   const openRules = useSecurityUi((s) => s.openRules);
   const ir = useEditor((s) => s.ir);
   const node = owner ? ir.resources.find((r) => r.id === owner) : undefined;
@@ -556,12 +569,28 @@ export function RulesEditor() {
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   const [lastRuleMenu, setLastRuleMenu] = useState<{ x: number; y: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const focused = useRef<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
+  // opened for one rule (a step of an access path): its direction, its row
   useEffect(() => {
-    setDirection('inbound');
+    const target = focusRule && owner ? getAudit(currentIr()).topology.rules.get(owner)?.find((r) => r.id === focusRule) : undefined;
+    setDirection(target?.direction ?? 'inbound');
     setNotice(null);
-  }, [owner]);
+    setHighlight(target?.id ?? null);
+    focused.current = null;
+  }, [owner, focusRule]);
+
+  // …brought into view, with focus on its first control (the row itself when it is read-only)
+  useEffect(() => {
+    if (!highlight || focused.current === highlight) return;
+    const row = tableRef.current?.querySelector<HTMLElement>(`tr[data-rule="${CSS.escape(highlight)}"]`);
+    if (!row) return;
+    focused.current = highlight;
+    row.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
+    (tabbables(row)[0] ?? row).focus({ preventScroll: true });
+  }, [highlight, direction]);
 
   const audit = getAudit(ir);
   const rules = useMemo(() => (owner ? (audit.topology.rules.get(owner) ?? []) : []), [audit, owner]);
@@ -719,6 +748,7 @@ export function RulesEditor() {
                     groups={groups}
                     vpcCidr={vpcCidr}
                     risk={audit.risks.get(rule.id)}
+                    highlighted={rule.id === highlight}
                     apply={apply}
                     onLastFirewallRule={setLastRuleMenu}
                   />

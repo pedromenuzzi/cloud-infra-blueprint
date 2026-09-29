@@ -15,7 +15,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { CostLine } from '@/features/cost/CostLine';
-import { getAudit, useSecurityUi } from '@/features/security/securityStore';
+import { AccessPaths } from '@/features/security/AccessPaths';
+import { ComplianceBadges } from '@/features/security/ComplianceBadges';
+import { getAudit, SEVERITY_TEXT, useSecurityUi } from '@/features/security/securityStore';
 import { OWNER_TYPES, peerLabel, portLabel, serviceName } from '@/security/model';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
@@ -439,21 +441,30 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
 
 const RISK_TONE = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#64748b' } as const;
 const EXPOSURE_TONE = { internet: '#0ea5e9', unknown: '#f59e0b', restricted: '#10b981', isolated: '#64748b' } as const;
+/** the same tones as text, at AA contrast in both themes */
+const EXPOSURE_TEXT = {
+  internet: 'text-[#0369a1] dark:text-[#38bdf8]',
+  unknown: 'text-warning',
+  restricted: 'text-success',
+  isolated: 'text-muted',
+} as const;
 const portList = (ports: string[]) => ports.map((p) => (/^\d/.test(p) ? `:${p}` : p)).join(', ');
 
-/** Security summary for a workload: exposure, protecting groups, findings. */
+/** Security summary for a workload: exposure and why, protecting groups, findings. */
 function ExposureCard({ node }: { node: ResourceNode }) {
   const ir = useEditor((s) => s.ir);
   const audit = getAudit(ir);
   const exposure = audit.topology.exposure.get(node.id);
+  const access = audit.topology.access.get(node.id);
   const findings = audit.findings.filter((f) => f.resource === node.id);
   if (!exposure && findings.length === 0) return null;
-  const inbound = audit.topology.flows.filter((f) => f.to === node.id);
+  // the internet's way in is spelled out per port below
+  const inbound = audit.topology.flows.filter((f) => f.to === node.id && !(f.from === 'internet' && access?.open.length));
   const tone = EXPOSURE_TONE[exposure?.level ?? 'isolated'];
   return (
     <div className="rounded-[10px] border p-2.5" style={{ borderColor: `color-mix(in srgb, ${tone} 35%, transparent)` }}>
       {exposure ? (
-        <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: tone }}>
+        <div className={cn('flex items-center gap-1.5 text-[12px] font-semibold', EXPOSURE_TEXT[exposure.level])}>
           {exposure.level === 'internet' ? (
             <Globe className="h-3.5 w-3.5" />
           ) : exposure.level === 'unknown' ? (
@@ -497,10 +508,18 @@ function ExposureCard({ node }: { node: ResourceNode }) {
           ))}
         </div>
       ) : null}
+      {access ? (
+        <div className="mt-2.5 border-t pt-2.5" data-testid="access-explanation">
+          <AccessPaths access={access} />
+        </div>
+      ) : null}
       {findings.map((f) => (
         <div key={f.id} className="mt-2 flex items-start gap-1.5 text-[11.5px]">
           <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: RISK_TONE[f.severity] }} />
-          <span className="min-w-0 flex-1 text-foreground">{f.title}</span>
+          <span className="min-w-0 flex-1 text-foreground">
+            {f.title}
+            <ComplianceBadges controls={f.controls} className="mt-1" />
+          </span>
           {f.fix ? (
             <button
               type="button"
@@ -536,9 +555,10 @@ function RulesTab({ node }: { node: ResourceNode }) {
         <div className="space-y-1.5">
           {findings.map((f) => (
             <div key={f.id} className="rounded-[9px] border p-2" style={{ borderColor: `color-mix(in srgb, ${RISK_TONE[f.severity]} 40%, transparent)`, background: `color-mix(in srgb, ${RISK_TONE[f.severity]} 6%, transparent)` }}>
-              <div className="flex items-start gap-1.5 text-[11.5px] font-semibold" style={{ color: RISK_TONE[f.severity] }}>
+              <div className={cn('flex items-start gap-1.5 text-[11.5px] font-semibold', SEVERITY_TEXT[f.severity])}>
                 <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" /> {f.title}
               </div>
+              <ComplianceBadges controls={f.controls} className="mt-1 pl-5" />
               {f.fix ? (
                 <button
                   type="button"

@@ -38,6 +38,7 @@ between them.
   (or splits a VPC across AZs) from the free address space.
 - 💵 **Cost estimate**: a live "~$27/mo" on the canvas, a per-resource breakdown in the inspector
   and the PDF — on-demand list prices shipped with the app (no network calls), every assumption shown.
+- 🧭 **Security explained**: a clickable per-port "Why is this reachable?" path (IGW → route → subnet → rules), CIS / AWS FSBP control IDs on findings, and a toast when an edit lowers the grade.
 - 📄 **PDF export**: a shareable architecture document — the diagram plus a readable summary
   of resources, connections, security findings and the code — generated in the browser.
 - 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the

@@ -1,15 +1,21 @@
 import { ChevronDown, Globe, Lock, ScanEye, ShieldCheck, ShieldQuestion, Sparkles, Wrench, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { showToast } from '@/components/Toast';
 import { Button } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
+import { scrollBehavior } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
+import type { AccessExplanation } from '@/security/access';
 import { SEVERITY_ORDER, type Finding, type Severity } from '@/security/audit';
-import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, getAudit, useSecurityUi } from './securityStore';
+import { FRAMEWORKS } from '@/security/compliance';
+import type { Exposure } from '@/security/topology';
+import { AccessPaths } from './AccessPaths';
+import { ComplianceBadges } from './ComplianceBadges';
+import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useSecurityUi } from './securityStore';
 
 const SEVERITY_LABEL: Record<Severity, string> = {
   critical: 'Critical',
@@ -32,7 +38,7 @@ function ResourceChip({ id, onClick }: { id: string; onClick(): void }) {
       type="button"
       onClick={onClick}
       title={`Show ${id} on the canvas`}
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-surface-2 py-0.5 pl-0.5 pr-2 text-[11px] font-medium text-foreground transition-colors hover:border-border-strong"
+      className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border bg-surface-2 py-0.5 pl-0.5 pr-2 text-[11px] font-medium text-foreground transition-colors hover:border-border-strong"
     >
       <ResourceIcon category={def?.category ?? 'compute'} type={type} size={18} />
       <span className="truncate">{nameOf(id)}</span>
@@ -68,27 +74,85 @@ function GradeRing({ grade, score }: { grade: string | null; score: number | nul
   );
 }
 
+/** An internet-facing resource; "Why?" opens the chain of controls for each of its ports. */
+function ExposedRow({
+  id,
+  exposure,
+  access,
+  open,
+  onToggle,
+  onShow,
+}: {
+  id: string;
+  exposure: Exposure;
+  access?: AccessExplanation;
+  open: boolean;
+  onToggle(): void;
+  onShow(): void;
+}) {
+  const pathsId = useId();
+  return (
+    <li data-exposed={id}>
+      <div className="flex items-center gap-2">
+        <ResourceChip id={id} onClick={onShow} />
+        <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted" title={portList(exposure.ports)}>
+          {portList(exposure.ports)}
+        </span>
+        {access?.open.length ? (
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={pathsId}
+            aria-label={`Why is ${nameOf(id)} reachable?`}
+            onClick={onToggle}
+            className="flex shrink-0 items-center gap-0.5 rounded-[6px] px-1.5 py-0.5 text-[11.5px] font-semibold text-primary transition-colors hover:bg-surface-2 hover:text-primary-hover"
+          >
+            Why <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+          </button>
+        ) : null}
+      </div>
+      {open && access ? (
+        <div id={pathsId} className="mb-2 mt-1.5">
+          <AccessPaths access={access} openFirst bare />
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 export function SecurityPanel() {
   const ir = useEditor((s) => s.ir);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
   const lens = useSecurityUi((s) => s.lens);
   const setLens = useSecurityUi((s) => s.setLens);
   const setPanel = useSecurityUi((s) => s.setPanel);
+  const framework = useSecurityUi((s) => s.framework);
+  const setFramework = useSecurityUi((s) => s.setFramework);
+  const spotlight = useSecurityUi((s) => s.spotlight);
+  const explaining = useSecurityUi((s) => s.explaining);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [why, setWhy] = useState<string | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const audit = getAudit(ir);
   const exposed = [...audit.topology.exposure].filter(([, e]) => e.level === 'internet');
   const unknown = [...audit.topology.exposure].filter(([, e]) => e.level === 'unknown');
   const fixable = audit.findings.filter((f) => f.fix);
+  const frameworks = FRAMEWORKS.map((f) => ({
+    ...f,
+    count: audit.findings.filter((x) => x.controls?.some((c) => c.framework === f.id)).length,
+  })).filter((f) => f.count > 0);
+  const active = frameworks.some((f) => f.id === framework) ? framework : 'all';
+  const shown = active === 'all' ? audit.findings : audit.findings.filter((f) => f.controls?.some((c) => c.framework === active));
 
-  // Esc closes the panel — unless something above it (a dialog, a menu, a field) takes the key,
+  // Esc closes the panel — unless something above it (a dialog, a menu, a field, a tooltip) takes the key,
   // or there is a selection / drawer for Esc to clear first
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const target = e.target as HTMLElement;
       const inPanel = panelRef.current?.contains(target) ?? false;
-      if (document.querySelector('[aria-modal="true"], [role="menu"]')) return;
+      if (document.querySelector('[aria-modal="true"], [role="menu"], [data-bp-tooltip]')) return;
       if (!inPanel && target.closest('input, textarea, select, [contenteditable], .monaco-editor')) return;
       if (!inPanel && (useEditor.getState().selection || useLayout.getState().drawer)) return;
       if (inPanel) e.stopPropagation();
@@ -97,6 +161,30 @@ export function SecurityPanel() {
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
   }, [setPanel]);
+
+  const reveal = (selector: string) =>
+    requestAnimationFrame(() =>
+      panelRef.current?.querySelector(selector)?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }),
+    );
+
+  // "Show" on a security toast: open the finding it is about
+  useEffect(() => {
+    if (!spotlight) return;
+    useSecurityUi.getState().setSpotlight(null);
+    if (!getAudit(useEditor.getState().ir).findings.some((f) => f.id === spotlight)) return;
+    setFramework('all');
+    setExpanded(spotlight);
+    setFlash(spotlight);
+    reveal(`[data-finding="${CSS.escape(spotlight)}"]`);
+  }, [spotlight, setFramework]);
+
+  // the command palette's "Why is … reachable?"
+  useEffect(() => {
+    if (!explaining) return;
+    useSecurityUi.getState().explain(null);
+    setWhy(explaining);
+    reveal(`[data-exposed="${CSS.escape(explaining)}"]`);
+  }, [explaining]);
 
   const show = (id: string) => {
     useEditor.getState().setSelection(id, 'canvas');
@@ -148,8 +236,8 @@ export function SecurityPanel() {
               {SEVERITY_ORDER.filter((s) => audit.counts[s] > 0).map((s) => (
                 <span
                   key={s}
-                  className="rounded-full px-1.5 py-px text-[10.5px] font-semibold"
-                  style={{ color: SEVERITY_COLORS[s], background: `color-mix(in srgb, ${SEVERITY_COLORS[s]} 12%, transparent)` }}
+                  className={cn('rounded-full px-1.5 py-px text-[10.5px] font-semibold', SEVERITY_TEXT[s])}
+                  style={{ background: `color-mix(in srgb, ${SEVERITY_COLORS[s]} 12%, transparent)` }}
                 >
                   {audit.counts[s]} {SEVERITY_LABEL[s].toLowerCase()}
                 </span>
@@ -188,10 +276,15 @@ export function SecurityPanel() {
           ) : (
             <ul className="space-y-1">
               {exposed.map(([id, e]) => (
-                <li key={id} className="flex items-center justify-between gap-2">
-                  <ResourceChip id={id} onClick={() => show(id)} />
-                  <span className="shrink-0 font-mono text-[11px] text-muted">{portList(e.ports)}</span>
-                </li>
+                <ExposedRow
+                  key={id}
+                  id={id}
+                  exposure={e}
+                  access={audit.topology.access.get(id)}
+                  open={why === id}
+                  onToggle={() => setWhy(why === id ? null : id)}
+                  onShow={() => show(id)}
+                />
               ))}
             </ul>
           )}
@@ -224,6 +317,28 @@ export function SecurityPanel() {
               </button>
             ) : null}
           </div>
+          {frameworks.length > 0 ? (
+            <div role="group" aria-label="Filter findings by framework" className="mb-2 flex flex-wrap gap-1">
+              {[{ id: 'all' as const, short: 'All', name: 'All findings', count: audit.findings.length }, ...frameworks].map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  aria-pressed={active === f.id}
+                  title={f.name}
+                  onClick={() => setFramework(f.id)}
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full border px-2 py-px text-[11px] font-semibold transition-colors',
+                    active === f.id
+                      ? 'border-primary/40 bg-primary-soft text-primary'
+                      : 'bg-surface-1 text-muted hover:border-border-strong hover:text-foreground',
+                  )}
+                >
+                  {f.short}
+                  <span className="font-medium opacity-75">{f.count}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           {audit.findings.length === 0 ? (
             <div className="rounded-[12px] border border-dashed px-4 py-6 text-center">
               <ShieldCheck className="mx-auto h-6 w-6 text-success" />
@@ -232,10 +347,16 @@ export function SecurityPanel() {
             </div>
           ) : (
             <ul className="space-y-2">
-              {audit.findings.map((f) => {
+              {shown.map((f) => {
                 const open = expanded === f.id;
                 return (
-                  <li key={f.id} className="rounded-[10px] border bg-surface-1 p-2.5" data-severity={f.severity}>
+                  <li
+                    key={f.id}
+                    className={cn('rounded-[10px] border bg-surface-1 p-2.5', flash === f.id && 'animate-[bp-flash_1.6s_ease-out_both]')}
+                    data-severity={f.severity}
+                    data-finding={f.id}
+                    onAnimationEnd={() => setFlash(null)}
+                  >
                     <button
                       type="button"
                       onClick={() => setExpanded(open ? null : f.id)}
@@ -245,12 +366,13 @@ export function SecurityPanel() {
                       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: SEVERITY_COLORS[f.severity] }} />
                       <span className="min-w-0 flex-1">
                         <span className="block text-[12.5px] font-semibold leading-snug">{f.title}</span>
-                        <span className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: SEVERITY_COLORS[f.severity] }}>
+                        <span className={cn('text-[10.5px] font-semibold uppercase tracking-wide', SEVERITY_TEXT[f.severity])}>
                           {SEVERITY_LABEL[f.severity]}
                         </span>
                       </span>
                       <ChevronDown className={cn('mt-0.5 h-3.5 w-3.5 shrink-0 text-faint transition-transform', open && 'rotate-180')} />
                     </button>
+                    <ComplianceBadges controls={f.controls} className="mt-1.5 pl-4" />
                     {open ? <p className="mt-1.5 pl-4 text-[11.5px] leading-relaxed text-muted">{f.detail}</p> : null}
                     <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-4">
                       <ResourceChip id={f.resource} onClick={() => show(f.resource)} />
