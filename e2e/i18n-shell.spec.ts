@@ -41,6 +41,15 @@ async function inPortuguese(page: Page, theme: 'light' | 'dark' = 'light') {
 async function audit(page: Page) {
   if (!(await page.evaluate(() => 'axe' in window))) await page.addScriptTag({ content: AXE });
   await page.waitForTimeout(400); // entry animations: axe measures the colors actually painted
+  // …and on a busy machine they can still be running then: wait for the ones that end
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
   return page.evaluate(async () => {
     type Violation = { id: string; impact: string; nodes: Array<{ target: string[] }> };
     const axe = (window as unknown as { axe: { run(ctx: Document, o: object): Promise<{ violations: Violation[] }> } }).axe;
