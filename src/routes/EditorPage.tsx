@@ -7,6 +7,7 @@ import { useLayout } from '@/features/editor/layoutStore';
 import { ExportPdfHost } from '@/features/export/ExportPdfDialog';
 import { RulesEditor } from '@/features/security/RulesEditor';
 import { SecurityPanel } from '@/features/security/SecurityPanel';
+import { useSecurityDelta } from '@/features/security/securityDelta';
 import { useSecurityUi } from '@/features/security/securityStore';
 import { Inspector } from '@/features/editor/Inspector';
 import { Palette } from '@/features/editor/Palette';
@@ -96,6 +97,7 @@ export default function EditorPage() {
   const selection = useEditor((s) => s.selection);
   const securityPanel = useSecurityUi((s) => s.panelOpen);
   useDocumentTitle(useEditor((s) => s.projectName));
+  useSecurityDelta();
 
   // compact layout below 1100px: canvas full-width, palette/code as drawers
   useEffect(() => {
