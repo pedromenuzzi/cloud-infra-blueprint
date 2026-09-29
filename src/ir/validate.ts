@@ -4,6 +4,7 @@
  */
 import { fieldBoundsDiagnostics } from '@/resources/fieldRules';
 import type { ResourceDef } from '@/resources/types';
+import { runChecks } from './checks';
 import { collectRefs, refTargetAddress } from './expr';
 import type { Diagnostic, IR, ResourceNode } from './types';
 
@@ -98,5 +99,6 @@ export function validateProject(
     }
   }
 
+  out.push(...runChecks(ir, getDef, markerAt));
   return out;
 }
