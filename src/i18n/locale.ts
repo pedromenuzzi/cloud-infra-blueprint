@@ -35,7 +35,8 @@ export function detectLocale(): Locale {
 }
 
 function apply(locale: Locale) {
-  if (typeof document !== 'undefined') document.documentElement.lang = locale;
+  // a bare `document` (tests stub one) has no root element to tag
+  if (typeof document !== 'undefined' && document.documentElement) document.documentElement.lang = locale;
 }
 
 interface LocaleState {
