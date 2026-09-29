@@ -1,7 +1,7 @@
 import { ChevronDown, Globe, Lock, ScanEye, ShieldCheck, ShieldQuestion, Sparkles, Wrench, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { showToast } from '@/components/Toast';
-import { Button } from '@/components/ui';
+import { Button, hasOpenLayer } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
@@ -151,6 +151,8 @@ export function SecurityPanel() {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       const target = e.target as HTMLElement;
       const inPanel = panelRef.current?.contains(target) ?? false;
+      // a dialog, menu or popover (the Layout menu…) is the top layer: Esc is its alone
+      if (hasOpenLayer(['modal', 'popup'])) return;
       if (document.querySelector('[aria-modal="true"], [role="menu"], [data-bp-tooltip]')) return;
       if (!inPanel && target.closest('input, textarea, select, [contenteditable], .monaco-editor')) return;
       if (!inPanel && (useEditor.getState().selection || useLayout.getState().drawer)) return;
