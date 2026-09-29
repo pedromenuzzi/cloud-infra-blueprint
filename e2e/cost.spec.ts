@@ -139,6 +139,7 @@ async function exportPdf(page: Page, costOn: boolean) {
 test.describe('cost estimate in the PDF', () => {
   test('the document has a cost section and an overview tile when the switch is on', async ({ page }) => {
     await openSeedProject(page, { monaco: false });
+    await expect(chip(page)).toHaveText(/^~\$\d+\/mo$/);
     const chipTotal = (await chip(page).textContent())!.replace('/mo', '');
     const runs = pageContents(await exportPdf(page, true)).flatMap(textRuns);
     expect(runs).toContain('Cost estimate');
