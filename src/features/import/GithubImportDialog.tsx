@@ -18,8 +18,10 @@ import {
 } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Input, Modal } from '@/components/ui';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import {
   fetchRootModule,
   findRootModules,
@@ -40,6 +42,7 @@ import {
 import { createProject, findProjectByOrigin, uniqueProjectName, type Project } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 import { closeGithubImport, useGithubImport } from './githubImportStore';
+import { importMessages } from './messages';
 
 type Step =
   | { name: 'source' }
@@ -58,11 +61,8 @@ const TOKEN_HELP = 'https://github.com/settings/personal-access-tokens/new';
 const TOKEN_FIXES = new Set<ShownError['code']>(['not-found', 'rate-limit', 'forbidden']);
 const RETRYABLE = new Set<ShownError['code']>(['network', 'offline', 'server']);
 
-function plural(n: number, word: string) {
-  return `${n} ${word}${n === 1 ? '' : 's'}`;
-}
-
 function ErrorBox({ error, onToken, onRetry }: { error: ShownError; onToken?(): void; onRetry?(): void }) {
+  const m = useMessages(importMessages);
   return (
     <div
       role="alert"
@@ -75,12 +75,12 @@ function ErrorBox({ error, onToken, onRetry }: { error: ShownError; onToken?(): 
           <div className="mt-1.5 flex gap-3">
             {onToken ? (
               <button type="button" onClick={onToken} className="text-[12px] font-semibold text-primary hover:underline">
-                Add a token
+                {m.addToken}
               </button>
             ) : null}
             {onRetry ? (
               <button type="button" onClick={onRetry} className="text-[12px] font-semibold text-primary hover:underline">
-                Try again
+                {m.tryAgain}
               </button>
             ) : null}
           </div>
@@ -93,12 +93,13 @@ function ErrorBox({ error, onToken, onRetry }: { error: ShownError; onToken?(): 
 function RateMeter() {
   const rate = useGithubImport((s) => s.rate);
   const token = useGithubImport((s) => s.token);
+  const m = useMessages(importMessages);
   const fresh = rate && rate.resetAt > Date.now() ? rate : null;
   if (!fresh) {
     return (
       <span className="flex min-w-0 items-center gap-1 text-[11px] text-faint">
         <Gauge className="h-3 w-3 shrink-0" />
-        <span className="truncate">{token ? '5,000' : '60'} GitHub requests an hour</span>
+        <span className="truncate">{m.requestsAnHour(token !== '')}</span>
       </span>
     );
   }
@@ -106,14 +107,12 @@ function RateMeter() {
   return (
     <span
       className={cn('flex min-w-0 items-center gap-1 text-[11px] tabular-nums', low ? 'font-semibold text-warning' : 'text-faint')}
-      title={`GitHub API rate limit — resets at ${resetTime(fresh)}`}
+      title={m.rateTitle(resetTime(fresh))}
       data-testid="gh-rate"
     >
       <Gauge className="h-3 w-3 shrink-0" />
       <span className="truncate">
-        {fresh.remaining === 0
-          ? `Rate limit reached · resets ${resetTime(fresh)}`
-          : `${fresh.remaining.toLocaleString()} of ${fresh.limit.toLocaleString()} requests left`}
+        {fresh.remaining === 0 ? m.rateReached(resetTime(fresh)) : m.requestsLeft(fresh.remaining, fresh.limit)}
       </span>
     </span>
   );
@@ -135,11 +134,12 @@ function TokenField({ inputRef }: { inputRef: React.RefObject<HTMLInputElement> 
   const token = useGithubImport((s) => s.token);
   const id = useId();
   const hintId = useId();
+  const m = useMessages(importMessages);
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2">
         <label htmlFor={id} className="text-xs font-medium text-muted">
-          Personal access token <span className="font-normal text-faint">(optional)</span>
+          {m.token} <span className="font-normal text-faint">{m.optional}</span>
         </label>
         {token ? (
           <button
@@ -150,7 +150,7 @@ function TokenField({ inputRef }: { inputRef: React.RefObject<HTMLInputElement> 
             }}
             className="text-[11.5px] font-semibold text-primary hover:underline"
           >
-            Forget token
+            {m.forgetToken}
           </button>
         ) : null}
       </div>
@@ -172,10 +172,9 @@ function TokenField({ inputRef }: { inputRef: React.RefObject<HTMLInputElement> 
       <p id={hintId} className="mt-1.5 flex gap-1.5 text-[11px] leading-snug text-faint">
         <ShieldCheck className="mt-px h-3.5 w-3.5 shrink-0 text-success" />
         <span>
-          Memory only: never saved, never put in a link, gone when you reload. Sent only to api.github.com — for
-          private repositories or a higher limit.{' '}
+          {m.tokenHint}{' '}
           <a href={TOKEN_HELP} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">
-            Create a read-only token
+            {m.createToken}
             <ArrowUpRight className="ml-0.5 inline h-3 w-3" />
           </a>
         </span>
@@ -202,6 +201,7 @@ export default function GithubImportDialog() {
   const listRef = useRef<HTMLDivElement>(null);
   const errorId = useId();
   const hintId = useId();
+  const m = useMessages(importMessages);
 
   // closing the dialog stops whatever is in flight
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -230,7 +230,7 @@ export default function GithubImportDialog() {
     const shown: ShownError =
       err instanceof GithubImportError
         ? { message: err.message, code: err.code }
-        : { message: 'Something went wrong while talking to GitHub — try again.', code: 'server' };
+        : { message: messagesFor(importMessages).somethingWrong, code: 'server' };
     setError(shown);
     setStep(back);
     if (back.name === 'source') requestAnimationFrame(() => inputRef.current?.focus());
@@ -250,7 +250,7 @@ export default function GithubImportDialog() {
     setError(null);
     setFilter('');
     const target = parsed.target;
-    const label = target.kind === 'gist' ? 'the gist' : `${target.owner}/${target.repo}`;
+    const label = target.kind === 'gist' ? m.theGist : `${target.owner}/${target.repo}`;
     setStep({ name: 'listing', label, phase: 'tree' });
     try {
       const listing = await listGithub(
@@ -263,13 +263,9 @@ export default function GithubImportDialog() {
       const scan = findRootModules(listing.files, listing.basePath);
       if (scan.modules.length === 0) {
         const where = `${listingLabel(listing)}${listing.basePath ? `/${listing.basePath}` : ''}`;
-        const why =
-          scan.childModuleFiles > 0
-            ? ` — only child modules (modules/…), which aren't supported yet. Link to the folder of one to import it anyway.`
-            : listing.truncated
-              ? ' — the repository is too large to list completely; link straight to the folder that holds your Terraform.'
-              : '.';
-        fail(new GithubImportError('no-terraform', `No Terraform root module found in ${where}${why}`), { name: 'source' });
+        const text = messagesFor(importMessages);
+        const why = scan.childModuleFiles > 0 ? text.onlyChildModules : listing.truncated ? text.tooLargeToList : '.';
+        fail(new GithubImportError('no-terraform', `${text.noRootModule(where)}${why}`), { name: 'source' });
         return;
       }
       setStep({ name: 'pick', listing, scan, selected: scan.modules[0]!.dir });
@@ -298,14 +294,11 @@ export default function GithubImportDialog() {
         origin: result.origin,
       });
     } catch {
-      setError({
-        message: 'Browser storage is full — export or delete a project, then import again.',
-        code: 'storage',
-      });
+      setError({ message: messagesFor(importMessages).storageFull, code: 'storage' });
       return;
     }
     close();
-    showToast(result.note ?? `Imported “${project.name}” from GitHub`, result.note ? 'info' : 'success');
+    showToast(result.note ?? messagesFor(importMessages).imported(project.name), result.note ? 'info' : 'success');
     navigate(`/editor/${project.id}`);
   };
 
@@ -362,8 +355,8 @@ export default function GithubImportDialog() {
         <Github className="h-4 w-4" />
       </span>
       <span className="min-w-0">
-        <span className="block text-[15px] font-semibold leading-tight">Import from GitHub</span>
-        <span className="block truncate text-[12px] text-muted">A repository, folder, .tf file or gist</span>
+        <span className="block text-[15px] font-semibold leading-tight">{m.title}</span>
+        <span className="block truncate text-[12px] text-muted">{m.subtitle}</span>
       </span>
     </span>
   );
@@ -375,7 +368,7 @@ export default function GithubImportDialog() {
           <form id="gh-import-form" onSubmit={(e) => void find(e)} className="space-y-4 p-5 max-sm:p-4" noValidate>
             <div>
               <label htmlFor="gh-import-url" className="mb-1 block text-xs font-medium text-muted">
-                GitHub link or owner/repo
+                {m.linkLabel}
               </label>
               <Input
                 ref={inputRef}
@@ -396,9 +389,7 @@ export default function GithubImportDialog() {
                 className="font-mono text-[12.5px]"
               />
               <p id={hintId} className="mt-1.5 text-[11px] leading-snug text-faint">
-                <code className="font-mono">owner/repo</code>, a folder link (
-                <code className="font-mono">…/tree/‹branch›/‹folder›</code>), a <code className="font-mono">.tf</code> file
-                link or a gist. One root module is imported — never state or the lock file.
+                {richText(m.linkHint)}
               </p>
             </div>
             {error ? (
@@ -415,16 +406,16 @@ export default function GithubImportDialog() {
                 aria-expanded={false}
                 className="flex items-center gap-1.5 text-[12px] font-medium text-primary hover:underline"
               >
-                <KeyRound className="h-3.5 w-3.5" /> Private repository or rate-limited? Use a token
+                <KeyRound className="h-3.5 w-3.5" /> {m.useToken}
               </button>
             )}
           </form>
           <Footer>
             <Button variant="outline" onClick={close}>
-              Cancel
+              {m.cancel}
             </Button>
             <Button ref={primaryRef} type="submit" form="gh-import-form" data-autofocus={fromLink ? '' : undefined}>
-              Find Terraform
+              {m.findTerraform}
             </Button>
           </Footer>
         </>
@@ -434,14 +425,14 @@ export default function GithubImportDialog() {
         <>
           <div className="flex flex-col items-center px-5 py-10 text-center" role="status" aria-live="polite">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="mt-3 max-w-full truncate text-[13.5px] font-medium">Looking for Terraform in {step.label}…</p>
+            <p className="mt-3 max-w-full truncate text-[13.5px] font-medium">{m.looking(step.label)}</p>
             <p className="mt-1 text-[12px] text-muted">
-              {step.phase === 'repo' ? 'Finding the default branch' : 'Listing the files'}
+              {step.phase === 'repo' ? m.findingBranch : m.listingFiles}
             </p>
           </div>
           <Footer>
             <Button ref={cancelRef} variant="outline" onClick={cancel}>
-              Cancel
+              {m.cancel}
             </Button>
           </Footer>
         </>
@@ -470,10 +461,10 @@ export default function GithubImportDialog() {
               requestAnimationFrame(() => inputRef.current?.focus());
             }}
           >
-            <ArrowLeft className="h-3.5 w-3.5" /> Back
+            <ArrowLeft className="h-3.5 w-3.5" /> {m.back}
           </Button>
           <Button type="submit" form="gh-import-pick">
-            Import {plural(step.scan.modules.find((m) => m.dir === step.selected)?.files.length ?? 0, 'file')}
+            {m.importFiles(step.scan.modules.find((mod) => mod.dir === step.selected)?.files.length ?? 0)}
           </Button>
         </Footer>
       ) : null}
@@ -481,10 +472,10 @@ export default function GithubImportDialog() {
       {step.name === 'fetching' ? (
         <Footer>
           <Button ref={cancelRef} variant="outline" onClick={cancel}>
-            Cancel
+            {m.cancel}
           </Button>
           <Button disabled>
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Importing…
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {m.importing}
           </Button>
         </Footer>
       ) : null}
@@ -498,7 +489,7 @@ export default function GithubImportDialog() {
               store(step.result);
             }}
           >
-            Import another copy
+            {m.importAnotherCopy}
           </Button>
           <Button
             ref={primaryRef}
@@ -507,7 +498,7 @@ export default function GithubImportDialog() {
               navigate(`/editor/${step.existing.id}`);
             }}
           >
-            Open existing copy
+            {m.openExistingCopy}
           </Button>
         </Footer>
       ) : null}
@@ -539,9 +530,10 @@ function PickStep({
   const { listing, scan, selected } = step;
   const busy = step.name !== 'pick';
   const groupId = useId();
+  const m = useMessages(importMessages);
   const terms = filter.trim().toLowerCase();
   const shown = useMemo(
-    () => (terms ? scan.modules.filter((m) => (m.dir || '/').toLowerCase().includes(terms)) : scan.modules),
+    () => (terms ? scan.modules.filter((mod) => (mod.dir || '/').toLowerCase().includes(terms)) : scan.modules),
     [scan.modules, terms],
   );
   const count = scan.modules.length;
@@ -566,17 +558,15 @@ function PickStep({
         ) : null}
       </div>
       <p id={groupId} className="text-[12.5px] text-muted">
-        {count === 1
-          ? 'One Terraform root module found — import it:'
-          : `${count} Terraform root modules found — pick the one to import:`}
+        {count === 1 ? m.oneModule : m.manyModules(count)}
       </p>
       {count > 8 ? (
         <Input
           type="search"
           value={filter}
           onChange={(e) => onFilter(e.target.value)}
-          placeholder="Filter folders…"
-          aria-label="Filter folders"
+          placeholder={m.filterPlaceholder}
+          aria-label={m.filterLabel}
           disabled={busy}
         />
       ) : null}
@@ -587,73 +577,65 @@ function PickStep({
           aria-labelledby={groupId}
           className="max-h-[min(300px,42vh)] divide-y overflow-y-auto rounded-md border"
         >
-          {shown.map((m) => (
+          {shown.map((mod) => (
             <label
-              key={m.dir}
+              key={mod.dir}
               className={cn(
                 'flex cursor-pointer items-center gap-2.5 px-3 py-2 transition-colors hover:bg-surface-2',
-                selected === m.dir && 'bg-primary-soft hover:bg-primary-soft',
+                selected === mod.dir && 'bg-primary-soft hover:bg-primary-soft',
               )}
             >
               <input
                 type="radio"
                 name="gh-module"
-                value={m.dir}
-                checked={selected === m.dir}
-                onChange={() => onSelect(m.dir)}
+                value={mod.dir}
+                checked={selected === mod.dir}
+                onChange={() => onSelect(mod.dir)}
                 className="h-3.5 w-3.5 shrink-0 accent-primary"
               />
-              <FolderOpen className={cn('h-4 w-4 shrink-0', selected === m.dir ? 'text-primary' : 'text-faint')} />
+              <FolderOpen className={cn('h-4 w-4 shrink-0', selected === mod.dir ? 'text-primary' : 'text-faint')} />
               <span className="min-w-0 flex-1">
-                {m.dir ? (
-                  <span className="block truncate font-mono text-[12px] font-medium" title={m.dir}>
-                    {m.dir}
+                {mod.dir ? (
+                  <span className="block truncate font-mono text-[12px] font-medium" title={mod.dir}>
+                    {mod.dir}
                   </span>
                 ) : (
-                  <span className="block truncate text-[12.5px] font-semibold">Repository root</span>
+                  <span className="block truncate text-[12.5px] font-semibold">{m.repositoryRoot}</span>
                 )}
                 <span className="block text-[11px] text-faint">
-                  {plural(m.files.length, 'file')} · {formatBytes(m.bytes)}
-                  {m.linked && listing.basePath ? ' · from your link' : ''}
+                  {m.files(mod.files.length)} · {formatBytes(mod.bytes)}
+                  {mod.linked && listing.basePath ? m.fromYourLink : ''}
                 </span>
               </span>
             </label>
           ))}
           {shown.length === 0 ? (
-            <p className="px-3 py-4 text-center text-[12px] text-faint">No folder matches “{filter}”.</p>
+            <p className="px-3 py-4 text-center text-[12px] text-faint">{m.noFolderMatch(filter)}</p>
           ) : null}
         </div>
       </fieldset>
       {scan.childModuleFiles > 0 ? (
         <p className="flex gap-1.5 text-[11.5px] leading-snug text-faint">
           <Info className="mt-px h-3.5 w-3.5 shrink-0" />
-          <span>
-            {plural(scan.childModuleFiles, '.tf file')} in <code className="font-mono">modules/</code> folders{' '}
-            {scan.childModuleFiles === 1 ? 'is' : 'are'} left out — modules aren’t supported yet.
-          </span>
+          <span>{richText(m.childModulesLeftOut(scan.childModuleFiles))}</span>
         </p>
       ) : null}
       {listing.truncated ? (
         <p className="flex gap-1.5 text-[11.5px] leading-snug text-warning">
           <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
-          <span>
-            This repository is too large to list completely — some folders may be missing. Link straight to a
-            folder to see all of it.
-          </span>
+          <span>{m.repoTruncated}</span>
         </p>
       ) : null}
 
       {step.name === 'fetching' ? (
         <div role="status" aria-live="polite" className="space-y-1.5">
           <div className="flex justify-between text-[12px] text-muted">
-            <span>
-              Downloading {step.done} of {plural(step.total, 'file')}…
-            </span>
+            <span>{m.downloading(step.done, step.total)}</span>
             <span className="tabular-nums">{step.total ? Math.round((step.done / step.total) * 100) : 0}%</span>
           </div>
           <div
             role="progressbar"
-            aria-label="Download progress"
+            aria-label={m.downloadProgress}
             aria-valuemin={0}
             aria-valuemax={step.total}
             aria-valuenow={step.done}
@@ -669,7 +651,7 @@ function PickStep({
 
       {step.name === 'exists' ? (
         <p role="status" className="rounded-md border bg-surface-2/60 px-3 py-2 text-[12.5px] leading-relaxed">
-          You already imported this exact version as “{step.existing.name}”.
+          {m.alreadyImported(step.existing.name)}
         </p>
       ) : null}
 
