@@ -59,9 +59,9 @@ function Card({ children }: { children: React.ReactNode }) {
   return (
     // inline-size containment: the selects' option widths must not widen the inspector (a fieldset sizes to min-content)
     <section aria-labelledby={id} data-testid="cidr-planner" className="rounded-[10px] border bg-surface-1 p-2.5 contain-inline-size">
-      <h4 id={id} className="mb-2 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
+      <h3 id={id} className="mb-2 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
         <Network className="h-3 w-3" aria-hidden="true" /> Address plan
-      </h4>
+      </h3>
       {children}
     </section>
   );
@@ -204,9 +204,9 @@ function SubnetList({ plan }: { plan: NetworkPlan }) {
   if (plan.rows.length === 0) return <p className="text-[11px] text-faint">No {word} yet.</p>;
   return (
     <div>
-      <h5 className="mb-1 text-[10.5px] font-semibold text-muted">
+      <h4 className="mb-1 text-[10.5px] font-semibold text-muted">
         {plan.rows.length} {plan.rows.length === 1 ? word.slice(0, -1) : word}
-      </h5>
+      </h4>
       <ul className="max-h-56 space-y-1 overflow-y-auto" aria-label={word}>
         {plan.rows.map((row) => (
           <li key={row.node.id}>

@@ -46,7 +46,6 @@ export interface SubnetInfo {
 export interface NetworkModel {
   networks: NetworkInfo[];
   subnets: SubnetInfo[];
-  byId: Map<string, NetworkInfo | SubnetInfo>;
 }
 
 interface RangeArg {
@@ -103,7 +102,7 @@ export function rangeValue(field: string, text: string, via: string | undefined,
     : { field, text, via, hostBits: false, expects };
 }
 
-/** Ranges of `args[field]`; `unresolved` is set when some of it is an expression. */
+/** Ranges of `args[field]`; `complete` is false when some of it is an expression. */
 function readRanges(ir: IR, node: ResourceNode, arg: RangeArg): { ranges: RangeValue[]; complete: boolean } {
   const expr = node.args[arg.field];
   if (!expr) return { ranges: [], complete: true };
@@ -182,10 +181,7 @@ export function networkModel(ir: IR): NetworkModel {
       }
       return subnet;
     });
-  const byId = new Map<string, NetworkInfo | SubnetInfo>();
-  for (const n of networks) byId.set(n.node.id, n);
-  for (const s of subnets) byId.set(s.node.id, s);
-  return { networks, subnets, byId };
+  return { networks, subnets };
 }
 
 /** Valid ranges of one family (the planner works on IPv4). */

@@ -140,6 +140,9 @@ describe('CIDR checks', () => {
       expect(messages(vnet('["10.0.0.0/16", "fd00:db8::/48"]') + sub('a', '["fd00:db8:0:1::/80"]'), '')).toEqual([
         "azurerm_subnet.a: address_prefixes fd00:db8:0:1::/80 can't be used — Azure IPv6 subnets must be exactly /64",
       ]);
+      expect(messages(vnet('["10.0.0.0/16"]') + sub('a', '["10.0.1.0/24", "10.0.1.0/25"]'), '')).toEqual([
+        'azurerm_subnet.a: address_prefixes 10.0.1.0/25 overlaps 10.0.1.0/24',
+      ]);
       expect(messages(vnet('["10.0.0.0/16"]') + sub('a', '["10.0.1.0/24"]') + sub('b', '["10.0.1.0/24"]'), '')).toEqual([
         'azurerm_subnet.b: address_prefixes 10.0.1.0/24 overlaps azurerm_subnet.a (10.0.1.0/24) — subnets in one VNet need ranges of their own',
       ]);

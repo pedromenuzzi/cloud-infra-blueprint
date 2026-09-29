@@ -31,7 +31,7 @@ const cidrList = (ranges: RangeValue[]) => ranges.map((r) => r.text).join(', ');
 
 type Role = 'network' | 'subnet';
 
-/** The smallest (and largest) prefix a range of this role may have, when the cloud limits it. */
+/** Why the cloud refuses a range of this size for its role, if it does. */
 function sizeRule(provider: CloudProvider, role: Role, r: RangeValue): string | undefined {
   const block = r.block!;
   if (provider === 'aws' && block.family === 'ipv4' && (block.prefix < 16 || block.prefix > 28)) {
@@ -125,7 +125,8 @@ function checkSiblings(ctx: CheckContext, net: NetworkInfo) {
       if (reported.has(key)) continue;
       reported.add(key);
       if (a.node === b.node) {
-        ctx.warn(b.node, b.range.field, `${a.range.field} ${a.range.text} and ${b.range.text} overlap`);
+        const first = a.range.field === b.range.field ? a.range.text : `${a.range.field} ${a.range.text}`;
+        ctx.warn(b.node, b.range.field, `${b.range.field} ${b.range.text} overlaps ${first}`);
       } else {
         const who = net.provider === 'gcp' ? 'subnetworks of one network' : `subnets in one ${word}`;
         const why = `${who} need ranges of their own`;
