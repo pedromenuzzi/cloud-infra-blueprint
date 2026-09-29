@@ -970,7 +970,7 @@ export function Inspector() {
               Read-only until the code parses — fix the errors in the code pane.
             </p>
           ) : null}
-          <fieldset disabled={codeErrored} className="min-h-0 flex-1 overflow-y-auto">
+          <fieldset disabled={codeErrored} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
             {tab === 'rules' ? <RulesTab node={node} /> : null}
             {tab === 'properties' ? <PropertiesTab node={node} /> : null}
             {tab === 'connections' ? <ConnectionsTab node={node} /> : null}

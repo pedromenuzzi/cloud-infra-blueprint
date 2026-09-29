@@ -200,7 +200,7 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
         </p>
       ) : null}
 
-      <fieldset disabled={codeErrored} className="min-h-0 flex-1 overflow-y-auto">
+      <fieldset disabled={codeErrored} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <Section title="Arrange">
           <div className="grid grid-cols-8 gap-1" role="toolbar" aria-label="Align and distribute">
             {ALIGN_ACTIONS.map((a) => {
