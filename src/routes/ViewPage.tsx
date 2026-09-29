@@ -30,6 +30,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Link, useLocation } from 'react-router-dom';
 import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { offerShareImport } from '@/components/ShareLinkHost';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, buttonClass, hasOpenLayer, LogoMark } from '@/components/ui';
@@ -244,6 +245,7 @@ function ViewerTopbar({
         <Button variant="outline" size="sm" aria-label="Export" aria-haspopup="menu" aria-expanded={menu?.kind === 'export'} onClick={open('export')}>
           <Download className="h-3.5 w-3.5" /> <span className="hidden lg:inline">Export</span>
         </Button>
+        <LanguageSwitcher compact />
         <ThemeToggle />
       </span>
       <span className="contents sm:hidden">

@@ -1,5 +1,5 @@
 import { Check, type LucideIcon } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { focusIsLost, Kbd, restoreFocus, useLayer } from './ui';
@@ -7,7 +7,8 @@ import { focusIsLost, Kbd, restoreFocus, useLayer } from './ui';
 export interface MenuItem {
   id: string;
   label: string;
-  icon?: LucideIcon;
+  /** a Lucide icon, or any component taking a className (e.g. a flag) */
+  icon?: LucideIcon | ComponentType<{ className?: string }>;
   shortcut?: string;
   /** radio-style menus (e.g. theme) */
   checked?: boolean;

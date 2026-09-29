@@ -1,5 +1,6 @@
 import { Github, GraduationCap, Home, LayoutTemplate } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button, LogoMark } from '@/components/ui';
 import { REPO_URL } from '@/lib/links';
@@ -60,6 +61,7 @@ export function AppRail({
       >
         <Github className="h-4 w-4" />
       </a>
+      <LanguageSwitcher compact />
       <ThemeToggle />
     </aside>
   );

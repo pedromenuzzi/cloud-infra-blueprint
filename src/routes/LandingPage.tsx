@@ -18,6 +18,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { hlLine } from '@/components/HclSnippet';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button, Kbd, Logo } from '@/components/ui';
 import { REPO_URL } from '@/lib/links';
@@ -385,6 +386,7 @@ export default function LandingPage() {
             </a>
           </div>
           <div className="flex items-center gap-2">
+            <LanguageSwitcher />
             <ThemeToggle />
             <Button onClick={() => navigate('/dashboard')}>Open the app</Button>
           </div>

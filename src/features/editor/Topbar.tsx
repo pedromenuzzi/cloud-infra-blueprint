@@ -26,6 +26,7 @@ import {
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { showToast } from '@/components/Toast';
 import { Button, Kbd, LogoMark } from '@/components/ui';
@@ -341,6 +342,7 @@ export function Topbar() {
         <ChevronDown className="-mr-0.5 h-3.5 w-3.5 opacity-80 max-sm:hidden" />
       </Button>
       <span className="hidden lg:contents">
+        <LanguageSwitcher compact />
         <ThemeToggle />
       </span>
       <span className="contents lg:hidden">

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { diffAddedLines, HclSnippet } from '@/components/HclSnippet';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Badge, Button, LogoMark } from '@/components/ui';
 import { createProject, findProjectByOrigin, uniqueProjectName } from '@/lib/storage';
@@ -132,6 +133,7 @@ export default function TutorialPlayerPage() {
           <span className="lg:hidden">Open in editor</span>
           <ExternalLink className="h-3.5 w-3.5" />
         </Button>
+        <LanguageSwitcher />
         <ThemeToggle />
       </header>
 
