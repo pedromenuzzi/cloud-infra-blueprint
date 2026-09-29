@@ -700,7 +700,7 @@ export function RulesEditor() {
               const r = e.currentTarget.getBoundingClientRect();
               setAddMenu({ x: r.right - 220, y: r.bottom + 4 });
             }}
-            className="inline-flex h-8 items-center gap-1.5 rounded-sm bg-primary px-3 text-[12.5px] font-semibold text-primary-fg shadow-xs hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-sm bg-primary px-3 text-[12.5px] font-semibold text-primary-fg shadow-xs hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="h-3.5 w-3.5" /> {m.addRule}
           </button>

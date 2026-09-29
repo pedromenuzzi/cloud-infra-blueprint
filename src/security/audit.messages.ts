@@ -185,7 +185,7 @@ export const auditMessages = defineMessages(
     rdsEncryptionTitle: 'Armazenamento do banco de dados sem criptografia',
     rdsEncryptionDetail: (name: string) =>
       `${name} não define storage_encrypted = true. A criptografia em repouso é gratuita e não pode ser ativada depois sem uma restauração.`,
-    rdsEncryptionFix: 'Criptografar o armazenamento',
+    rdsEncryptionFix: 'Ativar criptografia',
     imdsTitle: (what: 'instance' | 'template') =>
       what === 'instance' ? 'Metadados da instância aceitam IMDSv1' : 'Launch template aceita IMDSv1',
     imdsDetail: (name: string) =>
@@ -197,7 +197,7 @@ export const auditMessages = defineMessages(
     s3PublicTitle: 'Bucket sem bloqueio de acesso público',
     s3PublicDetail: (name: string) =>
       `${name} depende dos padrões da conta. Um bloqueio de acesso público deixa explícito que ele nunca será público e evita exposição acidental.`,
-    s3PublicFix: 'Bloquear o acesso público',
+    s3PublicFix: 'Bloquear acesso público',
     defaultSgTitle: 'Grupo de segurança padrão permite tráfego',
     defaultSgDetail: (name: string, count: number) =>
       `${name} mantém ${count} regra${count === 1 ? '' : 's'}. Deixe o grupo padrão da VPC vazio (sem blocos ingress ou egress) e dê a cada carga de trabalho um grupo próprio.`,

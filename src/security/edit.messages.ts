@@ -35,7 +35,7 @@ export const editMessages = defineMessages(
   {
     restrictToVnet: 'Restringir à rede virtual',
     restrictTo: (ranges: string) => `Restringir a ${ranges}`,
-    removeAccess: (v6: boolean) => (v6 ? 'Remover o acesso de ::/0' : 'Remover o acesso pela internet'),
+    removeAccess: (v6: boolean) => (v6 ? 'Remover acesso de ::/0' : 'Remover acesso da internet'),
     removeRule: 'Remover a regra',
     writtenAs: (field: string, objects: boolean) =>
       `${field} está escrito como ${objects ? 'uma lista de objetos' : 'uma expressão'} — adicione regras no código`,
