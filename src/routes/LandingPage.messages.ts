@@ -100,7 +100,7 @@ export const landingMessages = defineMessages(
     openApp: 'Abrir o app',
     badgeNew: 'Novo',
     badgeText: (services: number) => `${services} serviços · paleta de comandos · layout automático`,
-    heroTitle: 'Desenhe sua infraestrutura em nuvem.',
+    heroTitle: 'Desenhe sua nuvem.',
     heroAccent: 'Gere o Terraform na hora.',
     heroBody:
       'O editor de blueprints que mantém o diagrama da sua arquitetura e o código Terraform em sincronia perfeita — para AWS, Azure e GCP. Gratuito, open source e roda inteiramente no seu navegador.',
@@ -108,7 +108,7 @@ export const landingMessages = defineMessages(
     openDemo: 'Abrir a demo',
     trust: 'Sem conta · Sem servidor · Licença MIT',
     clickResource: 'Clique em um recurso',
-    liveSync: 'Sincronia bidirecional ao vivo',
+    liveSync: 'Sincronia bidirecional',
     subtitleOnDemand: 'sob demanda',
     subtitleRole: 'role do IAM',
     subtitleQueue: 'fila',

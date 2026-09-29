@@ -250,7 +250,7 @@ function HeroDemo() {
           </div>
         </div>
       </div>
-      <span className="absolute -top-3.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-surface-1 px-3 py-1 text-[12px] font-semibold text-primary shadow-md">
+      <span className="absolute -top-3.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full border bg-surface-1 px-3 py-1 text-[12px] font-semibold text-primary shadow-md">
         <Sparkles className="h-3.5 w-3.5" /> {m.liveSync}
       </span>
     </div>
@@ -330,8 +330,8 @@ export default function LandingPage() {
   return (
     <div className="min-h-full overflow-x-hidden bg-background">
       <header className="sticky top-0 z-40 border-b bg-background/75 backdrop-blur-md">
-        <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6" aria-label={m.mainNav}>
-          <Link to="/" className="focus-visible:outline-2 focus-visible:outline-primary">
+        <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6" aria-label={m.mainNav}>
+          <Link to="/" className="shrink-0 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-primary">
             <Logo />
           </Link>
           <div className="hidden items-center gap-7 text-[13px] font-medium text-muted md:flex">
@@ -351,10 +351,12 @@ export default function LandingPage() {
               <Github className="h-3.5 w-3.5" /> GitHub
             </a>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <LanguageSwitcher />
             <ThemeToggle />
-            <Button onClick={() => navigate('/dashboard')}>{m.openApp}</Button>
+            <Button className="whitespace-nowrap max-sm:px-3" onClick={() => navigate('/dashboard')}>
+              {m.openApp}
+            </Button>
           </div>
         </nav>
       </header>
@@ -374,7 +376,7 @@ export default function LandingPage() {
               <ArrowRight className="h-3 w-3" />
             </a>
             <h1 className="bp-rise mx-auto mt-6 max-w-4xl text-balance text-[44px] font-bold leading-[1.04] tracking-[-0.035em] md:text-[64px]">
-              {m.heroTitle} <span className="bp-gradient-text">{m.heroAccent}</span>
+              {m.heroTitle} <span className="bp-gradient-text lg:whitespace-nowrap">{m.heroAccent}</span>
             </h1>
             <p className="bp-rise mx-auto mt-6 max-w-2xl text-pretty text-[17px] leading-relaxed text-muted [animation-delay:80ms]">
               {m.heroBody}

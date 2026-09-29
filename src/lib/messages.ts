@@ -61,7 +61,7 @@ terraform apply
     folderMissing: 'The folder was moved, renamed or deleted',
   },
   {
-    appTagline: 'Desenhe sua infraestrutura em nuvem. Gere o Terraform na hora.',
+    appTagline: 'Desenhe sua nuvem. Gere o Terraform na hora.',
 
     untitledProject: 'Projeto sem nome',
     copyOf: (name: string) => `${name} (cópia)`,

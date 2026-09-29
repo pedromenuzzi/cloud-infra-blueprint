@@ -100,7 +100,7 @@ export const routeMessages = defineMessages(
     stepsNav: 'Passos',
     previous: 'Anterior',
     next: 'Próximo',
-    keepBuilding: 'Continuar criando',
+    keepBuilding: 'Continuar',
     diagram: 'Diagrama',
     blueprintUpdates: 'Blueprint — muda a cada passo',
     code: 'Código',
