@@ -64,6 +64,7 @@ import { exportDiagramImage } from './exportImage';
 import { removeReferencesOps } from './connections';
 import { ProjectOverview } from './Inspector';
 import { useLayout } from './layoutStore';
+import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
 import { buildNewNode, duplicateNode } from './newNode';
 import { ResourcePicker } from './ResourcePicker';
 import { computeTidyOps } from './tidy';
@@ -291,14 +292,9 @@ function buildFlow(
 
 type AnyFlowEdge = FlowEdgeType | SecFlowEdgeType;
 
-/**
- * Selection flags for a fresh or existing node list. A multi-selection made
- * on the canvas survives as long as it contains the primary selection (the
- * one the inspector shows); otherwise only the primary is selected.
- */
-function withSelection(list: FlowNode[], previous: FlowNode[], primary: string | null): FlowNode[] {
-  const kept = new Set(previous.filter((n) => n.selected).map((n) => n.id));
-  const want = primary && kept.has(primary) ? kept : new Set(primary ? [primary] : []);
+/** Selection flags from the store's selection, touching only the nodes that change. */
+function withSelection(list: FlowNode[], selectedIds: string[]): FlowNode[] {
+  const want = new Set(selectedIds);
   return list.map((n) => (Boolean(n.selected) === want.has(n.id) ? n : { ...n, selected: want.has(n.id) }));
 }
 
@@ -315,6 +311,7 @@ function CanvasInner() {
   const irEdges = useEditor((s) => s.edges);
   const warnings = useEditor((s) => s.warnings);
   const selection = useEditor((s) => s.selection);
+  const selectedIds = useEditor((s) => s.selectedIds);
   const codeErrored = useEditor((s) => s.codeErrored);
   const selectionOrigin = useEditor((s) => s.selectionOrigin);
   const setSelection = useEditor((s) => s.setSelection);
@@ -344,15 +341,18 @@ function CanvasInner() {
 
   useEffect(() => {
     const built = buildFlow({ ir, edges: irEdges, warnings }, lensOn ? getAudit(ir) : null);
-    const primary = useEditor.getState().selection;
-    setNodes((previous) => withSelection(built.nodes, previous, primary));
+    const { selection: primary, selectedIds: picked } = useEditor.getState();
+    setNodes(withSelection(built.nodes, picked));
     setEdges(withActiveEdges(built.edges, primary));
   }, [ir, irEdges, warnings, lensOn, setNodes, setEdges]);
 
   useEffect(() => {
-    setNodes((previous) => withSelection(previous, previous, selection));
+    setNodes((previous) => withSelection(previous, selectedIds));
+  }, [selectedIds, setNodes]);
+
+  useEffect(() => {
     setEdges((previous) => withActiveEdges(previous, selection));
-  }, [selection, setNodes, setEdges]);
+  }, [selection, setEdges]);
 
   // React Flow can drop a node's measurement when its size changes (a container
   // growing around a moved child) and hidden tabs skip the first pass; re-measure
@@ -431,14 +431,7 @@ function CanvasInner() {
   /** set while a Shift-drag box selection is in progress */
   const boxSelecting = useRef(false);
 
-  const syncSelection = useCallback(
-    (ids: string[]) => {
-      const current = useEditor.getState().selection;
-      const primary = ids.length === 0 ? null : current && ids.includes(current) ? current : ids[ids.length - 1];
-      if (primary !== current) setSelection(primary);
-    },
-    [setSelection],
-  );
+  const syncSelection = useCallback((ids: string[]) => useEditor.getState().setSelectedIds(ids), []);
 
   const onSelectionChange = useCallback(
     (params: OnSelectionChangeParams) => {
@@ -909,6 +902,29 @@ function CanvasInner() {
     if (menu.nodeId) {
       const node = byId.get(menu.nodeId);
       if (!node) return [];
+      // right-click inside a multi-selection acts on all of it
+      const picked = useEditor.getState().selectedIds;
+      if (picked.length > 1 && picked.includes(node.id)) {
+        const { ir: current } = useEditor.getState();
+        return [
+          ...ALIGN_ACTIONS.map((a) => ({
+            id: a.id,
+            label: a.label,
+            icon: a.icon,
+            disabled: alignActionBlocker(a, current, picked) !== null,
+            onSelect: () => applyCanvasOps(a.ops(useEditor.getState().ir, picked)),
+          })),
+          'separator' as const,
+          {
+            id: 'delete-all',
+            label: `Delete ${picked.length} resources`,
+            icon: Trash2,
+            shortcut: 'Del',
+            danger: true,
+            onSelect: () => useEditor.getState().deleteResources(picked),
+          },
+        ];
+      }
       const docs = docsUrl(node.type);
       return [
         {
@@ -960,7 +976,7 @@ function CanvasInner() {
       'separator',
       ...exportEntries,
     ];
-  }, [menu, byId, duplicate, rf, tidy, exportImage]);
+  }, [menu, byId, duplicate, rf, tidy, exportImage, applyCanvasOps]);
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const stats = `${plural(ir.resources.length, 'resource')}, ${plural(irEdges.length, 'connection')}`;
@@ -1121,7 +1137,15 @@ function CanvasInner() {
           x={menu.x}
           y={menu.y}
           entries={menuEntries}
-          label={menu.nodeId ? 'Resource actions' : menu.exportOnly ? 'Export' : 'Canvas actions'}
+          label={
+            menu.nodeId
+              ? selectedIds.length > 1 && selectedIds.includes(menu.nodeId)
+                ? 'Selection actions'
+                : 'Resource actions'
+              : menu.exportOnly
+                ? 'Export'
+                : 'Canvas actions'
+          }
           onClose={() => setMenu(null)}
         />
       ) : null}

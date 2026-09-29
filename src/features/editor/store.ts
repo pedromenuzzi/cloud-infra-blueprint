@@ -78,6 +78,11 @@ interface EditorState {
   warnings: Diagnostic[];
   codeErrored: boolean;
   selection: string | null;
+  /**
+   * Every selected resource (box or Ctrl-click on the canvas); always holds
+   * `selection`, the one the inspector shows, when there is one.
+   */
+  selectedIds: string[];
   /** who changed the selection last — the code pane only scrolls for canvas picks */
   selectionOrigin: 'canvas' | 'code';
   /** bumped by revealInCode so the code pane scrolls + flashes the block */
@@ -105,6 +110,8 @@ interface EditorState {
   onCodeChange(file: string, text: string): void;
   setActiveFile(file: string): void;
   setSelection(id: string | null, origin?: 'canvas' | 'code'): void;
+  /** the canvas selection; the primary stays when it's still in it unless `primary` says otherwise */
+  setSelectedIds(ids: string[], primary?: string | null): void;
   renameProject(name: string): void;
   revealInCode(nodeId: string): void;
   /** delete resources + their nested children + references to them, as one undo step */
@@ -203,6 +210,7 @@ export const useEditor = create<EditorState>((set, get) => {
     warnings: [],
     codeErrored: false,
     selection: null,
+    selectedIds: [],
     selectionOrigin: 'canvas',
     revealSeq: 0,
     activeFile: 'main.tf',
@@ -385,6 +393,13 @@ export const useEditor = create<EditorState>((set, get) => {
       set({ selection: id, selectionOrigin: origin });
     },
 
+    setSelectedIds(ids, primary) {
+      const { selection, selectedIds } = get();
+      const next = primary !== undefined ? primary : selection && ids.includes(selection) ? selection : (ids[ids.length - 1] ?? null);
+      if (next === selection && sameIds(ids, selectedIds)) return;
+      set({ selectedIds: ids, selection: next, selectionOrigin: 'canvas' });
+    },
+
     renameProject(name) {
       const { projectId } = get();
       const clean = name.trim() || 'Untitled';
@@ -432,7 +447,8 @@ export const useEditor = create<EditorState>((set, get) => {
         warnings: derived.warnings,
         parseDiagnostics: diagnostics,
         codeErrored: hasErrors(diagnostics),
-        selection: null,
+        // keep what's selected when it still exists (undoing an align keeps the selection)
+        selection: keptSelection(get().selection, derived.ir),
       });
       persist();
     },
@@ -456,11 +472,27 @@ export const useEditor = create<EditorState>((set, get) => {
         warnings: derived.warnings,
         parseDiagnostics: diagnostics,
         codeErrored: hasErrors(diagnostics),
-        selection: null,
+        // keep what's selected when it still exists (undoing an align keeps the selection)
+        selection: keptSelection(get().selection, derived.ir),
       });
       persist();
     },
   };
+});
+
+const keptSelection = (id: string | null, ir: IR) => (id && ir.resources.some((r) => r.id === id) ? id : null);
+
+const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+
+// Keep the multi-selection consistent wherever the primary selection or the
+// IR changes: a primary outside it means a single pick, deleted ids leave it.
+useEditor.subscribe((state, prev) => {
+  if (state.selection === prev.selection && state.ir === prev.ir && state.selectedIds === prev.selectedIds) return;
+  const exists = new Set(state.ir.resources.map((r) => r.id));
+  let ids = state.selectedIds.filter((id) => exists.has(id));
+  if (state.selection === null) ids = [];
+  else if (!ids.includes(state.selection)) ids = [state.selection];
+  if (!sameIds(ids, state.selectedIds)) useEditor.setState({ selectedIds: ids });
 });
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {

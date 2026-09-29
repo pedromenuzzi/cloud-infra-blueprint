@@ -46,6 +46,8 @@ between them.
 - ✨ **Quick add**: double-click the canvas to drop a service exactly there (nested into the
   VPC / subnet / group under the cursor).
 - 🪄 **Tidy up**: one-click layered auto-layout (ELK) that understands containers — one undo step.
+- 🧲 **Multi-select** (Shift-drag or `Ctrl`-click): align and distribute, set a shared setting,
+  tag, connect (e.g. one security group to five instances) or delete them all — one undo step each.
 - 🔁 **Selection sync**: pick a node and the code scrolls to its block; click inside a block and
   the node is selected.
 - 🖱️ **Right-click actions**: show in code, rename (`F2`), duplicate (`⌘D`), copy address,

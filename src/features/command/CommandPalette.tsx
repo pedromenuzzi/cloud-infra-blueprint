@@ -44,6 +44,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { focusIsLost, Kbd, restoreFocus, useLayer } from '@/components/ui';
+import { ALIGN_ACTIONS, alignActionBlocker } from '@/features/editor/alignActions';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { useLayout } from '@/features/editor/layoutStore';
@@ -127,6 +128,7 @@ export function CommandPalette() {
   const resources = useEditor((s) => s.ir.resources);
   const files = useEditor((s) => s.files);
   const selection = useEditor((s) => s.selection);
+  const selectedIds = useEditor((s) => s.selectedIds);
   const canUndo = useEditor((s) => s.past.length > 0);
   const canRedo = useEditor((s) => s.future.length > 0);
   const editorReady = inEditor && projectId !== null;
@@ -267,6 +269,22 @@ export function CommandPalette() {
                       />
                     ) : null}
                   </Command.Group>
+
+                  {selectedIds.length > 1 ? (
+                    <Command.Group heading={`Selection · ${selectedIds.length} resources`}>
+                      {ALIGN_ACTIONS.map((a) => (
+                        <Item
+                          key={a.id}
+                          value={a.id}
+                          icon={a.icon}
+                          label={a.label}
+                          keywords={['arrange', 'layout', 'selection']}
+                          disabled={alignActionBlocker(a, ir, selectedIds) !== null}
+                          onSelect={() => run(() => editor().applyCanvasOps(a.ops(editor().ir, editor().selectedIds)))}
+                        />
+                      ))}
+                    </Command.Group>
+                  ) : null}
 
                   <Command.Group heading="Edit & export">
                     <Item value="undo" icon={Undo2} label="Undo" shortcut={`${MOD} Z`} disabled={!canUndo} onSelect={() => run(() => editor().undo())} />

@@ -30,6 +30,7 @@ import { docsUrl, getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
 import { canvasApi } from './canvasApi';
 import { looksLikeTraversal, removeConnectionOps } from './connections';
+import { MultiSelectPanel } from './MultiSelectPanel';
 import { useLayout } from './layoutStore';
 import { orderedFiles, useEditor } from './store';
 
@@ -877,6 +878,7 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
 
 export function Inspector() {
   const selection = useEditor((s) => s.selection);
+  const selectedIds = useEditor((s) => s.selectedIds);
   const ir = useEditor((s) => s.ir);
   const codeErrored = useEditor((s) => s.codeErrored);
   const [tabChoice, setTab] = useState<Tab>('properties');
@@ -891,6 +893,7 @@ export function Inspector() {
   }, [node?.id]);
   const def = node ? getDef(node.type) : undefined;
 
+  if (selectedIds.length > 1) return <MultiSelectPanel ids={selectedIds} />;
   if (!node) return null;
   return (
     <aside
