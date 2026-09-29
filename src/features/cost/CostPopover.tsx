@@ -83,7 +83,7 @@ function Row({ item, onPick }: { item: ResourceCost; onPick(id: string): void })
   );
 }
 
-function Bars({ title, groups }: { title: string; groups: Array<{ key: string; label: string; color: string; monthly: number; note?: string }> }) {
+function Bars({ title, groups }: { title: string; groups: Array<{ key: string; label: string; color: string; monthly: number; note?: string; text?: string }> }) {
   const most = Math.max(...groups.map((g) => g.monthly), 0.01);
   return (
     <section>
@@ -97,9 +97,13 @@ function Bars({ title, groups }: { title: string; groups: Array<{ key: string; l
               {g.note ? <span className="shrink-0 text-[10.5px] text-faint">{g.note}</span> : null}
             </span>
             <span className="h-1.5 overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
-              <span className="block h-full rounded-full" style={{ width: `${Math.max(4, (g.monthly / most) * 100)}%`, background: g.color }} />
+              {g.monthly > 0 ? <span className="block h-full rounded-full" style={{ width: `${Math.max(4, (g.monthly / most) * 100)}%`, background: g.color }} /> : null}
             </span>
-            <span className="text-right font-semibold tabular-nums text-foreground">{usd(g.monthly)}</span>
+            {g.text ? (
+              <span className="text-right text-[10.5px] text-faint">{g.text}</span>
+            ) : (
+              <span className="text-right font-semibold tabular-nums text-foreground">{usd(g.monthly)}</span>
+            )}
           </li>
         ))}
       </ul>
@@ -217,6 +221,7 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
                 note: g.region,
                 color: g.key === 'aws' ? '#ff9900' : g.key === 'azure' ? '#0078d4' : '#4285f4',
                 monthly: g.monthly,
+                text: g.priced ? undefined : 'no fixed price',
               }))}
             />
           </div>

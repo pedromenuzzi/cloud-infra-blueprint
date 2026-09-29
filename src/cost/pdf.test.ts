@@ -46,6 +46,9 @@ describe('PDF cost estimate', () => {
     expect(text).toMatch(/t3\.micro 730 h × \$0\.\d+ = \$\d+\.\d\d/);
     expect(text).toContain('This is an estimate for planning, not a quote.');
     expect(text).toMatch(/No charge of their own \(9\): /);
+    // five overview tiles: every label still fits
+    expect(text.split('\n')).toContain('NETWORKS');
+    expect(text).not.toMatch(/^[A-Z .&]+…$/m);
   });
 
   it('is left out when the switch is off (or absent)', () => {
@@ -62,7 +65,7 @@ describe('PDF cost estimate', () => {
     const multi = pdfFor('multi-cloud-dr');
     const text = pdfText(multi.bytes);
     expect(text).toContain('By cloud');
-    for (const g of multi.cost.byProvider.filter((p) => p.key !== 'other')) expect(text).toContain(usd(g.monthly));
+    for (const g of multi.cost.byProvider.filter((p) => p.key !== 'other')) expect(text).toContain(g.priced ? usd(g.monthly) : 'no fixed price');
   });
 
   it('keeps every line of the section inside the margins', () => {

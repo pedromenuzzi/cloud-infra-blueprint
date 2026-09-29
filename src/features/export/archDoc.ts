@@ -828,7 +828,8 @@ function overview(
   const tiles: Array<{ value: string; label: string; color?: PdfColor }> = [
     { value: String(ir.resources.length), label: 'Resources' },
     { value: String(edges.length), label: 'Connections' },
-    { value: String(containers), label: 'Networks & groups' },
+    // five tiles (with the cost one) leave no room for the long label
+    { value: String(containers), label: cost ? 'Networks' : 'Networks & groups' },
   ];
   if (input.sections.security && audit.grade) {
     tiles.push({ value: audit.grade, label: `Security score ${audit.score}`, color: GRADE_COLOR[audit.grade] });
@@ -1159,7 +1160,7 @@ const COST_KIND_ORDER = { fixed: 0, usage: 1, unknown: 2, free: 3 } as const;
 const AMBER = '#b45309';
 
 /** amounts as bars: a label, a bar sized against the largest, the amount */
-function costBars(c: Cursor, groups: Array<{ label: string; color: PdfColor; monthly: number; note?: string }>) {
+function costBars(c: Cursor, groups: Array<{ label: string; color: PdfColor; monthly: number; note?: string; text?: string }>) {
   const most = Math.max(0.01, ...groups.map((g) => g.monthly));
   const labelW = 150;
   const amountW = 64;
@@ -1172,8 +1173,8 @@ function costBars(c: Cursor, groups: Array<{ label: string; color: PdfColor; mon
       c.page.text(fitText(g.note, labelW - 14 - textWidth(label, 'regular', 9), 'regular', 7.5), c.left + textWidth(label, 'regular', 9) + 6, baseline(c.y, 9, 13), { size: 7.5, color: FAINT });
     }
     c.page.rect(c.left + labelW, c.y + 3, barW, 7, { fill: SOFT, radius: 3.5 });
-    c.page.rect(c.left + labelW, c.y + 3, Math.max(7, (barW * g.monthly) / most), 7, { fill: g.color, radius: 3.5 });
-    c.page.text(usd(g.monthly), c.left + c.width, baseline(c.y, 9, 13), { font: 'bold', size: 9, color: INK, align: 'right' });
+    if (g.monthly > 0) c.page.rect(c.left + labelW, c.y + 3, Math.max(7, (barW * g.monthly) / most), 7, { fill: g.color, radius: 3.5 });
+    c.page.text(g.text ?? usd(g.monthly), c.left + c.width, baseline(c.y, 9, 13), g.text ? { size: 8, color: MUTED, align: 'right' } : { font: 'bold', size: 9, color: INK, align: 'right' });
     c.y += 17;
   }
   c.y += 10;
@@ -1239,7 +1240,16 @@ function* costEstimate(c: Cursor, cost: ProjectCost): Generator<void, void> {
   }
   if (clouds.length > 1) {
     c.heading('By cloud');
-    costBars(c, clouds.map((g) => ({ label: PROVIDER_NAME[g.key], note: g.region, color: PROVIDER_COLOR[g.key], monthly: g.monthly })));
+    costBars(
+      c,
+      clouds.map((g) => ({
+        label: PROVIDER_NAME[g.key],
+        note: g.region,
+        color: PROVIDER_COLOR[g.key],
+        monthly: g.monthly,
+        text: g.priced ? undefined : 'no fixed price',
+      })),
+    );
   }
 
   // one row per resource that costs (or may cost) something, grouped by category
