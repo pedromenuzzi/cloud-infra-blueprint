@@ -6,7 +6,7 @@ let pending: Promise<PriceBook> | null = null;
 const listeners = new Set<() => void>();
 
 export function loadPriceBook(): Promise<PriceBook> {
-  pending ??= import('./prices').then(
+  pending ??= import('./prices/prices').then(
     (m) => {
       book = m.PRICE_BOOK;
       listeners.forEach((l) => l());

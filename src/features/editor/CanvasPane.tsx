@@ -44,6 +44,7 @@ import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { showToast } from '@/components/Toast';
 import { Button, Kbd } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { CostChip } from '@/features/cost/CostChip';
 import { captureDiagram } from '@/features/export/captureDiagram';
 import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
@@ -1090,6 +1091,7 @@ function CanvasInner() {
             >
               {stats}
             </button>
+            <CostChip />
             {warnings.length > 0 ? (
               <button
                 type="button"

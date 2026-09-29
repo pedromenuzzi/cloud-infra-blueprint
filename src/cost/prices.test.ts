@@ -12,7 +12,7 @@ import { emptyIR } from '@/ir/types';
 import { allDefs, getDef } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
 import { estimateProject, estimateResource } from './estimate';
-import { PRICE_BOOK } from './prices';
+import { PRICE_BOOK } from './prices/prices';
 import { resourceRegion } from './resolve';
 import { hasRule, UNPRICED_OPTIONS } from './services';
 import type { CostKind } from './types';

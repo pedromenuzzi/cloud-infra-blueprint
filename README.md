@@ -33,6 +33,8 @@ between them.
 - 🛡️ **Security audit**: findings ranked by severity with plain-language explanations and
   one-click fixes, a canvas lens that highlights what's exposed to the internet, and a
   firewall rule editor for AWS security groups / NACLs, Azure NSGs and GCP firewalls.
+- 💵 **Cost estimate**: a live "~$27/mo" on the canvas, a per-resource breakdown in the inspector
+  and the PDF — on-demand list prices shipped with the app (no network calls), every assumption shown.
 - 📄 **PDF export**: a shareable architecture document — the diagram plus a readable summary
   of resources, connections, security findings and the code — generated in the browser.
 - 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the
