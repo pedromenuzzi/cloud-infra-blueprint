@@ -33,6 +33,9 @@ between them.
 - 🛡️ **Security audit**: findings ranked by severity with plain-language explanations and
   one-click fixes, a canvas lens that highlights what's exposed to the internet, and a
   firewall rule editor for AWS security groups / NACLs, Azure NSGs and GCP firewalls.
+- 🧮 **Validation & CIDR planner**: warnings for overlapping or out-of-range CIDRs, invalid
+  cloud names and AZs outside the region, plus an inspector planner that carves new subnets
+  (or splits a VPC across AZs) from the free address space.
 - 📄 **PDF export**: a shareable architecture document — the diagram plus a readable summary
   of resources, connections, security findings and the code — generated in the browser.
 - 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the
