@@ -121,6 +121,8 @@ function SharedField({ field, ids }: { field: FieldDef; ids: string[] }) {
 export function MultiSelectPanel({ ids }: { ids: string[] }) {
   const ir = useEditor((s) => s.ir);
   const codeErrored = useEditor((s) => s.codeErrored);
+  const readOnly = useEditor((s) => s.readOnly);
+  const locked = codeErrored || readOnly;
   const apply = useEditor((s) => s.applyCanvasOps);
   const nodes = useMemo(() => selectedNodes(ir, ids), [ir, ids]);
   const fields = useMemo(() => commonFields(nodes), [nodes]);
@@ -200,7 +202,7 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
         </p>
       ) : null}
 
-      <fieldset disabled={codeErrored} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <fieldset disabled={locked} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         <Section title="Arrange">
           <div className="grid grid-cols-8 gap-1" role="toolbar" aria-label="Align and distribute">
             {ALIGN_ACTIONS.map((a) => {
@@ -299,11 +301,11 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
         </Section>
       </fieldset>
 
-      <div className="border-t p-3">
+      <div className={readOnly ? 'hidden' : 'border-t p-3'}>
         <Button
           variant="outline"
           size="sm"
-          disabled={codeErrored}
+          disabled={locked}
           className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
           onClick={() => {
             const count = useEditor.getState().deleteResources(ids);

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { Button, Modal } from '@/components/ui';
+import { openGithubImport, readGithubFragment } from '@/features/import/githubImportStore';
 import {
   clearShareFragment,
   readShareFromLocation,
@@ -24,6 +25,16 @@ interface Pending {
   existing?: Project;
 }
 
+let offer: ((payload: SharePayload) => void) | null = null;
+
+/**
+ * Ask to import `payload` as a local copy — the same confirmation and dedupe
+ * as opening its share link (the read-only viewer's "Make a copy to edit").
+ */
+export function offerShareImport(payload: SharePayload) {
+  offer?.(payload);
+}
+
 /**
  * `#share=<deflated project>` links: on load and on every fragment change
  * (pasting a link into a tab that's already open), ask before importing and
@@ -35,7 +46,18 @@ export function ShareLinkHost() {
   const primaryRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    const ask = (payload: SharePayload) => {
+      const origin = `share:${shareHash(payload)}`;
+      setPending({ payload, origin, existing: findProjectByOrigin(origin) });
+    };
     const check = () => {
+      // `#gh=owner/repo[/path][@ref]`: the GitHub import dialog, prefilled
+      const gh = readGithubFragment(location.hash);
+      if (gh) {
+        clearShareFragment();
+        openGithubImport(gh, { fromLink: true });
+        return;
+      }
       const result = readShareFromLocation();
       if (!result) return;
       clearShareFragment(); // handled once, whatever happens next
@@ -43,12 +65,15 @@ export function ShareLinkHost() {
         showToast(ERRORS[result.error], 'error');
         return;
       }
-      const origin = `share:${shareHash(result.payload)}`;
-      setPending({ payload: result.payload, origin, existing: findProjectByOrigin(origin) });
+      ask(result.payload);
     };
+    offer = ask;
     check();
     window.addEventListener('hashchange', check);
-    return () => window.removeEventListener('hashchange', check);
+    return () => {
+      offer = null;
+      window.removeEventListener('hashchange', check);
+    };
   }, []);
 
   useEffect(() => {

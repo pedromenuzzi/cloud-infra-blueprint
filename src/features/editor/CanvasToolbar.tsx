@@ -55,7 +55,8 @@ export function CanvasToolbar({
   minimap: boolean;
   tidying: boolean;
   onToggleMinimap(): void;
-  onTidy(): void;
+  /** omitted in a read-only view */
+  onTidy?(): void;
   onExport(e: React.MouseEvent<HTMLButtonElement>): void;
 }) {
   const rf = useReactFlow();
@@ -91,13 +92,15 @@ export function CanvasToolbar({
         >
           <Maximize className="h-3.5 w-3.5" />
         </ToolButton>
-        <ToolButton label="Tidy up layout" onClick={onTidy}>
-          {tidying ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <WandSparkles className="h-3.5 w-3.5" />
-          )}
-        </ToolButton>
+        {onTidy ? (
+          <ToolButton label="Tidy up layout" onClick={onTidy}>
+            {tidying ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <WandSparkles className="h-3.5 w-3.5" />
+            )}
+          </ToolButton>
+        ) : null}
         <Divider />
         <ToolButton label={lens ? 'Hide security lens' : 'Security lens'} pressed={lens} onClick={toggleLens}>
           <ScanEye className="h-3.5 w-3.5" />

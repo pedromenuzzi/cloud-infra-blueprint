@@ -48,6 +48,7 @@ import { ALIGN_ACTIONS, alignActionBlocker } from '@/features/editor/alignAction
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { useLayout } from '@/features/editor/layoutStore';
+import { openGithubImport } from '@/features/import/githubImportStore';
 import { fixAllFindings, getAudit, useSecurityUi } from '@/features/security/securityStore';
 import { ResourceGroups, wordFilter } from '@/features/editor/ResourcePicker';
 import { orderedFiles, useEditor } from '@/features/editor/store';
@@ -413,6 +414,13 @@ export function CommandPalette() {
                       navigate(`/editor/${project.id}`);
                     })
                   }
+                />
+                <Item
+                  value="import-github"
+                  icon={Github}
+                  label="Import from GitHub…"
+                  keywords={['repository', 'repo', 'gist', 'url', 'clone', 'open']}
+                  onSelect={() => run(() => openGithubImport())}
                 />
               </Command.Group>
 

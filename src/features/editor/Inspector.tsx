@@ -794,6 +794,7 @@ function CodeTab({ node }: { node: ResourceNode }) {
 export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
   const projectName = useEditor((s) => s.projectName);
   const renameProject = useEditor((s) => s.renameProject);
+  const readOnly = useEditor((s) => s.readOnly);
   const ir = useEditor((s) => s.ir);
   const edges = useEditor((s) => s.edges);
   const files = useEditor((s) => s.files);
@@ -811,6 +812,7 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
         <Input
           key={projectName}
           defaultValue={projectName}
+          readOnly={readOnly}
           onBlur={(e) => {
             if (e.target.value.trim() && e.target.value !== projectName) {
               renameProject(e.target.value);
@@ -885,6 +887,7 @@ export function Inspector() {
   const selectedIds = useEditor((s) => s.selectedIds);
   const ir = useEditor((s) => s.ir);
   const codeErrored = useEditor((s) => s.codeErrored);
+  const readOnly = useEditor((s) => s.readOnly);
   const [tabChoice, setTab] = useState<Tab>('properties');
   const node = selection ? ir.resources.find((r) => r.id === selection) : undefined;
   const isOwner = node ? OWNER_TYPES[node.type] !== undefined : false;
@@ -967,29 +970,43 @@ export function Inspector() {
             </div>
           </div>
 
-          {codeErrored ? (
+          {readOnly ? (
+            <p role="status" className="border-b bg-surface-2/60 px-3.5 py-2 text-[11.5px] font-medium text-muted">
+              Read-only view — make a copy to edit.
+            </p>
+          ) : codeErrored ? (
             <p role="status" className="border-b bg-warning/10 px-3.5 py-2 text-[11.5px] font-medium text-warning">
               Read-only until the code parses — fix the errors in the code pane.
             </p>
           ) : null}
-          <fieldset disabled={codeErrored} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-            {tab === 'rules' ? <RulesTab node={node} /> : null}
-            {tab === 'properties' ? <PropertiesTab node={node} /> : null}
-            {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
-            {tab === 'code' ? <CodeTab node={node} /> : null}
-          </fieldset>
-
-          <div className="border-t p-3">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={codeErrored}
-              className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
-              onClick={() => useEditor.getState().deleteResources([node.id])}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete resource
-            </Button>
+          {/* disabled, nothing inside takes focus: the scroll area itself must, for keyboard scrolling */}
+          <div
+            role={codeErrored || readOnly ? 'group' : undefined}
+            tabIndex={codeErrored || readOnly ? 0 : undefined}
+            aria-label={codeErrored || readOnly ? 'Resource settings (read-only)' : undefined}
+            className="min-h-0 flex-1 overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+          >
+            <fieldset disabled={codeErrored || readOnly} className="min-w-0">
+              {tab === 'rules' ? <RulesTab node={node} /> : null}
+              {tab === 'properties' ? <PropertiesTab node={node} /> : null}
+              {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
+              {tab === 'code' ? <CodeTab node={node} /> : null}
+            </fieldset>
           </div>
+
+          {readOnly ? null : (
+            <div className="border-t p-3">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={codeErrored}
+                className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
+                onClick={() => useEditor.getState().deleteResources([node.id])}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete resource
+              </Button>
+            </div>
+          )}
         </>
       }
     </aside>
