@@ -336,7 +336,7 @@ export const securityUiMessages = defineMessages(
     greyedAfter: 'para editá-las no código.',
     inbound: 'Entrada',
     outbound: 'Saída',
-    addRule: 'Adicionar regra',
+    addRule: 'Nova regra',
     noRulesShown: 'Nenhuma regra que o editor consiga mostrar.',
     noInbound: 'Nenhuma regra de entrada — nada consegue se conectar aos recursos deste grupo.',
     noOutbound: 'Nenhuma regra de saída — os recursos deste grupo não conseguem iniciar conexões.',

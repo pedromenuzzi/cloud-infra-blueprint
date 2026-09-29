@@ -160,8 +160,8 @@ test('rules editor: columns, presets, validation and notices — in Portuguese',
   await expect(row.getByRole('combobox', { name: 'Serviço' })).toHaveValue('http');
   await expect(row.getByRole('combobox', { name: 'Serviço' }).locator('option[value="all-tcp"]')).toHaveText('Todas as portas TCP');
 
-  await dialog.getByRole('button', { name: 'Adicionar regra' }).click();
-  const menu = page.getByRole('menu', { name: 'Adicionar regra' });
+  await dialog.getByRole('button', { name: 'Nova regra' }).click();
+  const menu = page.getByRole('menu', { name: 'Nova regra' });
   await expect(menu.getByRole('menuitem', { name: /^Todo o tráfego/ })).toBeVisible();
   await menu.getByRole('menuitem', { name: /^SSH/ }).click();
   // SSH starts on the VPC's range, not the internet: the row reads it in Portuguese, the code keeps the ASCII description
