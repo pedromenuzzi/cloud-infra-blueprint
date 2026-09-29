@@ -5,6 +5,7 @@ import { deriveStructure } from '@/ir/graph';
 import { autoLayout } from '@/ir/layout';
 import { applyOps, type Op } from '@/ir/ops';
 import type { IR, ResourceNode } from '@/ir/types';
+import { findConnectionRule } from '@/resources/connect';
 import { FAMILY, NOUNS, reasonMessages } from '@/resources/dropReasons';
 import { allDefs, getDef, isContainerType } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
@@ -77,6 +78,17 @@ describe('refusal reasons', () => {
           if (locale === 'en') expect(reason, `${def.type} in ${c.type}`).toMatch(/\p{Lu}/u);
         }
         expect(refusalReason(def.type, over, 'pt-BR')).not.toBe(refusalReason(def.type, over, 'en'));
+      }
+    }
+  });
+
+  it('can set every containment it accepts on a drop (never a silent refusal)', () => {
+    for (const def of allDefs()) {
+      for (const rule of def.containment ?? []) {
+        if (rule.via) continue;
+        for (const parent of rule.parentTypes) {
+          expect(findConnectionRule(def, parent)?.mode, `${def.type} dropped in ${parent}`).toBe('set');
+        }
       }
     }
   });

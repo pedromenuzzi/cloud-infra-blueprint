@@ -309,7 +309,8 @@ export const reasonMessages = defineMessages(
     notInside: (r: Noun, c: Noun) =>
       `${Um(r)} não fica dentro de ${um(c)} — nenhuma configuração ${r.f ? 'dela' : 'dele'} ${lo(r)} coloca lá`,
     subnetGroup: (r: Noun, group: Noun) =>
-      `${Um(r)} não fica em uma sub-rede só — ${ele(r)} roda em ${um(group)} que cobre duas ou mais zonas de disponibilidade`,
+      // the AWS term on first mention, as the glossary says
+      `${Um(r)} não fica em uma sub-rede só — ${ele(r)} roda em ${um(group)} (${group.en}) que cobre duas ou mais zonas de disponibilidade`,
     subnetGroupVpc: (r: Noun, group: Noun) =>
       `${Um(r)} fica dentro de ${um(group)}, não direto na VPC — as sub-redes do grupo decidem onde ${ele(r)} roda`,
     groupSpans: (r: Noun) => `${Um(r)} cobre sub-redes em vez de ficar dentro de uma — conecte-${lo(r)} a cada sub-rede que deve usar`,

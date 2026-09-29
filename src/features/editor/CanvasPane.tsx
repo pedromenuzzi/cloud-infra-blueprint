@@ -46,6 +46,7 @@ import { Button, Kbd } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
 import { CostChip } from '@/features/cost/CostChip';
 import { captureDiagram } from '@/features/export/captureDiagram';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
@@ -90,7 +91,6 @@ import type { AuditResult } from '@/security/audit';
 import { ruleRisk } from '@/security/audit';
 import { isRuleResource } from '@/security/model';
 import { useEditor } from './store';
-import { messagesFor, useMessages } from '@/i18n/messages';
 
 const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, internet: InternetNodeView };
 const edgeTypes = { flow: FlowEdge, secflow: SecFlowEdge };
