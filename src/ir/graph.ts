@@ -10,6 +10,13 @@ export interface ContainmentRule {
   arg: string;
   /** resource types that can be the parent, e.g. ['aws_vpc'] */
   parentTypes: string[];
+  /**
+   * Containment through what `arg` references instead of the reference
+   * itself: `arg` lists resources of these types, and the parent is the
+   * container they all sit in — a DB subnet group is drawn in the VPC of its
+   * subnets. Derived only: a drop never sets it, dragging out never unsets it.
+   */
+  via?: string[];
 }
 
 export interface DefLookup {
@@ -33,6 +40,7 @@ export function deriveStructure(ir: IR, lookup: DefLookup): IREdge[] {
     const def = lookup(node.type);
     if (!def?.containment) continue;
     for (const rule of def.containment) {
+      if (rule.via) continue;
       const expr = node.args[rule.arg];
       if (!expr) continue;
       const refs: Array<{ field: string; path: string }> = [];
@@ -47,6 +55,30 @@ export function deriveStructure(ir: IR, lookup: DefLookup): IREdge[] {
         }
       }
       if (node.parentId) break;
+    }
+  }
+
+  // --- containment through references (after the direct pass: it reads parents)
+  for (const node of ir.resources) {
+    if (node.parentId) continue;
+    for (const rule of lookup(node.type)?.containment ?? []) {
+      if (!rule.via) continue;
+      const expr = node.args[rule.arg];
+      if (!expr) continue;
+      const refs: Array<{ field: string; path: string }> = [];
+      collectRefs(expr, rule.arg, refs);
+      const parents = new Set<string | undefined>();
+      for (const r of refs) {
+        const target = byId.get(refTargetAddress(r.path) ?? '');
+        if (target && rule.via.includes(target.type)) parents.add(target.parentId);
+      }
+      // every listed resource in the same container, and one of the right type
+      const [only] = parents;
+      const parent = parents.size === 1 && only ? byId.get(only) : undefined;
+      if (parent && rule.parentTypes.includes(parent.type)) {
+        node.parentId = parent.id;
+        break;
+      }
     }
   }
 

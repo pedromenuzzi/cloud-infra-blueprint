@@ -15,6 +15,27 @@ const MAX_ROW_W = 1280;
 export const CONTAINER_MIN_W = 320;
 export const CONTAINER_MIN_H = 180;
 
+/**
+ * Spacing of Auto-arrange, shared with new-node placement so an added
+ * resource lands where arranging would put it.
+ */
+export const ARRANGE = {
+  /** container sides and bottom */
+  pad: 28,
+  /** first row inside a container, below its title bar */
+  top: 56,
+  /** between resources in a row / between rows */
+  gapX: 36,
+  gapY: 32,
+  /** between sibling containers (subnets side by side) */
+  groupGap: 36,
+  /** between a container's resources and its sub-containers */
+  bandGap: 40,
+} as const;
+
+/** columns of the grid `n` resources are arranged in: square-ish (1, 2, 2, 2, 3, 3…) */
+export const leafColumns = (n: number) => Math.max(1, Math.ceil(Math.sqrt(n)));
+
 interface Sized {
   node: ResourceNode | null; // null = virtual root
   children: Sized[];

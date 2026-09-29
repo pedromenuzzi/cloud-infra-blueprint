@@ -69,7 +69,7 @@ test('the viewer shows the project read-only: drag, delete, connect and typing c
   const menu = page.getByRole('menu', { name: 'Resource actions' });
   await expect(menu.getByRole('menuitem')).toHaveText(['Show in code', 'Copy address', 'Terraform docs']);
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Tidy up layout' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Auto-arrange' })).toHaveCount(0);
   const vpc = node(page, 'aws_vpc.main');
   await vpc.click({ position: { x: 60, y: 12 } });
   await expect(vpc.locator('.react-flow__resize-control')).toHaveCount(0);

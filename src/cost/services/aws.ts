@@ -243,6 +243,7 @@ const FREE: Record<string, ((m: ServiceMessages) => string) | undefined> = {
   aws_route_table_association: undefined,
   aws_internet_gateway: (m) => m.aws.free.igw,
   aws_db_subnet_group: undefined,
+  aws_elasticache_subnet_group: undefined,
   aws_lb_target_group: (m) => m.aws.free.viaLoadBalancer,
   aws_lb_listener: (m) => m.aws.free.viaLoadBalancer,
   aws_ecs_cluster: (m) => m.aws.free.cluster,

@@ -46,9 +46,10 @@ import { Button, Kbd } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
 import { CostChip } from '@/features/cost/CostChip';
 import { captureDiagram } from '@/features/export/captureDiagram';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
-import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
+import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
@@ -67,9 +68,13 @@ import { removeReferencesOps } from './connections';
 import { ProjectOverview } from './Inspector';
 import { floatingInspectorInset, useFloatingInspectorShown } from './inspectorPlacement';
 import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
-import { buildNewNode, duplicateNode } from './newNode';
+import { duplicateNode } from './newNode';
 import { ResourcePicker } from './ResourcePicker';
-import { computeTidyOps } from './tidy';
+import { arrangeMessages } from './arrange.messages';
+import { DropHintCard, useTrackPaletteDrag } from './dropHint';
+import { hasOverlaps } from './placement';
+import { computeArrangeInsideOps, computeTidyOps } from './tidy';
+import { useCanvasDrops } from './useCanvasDrops';
 import {
   ContainerNodeView,
   FlowEdge,
@@ -369,7 +374,8 @@ function CanvasInner() {
   }, [nodes, rf, updateNodeInternals]);
 
   const byId = useMemo(() => new Map(ir.resources.map((r) => [r.id, r] as const)), [ir]);
-  const absRects = useMemo(() => computeAbsoluteRects(ir), [ir]);
+  const overlapping = useMemo(() => hasOverlaps(ir), [ir]);
+  const am = useMessages(arrangeMessages);
 
   // arrow keys move selected nodes: persist them (one undo step per burst) like a drag
   const lastArrowKey = useRef(0);
@@ -445,153 +451,18 @@ function CanvasInner() {
     [syncSelection],
   );
 
-  /** containers that may adopt `node`, deepest first */
-  const findContainerAt = useCallback(
-    (nodeId: string | null, def: ResourceDef | undefined, cx: number, cy: number) => {
-      if (!def?.containment) return undefined;
-      const accepted = new Set(def.containment.flatMap((c) => c.parentTypes));
-      // exclude self and descendants
-      const isDescendantOfNode = (r: ResourceNode): boolean => {
-        let cur: ResourceNode | undefined = r;
-        let guard = 0;
-        while (cur && guard++ < 12) {
-          if (cur.id === nodeId) return true;
-          cur = cur.parentId ? byId.get(cur.parentId) : undefined;
-        }
-        return false;
-      };
-      let best: AbsRect | undefined;
-      for (const rect of absRects.values()) {
-        if (!rect.isContainer) continue;
-        if (!accepted.has(rect.node.type)) continue;
-        if (nodeId && (rect.node.id === nodeId || isDescendantOfNode(rect.node))) continue;
-        const inside =
-          cx >= rect.x && cx <= rect.x + rect.w && cy >= rect.y && cy <= rect.y + rect.h;
-        if (!inside) continue;
-        if (!best || rect.depth > best.depth) best = rect;
-      }
-      return best;
-    },
-    [absRects, byId],
-  );
+  /** nodes glide to their new place for a moment (Auto-arrange, a refused drop snapping back) */
+  const layoutTimer = useRef<ReturnType<typeof setTimeout>>();
+  const animateLayout = useCallback((ms = 520) => {
+    setLayoutAnim(true);
+    clearTimeout(layoutTimer.current);
+    layoutTimer.current = setTimeout(() => setLayoutAnim(false), ms);
+  }, []);
+  useEffect(() => () => clearTimeout(layoutTimer.current), []);
 
-  /**
-   * The deepest container under a point that `node` is not part of (neither
-   * its parent chain nor itself/its descendants) — dropping there misleads.
-   */
-  const foreignContainerAt = useCallback(
-    (node: ResourceNode, cx: number, cy: number): AbsRect | undefined => {
-      const ancestors = new Set<string>();
-      for (let cur = node.parentId, guard = 0; cur && guard < 12; cur = byId.get(cur)?.parentId, guard++) ancestors.add(cur);
-      const isSelfOrDescendant = (r: ResourceNode): boolean => {
-        for (let cur: ResourceNode | undefined = r, guard = 0; cur && guard < 12; cur = cur.parentId ? byId.get(cur.parentId) : undefined, guard++) {
-          if (cur.id === node.id) return true;
-        }
-        return false;
-      };
-      let best: AbsRect | undefined;
-      for (const rect of absRects.values()) {
-        if (!rect.isContainer || ancestors.has(rect.node.id) || isSelfOrDescendant(rect.node)) continue;
-        const inside = cx >= rect.x && cx <= rect.x + rect.w && cy >= rect.y && cy <= rect.y + rect.h;
-        if (inside && (!best || rect.depth > best.depth)) best = rect;
-      }
-      return best;
-    },
-    [absRects, byId],
-  );
-
-  const onNodeDragStop = useCallback(
-    (_e: unknown, node: Node, dragged: Node[]) => {
-      const ops: Op[] = [];
-      const group = dragged.length > 0 ? dragged : [node];
-
-      for (const n of group) {
-        const irNode = byId.get(n.id);
-        if (!irNode) continue;
-        const def = getDef(irNode.type);
-        const internal = rf.getInternalNode(n.id);
-        const abs = internal?.internals.positionAbsolute ?? n.position;
-        const { w, h } = internal ? sizeOf(internal) : { w: NODE_W, h: NODE_H };
-        const keepSize =
-          irNode.position?.w !== undefined
-            ? { w: irNode.position.w, h: irNode.position.h }
-            : {};
-
-        // only the primary node may reparent, and only when it's a single-drag
-        const canReparent = group.length === 1 && n.id === node.id;
-        if (canReparent && def?.containment) {
-          const target = findContainerAt(n.id, def, abs.x + w / 2, abs.y + h / 2);
-          const currentParent = irNode.parentId;
-          const nextParent = target?.node.id;
-          if (nextParent !== currentParent) {
-            if (nextParent && target) {
-              const rule = findConnectionRule(def, target.node.type);
-              const link = rule && rule.mode === 'set' ? connectionOp(irNode, target.node, rule) : null;
-              if (link) {
-                ops.push(link);
-                ops.push({
-                  kind: 'move_node',
-                  nodeId: n.id,
-                  position: {
-                    x: Math.round(abs.x - target.x),
-                    y: Math.round(abs.y - target.y),
-                    ...keepSize,
-                  },
-                });
-                continue;
-              }
-              showToast(`Can't nest here — connect it in code instead`, 'info');
-            } else if (currentParent) {
-              // dropped outside: detach from the parent that a containment arg points at
-              const parent = byId.get(currentParent);
-              const rule = def.containment.find((c) =>
-                parent ? c.parentTypes.includes(parent.type) : false,
-              );
-              if (rule) {
-                ops.push({ kind: 'unset_arg', nodeId: n.id, field: rule.arg });
-                ops.push({
-                  kind: 'move_node',
-                  nodeId: n.id,
-                  position: { x: Math.round(abs.x), y: Math.round(abs.y), ...keepSize },
-                });
-                showToast(`Removed ${rule.arg} from ${n.id} — it's no longer in ${currentParent} (${MOD} Z to undo)`, 'info');
-                continue;
-              }
-            }
-          }
-        }
-
-        // a drop over a container the node can't belong to would draw it inside
-        // something it isn't part of: set it down just beside that container
-        const over = group.length === 1 ? foreignContainerAt(irNode, abs.x + w / 2, abs.y + h / 2) : undefined;
-        if (over) {
-          const parentRect = irNode.parentId ? absRects.get(irNode.parentId) : undefined;
-          ops.push({
-            kind: 'move_node',
-            nodeId: n.id,
-            position: {
-              x: Math.round(over.x + over.w + 24 - (parentRect?.x ?? 0)),
-              y: Math.round(abs.y - (parentRect?.y ?? 0)),
-              ...keepSize,
-            },
-          });
-          showToast(
-            `${def?.shortName ?? irNode.type} can't go inside ${getDef(over.node.type)?.shortName ?? over.node.type} — placed next to it`,
-            'info',
-          );
-          continue;
-        }
-
-        ops.push({
-          kind: 'move_node',
-          nodeId: n.id,
-          position: { x: Math.round(n.position.x), y: Math.round(n.position.y), ...keepSize },
-        });
-      }
-      if (ops.length > 0) applyCanvasOps(ops);
-    },
-    [absRects, applyCanvasOps, byId, findContainerAt, foreignContainerAt, rf],
-  );
+  // drags and palette drops: nesting rules, hints, explanations and fixes
+  const drops = useCanvasDrops({ animate: animateLayout });
+  useTrackPaletteDrag();
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -681,28 +552,7 @@ function CanvasInner() {
     [applyCanvasOps],
   );
 
-  /** add a catalog resource at a flow position, nesting it in the container under it */
-  const placeResource = useCallback(
-    (def: ResourceDef, flowPos: { x: number; y: number }) => {
-      const state = useEditor.getState();
-      const container = findContainerAt(null, def, flowPos.x, flowPos.y);
-      const size = isContainerType(def.type) ? { w: CONTAINER_MIN_W, h: CONTAINER_MIN_H } : {};
-      const position = container
-        ? {
-            x: Math.max(12, Math.round(flowPos.x - container.x - NODE_W / 2)),
-            y: Math.max(48, Math.round(flowPos.y - container.y - NODE_H / 2)),
-            ...size,
-          }
-        : {
-            x: Math.round(flowPos.x - NODE_W / 2),
-            y: Math.round(flowPos.y - NODE_H / 2),
-            ...size,
-          };
-      const { node, ops } = buildNewNode(state.ir, def, position, container?.node);
-      applyCanvasOps(ops, node.id);
-    },
-    [applyCanvasOps, findContainerAt],
-  );
+  const { placeResource } = drops;
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -732,22 +582,51 @@ function CanvasInner() {
     [applyCanvasOps],
   );
 
+  /** apply layout moves as one undo step, gliding; says so when nothing would move */
+  const applyLayout = useCallback(
+    (ops: Op[]) => {
+      const current = new Map(useEditor.getState().ir.resources.map((r) => [r.id, r.position] as const));
+      const moves = ops.filter((op) => {
+        if (op.kind !== 'move_node') return true;
+        const p = current.get(op.nodeId);
+        return !p || p.x !== op.position.x || p.y !== op.position.y || p.w !== op.position.w || p.h !== op.position.h;
+      });
+      if (moves.length === 0) {
+        showToast(messagesFor(arrangeMessages).already, 'info');
+        return false;
+      }
+      animateLayout();
+      applyCanvasOps(moves);
+      return true;
+    },
+    [animateLayout, applyCanvasOps],
+  );
+
   const tidy = useCallback(async () => {
     const state = useEditor.getState();
     if (state.ir.resources.length === 0 || tidying) return;
     setTidying(true);
     try {
       const ops = await computeTidyOps(state.ir, state.edges, isContainerType);
-      setLayoutAnim(true);
-      applyCanvasOps(ops);
-      setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(450) }), 60);
-      setTimeout(() => setLayoutAnim(false), 520);
+      if (applyLayout(ops)) {
+        // once containers are re-measured at their new sizes (after the glide)
+        setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(400) }), motionMs(480) + 60);
+      }
     } catch (err) {
-      showToast(`Couldn't tidy the layout: ${(err as Error).message}`, 'error');
+      showToast(messagesFor(arrangeMessages).failed((err as Error).message), 'error');
     } finally {
       setTidying(false);
     }
-  }, [applyCanvasOps, rf, tidying]);
+  }, [applyLayout, rf, tidying]);
+
+  /** "Arrange inside": only one container's contents */
+  const arrangeInside = useCallback(
+    (containerId: string) => {
+      const state = useEditor.getState();
+      applyLayout(computeArrangeInsideOps(state.ir, state.edges, isContainerType, containerId));
+    },
+    [applyLayout],
+  );
 
   /**
    * Run `capture` on a clean diagram (no selection glow, resize handles or
@@ -879,19 +758,24 @@ function CanvasInner() {
       zoomIn: () => void rf.zoomIn({ duration: motionMs(200) }),
       zoomOut: () => void rf.zoomOut({ duration: motionMs(200) }),
       tidy,
+      arrangeInside,
       exportImage,
       captureDiagram: (options) =>
         withCleanDiagram((bounds) => captureDiagram(rf, bounds, useSecurityUi.getState().lens, options)),
       addResource: (type, screen) => {
         const def = getDef(type);
-        if (def) placeResource(def, rf.screenToFlowPosition(screen ?? viewportCenter()));
+        if (!def) return;
+        // a container is selected that can hold it: into its next free cell
+        const added = screen ? null : drops.addToSelection(def);
+        if (added) setTimeout(() => focusNode(added), 60);
+        else placeResource(def, rf.screenToFlowPosition(screen ?? viewportCenter()));
       },
       duplicate,
       focusNode,
       toggleMinimap,
     });
     return () => registerCanvasApi(null);
-  }, [duplicate, exportImage, focusNode, placeResource, rf, tidy, toggleMinimap, viewportCenter, withCleanDiagram]);
+  }, [arrangeInside, drops, duplicate, exportImage, focusNode, placeResource, rf, tidy, toggleMinimap, viewportCenter, withCleanDiagram]);
 
   // code → canvas: a resource picked in the editor scrolls into view
   useEffect(() => {
@@ -942,6 +826,9 @@ function CanvasInner() {
           onSelect: () => focusRenameInput(),
         },
         { id: 'duplicate', label: 'Duplicate', icon: CopyPlus, shortcut: `${MOD}D`, onSelect: () => duplicate(node.id) },
+        ...(isContainerType(node.type) && ir.resources.some((r) => r.parentId === node.id)
+          ? [{ id: 'arrange-inside', label: am.arrangeInside(node.name), icon: WandSparkles, onSelect: () => arrangeInside(node.id) }]
+          : []),
         {
           id: 'copy',
           label: 'Copy address',
@@ -973,11 +860,11 @@ function CanvasInner() {
       { id: 'add', label: 'Add resource here…', icon: Plus, shortcut: 'Dbl-click', onSelect: () => setQuickAdd(at) },
       'separator',
       { id: 'fit', label: 'Fit view', icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) }) },
-      { id: 'tidy', label: 'Tidy up layout', icon: WandSparkles, onSelect: () => void tidy() },
+      { id: 'tidy', label: am.button, icon: WandSparkles, onSelect: () => void tidy() },
       'separator',
       ...exportEntries,
     ];
-  }, [menu, byId, duplicate, rf, tidy, exportImage, applyCanvasOps]);
+  }, [menu, byId, duplicate, rf, tidy, exportImage, applyCanvasOps, am, arrangeInside, ir]);
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const stats = `${plural(ir.resources.length, 'resource')}, ${plural(irEdges.length, 'connection')}`;
@@ -1038,7 +925,9 @@ function CanvasInner() {
           document.body.style.userSelect = '';
           syncSelection(rf.getNodes().filter((n) => n.selected && n.id !== INTERNET_NODE).map((n) => n.id));
         }}
-        onNodeDragStop={onNodeDragStop}
+        onNodeDragStart={drops.onNodeDragStart}
+        onNodeDrag={drops.onNodeDrag}
+        onNodeDragStop={drops.onNodeDragStop}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         nodesDraggable={!locked && !spaceHeld}
@@ -1048,7 +937,9 @@ function CanvasInner() {
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
+          drops.onPaletteDragOver(e);
         }}
+        onDragLeave={drops.onPaletteDragLeave}
         deleteKeyCode={locked ? null : ['Delete', 'Backspace']}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
@@ -1068,6 +959,8 @@ function CanvasInner() {
           tidying={tidying}
           onToggleMinimap={toggleMinimap}
           onTidy={readOnly ? undefined : () => void tidy()}
+          compact={canvasWidth < 640}
+          overlapping={overlapping && !locked}
           onExport={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setMenu({ x: r.left, y: r.top - 112, nodeId: null, exportOnly: true });
@@ -1153,6 +1046,8 @@ function CanvasInner() {
         />
       ) : null}
 
+      <DropHintCard />
+
       {quickAdd ? (
         <QuickAddPopover
           at={quickAdd}
@@ -1176,7 +1071,7 @@ export function sizeOf(internal: { measured: { width?: number; height?: number }
 }
 
 /** Menu entries that change the project — left out of a read-only view's menus. */
-const EDIT_ENTRIES = new Set(['add', 'rename', 'duplicate', 'delete', 'tidy', 'delete-all', ...ALIGN_ACTIONS.map((a) => a.id)]);
+const EDIT_ENTRIES = new Set(['add', 'rename', 'duplicate', 'delete', 'tidy', 'arrange-inside', 'delete-all', ...ALIGN_ACTIONS.map((a) => a.id)]);
 
 function viewOnlyEntries(entries: MenuEntry[]): MenuEntry[] {
   const out: MenuEntry[] = [];

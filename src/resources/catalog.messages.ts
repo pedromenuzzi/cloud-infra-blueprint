@@ -52,6 +52,7 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     fields: {
       allocated_storage: { doc: 'GiB' },
       password: { doc: 'Prefira var.db_password a um valor literal' },
+      db_subnet_group_name: { label: 'Grupo de sub-redes do banco', doc: 'As sub-redes (2+ AZs) onde o banco de dados roda' },
       vpc_security_group_ids: SECURITY_GROUPS,
     },
   },
@@ -183,6 +184,7 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     fields: {
       cluster_id: { doc: 'Letras minúsculas, dígitos e hifens, até 50' },
       num_cache_nodes: { doc: 'Precisa ser 1 para Redis' },
+      subnet_group_name: { label: 'Grupo de sub-redes do cache' },
       security_group_ids: SECURITY_GROUPS,
     },
   },
@@ -250,6 +252,12 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     name: 'Grupo de sub-redes do banco',
     shortName: 'Sub-redes do banco',
     description: 'Sub-redes privadas (2+ AZs) onde o RDS coloca o banco de dados',
+    fields: { subnet_ids: SUBNETS },
+  },
+  aws_elasticache_subnet_group: {
+    name: 'Grupo de sub-redes do cache',
+    shortName: 'Sub-redes do cache',
+    description: 'Sub-redes privadas onde o ElastiCache coloca os nós do cache',
     fields: { subnet_ids: SUBNETS },
   },
 

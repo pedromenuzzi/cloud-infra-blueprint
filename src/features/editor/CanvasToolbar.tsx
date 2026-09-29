@@ -9,10 +9,12 @@ import {
   ScanEye,
   WandSparkles,
 } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 import { useSecurityUi } from '@/features/security/securityStore';
+import { useMessages } from '@/i18n/messages';
 import { motionMs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import { arrangeMessages } from './arrange.messages';
 
 function ToolButton({
   label,
@@ -44,6 +46,50 @@ function ToolButton({
 
 const Divider = () => <span className="mx-0.5 h-4 w-px bg-border" />;
 
+/** The one labeled control: Auto-arrange is what people look for when the diagram is a mess. */
+function ArrangeButton({
+  onClick,
+  busy,
+  compact,
+  overlapping,
+}: {
+  onClick(): void;
+  busy: boolean;
+  compact: boolean;
+  overlapping: boolean;
+}) {
+  const m = useMessages(arrangeMessages);
+  const noteId = useId();
+  const Icon = busy ? Loader2 : WandSparkles;
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={m.button}
+        aria-describedby={overlapping ? noteId : undefined}
+        aria-busy={busy || undefined}
+        data-tip={overlapping ? m.overlap : m.tooltip}
+        onClick={onClick}
+        className={cn(
+          'bp-tip relative flex h-7 items-center justify-center gap-1.5 rounded-[7px] font-semibold text-primary transition-colors hover:bg-primary-soft',
+          compact ? 'w-7' : 'px-2 text-[12px]',
+        )}
+      >
+        <Icon className={cn('h-3.5 w-3.5 shrink-0', busy && 'animate-spin')} />
+        {compact ? null : <span>{m.button}</span>}
+        {overlapping ? (
+          <span aria-hidden className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-warning ring-2 ring-surface-1" />
+        ) : null}
+      </button>
+      {overlapping ? (
+        <span id={noteId} className="sr-only">
+          {m.overlap}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 /** Floating canvas controls — replaces React Flow's stock (unthemed) Controls. */
 export function CanvasToolbar({
   minimap,
@@ -51,6 +97,8 @@ export function CanvasToolbar({
   onToggleMinimap,
   onTidy,
   onExport,
+  compact = false,
+  overlapping = false,
 }: {
   minimap: boolean;
   tidying: boolean;
@@ -58,6 +106,10 @@ export function CanvasToolbar({
   /** omitted in a read-only view */
   onTidy?(): void;
   onExport(e: React.MouseEvent<HTMLButtonElement>): void;
+  /** a narrow canvas: Auto-arrange shows as an icon only */
+  compact?: boolean;
+  /** some resources overlap — Auto-arrange gets a dot */
+  overlapping?: boolean;
 }) {
   const rf = useReactFlow();
   const zoom = useStore((s) => s.transform[2]);
@@ -70,6 +122,12 @@ export function CanvasToolbar({
         role="toolbar"
         aria-label="Canvas controls"
       >
+        {onTidy ? (
+          <>
+            <ArrangeButton onClick={onTidy} busy={tidying} compact={compact} overlapping={overlapping} />
+            <Divider />
+          </>
+        ) : null}
         <ToolButton label="Zoom out" onClick={() => void rf.zoomOut({ duration: motionMs(200) })}>
           <Minus className="h-3.5 w-3.5" />
         </ToolButton>
@@ -92,15 +150,6 @@ export function CanvasToolbar({
         >
           <Maximize className="h-3.5 w-3.5" />
         </ToolButton>
-        {onTidy ? (
-          <ToolButton label="Tidy up layout" onClick={onTidy}>
-            {tidying ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <WandSparkles className="h-3.5 w-3.5" />
-            )}
-          </ToolButton>
-        ) : null}
         <Divider />
         <ToolButton label={lens ? 'Hide security lens' : 'Security lens'} pressed={lens} onClick={toggleLens}>
           <ScanEye className="h-3.5 w-3.5" />

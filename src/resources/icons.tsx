@@ -197,6 +197,7 @@ const SERVICE_GLYPHS: Record<string, Glyph> = {
   aws_route_table: Signpost,
   aws_route_table_association: Link2,
   aws_db_subnet_group: Layers3,
+  aws_elasticache_subnet_group: Layers3,
   aws_s3_bucket_public_access_block: ShieldBan,
   // --- Azure
   azurerm_resource_group: FolderOpen,

@@ -88,7 +88,8 @@ export function bulkTagOps(nodes: ResourceNode[], key: string, value: string): {
 function bulkRule(node: ResourceNode, targetType: string) {
   const def = getDef(node.type);
   const rule = findConnectionRule(def, targetType);
-  if (!rule || def?.containment?.some((c) => c.arg === rule.arg)) return undefined;
+  // (derived `via` containment is a plain list of references: connecting is fine)
+  if (!rule || def?.containment?.some((c) => !c.via && c.arg === rule.arg)) return undefined;
   return rule;
 }
 
