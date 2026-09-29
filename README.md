@@ -46,6 +46,21 @@ between them.
   the editor.
 - 📚 **The real provider schemas**: every argument of every AWS / AzureRM / Google resource — searchable in the inspector, completed, documented and validated ("did you mean…?") in the code — loaded per provider, only when used.
 
+### Your data, anywhere
+
+- 🗄️ **Backup & restore**: download every project as one `.zip` (a folder of `.tf` files per
+  project + a `manifest.json`); restoring shows what's new, already there or different, and
+  lets you add copies or replace — nothing is overwritten without asking.
+- 📊 **Storage meter** on the dashboard: how much of the browser's storage your projects use,
+  a "Back up and free space" nudge from 70%, and a one-click request for persistent storage.
+- ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor —
+  Monaco, auto-layout, fonts — open without a connection; a new version shows an
+  "Update available — Reload" prompt instead of breaking the open tab.
+- 📁 **Folder sync** (Chrome / Edge): *Open folder…* imports a Terraform root module linked to
+  its folder, or *Sync with folder…* links an existing project. Saves write through to the
+  `.tf` files, edits made on disk load back when you return to the tab, and changes on both
+  sides ask before anything is overwritten. Other browsers get the `.zip` export instead.
+
 ### Built for speed
 
 - ⌘ **Command palette** (`⌘K` / `Ctrl+K`): add any of the 92 services, jump to a resource or
@@ -138,6 +153,8 @@ bash scripts/terraform-validate.sh .tf-catalog
 ```
 
 First E2E run on a new machine: `pnpm exec playwright install --with-deps chromium`.
+The service worker is blocked in every E2E spec (it would serve cached files past `page.route()`
+mocks) except `e2e/pwa.spec.ts`, which opts in to test the offline app and the update prompt.
 
 That's it — there is no database, no API keys, no backend to configure.
 
@@ -171,6 +188,7 @@ The app is a fully static SPA. Any free static host works:
 | Export / share | fflate (zip download + import, deflated share-links in the URL fragment), html-to-image (PNG/SVG) |
 | Command palette | [cmdk](https://cmdk.paco.me), loaded on first use |
 | Auto-layout | [ELK](https://eclipse.dev/elk/) (`elkjs`), loaded on first use |
+| Offline | [vite-plugin-pwa](https://vite-pwa-org.netlify.app) (Workbox) generates the service worker at build time; no runtime dependency |
 | Icons | [Lucide](https://lucide.dev) glyphs on category-colored tiles (`src/resources/icons.tsx`) |
 
 ### Repo map
@@ -186,7 +204,8 @@ src/
 ├── features/    # editor (canvas, code, palette, inspector, topbar), security panel, PDF export, templates modal
 ├── routes/      # landing, dashboard, editor, read-only viewer, tutorials, 404
 ├── components/  # design-system UI kit, thumbnails, theme toggle, toasts, app shell (errors, share links, storage notices)
-└── lib/         # localStorage projects, Terraform + GitHub import, zip export, share/view links, PDF writer, utils
+├── features/data/ # backup & restore, storage meter, offline app (service worker), folder sync UI
+└── lib/         # localStorage projects, backup format, folder sync, Terraform + GitHub import, zip export, share/view links, PDF writer, utils
 e2e/             # Playwright specs (editor, navigation, share links, import, persistence, PDF, regressions)
 ```
 
@@ -210,7 +229,7 @@ e2e/             # Playwright specs (editor, navigation, share links, import, pe
 - [ ] **F5** — GitHub/GitLab push, org template libraries
 - [x] **F3.5** — Premium UX: command palette, quick add, tidy layout, selection sync,
   import/export, per-service icons, first-run tips
-- [ ] **F6** — PWA offline install, guided onboarding tour, community template gallery
+- [ ] **F6** — ~~PWA offline install~~ (done), guided onboarding tour, community template gallery
 
 The client-only architecture is deliberate: parsing/emitting runs in the browser, so a
 future backend only needs to store snapshots and relay WebSockets — exactly as specified

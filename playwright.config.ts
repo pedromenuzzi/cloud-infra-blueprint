@@ -6,6 +6,11 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
 /**
  * E2E against the production build (`vite preview`), so lazy chunks and
  * Monaco contribs are exercised exactly as shipped. Run `pnpm build` first.
+ *
+ * The build registers a service worker (offline app). It's blocked for every
+ * spec by default: a worker would serve cached files past `page.route()`
+ * mocks and keep state between tests. e2e/pwa.spec.ts opts back in with
+ * `test.use({ serviceWorkers: 'allow' })`.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -17,6 +22,7 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    serviceWorkers: 'block',
   },
   projects: [
     {

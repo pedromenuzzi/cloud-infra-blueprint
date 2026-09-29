@@ -8,6 +8,7 @@ import {
   FileArchive,
   FileImage,
   FileText,
+  FolderSync,
   ImageDown,
   Loader2,
   Monitor,
@@ -29,6 +30,8 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { showToast } from '@/components/Toast';
 import { Button, Kbd, LogoMark } from '@/components/ui';
 import { IS_MAC, MOD, usePalette } from '@/features/command/paletteStore';
+import { FolderSyncStatus } from '@/features/data/FolderSyncStatus';
+import { startFolderLink } from '@/features/data/folderSync';
 import { copyText, exportZip } from '@/lib/download';
 import { shareLinkInfo, viewLinkInfo } from '@/lib/share';
 import { cn } from '@/lib/utils';
@@ -264,6 +267,7 @@ export function Topbar() {
           </>
         )}
       </span>
+      <FolderSyncStatus />
 
       <div className="flex min-w-0 flex-1 justify-center px-2 max-xl:px-0">
         <button
@@ -377,6 +381,7 @@ export function Topbar() {
             { id: 'pdf', label: 'PDF document to share…', icon: FileText, onSelect: openExportPdf },
             'separator',
             { id: 'zip', label: 'Terraform files (.zip)', icon: FileArchive, onSelect: doExportZip },
+            { id: 'folder', label: 'Sync with folder…', icon: FolderSync, onSelect: () => void startFolderLink() },
             'separator',
             { id: 'png', label: 'Diagram as PNG', icon: ImageDown, onSelect: () => void canvasApi()?.exportImage('png') },
             { id: 'svg', label: 'Diagram as SVG', icon: FileImage, onSelect: () => void canvasApi()?.exportImage('svg') },
