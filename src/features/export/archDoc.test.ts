@@ -641,5 +641,26 @@ describe('in Portuguese', () => {
     expect(pdfText(bytes)).toMatch(/Diagrama — área 1 de \d+/);
     expectLaidOut(bytes, 'pt-BR tiles');
   });
+
+  it('names resources and categories as the catalog does in Portuguese', () => {
+    const input = ptInput(TEMPLATES.find((t) => t.slug === 'aws-web-app')!.build('demo'));
+    const text = pdfText(buildArchitecturePdf(input));
+    for (const s of ['Instância EC2', 'Instância RDS', 'Perfil do IAM', 'Sub-rede', 'Grupo de segurança', 'Computação', 'Rede', 'Banco de dados']) {
+      expect(text, s).toContain(s);
+    }
+    expect(text).not.toContain('EC2 Instance');
+  });
+
+  it("a subnet's lens badge", () => {
+    const files = {
+      'main.tf': 'resource "aws_vpc" "main" {\n  cidr_block = "10.0.0.0/16"\n}\n\nresource "aws_subnet" "a" {\n  vpc_id     = aws_vpc.main.id\n  cidr_block = "10.0.1.0/24"\n}\n',
+    };
+    const input = ptInput(files);
+    const diagram = { ...fakeDiagram(input.ir, input.edges), lens: true };
+    diagram.nodes = diagram.nodes.map((n) => (n.id === 'aws_subnet.a' ? { ...n, security: { subnet: 'public' as const } } : n));
+    expect(pdfText(buildArchitecturePdf({ ...input, diagram }))).toContain('PÚBLICA');
+    const english = inputFor(files);
+    expect(pdfText(buildArchitecturePdf({ ...english, diagram }))).toContain('PUBLIC');
+  });
 });
 

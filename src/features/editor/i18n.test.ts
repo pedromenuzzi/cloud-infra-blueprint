@@ -51,6 +51,16 @@ describe('editor messages follow the UI language', () => {
     expect(after.past).toBe(past);
   });
 
+  it('does it on its own when the language changes (no inspector needed)', () => {
+    const { ir, past } = useEditor.getState();
+    useLocale.getState().setLocale('pt-BR');
+    expect(useEditor.getState().warnings.map((w) => w.message)).toEqual([
+      'aws_subnet.a: cidr_block 10.1.0.0/24 está fora do intervalo de aws_vpc.main (10.0.0.0/16)',
+    ]);
+    expect(useEditor.getState().ir).toBe(ir);
+    expect(useEditor.getState().past).toBe(past);
+  });
+
   it('re-produces parse errors too', () => {
     useEditor.getState().onCodeChange('main.tf', `${MAIN}resource "aws_vpc" "b" {\n`);
     vi.advanceTimersByTime(400);
