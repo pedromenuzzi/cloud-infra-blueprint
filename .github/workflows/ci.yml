@@ -66,6 +66,10 @@ jobs:
         run: |
           terraform -chdir=.tf-out/templates/multi-cloud-dr providers schema -json > .tf-out/schema.json
           pnpm exec vite-node scripts/check-catalog-schema.ts .tf-out/schema.json
+      # regenerates at the provider versions recorded in src/schema/data (not the latest), so a
+      # new upstream release never fails the build — only data the generator wouldn't write does
+      - name: Shipped provider schemas are fresh
+        run: pnpm schema:generate --check
 
   e2e:
     runs-on: ubuntu-latest
