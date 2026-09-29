@@ -135,7 +135,7 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
             <h3 className="text-[13.5px] font-semibold">{m.browserStorage}</h3>
             <span
               className={cn(
-                'ml-auto text-[12px] font-semibold tabular-nums',
+                'ml-auto whitespace-nowrap text-[12px] font-semibold tabular-nums',
                 meter.level === 'ok' ? 'text-muted' : meter.level === 'nudge' ? 'text-warning' : 'text-danger',
               )}
             >

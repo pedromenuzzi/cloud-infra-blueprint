@@ -70,7 +70,7 @@ export const dashboardMessages = defineMessages(
     fromScratch: 'Começar do zero',
     yourProjects: 'Seus projetos',
     searchLabel: 'Buscar projetos',
-    searchPlaceholder: 'Buscar por nome, provedor, template…',
+    searchPlaceholder: 'Nome, provedor ou template…',
     sortLabel: 'Ordenar projetos',
     sortRecent: 'Mais recentes',
     sortName: 'Nome',
