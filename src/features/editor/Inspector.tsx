@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { CostLine } from '@/features/cost/CostLine';
 import { getAudit, useSecurityUi } from '@/features/security/securityStore';
 import { OWNER_TYPES, peerLabel, portLabel, serviceName } from '@/security/model';
 import { showToast } from '@/components/Toast';
@@ -648,6 +649,7 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
   return (
     <div className="space-y-3.5 p-3.5">
       <ExposureCard node={node} />
+      <CostLine node={node} />
       <CidrPlanner node={node} />
       {/* the block label, not the `name` argument most resources also have */}
       <Field

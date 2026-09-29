@@ -3,7 +3,7 @@
  * browser — the diagram plus a readable summary. The PDF code (archDoc.ts +
  * lib/pdf) is loaded only when the user actually generates one.
  */
-import { AlertTriangle, Code2, Download, FileText, ListTree, Loader2, ShieldCheck, Waypoints, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, CircleDollarSign, Code2, Download, FileText, ListTree, Loader2, ShieldCheck, Waypoints, type LucideIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
@@ -36,7 +36,8 @@ function defaultPaper(): Paper {
 
 function readPrefs(): Prefs {
   const fallback: Prefs = {
-    sections: { inventory: true, connections: true, security: true, code: false },
+    // cost on: readers of the document ask what it costs first; every number is labelled an estimate
+    sections: { inventory: true, connections: true, security: true, cost: true, code: false },
     paper: defaultPaper(),
   };
   try {
@@ -83,6 +84,7 @@ const SECTION_ROWS: Array<{ key: keyof DocSections; icon: LucideIcon; title: str
   { key: 'inventory', icon: ListTree, title: 'Resource inventory', hint: 'Every resource with its key settings, plus variables and outputs' },
   { key: 'connections', icon: Waypoints, title: 'Connections & traffic', hint: 'Dependencies and the network flows the rules allow' },
   { key: 'security', icon: ShieldCheck, title: 'Security review', hint: '' },
+  { key: 'cost', icon: CircleDollarSign, title: 'Cost estimate', hint: 'Monthly on-demand estimate per resource, with its assumptions' },
   { key: 'code', icon: Code2, title: 'Terraform source', hint: 'Every .tf file as an appendix — check it for secrets before sharing' },
 ];
 

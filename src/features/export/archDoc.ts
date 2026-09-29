@@ -8,6 +8,10 @@
  * diagramVector.ts; a diagram too big for one readable page is also split
  * into page-sized tiles.
  */
+import { estimateProject, PROVIDER_NAME } from '@/cost/estimate';
+import { approx, describeLine, priceDate, usd } from '@/cost/format';
+import { PRICE_BOOK } from '@/cost/prices/prices';
+import type { CloudProvider, ProjectCost, ResourceCost } from '@/cost/types';
 import { exprPreview, refTargetAddress } from '@/ir/expr';
 import type { Expression, IR, IREdge, Provider, ResourceNode } from '@/ir/types';
 import { providerOfSourceName } from '@/ir/types';
@@ -26,6 +30,8 @@ export interface DocSections {
   connections: boolean;
   security: boolean;
   code: boolean;
+  /** monthly cost estimate (a section and an overview tile); off when absent */
+  cost?: boolean;
 }
 
 export interface ArchDocInput {
@@ -782,7 +788,12 @@ interface TocEntry {
   title: string;
 }
 
-function overview(c: Cursor, input: ArchDocInput, toc: TocEntry[]): { page: PdfPage; rows: Array<{ entry: TocEntry; y: number }> } {
+function overview(
+  c: Cursor,
+  input: ArchDocInput,
+  toc: TocEntry[],
+  cost: ProjectCost | null,
+): { page: PdfPage; rows: Array<{ entry: TocEntry; y: number }> } {
   const { ir, edges, audit } = input;
   c.newPage();
   c.section('overview', 'Overview', `Generated ${formatDocDate(input.generatedAt)} with Cloud Blueprint.`);
@@ -817,13 +828,15 @@ function overview(c: Cursor, input: ArchDocInput, toc: TocEntry[]): { page: PdfP
   const tiles: Array<{ value: string; label: string; color?: PdfColor }> = [
     { value: String(ir.resources.length), label: 'Resources' },
     { value: String(edges.length), label: 'Connections' },
-    { value: String(containers), label: 'Networks & groups' },
+    // five tiles (with the cost one) leave no room for the long label
+    { value: String(containers), label: cost ? 'Networks' : 'Networks & groups' },
   ];
   if (input.sections.security && audit.grade) {
     tiles.push({ value: audit.grade, label: `Security score ${audit.score}`, color: GRADE_COLOR[audit.grade] });
   } else {
     tiles.push({ value: String(ir.variables.length), label: 'Variables' });
   }
+  if (cost) tiles.push({ value: cost.counts.fixed ? approx(cost.total) : '$0', label: 'Est. per month' });
   const gap = 10;
   const tw = (c.width - gap * (tiles.length - 1)) / tiles.length;
   c.ensure(54);
@@ -1141,6 +1154,159 @@ function* security(c: Cursor, input: ArchDocInput): Generator<void, void> {
   }
 }
 
+// ------------------------------------------------------------------ cost
+
+const COST_KIND_ORDER = { fixed: 0, usage: 1, unknown: 2, free: 3 } as const;
+const AMBER = '#b45309';
+
+/** amounts as bars: a label, a bar sized against the largest, the amount */
+function costBars(c: Cursor, groups: Array<{ label: string; color: PdfColor; monthly: number; note?: string; text?: string }>) {
+  const most = Math.max(0.01, ...groups.map((g) => g.monthly));
+  const labelW = 150;
+  const amountW = 64;
+  const barW = c.width - labelW - amountW - 12;
+  for (const g of groups) {
+    c.ensure(17);
+    const label = fitText(g.label, labelW - 8, 'regular', 9);
+    c.page.text(label, c.left, baseline(c.y, 9, 13), { size: 9, color: INK });
+    if (g.note) {
+      c.page.text(fitText(g.note, labelW - 14 - textWidth(label, 'regular', 9), 'regular', 7.5), c.left + textWidth(label, 'regular', 9) + 6, baseline(c.y, 9, 13), { size: 7.5, color: FAINT });
+    }
+    c.page.rect(c.left + labelW, c.y + 3, barW, 7, { fill: SOFT, radius: 3.5 });
+    if (g.monthly > 0) c.page.rect(c.left + labelW, c.y + 3, Math.max(7, (barW * g.monthly) / most), 7, { fill: g.color, radius: 3.5 });
+    c.page.text(g.text ?? usd(g.monthly), c.left + c.width, baseline(c.y, 9, 13), g.text ? { size: 8, color: MUTED, align: 'right' } : { font: 'bold', size: 9, color: INK, align: 'right' });
+    c.y += 17;
+  }
+  c.y += 10;
+}
+
+function costRow(item: ResourceCost): Row {
+  const how: Run[] =
+    item.kind === 'fixed'
+      ? [
+          ...item.breakdown.map((l) => ({ text: describeLine(l), size: 7.5, color: INK, maxLines: 2 })),
+          ...item.assumptions.slice(0, 3).map((a) => ({ text: a, size: 7, color: FAINT, maxLines: 2 })),
+        ]
+      : [{ text: item.note ?? '', size: 7.5, color: MUTED, maxLines: 4 }];
+  const one = item.breakdown.reduce((sum, l) => sum + l.monthly, 0);
+  const amount: Run[] =
+    item.kind === 'fixed'
+      ? [
+          { text: usd(item.monthly ?? 0), font: 'bold', size: 8.5 },
+          ...(item.count !== 1 ? [{ text: `${item.count} × ${usd(one)}`, size: 7, color: FAINT }] : []),
+        ]
+      : [{ text: item.kind === 'usage' ? 'usage-based' : 'not estimated', font: 'bold', size: 7.5, color: item.kind === 'usage' ? PRIMARY : AMBER }];
+  return {
+    cells: [
+      [
+        { text: item.name, font: 'bold' },
+        { text: item.type, font: 'mono', size: 6.6, color: FAINT, url: docsUrl(item.type) },
+      ],
+      [{ text: serviceName(item.type) }, ...(item.region ? [{ text: item.region, size: 7, color: FAINT }] : [])],
+      how,
+      amount,
+    ],
+  };
+}
+
+/** the estimate: headline, totals by category (and cloud), a row per resource, then every assumption */
+function* costEstimate(c: Cursor, cost: ProjectCost): Generator<void, void> {
+  c.section('cost', 'Cost estimate', 'Monthly on-demand estimate from public list prices — for planning, not a quote.');
+  const { counts, total } = cost;
+  const clouds = cost.byProvider.filter((g): g is typeof g & { key: CloudProvider } => g.key !== 'other');
+
+  // headline
+  const extras = [counts.usage ? `${counts.usage} usage-based` : '', counts.unknown ? `${counts.unknown} not estimated` : ''].filter(Boolean);
+  const summary = `${counts.fixed ? `${usd(total)} for ${plural(counts.fixed, 'priced resource')}` : 'Nothing here has a fixed monthly price'}${extras.length ? `, plus ${extras.join(' and ')}` : ''}.`;
+  const dates = clouds.map((g) => `${PROVIDER_NAME[g.key]}: ${g.region} prices, ${priceDate(g.retrieved ?? '')}`);
+  const lines = wrapText(summary, c.width - 190, 'regular', 8.5);
+  const h = Math.max(58, 40 + lines.length * 12, 20 + dates.length * 11);
+  c.ensure(h);
+  c.page.rect(c.left, c.y, c.width, h, { stroke: LINE, lineWidth: 0.8, radius: 6 });
+  c.page.rect(c.left, c.y, 3, h, { fill: '#10b981', radius: 1.5 });
+  const big = counts.fixed ? approx(total) : '$0';
+  c.page.text(big, c.left + 16, c.y + 27, { font: 'bold', size: 20, color: INK });
+  c.page.text('/ month', c.left + 22 + textWidth(big, 'bold', 20), c.y + 27, { size: 9.5, color: MUTED });
+  lines.forEach((line, i) => c.page.text(line, c.left + 16, c.y + 43 + i * 12, { size: 8.5, color: MUTED }));
+  dates.forEach((d, i) =>
+    c.page.text(fitText(d, 170, 'regular', 7.5), c.left + c.width - 12, c.y + 18 + i * 11, { size: 7.5, color: FAINT, align: 'right' }),
+  );
+  c.y += h + 18;
+
+  const categories = cost.byCategory.filter((g) => g.monthly > 0);
+  if (categories.length) {
+    c.heading('By category');
+    costBars(c, categories.map((g) => ({ label: categoryLabel(g.key), color: categoryColor(g.key), monthly: g.monthly })));
+  }
+  if (clouds.length > 1) {
+    c.heading('By cloud');
+    costBars(
+      c,
+      clouds.map((g) => ({
+        label: PROVIDER_NAME[g.key],
+        note: g.region,
+        color: PROVIDER_COLOR[g.key],
+        monthly: g.monthly,
+        text: g.priced ? undefined : 'no fixed price',
+      })),
+    );
+  }
+
+  // one row per resource that costs (or may cost) something, grouped by category
+  const charged = cost.items.filter((i) => i.kind !== 'free');
+  if (charged.length) {
+    c.heading('By resource', plural(charged.length, 'resource'));
+    const rows: Row[] = [];
+    for (const k of [...CATEGORY_ORDER, 'other'] as CategoryKey[]) {
+      const list = charged
+        .filter((i) => i.category === k)
+        .sort((a, b) => COST_KIND_ORDER[a.kind] - COST_KIND_ORDER[b.kind] || (b.monthly ?? 0) - (a.monthly ?? 0));
+      if (!list.length) continue;
+      const subtotal = cost.byCategory.find((g) => g.key === k)?.monthly ?? 0;
+      rows.push({ cells: [], group: { label: categoryLabel(k), color: categoryColor(k), note: subtotal > 0 ? usd(subtotal) : undefined } });
+      for (const item of list) rows.push(costRow(item));
+    }
+    yield* c.table(
+      [
+        { title: 'Resource', share: 0.24 },
+        { title: 'Service', share: 0.18 },
+        { title: 'How it is priced', share: 0.43 },
+        { title: 'Per month', share: 0.15 },
+      ],
+      rows,
+    );
+    if (counts.fixed) {
+      c.ensure(20);
+      const label = 'Total for the priced resources';
+      const amount = `${usd(total)} / month`;
+      c.page.text(amount, c.left + c.width, baseline(c.y, 10, 14), { font: 'bold', size: 10, color: INK, align: 'right' });
+      c.page.text(label, c.left + c.width - textWidth(amount, 'bold', 10) - 12, baseline(c.y, 9, 14), { size: 9, color: MUTED, align: 'right' });
+      c.y += 26;
+    }
+  }
+
+  const freeItems = cost.items.filter((i) => i.kind === 'free');
+  if (freeItems.length) {
+    const names = new Map<string, number>();
+    for (const i of freeItems) names.set(shortName(i.type), (names.get(shortName(i.type)) ?? 0) + 1);
+    const list = [...names].map(([n, k]) => (k > 1 ? `${n} ×${k}` : n)).join(', ');
+    c.paragraph(`No charge of their own (${freeItems.length}): ${list}.`, { size: 8, color: MUTED, gap: 12 });
+  }
+
+  c.heading('Assumptions');
+  for (const a of cost.assumptions) c.paragraph(`•  ${a}`, { size: 8, color: MUTED, gap: 2 });
+  c.y += 6;
+  c.paragraph(
+    'This is an estimate for planning, not a quote. Real bills depend on usage, discounts, taxes and price changes — check the provider’s pricing calculator before committing to a budget.',
+    { size: 8, color: INK, gap: 6 },
+  );
+  const hosts = clouds.map((g) => {
+    const names = [...new Set(PRICE_BOOK[g.key].meta.sources.map((s) => s.replace(/^https?:\/\/([^/]+).*$/, '$1')))];
+    return `${PROVIDER_NAME[g.key]}: ${names.join(', ')}`;
+  });
+  if (hosts.length) c.paragraph(`Price sources — ${hosts.join('; ')}.`, { size: 7, color: FAINT });
+}
+
 /** `# @blueprint:pos=…` lines only matter to the editor */
 const LAYOUT_COMMENT = /^\s*(?:#|\/\/)\s*@blueprint:/;
 
@@ -1228,16 +1394,19 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
     ...(input.sections.inventory && hasVars ? [{ key: 'variables', title: 'Variables & outputs' }] : []),
     ...(input.sections.connections ? [{ key: 'connections', title: 'Connections & traffic' }] : []),
     ...(input.sections.security ? [{ key: 'security', title: 'Security review' }] : []),
+    ...(input.sections.cost ? [{ key: 'cost', title: 'Cost estimate' }] : []),
     ...(input.sections.code && input.files.some(([, t]) => t.trim()) ? [{ key: 'code', title: 'Terraform source' }] : []),
   ];
 
   const paper = PAPER[input.paper];
   const c = new Cursor(doc, paper);
+  const cost = input.sections.cost ? estimateProject(ir, PRICE_BOOK) : null;
   yield 'Writing the overview…';
-  const contents = overview(c, input, toc);
+  const contents = overview(c, input, toc, cost);
   if (input.sections.inventory) yield* step('Writing the inventory…', inventory(c, input));
   if (input.sections.connections) yield* step('Writing connections…', connections(c, input));
   if (input.sections.security) yield* step('Writing the security review…', security(c, input));
+  if (cost) yield* step('Estimating the cost…', costEstimate(c, cost));
   if (input.sections.code) yield* step('Adding the source…', sourceCode(c, input));
   c.flush();
 
