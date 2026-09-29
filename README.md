@@ -41,6 +41,11 @@ between them.
 
 ### Your data, anywhere
 
+- 🗄️ **Backup & restore**: download every project as one `.zip` (a folder of `.tf` files per
+  project + a `manifest.json`); restoring shows what's new, already there or different, and
+  lets you add copies or replace — nothing is overwritten without asking.
+- 📊 **Storage meter** on the dashboard: how much of the browser's storage your projects use,
+  a "Back up and free space" nudge from 70%, and a one-click request for persistent storage.
 - ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor —
   Monaco, auto-layout, fonts — open without a connection; a new version shows an
   "Update available — Reload" prompt instead of breaking the open tab.
@@ -161,7 +166,8 @@ src/
 ├── features/    # editor (canvas, code, palette, inspector, topbar), security panel, PDF export, templates modal
 ├── routes/      # landing, dashboard, editor, tutorials, 404
 ├── components/  # design-system UI kit, thumbnails, theme toggle, toasts, app shell (errors, share links, storage notices)
-└── lib/         # localStorage projects, Terraform import, zip export, share links, PDF writer, utils
+├── features/data/ # backup & restore, storage meter, offline app (service worker), folder sync UI
+└── lib/         # localStorage projects, backup format, folder sync, Terraform import, zip export, share links, PDF writer, utils
 e2e/             # Playwright specs (editor, navigation, share links, import, persistence, PDF, regressions)
 ```
 

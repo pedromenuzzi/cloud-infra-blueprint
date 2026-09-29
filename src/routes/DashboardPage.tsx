@@ -18,6 +18,7 @@ import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Kbd, LogoMark, Select } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { DataPanel, StorageNudge } from '@/features/data/DataPanel';
 import { OpenFolderButton } from '@/features/data/OpenFolderButton';
 import { TemplateModal } from '@/features/templates/TemplateModal';
 import type { Provider } from '@/ir/types';
@@ -413,6 +414,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          <StorageNudge projects={projects} />
+
           {/* quick start */}
           <section className="mt-7" aria-label="Quick start">
             <div className="mb-3 flex items-center justify-between">
@@ -531,6 +534,8 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
+
+          <DataPanel projects={projects} onChanged={refresh} />
 
           <p className="mt-10 text-center text-[11.5px] text-faint">
             Tip: drop a folder of <code className="font-mono">.tf</code> files or a{' '}
