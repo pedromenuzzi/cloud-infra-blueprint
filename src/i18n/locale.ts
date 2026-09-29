@@ -35,7 +35,8 @@ export function detectLocale(): Locale {
 }
 
 function apply(locale: Locale) {
-  if (typeof document !== 'undefined') document.documentElement.lang = locale;
+  // tests stub `document` with a bare EventTarget
+  if (typeof document !== 'undefined' && document.documentElement) document.documentElement.lang = locale;
 }
 
 interface LocaleState {
