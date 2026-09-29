@@ -37,6 +37,7 @@ import { Badge, Button, buttonClass, hasOpenLayer, LogoMark } from '@/components
 import { canvasApi } from '@/features/editor/canvasApi';
 import { CanvasPane } from '@/features/editor/CanvasPane';
 import { Inspector } from '@/features/editor/Inspector';
+import { useRevealOpensCode } from '@/features/editor/layoutEffects';
 import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
 import { ExportPdfHost, openExportPdf } from '@/features/export/ExportPdfDialog';
@@ -305,6 +306,8 @@ function FullViewer({ payload }: { payload: SharePayload }) {
   const selection = useEditor((s) => s.selection);
   const inspector = useLayout((s) => s.panels.inspector);
   useDocumentTitle(`${payload.name} (view)`);
+  // the inspector's Code button and "Show in code" reveal the block in the code pane
+  useRevealOpensCode(() => setCodeOpen(true));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

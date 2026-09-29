@@ -60,11 +60,12 @@ import { connectionOp, findConnectionRule } from '@/resources/connect';
 import { docsUrl, getDef, isContainerType } from '@/resources/registry';
 import type { ResourceDef } from '@/resources/types';
 import { registerCanvasApi } from './canvasApi';
+import { isCanvasDragging } from './canvasDrag';
 import { CanvasToolbar } from './CanvasToolbar';
 import { exportDiagramImage } from './exportImage';
 import { removeReferencesOps } from './connections';
 import { ProjectOverview } from './Inspector';
-import { useLayout } from './layoutStore';
+import { floatingInspectorInset, useFloatingInspectorShown } from './inspectorPlacement';
 import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
 import { buildNewNode, duplicateNode } from './newNode';
 import { ResourcePicker } from './ResourcePicker';
@@ -328,9 +329,7 @@ function CanvasInner() {
     null,
   );
   const [overview, setOverview] = useState(false);
-  const panelsInspector = useLayout((s) => s.panels.inspector);
-  const compact = useLayout((s) => s.compact);
-  const drawer = useLayout((s) => s.drawer);
+  const inspectorOpen = useFloatingInspectorShown();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeType | SecFlowEdgeType>([]);
@@ -816,10 +815,12 @@ function CanvasInner() {
   const autoPan = useRef<{ before: Viewport; after: Viewport } | null>(null);
 
   // inspector closed: undo our automatic pan, unless the user moved the canvas since
+  // (or is dragging: grabbing another node clears the selection, the pointer owns the canvas)
   useEffect(() => {
     if (selection !== null || !autoPan.current) return;
     const { before, after } = autoPan.current;
     autoPan.current = null;
+    if (isCanvasDragging()) return;
     const vp = rf.getViewport();
     if (Math.abs(vp.x - after.x) < 2 && Math.abs(vp.y - after.y) < 2 && vp.zoom === after.zoom) {
       void rf.setViewport(before, { duration: motionMs(300) });
@@ -827,12 +828,7 @@ function CanvasInner() {
   }, [selection, rf]);
 
   /** width the floating inspector covers on the right while a resource is selected */
-  const inspectorInset = useCallback(() => {
-    const layout = useLayout.getState();
-    const open = layout.panels.inspector && useEditor.getState().selection && !(layout.compact && layout.drawer === 'code');
-    const width = wrapper.current?.clientWidth ?? 0;
-    return open ? Math.min(300, width - 24) + 20 : 0;
-  }, []);
+  const inspectorInset = useCallback(() => floatingInspectorInset(wrapper.current?.clientWidth ?? 0), []);
 
   /** pan (keeping the zoom) by the smallest amount that puts a node in the visible area */
   const focusNode = useCallback(
@@ -845,16 +841,17 @@ function CanvasInner() {
       const tl = rf.flowToScreenPosition({ x, y });
       const br = rf.flowToScreenPosition({ x: x + w, y: y + h });
       const pad = 16;
+      const inset = inspectorInset();
       const left = rect.left + pad;
-      const right = rect.right - inspectorInset() - pad;
+      // a phone-width canvas has no room beside the inspector: use all of it
+      const right = rect.right - (rect.width - inset >= 240 ? inset : 0) - pad;
       const top = rect.top + pad;
       const bottom = rect.bottom - pad;
-      if (br.x - tl.x > right - left || br.y - tl.y > bottom - top) {
-        void rf.setCenter(x + w / 2, y + h / 2, { zoom: rf.getZoom(), duration: motionMs(350) });
-        return;
-      }
-      const dx = br.x > right ? right - br.x : tl.x < left ? left - tl.x : 0;
-      const dy = br.y > bottom ? bottom - br.y : tl.y < top ? top - tl.y : 0;
+      // the least movement that shows it; too big to fit: centered in the room the inspector leaves
+      const shift = (lo: number, hi: number, a: number, b: number) =>
+        b - a > hi - lo ? (lo + hi - a - b) / 2 : b > hi ? hi - b : a < lo ? lo - a : 0;
+      const dx = shift(left, right, tl.x, br.x);
+      const dy = shift(top, bottom, tl.y, br.y);
       if (dx === 0 && dy === 0) return;
       const vp = rf.getViewport();
       const next = { x: vp.x + dx, y: vp.y + dy, zoom: vp.zoom };
@@ -984,7 +981,6 @@ function CanvasInner() {
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const stats = `${plural(ir.resources.length, 'resource')}, ${plural(irEdges.length, 'connection')}`;
-  const inspectorOpen = panelsInspector && selection !== null && !(compact && drawer === 'code');
   // the minimap sits bottom-right and slides left of the inspector; hide it
   // rather than cover the toolbar on the bottom-left
   const minimapFits = canvasWidth - (inspectorOpen ? inspectorInset() : 0) >= 176 + 320 + 48;
@@ -1026,6 +1022,8 @@ function CanvasInner() {
           setMenu({ x: e.clientX, y: e.clientY, nodeId: null });
         }}
         zoomOnDoubleClick={false}
+        // a drag moves a node without selecting it (and so never pops the inspector over it); a click selects
+        selectNodesOnDrag={false}
         snapToGrid
         snapGrid={[8, 8]}
         onNodesChange={handleNodesChange}

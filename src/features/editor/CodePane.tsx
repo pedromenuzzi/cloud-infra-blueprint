@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { lineColOf } from '@/hcl/parser';
 import { prefersReducedMotion } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -30,7 +30,8 @@ function applyMinimalEdit(model: monaco.editor.ITextModel, newText: string) {
   ]);
 }
 
-export function CodePane() {
+/** `controls`: layout buttons for the header (grip, expand, hide) — the editor passes them, the viewer doesn't. */
+export function CodePane({ controls }: { controls?: ReactNode } = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelsRef = useRef(new Map<string, monaco.editor.ITextModel>());
@@ -51,6 +52,12 @@ export function CodePane() {
   /** resource waiting to be scrolled into view once its file's model is active */
   const pendingRevealRef = useRef<string | null>(null);
   const flashRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  /**
+   * The editor was just created (the pane opened to show a block): a smooth
+   * scroll started before its first frame stops short, and there is nothing
+   * to animate from anyway — jump.
+   */
+  const freshRef = useRef(true);
 
   const fileList = orderedFiles(files);
 
@@ -136,6 +143,8 @@ export function CodePane() {
     );
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyY, () => useEditor.getState().redo());
     editorRef.current = editor;
+    freshRef.current = true;
+    const settle = requestAnimationFrame(() => requestAnimationFrame(() => (freshRef.current = false)));
 
     // theme follows the app's dark class
     const el = document.documentElement;
@@ -148,6 +157,7 @@ export function CodePane() {
     const models = modelsRef.current;
     return () => {
       clearTimeout(syncTimer);
+      cancelAnimationFrame(settle);
       observer.disconnect();
       editor.dispose();
       host.remove();
@@ -215,7 +225,11 @@ export function CodePane() {
     if (!model) return;
     const start = model.getPositionAt(range.start).lineNumber;
     const end = model.getPositionAt(Math.max(range.start, range.end - 1)).lineNumber;
-    editor.revealLinesInCenterIfOutsideViewport(start, end, monaco.editor.ScrollType.Smooth);
+    editor.revealLinesInCenterIfOutsideViewport(
+      start,
+      end,
+      freshRef.current ? monaco.editor.ScrollType.Immediate : monaco.editor.ScrollType.Smooth,
+    );
     flashRef.current?.clear();
     flashRef.current = editor.createDecorationsCollection([
       {
@@ -298,31 +312,34 @@ export function CodePane() {
 
   return (
     <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label="Terraform code">
-      <div ref={tabsRef} className="flex items-center gap-0.5 overflow-x-auto border-b px-1.5 pt-1" role="tablist" aria-label="Files">
-        {fileList.map((f) => (
-          <button
-            key={f}
-            type="button"
-            role="tab"
-            aria-selected={activeFile === f}
-            data-file={f}
-            onClick={() => setActiveFile(f)}
-            className={cn(
-              'relative shrink-0 rounded-t-[6px] border border-b-0 px-3 py-1.5 font-mono text-[11.5px] transition-colors',
-              activeFile === f
-                ? 'border-border bg-surface-1 font-semibold text-foreground'
-                : 'border-transparent text-muted hover:text-foreground',
-            )}
-          >
-            {f}
-            {fileErrors(f) ? (
-              <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger" />
-            ) : null}
-            {activeFile === f ? (
-              <span className="absolute inset-x-0 -bottom-px h-px bg-surface-1" />
-            ) : null}
-          </button>
-        ))}
+      <div className="flex items-center border-b">
+        <div ref={tabsRef} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 pt-1" role="tablist" aria-label="Files">
+          {fileList.map((f) => (
+            <button
+              key={f}
+              type="button"
+              role="tab"
+              aria-selected={activeFile === f}
+              data-file={f}
+              onClick={() => setActiveFile(f)}
+              className={cn(
+                'relative shrink-0 rounded-t-[6px] border border-b-0 px-3 py-1.5 font-mono text-[11.5px] transition-colors',
+                activeFile === f
+                  ? 'border-border bg-surface-1 font-semibold text-foreground'
+                  : 'border-transparent text-muted hover:text-foreground',
+              )}
+            >
+              {f}
+              {fileErrors(f) ? (
+                <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger" />
+              ) : null}
+              {activeFile === f ? (
+                <span className="absolute inset-x-0 -bottom-px h-px bg-surface-1" />
+              ) : null}
+            </button>
+          ))}
+        </div>
+        {controls ? <div className="flex shrink-0 items-center gap-0.5 px-1.5">{controls}</div> : null}
       </div>
 
       <div ref={containerRef} className="min-h-0 flex-1" data-testid="monaco" />
