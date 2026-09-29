@@ -264,6 +264,7 @@ const FREE: Record<string, string | undefined> = {
   aws_route_table_association: undefined,
   aws_internet_gateway: 'Data transfer through it is billed separately',
   aws_db_subnet_group: undefined,
+  aws_elasticache_subnet_group: undefined,
   aws_lb_target_group: 'Billed through its load balancer',
   aws_lb_listener: 'Billed through its load balancer',
   aws_ecs_cluster: 'What runs in it is billed',

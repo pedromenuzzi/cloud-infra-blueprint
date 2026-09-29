@@ -1,8 +1,15 @@
 import { block, list, lit, literalString, raw } from '@/ir/expr';
+import type { Expression } from '@/ir/types';
 import { blocksOf } from '@/security/model';
 import { defineResource } from './types';
 
 const litStr = literalString;
+
+/** "2 subnets" — subtitle of a subnet group */
+const subnetCount = (args: Record<string, Expression>) => {
+  const n = args.subnet_ids?.kind === 'list' ? args.subnet_ids.items.length : 0;
+  return `${n} subnet${n === 1 ? '' : 's'}`;
+};
 
 export const AWS_RESOURCES = [
   defineResource({
@@ -130,6 +137,14 @@ export const AWS_RESOURCES = [
       { name: 'username', type: 'string' },
       { name: 'password', type: 'string', doc: 'Prefer var.db_password over a literal' },
       {
+        name: 'db_subnet_group_name',
+        type: 'string',
+        refTo: ['aws_db_subnet_group'],
+        refAttr: 'name',
+        label: 'DB subnet group',
+        doc: 'The subnets (2+ AZs) the database runs in',
+      },
+      {
         name: 'vpc_security_group_ids',
         type: 'list',
         refTo: ['aws_security_group'],
@@ -142,7 +157,10 @@ export const AWS_RESOURCES = [
       instance_class: lit('db.t3.micro'),
       allocated_storage: lit(20),
     },
+    // not in one subnet: RDS runs in a DB subnet group that spans several
+    containment: [{ arg: 'db_subnet_group_name', parentTypes: ['aws_db_subnet_group'] }],
     connections: [
+      { targetTypes: ['aws_db_subnet_group'], arg: 'db_subnet_group_name', attr: 'name', mode: 'set' },
       { targetTypes: ['aws_security_group'], arg: 'vpc_security_group_ids', attr: 'id', mode: 'append' },
     ],
     subtitle: (args) => {
@@ -781,7 +799,13 @@ export const AWS_RESOURCES = [
       },
       { name: 'num_cache_nodes', type: 'number', min: 1, max: 40, doc: 'Must be 1 for Redis' },
       { name: 'port', type: 'number', min: 1, max: 65535 },
-      { name: 'subnet_group_name', type: 'string' },
+      {
+        name: 'subnet_group_name',
+        type: 'string',
+        refTo: ['aws_elasticache_subnet_group'],
+        refAttr: 'name',
+        label: 'Cache subnet group',
+      },
       {
         name: 'security_group_ids',
         type: 'list',
@@ -790,7 +814,9 @@ export const AWS_RESOURCES = [
       },
     ],
     defaults: { engine: lit('redis'), node_type: lit('cache.t4g.micro'), num_cache_nodes: lit(1) },
+    containment: [{ arg: 'subnet_group_name', parentTypes: ['aws_elasticache_subnet_group'] }],
     connections: [
+      { targetTypes: ['aws_elasticache_subnet_group'], arg: 'subnet_group_name', attr: 'name', mode: 'set' },
       { targetTypes: ['aws_security_group'], arg: 'security_group_ids', attr: 'id', mode: 'append' },
     ],
     subtitle: (args) => litStr(args.engine),
@@ -1039,15 +1065,34 @@ export const AWS_RESOURCES = [
     shortName: 'DB Subnets',
     description: 'Private subnets (2+ AZs) where RDS places the database',
     naming: { maxLength: 255 },
+    // the database is drawn inside it, and it inside the VPC of its subnets
+    container: true,
+    containment: [{ arg: 'subnet_ids', parentTypes: ['aws_vpc'], via: ['aws_subnet'] }],
     fields: [
       { name: 'name', type: 'string' },
       { name: 'subnet_ids', type: 'list', required: true, refTo: ['aws_subnet'], label: 'Subnets' },
       { name: 'tags', type: 'tags' },
     ],
     connections: [{ targetTypes: ['aws_subnet'], arg: 'subnet_ids', attr: 'id', mode: 'append' }],
-    subtitle: (args) => {
-      const n = args.subnet_ids?.kind === 'list' ? args.subnet_ids.items.length : 0;
-      return `${n} subnet${n === 1 ? '' : 's'}`;
-    },
+    subtitle: subnetCount,
+  }),
+
+  defineResource({
+    type: 'aws_elasticache_subnet_group',
+    provider: 'aws',
+    category: 'database',
+    displayName: 'Cache Subnet Group',
+    shortName: 'Cache Subnets',
+    description: 'Private subnets where ElastiCache places the cache nodes',
+    naming: { maxLength: 255 },
+    container: true,
+    containment: [{ arg: 'subnet_ids', parentTypes: ['aws_vpc'], via: ['aws_subnet'] }],
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'subnet_ids', type: 'list', required: true, refTo: ['aws_subnet'], label: 'Subnets' },
+      { name: 'tags', type: 'tags' },
+    ],
+    connections: [{ targetTypes: ['aws_subnet'], arg: 'subnet_ids', attr: 'id', mode: 'append' }],
+    subtitle: subnetCount,
   }),
 ];
