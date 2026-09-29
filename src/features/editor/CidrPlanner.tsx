@@ -1,0 +1,442 @@
+/**
+ * Address plan card in the inspector: for a VPC / VNet, how its range is
+ * used and buttons that carve new subnets from the free space; for a subnet,
+ * its size, usable addresses and share of the network.
+ */
+import { AlertTriangle, Columns3, Network, Plus } from 'lucide-react';
+import { useId, useMemo, useState } from 'react';
+import { showToast } from '@/components/Toast';
+import { Button, Select } from '@/components/ui';
+import type { IR, ResourceNode } from '@/ir/types';
+import { blockSize, formatAddress, formatCidrBlock, RESERVED_IPS, type CidrBlock } from '@/resources/cidr';
+import { cn } from '@/lib/utils';
+import { canvasApi } from './canvasApi';
+import {
+  addSubnetOps,
+  defaultPrefix,
+  fitsBlocks,
+  networkPlan,
+  sizeChoices,
+  splitAcrossZonesOps,
+  subnetPlan,
+  zonesFor,
+  type NetworkPlan,
+  type PlanOutcome,
+  type PlanResult,
+} from './cidrPlan';
+import { useEditor } from './store';
+
+const NETWORK_TYPES = new Set(['aws_vpc', 'azurerm_virtual_network', 'google_compute_network']);
+const SUBNET_TYPES = new Set(['aws_subnet', 'azurerm_subnet', 'google_compute_subnetwork']);
+const CLOUD = { aws: 'AWS', azure: 'Azure', gcp: 'GCP' } as const;
+const SPLIT_COUNTS = [2, 3, 4];
+
+const fmt = (n: bigint | number) => n.toLocaleString('en-US');
+const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary';
+
+/** `0.4%`, `<0.1%` — never a rounded-away 0% for a range that is in use */
+function percent(part: bigint, whole: bigint): string {
+  if (whole === 0n || part === 0n) return '0%';
+  const value = Number((part * 100_000n) / whole) / 1000;
+  if (value < 0.05) return '<0.1%';
+  const rounded = value.toFixed(1);
+  return `${rounded.endsWith('.0') ? rounded.slice(0, -2) : rounded}%`;
+}
+
+function select(id: string) {
+  useEditor.getState().setSelection(id, 'canvas');
+  canvasApi()?.focusNode(id);
+}
+
+export function CidrPlanner({ node }: { node: ResourceNode }) {
+  if (NETWORK_TYPES.has(node.type)) return <NetworkCard node={node} />;
+  if (SUBNET_TYPES.has(node.type)) return <SubnetCard node={node} />;
+  return null;
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  const id = useId();
+  return (
+    // inline-size containment: the selects' option widths must not widen the inspector (a fieldset sizes to min-content)
+    <section aria-labelledby={id} data-testid="cidr-planner" className="rounded-[10px] border bg-surface-1 p-2.5 contain-inline-size">
+      <h4 id={id} className="mb-2 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
+        <Network className="h-3 w-3" aria-hidden="true" /> Address plan
+      </h4>
+      {children}
+    </section>
+  );
+}
+
+function Note({ children, tone = 'muted' }: { children: React.ReactNode; tone?: 'muted' | 'warning' }) {
+  return (
+    <p
+      className={cn(
+        'flex items-start gap-1.5 text-[11px] leading-snug',
+        tone === 'warning' ? 'font-medium text-warning' : 'text-muted',
+      )}
+    >
+      {tone === 'warning' ? <AlertTriangle className="mt-px h-3 w-3 shrink-0" aria-hidden="true" /> : null}
+      <span className="min-w-0">{children}</span>
+    </p>
+  );
+}
+
+interface RangeBarProps {
+  range: CidrBlock;
+  blocks: Array<{ id: string; block: CidrBlock }>;
+  highlight?: string;
+  label: string;
+}
+
+/**
+ * One network range drawn to scale, with a segment where each subnet sits.
+ * `highlight` picks out one subnet (the others fade).
+ */
+function RangeBar({ range, blocks, highlight, label }: RangeBarProps) {
+  const size = Number(blockSize(range));
+  return (
+    <div role="img" aria-label={label} className="relative h-2.5 overflow-hidden rounded-full border bg-surface-2">
+      {blocks
+        .filter((b) => b.block.start >= range.start && b.block.end <= range.end)
+        .map((b) => (
+          <span
+            key={`${b.id}:${b.block.start}`}
+            className={cn(
+              'absolute inset-y-0 transition-[left,width] duration-300',
+              highlight && b.id !== highlight ? 'bg-primary/30' : 'bg-primary',
+            )}
+            style={{
+              left: `${(Number(b.block.start - range.start) / size) * 100}%`,
+              width: `max(3px, ${(Number(blockSize(b.block)) / size) * 100}%)`,
+            }}
+          />
+        ))}
+    </div>
+  );
+}
+
+function blocksIn(plan: NetworkPlan) {
+  return plan.rows.flatMap((r) => (r.block ? [{ id: r.node.id, block: r.block }] : []));
+}
+
+/* ------------------------------------------------------------- network */
+
+function NetworkCard({ node }: { node: ResourceNode }) {
+  const ir = useEditor((s) => s.ir);
+  const plan = useMemo(() => networkPlan(ir, node.id), [ir, node.id]);
+  if (!plan) return null;
+  return (
+    <Card>
+      <div className="space-y-2.5">
+        <NetworkSummary plan={plan} />
+        <SubnetList plan={plan} />
+        {plan.blocked ? null : <PlannerActions ir={ir} plan={plan} />}
+      </div>
+    </Card>
+  );
+}
+
+function NetworkSummary({ plan }: { plan: NetworkPlan }) {
+  const { blocked } = plan;
+  if (blocked?.reason === 'none') {
+    return <Note>GCP networks have no range of their own: each subnetwork brings one, and they must not overlap.</Note>;
+  }
+  if (blocked) {
+    const what = plan.network.node.type === 'aws_vpc' ? 'VPC' : 'VNet';
+    return (
+      <Note>
+        {blocked.reason === 'invalid' ? (
+          <>
+            <code className="font-mono">{blocked.field}</code> <code className="font-mono">"{blocked.text}"</code> isn't a valid
+            CIDR range — fix it to plan subnets.
+          </>
+        ) : blocked.reason === 'missing' ? (
+          <>This {what} has no IPv4 range set, so there's nothing to divide yet.</>
+        ) : (
+          <>
+            The {what} range is an expression (<code className="break-all font-mono">{blocked.text}</code>). Planning needs a literal
+            CIDR, or a variable with a default.
+          </>
+        )}
+      </Note>
+    );
+  }
+  const via = plan.network.ranges.find((r) => r.via)?.via;
+  // the planner divides IPv4; IPv6 ranges are listed for completeness
+  const ipv6 = plan.network.ranges.filter((r) => r.block?.family === 'ipv6').map((r) => r.text);
+  const used = percent(plan.allocated, plan.total);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <code className="truncate font-mono text-[13px] font-semibold text-foreground">
+          {plan.ranges.map(formatCidrBlock).join(', ')}
+        </code>
+        <span className="shrink-0 text-[11px] text-muted">{fmt(plan.total)} addresses</span>
+      </div>
+      {via ? <p className="-mt-1 text-[10.5px] text-faint">from the default of {via}</p> : null}
+      {ipv6.length > 0 ? (
+        <p className="-mt-1 truncate text-[10.5px] text-faint">
+          and IPv6 <span className="font-mono">{ipv6.join(', ')}</span>
+        </p>
+      ) : null}
+      {plan.ranges.map((range) => (
+        <RangeBar
+          key={formatCidrBlock(range)}
+          range={range}
+          blocks={blocksIn(plan)}
+          label={`${formatCidrBlock(range)}: ${fmt(plan.allocated)} of ${fmt(plan.total)} addresses allocated to subnets (${used})`}
+        />
+      ))}
+      <div className="flex justify-between gap-2 text-[11px] text-muted">
+        <span>
+          <span className="font-semibold text-foreground">{fmt(plan.allocated)}</span> allocated · {used}
+        </span>
+        <span>
+          <span className="font-semibold text-foreground">{fmt(plan.total - plan.allocated)}</span> free
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function SubnetList({ plan }: { plan: NetworkPlan }) {
+  const word = plan.provider === 'gcp' ? 'subnetworks' : 'subnets';
+  if (plan.rows.length === 0) return <p className="text-[11px] text-faint">No {word} yet.</p>;
+  return (
+    <div>
+      <h5 className="mb-1 text-[10.5px] font-semibold text-muted">
+        {plan.rows.length} {plan.rows.length === 1 ? word.slice(0, -1) : word}
+      </h5>
+      <ul className="max-h-56 space-y-1 overflow-y-auto" aria-label={word}>
+        {plan.rows.map((row) => (
+          <li key={row.node.id}>
+            <button
+              type="button"
+              onClick={() => select(row.node.id)}
+              title={`Select ${row.node.id}`}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-[8px] border bg-surface-2/60 px-2 py-1.5 text-left transition-colors',
+                'hover:border-border-strong hover:bg-surface-2',
+                FOCUS,
+              )}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[12px] font-semibold text-foreground">{row.node.name}</span>
+                <span className={cn('block truncate font-mono text-[10.5px]', row.block ? 'text-muted' : 'italic text-faint')}>
+                  {row.label}
+                  {row.zone ? <span className="text-faint"> · {row.zone}</span> : null}
+                </span>
+              </span>
+              {row.block ? (
+                <span className="shrink-0 text-right text-[10.5px] leading-tight text-faint">
+                  <span className="block font-mono text-muted">/{row.block.prefix}</span>
+                  {fmt(blockSize(row.block))}
+                </span>
+              ) : null}
+            </button>
+          </li>
+        ))}
+      </ul>
+      {plan.unknown > 0 ? (
+        <p className="mt-1 text-[10.5px] text-faint">
+          {plan.unknown === 1 ? "One subnet's range is" : `${plan.unknown} subnets' ranges are`} an expression — new ranges can't
+          account for {plan.unknown === 1 ? 'it' : 'them'}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function PlannerActions({ ir, plan }: { ir: IR; plan: NetworkPlan }) {
+  const applyOps = useEditor((s) => s.applyCanvasOps);
+  const choices = useMemo(() => sizeChoices(plan), [plan]);
+  const [picked, setPicked] = useState<number | undefined>();
+  const [count, setCount] = useState(3);
+  const hintId = useId();
+  const prefix = picked !== undefined && choices.some((c) => c.prefix === picked) ? picked : defaultPrefix(choices);
+  const choice = choices.find((c) => c.prefix === prefix);
+  const aws = plan.provider === 'aws';
+  if (choices.length === 0) return null;
+
+  const run = (result: PlanOutcome, done: (r: PlanResult) => string) => {
+    if ('error' in result) {
+      showToast(result.error, 'error');
+      return;
+    }
+    applyOps(result.ops);
+    showToast(done(result), 'success');
+  };
+  const add = () =>
+    prefix !== undefined &&
+    run(addSubnetOps(ir, plan.network.node.id, prefix), ({ created: [c] }) => `Added ${c.id} · ${c.cidr}${c.zone ? ` in ${c.zone}` : ''}`);
+  const split = () =>
+    prefix !== undefined &&
+    run(
+      splitAcrossZonesOps(ir, plan.network.node.id, prefix, count),
+      ({ created }) => `Added ${created.length} subnets across ${created.map((c) => c.zone).join(', ')}`,
+    );
+
+  const splitFits = prefix !== undefined && fitsBlocks(plan, prefix, count);
+  const splitHint = !plan.region
+    ? "Set the AWS provider's region to split across its availability zones."
+    : !splitFits
+      ? `No room for ${count} × /${prefix} — pick a smaller size.`
+      : `${count} × /${prefix} in ${zonesFor(plan.region, count).join(', ')}`;
+
+  return (
+    <div className="space-y-2 border-t pt-2.5">
+      <div className="flex items-end gap-1.5">
+        <label className="min-w-0 flex-1">
+          <span className="mb-1 block text-[11px] font-medium text-muted">Subnet size</span>
+          <Select
+            value={prefix ?? ''}
+            onChange={(e) => setPicked(Number(e.target.value))}
+            disabled={prefix === undefined}
+          >
+            {choices.map((c) => (
+              <option key={c.prefix} value={c.prefix} disabled={!c.fits}>
+                /{c.prefix} · {fmt(c.addresses)}
+                {c.fits ? '' : ' — no room'}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <Button className="shrink-0" onClick={add} disabled={!choice?.fits}>
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" /> Add subnet
+        </Button>
+      </div>
+      {choice ? (
+        <p className="text-[10.5px] text-faint">
+          {fmt(choice.usable)} usable per subnet — {CLOUD[plan.provider]} keeps {RESERVED_IPS[plan.provider]} addresses in each.
+        </p>
+      ) : (
+        <Note tone="warning">{plan.network.node.id} is full — there's no free block left for a new subnet.</Note>
+      )}
+      {aws ? (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              className="min-w-0 flex-1"
+              onClick={split}
+              disabled={!plan.region || !splitFits}
+              aria-label={`Split into ${count} subnets across availability zones`}
+              aria-describedby={hintId}
+            >
+              <Columns3 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {/* reads on with the zone picker beside it: "Split across | 3 AZs" */}
+              <span className="truncate">Split across</span>
+            </Button>
+            <div className="w-[84px] shrink-0">
+              <Select
+                aria-label="Availability zones to split across"
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value))}
+              >
+                {SPLIT_COUNTS.map((n) => (
+                  <option key={n} value={n}>
+                    {n} AZs
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </div>
+          <p id={hintId} className="text-[10.5px] text-faint">
+            {splitHint}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------- subnet */
+
+function SubnetCard({ node }: { node: ResourceNode }) {
+  const ir = useEditor((s) => s.ir);
+  const plan = useMemo(() => subnetPlan(ir, node.id), [ir, node.id]);
+  if (!plan) return null;
+  const { block, usable, parent } = plan;
+  const cloud = CLOUD[plan.provider];
+  return (
+    <Card>
+      <div className="space-y-2">
+        {block ? (
+          <>
+            <code className="block truncate font-mono text-[13px] font-semibold text-foreground">{formatCidrBlock(block)}</code>
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              <Stat value={fmt(blockSize(block))} label="addresses" />
+              <Stat value={usable ? fmt(usable.count) : '0'} label="usable" />
+              {plan.share !== undefined ? (
+                <Stat value={percent(blockSize(block), parent!.total)} label={`of ${parent!.provider === 'azure' ? 'VNet' : 'VPC'}`} />
+              ) : (
+                <Stat value={`/${block.prefix}`} label="prefix" />
+              )}
+            </div>
+            {usable ? (
+              <p className="text-[11px] text-muted">
+                Usable <span className="font-mono text-foreground">{formatAddress(usable.first, block.family)}</span> –{' '}
+                <span className="font-mono text-foreground">{formatAddress(usable.last, block.family)}</span>
+                <span className="block text-[10.5px] text-faint">
+                  {cloud} keeps {RESERVED_IPS[plan.provider]} addresses in every subnet.
+                </span>
+              </p>
+            ) : (
+              <Note tone="warning">Too small: {cloud} keeps {RESERVED_IPS[plan.provider]} addresses in every subnet.</Note>
+            )}
+          </>
+        ) : plan.unresolved ? (
+          <Note>
+            The range is an expression (<code className="break-all font-mono">{plan.unresolved}</code>). Numbers appear once it's a
+            literal CIDR, or a variable with a default.
+          </Note>
+        ) : (
+          <Note>{plan.subnet.ranges[0] ? `"${plan.subnet.ranges[0].text}" isn't a valid IPv4 range.` : 'No IPv4 range set yet.'}</Note>
+        )}
+        {plan.others.length > 0 ? (
+          <ul className="space-y-0.5 text-[11px] text-muted">
+            {plan.others.map((r) => (
+              <li key={`${r.field}:${r.text}`} className="flex justify-between gap-2">
+                <span>{r.field === 'secondary_ip_range' ? 'Secondary' : r.block?.family === 'ipv6' ? 'IPv6' : r.field}</span>
+                <code className="truncate font-mono">{r.text}</code>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {plan.outside && parent ? <Note tone="warning">Outside {parent.network.node.id}'s range.</Note> : null}
+        {parent && block && !parent.blocked
+          ? parent.ranges
+              .filter((r) => r.start <= block.start && block.end <= r.end)
+              .map((range) => (
+                <RangeBar
+                  key={formatCidrBlock(range)}
+                  range={range}
+                  blocks={blocksIn(parent)}
+                  highlight={node.id}
+                  label={`${formatCidrBlock(block)} inside ${parent.network.node.id} (${formatCidrBlock(range)})`}
+                />
+              ))
+          : null}
+        {parent ? (
+          <button
+            type="button"
+            onClick={() => select(parent.network.node.id)}
+            className={cn('block max-w-full truncate rounded-[4px] text-left text-[11px] font-medium text-primary hover:underline', FOCUS)}
+          >
+            in {parent.network.node.id}
+            {parent.ranges.length > 0 ? ` (${parent.ranges.map(formatCidrBlock).join(', ')})` : ''}
+          </button>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="rounded-[8px] border bg-surface-2 px-1 py-1.5">
+      <div className="truncate text-[13px] font-bold leading-none text-foreground">{value}</div>
+      <div className="mt-1 text-[9.5px] uppercase tracking-wide text-faint">{label}</div>
+    </div>
+  );
+}

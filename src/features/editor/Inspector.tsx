@@ -29,6 +29,7 @@ import { withinBounds } from '@/resources/fieldRules';
 import { docsUrl, getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
 import { canvasApi } from './canvasApi';
+import { CidrPlanner } from './CidrPlanner';
 import { looksLikeTraversal, removeConnectionOps } from './connections';
 import { useLayout } from './layoutStore';
 import { orderedFiles, useEditor } from './store';
@@ -646,6 +647,7 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
   return (
     <div className="space-y-3.5 p-3.5">
       <ExposureCard node={node} />
+      <CidrPlanner node={node} />
       {/* the block label, not the `name` argument most resources also have */}
       <Field
         label="Terraform name"
