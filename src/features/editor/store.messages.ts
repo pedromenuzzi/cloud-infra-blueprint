@@ -13,6 +13,6 @@ export const storeMessages = defineMessages(
     readOnlyHint: 'Esta é uma visualização somente leitura — faça uma cópia para editar',
     fixCodeFirst: 'Corrija primeiro os erros do código — o canvas fica somente leitura até lá',
     cantApply: 'Não foi possível aplicar essa alteração sem quebrar o código — faça-a no painel de código',
-    untitled: 'Sem título',
+    untitled: 'Sem nome',
   },
 );

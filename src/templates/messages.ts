@@ -27,7 +27,7 @@ export const TEMPLATE_TEXT_PT: Record<TemplateSlug, TemplateText> = {
   },
   'aws-serverless-api': {
     name: 'API serverless na AWS',
-    description: 'API Gateway HTTP → Lambda → DynamoDB, com um role do IAM de privilégio mínimo.',
+    description: 'API Gateway HTTP → Lambda → DynamoDB, com um perfil do IAM de privilégio mínimo.',
   },
   'aws-secure-3tier': {
     name: 'App seguro em 3 camadas na AWS',

@@ -332,7 +332,7 @@ export const dataMessages = defineMessages(
     filesGoneBody:
       'A pasta pode ter sido movida ou esvaziada. Nada foi alterado aqui. Grave o projeto de volta na pasta ou traga o estado dela (vazio) para o projeto.',
     bothChangedBody:
-      'Estes arquivos mudaram na pasta e no Cloud Blueprint desde a última sincronização. Nada é gravado até você escolher qual versão manter.',
+      'Estes arquivos mudaram na pasta e no Cloud Blueprint desde a última sincronização. Nada é salvo até você escolher qual versão manter.',
     later: 'Depois',
     laterHint: 'A sincronização espera até você escolher',
     emptyProject: 'Esvaziar o projeto',

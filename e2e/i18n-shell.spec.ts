@@ -145,7 +145,7 @@ test('dashboard dialogs in Portuguese: templates, restore, GitHub import', async
   await page.getByRole('button', { name: 'Importar do GitHub…' }).click();
   const github = page.getByRole('dialog', { name: /Importar do GitHub/ });
   await github.getByLabel('Link do GitHub ou owner/repo').fill('https://gitlab.com/acme/infra');
-  await github.getByRole('button', { name: 'Procurar Terraform' }).click();
+  await github.getByRole('button', { name: 'Buscar Terraform' }).click();
   await expect(github.getByRole('alert')).toContainText('Por enquanto só o GitHub é suportado');
   await expect(github.getByText('60 requisições por hora')).toBeVisible();
 });
