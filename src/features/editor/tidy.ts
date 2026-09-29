@@ -46,6 +46,13 @@ interface Cell extends Size {
 /** "public_a" → tier "public", zone "a"; "db-1b" → "db", "1b" */
 const ZONE_SUFFIX = /^(.+?)[_-](\d?[a-f]|az\d+|\d)$/i;
 
+/** a subnet's availability zone: its literal `availability_zone`, else its name's suffix */
+export const subnetZone = (r: ResourceNode): string | undefined =>
+  literalString(r.args.availability_zone) ?? ZONE_SUFFIX.exec(r.name)?.[2];
+
+/** a subnet's tier: its name without the zone suffix (public_a → public) */
+export const subnetTier = (r: ResourceNode): string => ZONE_SUFFIX.exec(r.name)?.[1] ?? r.name;
+
 class Arranger {
   readonly byId: Map<string, ResourceNode>;
   readonly children = new Map<string, ResourceNode[]>();
@@ -188,11 +195,7 @@ class Arranger {
    */
   private matrix(subs: ResourceNode[]): Array<Array<ResourceNode | undefined>> | null {
     if (subs.length < 2) return null;
-    const keys = subs.map((s) => {
-      const m = ZONE_SUFFIX.exec(s.name);
-      const zone = literalString(s.args.availability_zone) ?? m?.[2];
-      return { s, zone, tier: m ? m[1] : s.name };
-    });
+    const keys = subs.map((s) => ({ s, zone: subnetZone(s), tier: subnetTier(s) }));
     if (keys.some((k) => !k.zone)) return null;
     const zones = [...new Set(keys.map((k) => k.zone!))].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
     const tiers = [...new Set(keys.map((k) => k.tier))];
