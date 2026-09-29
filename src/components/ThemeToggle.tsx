@@ -1,10 +1,10 @@
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ContextMenu } from '@/components/ContextMenu';
+import { shellMessages } from '@/components/messages';
 import { Button } from '@/components/ui';
-import { isDark, useTheme, type Theme } from '@/theme/useTheme';
-
-const LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark', system: 'System' };
+import { useMessages } from '@/i18n/messages';
+import { isDark, useTheme } from '@/theme/useTheme';
 
 /**
  * Theme picker: the icon shows the theme in effect (sun / moon); clicking
@@ -15,6 +15,8 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [dark, setDark] = useState(() => isDark(theme));
+  const m = useMessages(shellMessages);
+  const LABEL = { light: m.light, dark: m.dark, system: m.system };
 
   // follow OS changes while on "system"
   useEffect(() => {
@@ -31,9 +33,9 @@ export function ThemeToggle() {
       <Button
         variant="ghost"
         size="icon"
-        aria-label={`Theme: ${LABEL[theme]}`}
+        aria-label={m.themeIs(LABEL[theme])}
         aria-haspopup="menu"
-        title={`Theme: ${LABEL[theme]}`}
+        title={m.themeIs(LABEL[theme])}
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setMenu({ x: Math.max(8, r.right - 180), y: r.bottom + 6 });
@@ -45,7 +47,7 @@ export function ThemeToggle() {
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          label="Theme"
+          label={m.theme}
           onClose={() => setMenu(null)}
           entries={(['light', 'dark', 'system'] as const).map((t) => ({
             id: t,

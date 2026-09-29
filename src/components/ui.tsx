@@ -14,7 +14,9 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useMessages } from '@/i18n/messages';
 import { cn } from '@/lib/utils';
+import { shellMessages } from './messages';
 
 /* ----------------------------------------------------------------- Button */
 
@@ -377,6 +379,7 @@ export function Modal({
   closeRef.current = onClose;
   const titleId = useId();
   const triggerRef = useRef<Element | null>(null);
+  const m = useMessages(shellMessages);
 
   // remember what opened the dialog — an insertion effect runs before React's
   // autoFocus (commit/layout) moves focus into the new dialog
@@ -462,7 +465,7 @@ export function Modal({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Close"
+              aria-label={m.close}
               onClick={onClose}
               className="shrink-0"
             >

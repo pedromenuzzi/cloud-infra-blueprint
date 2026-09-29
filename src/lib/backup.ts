@@ -12,6 +12,8 @@
  * what's here. Everything lands in one storage write (all or nothing).
  */
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
+import { messagesFor } from '@/i18n/messages';
+import { backupMessages } from './backup.messages';
 import { isTerraformPath } from './importTf';
 import { filesHash, projectSize, putProjects, type Project, type PutProjectsResult } from './storage';
 import { slugify, uid } from './utils';
@@ -98,7 +100,8 @@ function isFileName(name: unknown): name is string {
   return typeof name === 'string' && name.trim() !== '' && name.length <= 255 && !name.includes('\u0000');
 }
 
-const NOT_A_BACKUP = 'This file isn’t a Cloud Blueprint backup.';
+/** the messages in the UI language of the moment (checks and READMEs are made on demand) */
+const text = () => messagesFor(backupMessages);
 
 export type ManifestCheck =
   | { ok: true; manifest: BackupManifest; invalid: Array<{ name: string; reason: string }> }
@@ -109,37 +112,31 @@ export type ManifestCheck =
  * (`ok: false`); a malformed project entry is only left out, with its reason.
  */
 export function validateManifest(value: unknown): ManifestCheck {
-  if (!isRecord(value) || value.format !== BACKUP_FORMAT) return { ok: false, error: NOT_A_BACKUP };
+  const m = text();
+  if (!isRecord(value) || value.format !== BACKUP_FORMAT) return { ok: false, error: m.notABackup };
   const { version } = value;
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
-    return { ok: false, error: 'This backup’s manifest is damaged (unknown format version).' };
+    return { ok: false, error: m.unknownVersion };
   }
-  if (version > BACKUP_VERSION) {
-    return {
-      ok: false,
-      error: 'This backup was made by a newer version of Cloud Blueprint. Reload the app to update it, then try again.',
-    };
-  }
-  if (!Array.isArray(value.projects)) return { ok: false, error: 'This backup’s manifest is damaged (no project list).' };
-  if (value.projects.length > MAX_PROJECTS) {
-    return { ok: false, error: `This backup lists more than ${MAX_PROJECTS} projects — too many to restore at once.` };
-  }
+  if (version > BACKUP_VERSION) return { ok: false, error: m.newerVersion };
+  if (!Array.isArray(value.projects)) return { ok: false, error: m.noProjectList };
+  if (value.projects.length > MAX_PROJECTS) return { ok: false, error: m.tooManyProjects(MAX_PROJECTS) };
   const exportedAt = isIsoDate(value.exportedAt) ? value.exportedAt : new Date(0).toISOString();
   const projects: ManifestProject[] = [];
   const invalid: Array<{ name: string; reason: string }> = [];
   const ids = new Set<string>();
   value.projects.forEach((entry, i) => {
-    const label = isRecord(entry) && typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : `Project ${i + 1}`;
+    const label = isRecord(entry) && typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : m.projectLabel(i + 1);
     const fail = (reason: string) => invalid.push({ name: label, reason });
-    if (!isRecord(entry)) return fail('not a project entry');
-    if (typeof entry.id !== 'string' || entry.id === '' || entry.id.length > 100) return fail('missing id');
-    if (ids.has(entry.id)) return fail('listed twice');
-    if (!Array.isArray(entry.files) || entry.files.length > MAX_FILES) return fail('damaged file list');
+    if (!isRecord(entry)) return fail(m.notAProject);
+    if (typeof entry.id !== 'string' || entry.id === '' || entry.id.length > 100) return fail(m.missingId);
+    if (ids.has(entry.id)) return fail(m.listedTwice);
+    if (!Array.isArray(entry.files) || entry.files.length > MAX_FILES) return fail(m.damagedFileList);
     const files: ManifestFile[] = [];
     const names = new Set<string>();
     for (const file of entry.files) {
       if (!isRecord(file) || !isFileName(file.name) || !isSafePath(file.path) || names.has(file.name)) {
-        return fail('damaged file list');
+        return fail(m.damagedFileList);
       }
       names.add(file.name);
       files.push({ name: file.name, path: file.path });
@@ -184,17 +181,7 @@ function safeSegment(name: string): string {
 }
 
 function readme(manifest: BackupManifest): string {
-  return `# Cloud Blueprint backup
-
-${manifest.projects.length} project${manifest.projects.length === 1 ? '' : 's'}, exported ${manifest.exportedAt}.
-
-Each folder is one project: its Terraform files, ready for \`terraform init\`.
-\`manifest.json\` keeps names, ids, templates and dates so the backup can be
-restored as it was.
-
-To restore: open Cloud Blueprint → Projects → **Restore from backup…** and pick
-this .zip. Nothing is overwritten without asking.
-`;
+  return text().readme(manifest.projects.length, manifest.exportedAt);
 }
 
 /** The backup .zip of `projects`. */
@@ -253,6 +240,7 @@ const depthOf = (path: string) => path.split('/').length - 1;
 
 /** Reads and validates a backup .zip. Nothing is stored. */
 export function parseBackup(bytes: Uint8Array): ParseResult {
+  const m = text();
   // pass 1: list the entries without inflating any
   const listed: Array<{ name: string; size: number }> = [];
   try {
@@ -263,7 +251,7 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
       },
     });
   } catch {
-    return { ok: false, error: 'This file isn’t a readable .zip archive.' };
+    return { ok: false, error: m.notAZip };
   }
 
   // the manifest at the top, or one folder down (a backup that was unzipped and zipped again)
@@ -272,14 +260,10 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
     .sort((a, b) => depthOf(a.name) - depthOf(b.name))[0];
   if (!manifestEntry) {
     return listed.some((e) => isTerraformPath(e.name))
-      ? {
-          ok: false,
-          hint: 'terraform',
-          error: 'This zip holds Terraform files but no backup manifest — it’s an export, not a backup. Use “Import .tf” to open it as a project.',
-        }
-      : { ok: false, error: `${NOT_A_BACKUP} (It has no manifest.json.)` };
+      ? { ok: false, hint: 'terraform', error: m.terraformExport }
+      : { ok: false, error: m.noManifest };
   }
-  if (manifestEntry.size > MAX_MANIFEST_BYTES) return { ok: false, error: 'This backup’s manifest is too large to read.' };
+  if (manifestEntry.size > MAX_MANIFEST_BYTES) return { ok: false, error: m.manifestTooLarge };
   const prefix = manifestEntry.name.slice(0, manifestEntry.name.length - MANIFEST.length);
 
   let json: unknown;
@@ -287,7 +271,7 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
     const out = unzipSync(bytes, { filter: (file) => file.name === manifestEntry.name });
     json = JSON.parse(strFromU8(out[manifestEntry.name]));
   } catch {
-    return { ok: false, error: 'This backup’s manifest.json is damaged (it isn’t valid JSON).' };
+    return { ok: false, error: m.manifestNotJson };
   }
   const check = validateManifest(json);
   if (!check.ok) return check;
@@ -310,7 +294,7 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
       },
     });
   } catch {
-    return { ok: false, error: 'This backup is damaged — its files can’t be read.' };
+    return { ok: false, error: m.filesUnreadable };
   }
 
   const invalid = [...check.invalid];
@@ -321,7 +305,7 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
     for (const file of entry.files) {
       const data = contents[prefix + file.path];
       if (data) files[file.name] = strFromU8(data);
-      else problem ??= oversized.has(prefix + file.path) ? `${file.name} is too large` : `${file.name} is missing from the zip`;
+      else problem ??= oversized.has(prefix + file.path) ? m.fileTooLarge(file.name) : m.fileMissing(file.name);
     }
     if (problem) {
       invalid.push({ name: entry.name, reason: problem });

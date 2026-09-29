@@ -7,6 +7,8 @@
  * the caller can say so. The layout is computed on open — no positions needed.
  */
 import { strFromU8, unzipSync } from 'fflate';
+import { messagesFor } from '@/i18n/messages';
+import { libMessages } from './messages';
 
 export interface ImportedProject {
   name: string;
@@ -258,19 +260,12 @@ export async function readDroppedTerraform(transfer: DataTransfer): Promise<Impo
   return buildProject(sources, name || 'imported-terraform', budget);
 }
 
-/** A follow-up sentence when parts of the import were left out, else null. */
+/** A follow-up sentence (in the UI language) when parts of the import were left out, else null. */
 export function importNote(imported: ImportedProject): string | null {
+  const m = messagesFor(libMessages);
   const notes: string[] = [];
-  if (imported.skipped > 0) {
-    const where = imported.rootDir ? ` (${imported.rootDir}/)` : '';
-    notes.push(
-      `Imported the root module${where}; ${imported.skipped} file${imported.skipped === 1 ? '' : 's'} in modules/ ` +
-        `${imported.skipped === 1 ? 'was' : 'were'} skipped (modules aren't supported yet)`,
-    );
-  }
-  if (imported.oversized > 0) {
-    notes.push(`${imported.oversized} file${imported.oversized === 1 ? ' was' : 's were'} too large to import`);
-  }
+  if (imported.skipped > 0) notes.push(m.importedRootModule(imported.rootDir, imported.skipped));
+  if (imported.oversized > 0) notes.push(m.importOversized(imported.oversized));
   return notes.length > 0 ? `${notes.join('. ')}.` : null;
 }
 

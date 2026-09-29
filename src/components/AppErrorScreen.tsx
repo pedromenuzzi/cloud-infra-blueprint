@@ -1,18 +1,20 @@
 import { RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { isRouteErrorResponse, useRouteError } from 'react-router-dom';
+import { shellMessages } from '@/components/messages';
 import { Button, LogoMark } from '@/components/ui';
+import { useMessages } from '@/i18n/messages';
 import { canRecoveryReload, isChunkLoadError, recoveryReload } from '@/lib/chunkReload';
-import { pageTitle } from '@/lib/useDocumentTitle';
+import { useDocumentTitle } from '@/lib/useDocumentTitle';
 
-function describe(error: unknown): { message: string; details: string } {
+function describe(error: unknown, unknown: string): { message: string; details: string } {
   if (isRouteErrorResponse(error)) {
     return { message: `${error.status} ${error.statusText}`, details: String(error.data ?? '') };
   }
   if (error instanceof Error) {
     return { message: error.message || error.name, details: error.stack ?? String(error) };
   }
-  return { message: 'Unknown error', details: String(error) };
+  return { message: unknown, details: String(error) };
 }
 
 /**
@@ -25,15 +27,14 @@ export function AppErrorScreen() {
   const chunk = isChunkLoadError(error);
   const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
   const [reloading, setReloading] = useState(() => chunk && canRecoveryReload());
-  const { message, details } = describe(error);
+  const m = useMessages(shellMessages);
+  const { message, details } = describe(error, m.unknownError);
 
   useEffect(() => {
     if (reloading && !recoveryReload()) setReloading(false);
   }, [reloading]);
 
-  useEffect(() => {
-    document.title = pageTitle('Something went wrong');
-  }, []);
+  useDocumentTitle(m.somethingWrong);
 
   if (reloading) {
     return (
@@ -50,29 +51,25 @@ export function AppErrorScreen() {
           <LogoMark size={44} />
         </div>
         <h1 className="mt-5 text-[22px] font-bold tracking-[-0.01em]">
-          {chunk ? 'Cloud Blueprint was updated' : 'Something went wrong'}
+          {chunk ? m.appUpdated : m.somethingWrong}
         </h1>
         <p className="mt-2 text-[13.5px] leading-relaxed text-muted">
-          {chunk
-            ? offline
-              ? 'Part of the app could not be downloaded — you seem to be offline. Reconnect, then reload.'
-              : 'Part of the app could not be downloaded, usually because a new version was just published. Reload to get it.'
-            : 'The page hit an unexpected error. Your projects are saved in this browser — reloading usually fixes it.'}
+          {chunk ? (offline ? m.chunkOffline : m.chunkStale) : m.crashed}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <Button onClick={() => location.reload()}>
-            <RefreshCw className="h-4 w-4" /> Reload
+            <RefreshCw className="h-4 w-4" /> {m.reload}
           </Button>
           <Button
             variant="outline"
             onClick={() => location.assign(`${import.meta.env.BASE_URL}dashboard`)}
           >
-            Back to projects
+            {m.backToProjects}
           </Button>
         </div>
         <details className="mt-7 rounded-md border bg-surface-1 text-left">
           <summary className="cursor-pointer select-none px-3 py-2 text-[12px] font-medium text-muted">
-            Error details
+            {m.errorDetails}
           </summary>
           <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words border-t px-3 py-2 font-mono text-[11px] text-faint">
             {message}

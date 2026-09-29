@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { Button } from '@/components/ui';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import {
   createLink,
   findLinkByFolder,
@@ -15,6 +16,7 @@ import {
 } from '@/lib/fsSync';
 import { importNote } from '@/lib/importTf';
 import { createProject, getProject, uniqueProjectName } from '@/lib/storage';
+import { dataMessages } from './messages';
 
 /** An existing project already linked to this folder (stale links to deleted projects are dropped). */
 async function linkedProject(dir: DirHandleLike): Promise<string | null> {
@@ -34,11 +36,12 @@ export function useOpenFolder() {
   const [busy, setBusy] = useState(false);
 
   const open = async () => {
+    const m = messagesFor(dataMessages);
     let dir: DirHandleLike | null;
     try {
       dir = await pickFolder();
     } catch {
-      showToast('That folder can’t be opened here', 'error');
+      showToast(m.cantOpenFolder, 'error');
       return;
     }
     if (!dir) return;
@@ -46,19 +49,19 @@ export function useOpenFolder() {
     try {
       const existing = await linkedProject(dir);
       if (existing) {
-        showToast('This folder is already linked — opening its project');
+        showToast(m.alreadyLinked);
         navigate(`/editor/${existing}`);
         return;
       }
       const module = await readRootModule(dir);
       if (!module) {
-        showToast(`No .tf files found in “${dir.name}”`, 'error');
+        showToast(m.noTfIn(dir.name), 'error');
         return;
       }
       // the root module can sit below the picked folder, and be linked already
       const root = module.dir !== dir ? await linkedProject(module.dir) : null;
       if (root) {
-        showToast(`“${module.label}” is already linked — opening its project`);
+        showToast(m.labelAlreadyLinked(module.label));
         navigate(`/editor/${root}`);
         return;
       }
@@ -67,7 +70,7 @@ export function useOpenFolder() {
         projectId = createProject({
           name: uniqueProjectName(dir.name),
           files: module.files,
-          description: `Synced with the folder “${module.label}” on this computer.`,
+          description: m.syncedWith(module.label),
         }).id;
       } catch {
         return; // storage full — the storage notice says so
@@ -77,7 +80,7 @@ export function useOpenFolder() {
           createLink({ projectId, dir: module.dir, label: module.label, synced: hashFiles(module.files) }),
         );
       } catch {
-        showToast('Imported, but the folder link couldn’t be saved in this browser', 'error');
+        showToast(m.linkNotSaved, 'error');
       }
       const note = importNote({
         name: dir.name,
@@ -86,10 +89,10 @@ export function useOpenFolder() {
         skipped: module.skipped,
         oversized: module.oversized,
       });
-      showToast(note ?? `Opened “${module.label}” — saves go straight to its .tf files`, note ? 'info' : 'success');
+      showToast(note ?? m.openedFolder(module.label), note ? 'info' : 'success');
       navigate(`/editor/${projectId}`);
     } catch {
-      showToast(`“${dir.name}” can’t be read`, 'error');
+      showToast(m.cantRead(dir.name), 'error');
     } finally {
       setBusy(false);
     }
@@ -104,17 +107,18 @@ export function useOpenFolder() {
  */
 export function OpenFolderButton() {
   const { open, busy, supported } = useOpenFolder();
+  const m = useMessages(dataMessages);
   if (!supported) return null;
   return (
     <Button
       variant="outline"
       onClick={open}
       disabled={busy}
-      aria-label="Open folder…"
-      title="Open folder… — a Terraform folder on your disk, kept in sync"
+      aria-label={m.openFolder}
+      title={m.openFolderTitle}
       className="max-sm:hidden max-2xl:w-8.5 max-2xl:px-0"
     >
-      <FolderOpen className="h-4 w-4" /> <span className="hidden 2xl:inline">Open folder…</span>
+      <FolderOpen className="h-4 w-4" /> <span className="hidden 2xl:inline">{m.openFolder}</span>
     </Button>
   );
 }

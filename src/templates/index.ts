@@ -16,12 +16,28 @@ import { emptyIR, providerOfType, providerSourceName, resourceAddress } from '@/
 import { cloudName, nameSlug } from '@/resources/naming';
 import { getDef } from '@/resources/registry';
 
+export type TemplateSlug =
+  | 'aws-web-app'
+  | 'aws-static-site'
+  | 'aws-container-stack'
+  | 'aws-serverless-api'
+  | 'aws-secure-3tier'
+  | 'azure-web-app'
+  | 'azure-static-site'
+  | 'gcp-web-app'
+  | 'gcp-cloud-run'
+  | 'gcp-static-site'
+  | 'multi-cloud-dr';
+
+export type TemplateTag = 'Web Apps' | 'Static Sites' | 'Containers' | 'Serverless' | 'Security' | 'Data';
+
 export interface TemplateDef {
-  slug: string;
+  slug: TemplateSlug;
+  /** English source text; show `templateName()` / `templateDescription()` (./i18n) */
   name: string;
   description: string;
   providers: Provider[];
-  tags: string[];
+  tags: TemplateTag[];
   /** approximate resource count shown on the card */
   resourceCount: number;
   build(appName: string): Record<string, string>;

@@ -6,10 +6,13 @@ import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Badge, Button, LogoMark } from '@/components/ui';
+import { useMessages } from '@/i18n/messages';
 import { createProject, findProjectByOrigin, uniqueProjectName } from '@/lib/storage';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn } from '@/lib/utils';
 import { getTutorial } from '@/tutorials';
+import { tutorialText } from '@/tutorials/i18n';
+import { routeMessages } from './messages';
 
 const FILE_ORDER = ['main.tf', 'variables.tf', 'outputs.tf', 'providers.tf', 'versions.tf'];
 
@@ -41,7 +44,10 @@ export default function TutorialPlayerPage() {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const tutorial = slug ? getTutorial(slug) : undefined;
-  useDocumentTitle(tutorial ? `${tutorial.title} — Tutorials` : 'Tutorials');
+  const m = useMessages(routeMessages);
+  // the lesson's prose in the UI language (its files never change)
+  const text = tutorial ? tutorialText(tutorial) : undefined;
+  useDocumentTitle(text ? m.tutorialTitle(text.title) : m.tutorials);
 
   // the step lives in the URL (?step=2, 1-based) so a refresh or a shared link keeps it
   const [params, setParams] = useSearchParams();
@@ -81,7 +87,8 @@ export default function TutorialPlayerPage() {
     return diffAddedLines(prev, step.files[activeFile] ?? '');
   }, [tutorial, step, stepIdx, activeFile]);
 
-  if (!tutorial || !step) return null;
+  if (!tutorial || !step || !text) return null;
+  const prose = text.steps[stepIdx] ?? step;
 
   const openInEditor = () => {
     // reuse the untouched copy of this step made earlier instead of piling up duplicates
@@ -93,9 +100,9 @@ export default function TutorialPlayerPage() {
     }
     try {
       const project = createProject({
-        name: uniqueProjectName(`${tutorial.title} — step ${stepIdx + 1}`),
+        name: uniqueProjectName(m.stepProjectName(text.title, stepIdx + 1)),
         files: { ...step.files },
-        description: `From the "${tutorial.title}" tutorial.`,
+        description: m.fromTutorial(text.title),
         origin,
       });
       navigate(`/editor/${project.id}`);
@@ -109,28 +116,30 @@ export default function TutorialPlayerPage() {
   return (
     <div className="flex h-full flex-col">
       <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-surface-1 px-2 sm:gap-3 sm:px-3">
-        <Link to="/" aria-label="Home" className="shrink-0 rounded-sm p-1 hover:bg-surface-2">
+        <Link to="/" aria-label={m.home} className="shrink-0 rounded-sm p-1 hover:bg-surface-2">
           <LogoMark size={22} />
         </Link>
         <Link
           to="/tutorials"
-          aria-label="Tutorials"
+          aria-label={m.tutorials}
           className="flex shrink-0 items-center gap-1.5 text-[13px] text-muted hover:text-foreground"
         >
-          <ArrowLeft className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Tutorials</span>
+          <ArrowLeft className="h-3.5 w-3.5" /> <span className="hidden sm:inline">{m.tutorials}</span>
         </Link>
         <span className="hidden text-faint sm:inline">/</span>
-        <h1 className="min-w-0 truncate text-[13.5px] font-semibold">{tutorial.title}</h1>
+        <h1 className="min-w-0 truncate text-[13.5px] font-semibold">{text.title}</h1>
         <span className="hidden shrink-0 md:inline-flex">
-          <Badge variant={tutorial.level === 'Beginner' ? 'success' : 'default'}>{tutorial.level}</Badge>
+          <Badge variant={tutorial.level === 'Beginner' ? 'success' : 'default'}>
+            {tutorial.level === 'Beginner' ? m.beginner : m.intermediate}
+          </Badge>
         </span>
         <div className="flex-1" />
         <span className="hidden shrink-0 text-[12px] text-faint sm:inline">
-          Step {stepIdx + 1} of {tutorial.steps.length}
+          {m.stepOf(stepIdx + 1, tutorial.steps.length)}
         </span>
-        <Button size="sm" className="shrink-0" onClick={openInEditor} aria-label="Open this step in the editor">
-          <span className="hidden lg:inline">Open this step in the editor</span>
-          <span className="lg:hidden">Open in editor</span>
+        <Button size="sm" className="shrink-0" onClick={openInEditor} aria-label={m.openStep}>
+          <span className="hidden lg:inline">{m.openStep}</span>
+          <span className="lg:hidden">{m.openInEditor}</span>
           <ExternalLink className="h-3.5 w-3.5" />
         </Button>
         <LanguageSwitcher />
@@ -142,9 +151,9 @@ export default function TutorialPlayerPage() {
         {/* lesson column */}
         <aside
           className="flex shrink-0 flex-col border-b bg-surface-1 md:w-80 md:border-b-0 md:border-r"
-          aria-label="Lesson"
+          aria-label={m.lesson}
         >
-          <nav className="border-b p-3" aria-label="Steps">
+          <nav className="border-b p-3" aria-label={m.stepsNav}>
             {tutorial.steps.map((s, i) => (
               <button
                 key={i}
@@ -169,14 +178,14 @@ export default function TutorialPlayerPage() {
                 >
                   {i < stepIdx ? <Check className="h-3 w-3" /> : i + 1}
                 </span>
-                <span className="truncate">{s.title}</span>
+                <span className="truncate">{text.steps[i]?.title ?? s.title}</span>
               </button>
             ))}
           </nav>
 
           <div className="min-h-0 flex-1 p-4 md:overflow-y-auto">
-            <h2 className="text-[15px] font-semibold">{step.title}</h2>
-            {step.body.map((p, i) => (
+            <h2 className="text-[15px] font-semibold">{prose.title}</h2>
+            {prose.body.map((p, i) => (
               <p key={i} className="mt-3 text-[13px] leading-relaxed text-muted">
                 {rich(p)}
               </p>
@@ -190,7 +199,7 @@ export default function TutorialPlayerPage() {
               disabled={stepIdx === 0}
               onClick={() => setStepIdx((i) => Math.max(0, i - 1))}
             >
-              <ArrowLeft className="h-3.5 w-3.5" /> Previous
+              <ArrowLeft className="h-3.5 w-3.5" /> {m.previous}
             </Button>
             <span className="flex gap-1" aria-hidden="true">
               {tutorial.steps.map((_, i) => (
@@ -205,11 +214,11 @@ export default function TutorialPlayerPage() {
             </span>
             {stepIdx < tutorial.steps.length - 1 ? (
               <Button size="sm" onClick={() => setStepIdx((i) => i + 1)}>
-                Next <ArrowRight className="h-3.5 w-3.5" />
+                {m.next} <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             ) : (
               <Button size="sm" onClick={openInEditor}>
-                Keep building <ArrowRight className="h-3.5 w-3.5" />
+                {m.keepBuilding} <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             )}
           </div>
@@ -219,7 +228,7 @@ export default function TutorialPlayerPage() {
         <main className="flex min-w-0 flex-1 flex-col">
           <section
             className="bp-dots relative h-64 shrink-0 border-b bg-canvas p-4 md:h-[42%]"
-            aria-label="Diagram"
+            aria-label={m.diagram}
           >
             <ProjectThumbnail
               key={`${tutorial.slug}-${stepIdx}`}
@@ -228,11 +237,11 @@ export default function TutorialPlayerPage() {
               className="h-full w-full text-foreground"
             />
             <span className="absolute left-3 top-3 rounded-full border bg-surface-1 px-2.5 py-0.5 text-[11px] font-medium text-muted shadow-xs">
-              Blueprint — updates with each step
+              {m.blueprintUpdates}
             </span>
           </section>
 
-          <section className="flex min-h-[360px] flex-1 flex-col md:min-h-0" aria-label="Code">
+          <section className="flex min-h-[360px] flex-1 flex-col md:min-h-0" aria-label={m.code}>
             <div className="flex items-center gap-0.5 overflow-x-auto border-b bg-surface-1 px-1.5 pt-1">
               {files.map((f) => (
                 <button
@@ -250,8 +259,7 @@ export default function TutorialPlayerPage() {
                 </button>
               ))}
               <span className="ml-auto hidden shrink-0 items-center gap-1.5 pb-1 pr-2 text-[10.5px] text-faint sm:flex">
-                <span className="inline-block h-2.5 w-2.5 rounded-[3px] bg-success/25" /> lines added
-                in this step
+                <span className="inline-block h-2.5 w-2.5 rounded-[3px] bg-success/25" /> {m.linesAdded}
               </span>
             </div>
             <div className="min-h-0 flex-1 overflow-auto bg-surface-2/50 p-3">
