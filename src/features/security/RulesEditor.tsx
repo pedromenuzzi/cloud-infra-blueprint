@@ -11,6 +11,8 @@ import { Modal, tabbables } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
+import { useLocale } from '@/i18n/locale';
+import { useMessages } from '@/i18n/messages';
 import { exprPreview, lit } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
 import type { ResourceNode } from '@/ir/types';
@@ -26,6 +28,7 @@ import {
   PLACEHOLDER_CIDR,
   PRESETS,
   presetDraft,
+  presetLabel,
   priorityRange,
   privateRangeOf,
   PUBLIC_PRESETS,
@@ -45,26 +48,14 @@ import {
   type RulePeer,
   type SecurityRule,
 } from '@/security/model';
-import { SEVERITY_COLORS, getAudit, useSecurityUi } from './securityStore';
+import { securityUiMessages } from './messages';
+import { SEVERITY_COLORS, getAudit, useAudit, useSecurityUi } from './securityStore';
 
-const KIND_INFO: Record<OwnerKind, { title: string; note: string }> = {
-  sg: {
-    title: 'Security group',
-    note: 'Stateful — replies to allowed traffic are let out automatically. Rules only allow; anything not listed is denied.',
-  },
-  nacl: {
-    title: 'Network ACL',
-    note: 'Stateless — evaluated in rule-number order, first match wins. Remember to allow return traffic on ephemeral ports (1024–65535).',
-  },
-  nsg: {
-    title: 'Network security group',
-    note: 'Evaluated by priority (lower first). Service tags like VirtualNetwork or Internet work as sources.',
-  },
-  firewall: {
-    title: 'Firewall rule',
-    note: 'Applies to instances in its network with matching target tags (all instances when none are set).',
-  },
-};
+/** what the editor tells the user after adding a rule (worded at render, so a language switch re-words it) */
+type AddNotice =
+  | { kind: 'open-firewall'; preset: string }
+  | { kind: 'placeholder'; preset: string }
+  | { kind: 'resource'; type: string };
 
 const inputCls =
   'h-7 w-full rounded-[6px] border bg-surface-1 px-2 text-[12px] text-foreground outline-none transition-colors focus:border-primary disabled:bg-surface-2 disabled:text-faint';
@@ -125,8 +116,10 @@ function PeerEditor({
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [custom, setCustom] = useState<string | null>(null);
+  const m = useMessages(securityUiMessages);
+  const locale = useLocale((s) => s.locale);
   const set = (p: RulePeer) => onChange(multi ? [...peers.filter((x) => peerKey(x) !== peerKey(p)), p] : [p]);
-  const label = (p: RulePeer) => peerLabel(p, (id) => id.split('.').slice(1).join('.'));
+  const label = (p: RulePeer) => peerLabel(p, (id) => id.split('.').slice(1).join('.'), locale);
   const chip = (p: RulePeer) =>
     p.kind === 'any' && !p.implicit ? p.value : p.src?.expr.kind === 'ref' ? p.src.expr.path : label(p);
   const valid = (text: string) => !!parseCidr(text) && (kind !== 'nacl' || text.includes('/'));
@@ -134,28 +127,28 @@ function PeerEditor({
   const entries: MenuEntry[] =
     kind === 'nsg'
       ? [
-          { id: 'any', label: 'Any source (*)', onSelect: () => set({ kind: 'any', value: '*' }) },
-          { id: 'internet', label: 'Internet (service tag)', onSelect: () => set({ kind: 'any', value: 'Internet' }) },
+          { id: 'any', label: m.anySource, onSelect: () => set({ kind: 'any', value: '*' }) },
+          { id: 'internet', label: m.internetTag, onSelect: () => set({ kind: 'any', value: 'Internet' }) },
           { id: 'vnet', label: 'VirtualNetwork', onSelect: () => set({ kind: 'other', value: 'VirtualNetwork' }) },
           { id: 'lb', label: 'AzureLoadBalancer', onSelect: () => set({ kind: 'other', value: 'AzureLoadBalancer' }) },
         ]
       : [
-          { id: 'any', label: 'Anywhere, IPv4 (0.0.0.0/0)', onSelect: () => set({ kind: 'any', value: '0.0.0.0/0' }) },
-          { id: 'any6', label: 'Anywhere, IPv6 (::/0)', onSelect: () => set({ kind: 'any', value: '::/0' }) },
-          ...(vpcCidr ? [{ id: 'vpc', label: `This VPC (${vpcCidr})`, onSelect: () => set({ kind: 'cidr', value: vpcCidr }) } as MenuEntry] : []),
+          { id: 'any', label: m.anywhereV4, onSelect: () => set({ kind: 'any', value: '0.0.0.0/0' }) },
+          { id: 'any6', label: m.anywhereV6, onSelect: () => set({ kind: 'any', value: '::/0' }) },
+          ...(vpcCidr ? [{ id: 'vpc', label: m.thisVpc(vpcCidr), onSelect: () => set({ kind: 'cidr', value: vpcCidr }) } as MenuEntry] : []),
           ...(kind === 'sg'
             ? ([
                 'separator',
                 ...groups.map((g) => ({
                   id: g.id,
-                  label: `Security group · ${g.name}`,
+                  label: m.groupOption(g.name),
                   onSelect: () => set({ kind: 'group', ref: g.id }),
                 })),
-                { id: 'self', label: 'Itself (same group)', onSelect: () => set({ kind: 'self' }) },
+                { id: 'self', label: m.itself, onSelect: () => set({ kind: 'self' }) },
               ] as MenuEntry[])
             : []),
         ];
-  entries.push('separator', { id: 'custom', label: 'Custom CIDR…', onSelect: () => setCustom('') });
+  entries.push('separator', { id: 'custom', label: m.customCidr, onSelect: () => setCustom('') });
 
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -170,7 +163,7 @@ function PeerEditor({
         >
           <span className="truncate font-mono">{chip(p)}</span>
           {!disabled && peers.length > 1 ? (
-            <button type="button" aria-label={`Remove ${label(p)}`} onClick={() => onChange(peers.filter((_, j) => j !== i))} className="text-faint hover:text-foreground">
+            <button type="button" aria-label={m.remove(label(p))} onClick={() => onChange(peers.filter((_, j) => j !== i))} className="text-faint hover:text-foreground">
               <X className="h-2.5 w-2.5" />
             </button>
           ) : null}
@@ -195,22 +188,22 @@ function PeerEditor({
             }
           }}
           className={cn(inputCls, 'h-6 w-32 font-mono', custom && !valid(custom) && 'border-danger')}
-          aria-label="Custom CIDR"
+          aria-label={m.customCidrLabel}
         />
       ) : !disabled ? (
         <button
           type="button"
-          aria-label={multi ? 'Add source' : 'Change source'}
+          aria-label={multi ? m.addSource : m.changeSource}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setMenu({ x: r.left, y: r.bottom + 4 });
           }}
           className="inline-flex h-5 items-center gap-0.5 rounded-full border border-dashed px-1.5 text-[10.5px] text-muted hover:border-border-strong hover:text-foreground"
         >
-          <Plus className="h-2.5 w-2.5" /> {multi ? 'add' : 'change'}
+          <Plus className="h-2.5 w-2.5" /> {multi ? m.add : m.change}
         </button>
       ) : null}
-      {menu ? <ContextMenu x={menu.x} y={menu.y} label="Choose source" entries={entries} onClose={() => setMenu(null)} /> : null}
+      {menu ? <ContextMenu x={menu.x} y={menu.y} label={m.chooseSource} entries={entries} onClose={() => setMenu(null)} /> : null}
     </div>
   );
 }
@@ -228,22 +221,23 @@ function PriorityInput({ rule, kind, owner, disabled, onCommit }: {
   disabled: boolean;
   onCommit(n: number): void;
 }) {
+  const m = useMessages(securityUiMessages);
   const [text, setText] = useState(rule.priority === undefined ? '' : String(rule.priority));
   useEffect(() => setText(rule.priority === undefined ? '' : String(rule.priority)), [rule.priority]);
   const [min, max] = priorityRange(kind)!;
   const problem = (() => {
-    if (!/^\d+$/.test(text.trim())) return `Enter a number from ${min} to ${max}`;
+    if (!/^\d+$/.test(text.trim())) return m.enterNumber(min, max);
     const n = Number(text);
-    if (n < min || n > max) return `Must be between ${min} and ${max}`;
+    if (n < min || n > max) return m.between(min, max);
     if (n !== rule.priority && usedPriorities(currentIr(), owner, rule.direction, rule.id.split('#')[0]).has(n)) {
-      return `Another ${rule.direction} rule already uses ${n}`;
+      return m.priorityTaken(rule.direction, n);
     }
     return null;
   })();
   return (
     <input
       inputMode="numeric"
-      aria-label={kind === 'nacl' ? 'Rule number' : 'Priority'}
+      aria-label={kind === 'nacl' ? m.ruleNumber : m.priority}
       aria-invalid={problem !== null}
       title={problem ?? undefined}
       value={text}
@@ -281,6 +275,7 @@ function RuleRow({
   apply(ops: Op[]): void;
   onLastFirewallRule(at: { x: number; y: number }): void;
 }) {
+  const m = useMessages(securityUiMessages);
   const draft = toDraft(rule);
   const [ports, setPorts] = useState(portsText(rule));
   const [description, setDescription] = useState(draft.description ?? '');
@@ -290,7 +285,7 @@ function RuleRow({
   const element = rule.origin.element;
   // Azure: the protocol of a rule is shared by every port range it lists
   const sharedProtocol = kind === 'nsg' && element !== undefined;
-  const sharedHint = element ? `Shared by the ${element.count} port ranges of this rule` : undefined;
+  const sharedHint = element ? m.sharedBy(element.count) : undefined;
   const update = (patch: Partial<RuleDraft>) => apply(updateRuleOps(currentIr(), rule, patch));
   const portsValid = readOnly || parsePorts(ports) !== null;
   const noPorts = draft.protocol === 'icmp' || (draft.protocol === 'all' && rule.fromPort === null);
@@ -316,21 +311,21 @@ function RuleRow({
       {kind !== 'sg' && kind !== 'firewall' ? (
         <Cell className="w-20">
           <select
-            aria-label="Action"
+            aria-label={m.action}
             value={draft.action}
             disabled={readOnly}
             title={sharedHint}
             onChange={(e) => update({ action: e.target.value as 'allow' | 'deny' })}
             className={cn(inputCls, draft.action === 'deny' ? 'text-danger' : 'text-success')}
           >
-            <option value="allow">Allow</option>
-            <option value="deny">Deny</option>
+            <option value="allow">{m.allow}</option>
+            <option value="deny">{m.deny}</option>
           </select>
         </Cell>
       ) : null}
       <Cell className="w-36">
         <select
-          aria-label="Service"
+          aria-label={m.service}
           value={presetOf(draft)}
           disabled={readOnly}
           onChange={(e) => {
@@ -341,18 +336,18 @@ function RuleRow({
         >
           {PRESETS.map((p) => (
             <option key={p.id} value={p.id} disabled={sharedProtocol && p.protocol !== draft.protocol}>
-              {p.label}
+              {presetLabel(p)}
             </option>
           ))}
-          <option value="custom">Custom</option>
+          <option value="custom">{m.custom}</option>
         </select>
       </Cell>
       <Cell className="w-20">
         <select
-          aria-label="Protocol"
+          aria-label={m.protocol}
           value={draft.protocol}
           disabled={readOnly || sharedProtocol}
-          title={sharedProtocol ? `${sharedHint} — split them in code to change one` : undefined}
+          title={sharedProtocol && sharedHint ? m.splitInCode(sharedHint) : undefined}
           onChange={(e) => {
             const protocol = e.target.value as RuleDraft['protocol'];
             update({ protocol, ...(protocol === 'all' || protocol === 'icmp' ? { fromPort: null, toPort: null } : {}) });
@@ -362,14 +357,14 @@ function RuleRow({
           <option value="tcp">TCP</option>
           <option value="udp">UDP</option>
           <option value="icmp">ICMP</option>
-          <option value="all">All</option>
+          <option value="all">{m.allProtocols}</option>
         </select>
       </Cell>
       <Cell className="w-24">
         <input
-          aria-label="Port range"
+          aria-label={m.portRange}
           value={noPorts ? '' : ports}
-          placeholder={noPorts ? 'all' : '443 or 8000-8080'}
+          placeholder={noPorts ? m.allPorts : m.portsPlaceholder}
           disabled={readOnly || noPorts}
           onChange={(e) => setPorts(e.target.value)}
           onBlur={() => {
@@ -397,9 +392,9 @@ function RuleRow({
       {kind === 'sg' || kind === 'nsg' ? (
         <Cell className="min-w-[140px]">
           <input
-            aria-label={kind === 'nsg' ? 'Name' : 'Description'}
+            aria-label={kind === 'nsg' ? m.name : m.description}
             value={description}
-            placeholder={kind === 'nsg' ? 'rule name' : 'what is this for?'}
+            placeholder={kind === 'nsg' ? m.namePlaceholder : m.descriptionPlaceholder}
             disabled={readOnly}
             title={kind === 'nsg' ? sharedHint : undefined}
             onChange={(e) => setDescription(e.target.value)}
@@ -424,8 +419,8 @@ function RuleRow({
         {readOnly ? (
           <button
             type="button"
-            aria-label="Edit in code"
-            title={`Written with expressions (${rule.unmodeled!.join(', ')}) — edit it in code`}
+            aria-label={m.editInCode}
+            title={m.writtenWith(rule.unmodeled!.join(', '))}
             onClick={() => revealInCode(resourceId)}
             className="rounded-[6px] p-1 text-muted hover:bg-surface-2 hover:text-foreground"
           >
@@ -436,21 +431,21 @@ function RuleRow({
             {rule.origin.kind === 'resource' ? (
               <button
                 type="button"
-                title={`Defined in ${rule.origin.id}`}
+                title={m.definedIn(rule.origin.id)}
                 onClick={() => {
                   useSecurityUi.getState().openRules(null);
                   useEditor.getState().setSelection(resourceId, 'canvas');
                   canvasApi()?.focusNode(resourceId);
                 }}
                 className="rounded-[6px] p-1 text-faint hover:bg-surface-2 hover:text-foreground"
-                aria-label="Show rule resource"
+                aria-label={m.showRuleResource}
               >
                 <Info className="h-3.5 w-3.5" />
               </button>
             ) : null}
             <button
               type="button"
-              aria-label="Delete rule"
+              aria-label={m.deleteRule}
               onClick={(e) => {
                 const ops = removeRuleOps(currentIr(), rule);
                 if (ops) apply(ops);
@@ -473,6 +468,7 @@ function RuleRow({
 // ------------------------------------------------------------ GCP settings
 
 function FirewallSettings({ node, apply }: { node: ResourceNode; apply(ops: Op[]): void }) {
+  const m = useMessages(securityUiMessages);
   const str = (k: string) => (node.args[k]?.kind === 'literal' ? String(node.args[k].value) : '');
   /** comma-separated literals, or null when the list holds expressions we must not rewrite */
   const listText = (k: string): string | null => {
@@ -495,7 +491,7 @@ function FirewallSettings({ node, apply }: { node: ResourceNode; apply(ops: Op[]
   const listInput = (k: string, placeholder: string, mono?: boolean) => {
     const text = listText(k);
     return text === null ? (
-      <input readOnly value={exprPreview(node.args[k])} title="Written with expressions — edit it in code" className={cn(inputCls, 'mt-1 bg-surface-2 text-faint', mono && 'font-mono')} />
+      <input readOnly value={exprPreview(node.args[k])} title={m.writtenWithShort} className={cn(inputCls, 'mt-1 bg-surface-2 text-faint', mono && 'font-mono')} />
     ) : (
       <input defaultValue={text} key={text} onBlur={(e) => e.target.value !== text && setList(k, e.target.value)} placeholder={placeholder} className={cn(inputCls, 'mt-1', mono && 'font-mono')} />
     );
@@ -503,14 +499,14 @@ function FirewallSettings({ node, apply }: { node: ResourceNode; apply(ops: Op[]
   return (
     <div className="grid grid-cols-2 gap-3 border-b px-5 py-4 sm:grid-cols-4">
       <label className="text-[11.5px] font-medium text-muted">
-        Direction
+        {m.direction}
         <select value={egress ? 'EGRESS' : 'INGRESS'} onChange={(e) => apply([{ kind: 'set_arg', nodeId: node.id, field: 'direction', value: lit(e.target.value) }])} className={cn(inputCls, 'mt-1')}>
-          <option value="INGRESS">Ingress</option>
-          <option value="EGRESS">Egress</option>
+          <option value="INGRESS">{m.ingress}</option>
+          <option value="EGRESS">{m.egress}</option>
         </select>
       </label>
       <label className="text-[11.5px] font-medium text-muted">
-        Action
+        {m.action}
         <select
           value={action}
           onChange={(e) => {
@@ -525,16 +521,16 @@ function FirewallSettings({ node, apply }: { node: ResourceNode; apply(ops: Op[]
           }}
           className={cn(inputCls, 'mt-1', action === 'deny' ? 'text-danger' : 'text-success')}
         >
-          <option value="allow">Allow</option>
-          <option value="deny">Deny</option>
+          <option value="allow">{m.allow}</option>
+          <option value="deny">{m.deny}</option>
         </select>
       </label>
       <label className="text-[11.5px] font-medium text-muted">
-        {egress ? 'Destination ranges' : 'Source ranges'}
-        {listInput(rangesKey, egress ? '0.0.0.0/0' : 'empty = 0.0.0.0/0', true)}
+        {egress ? m.destinationRanges : m.sourceRanges}
+        {listInput(rangesKey, egress ? '0.0.0.0/0' : m.emptyMeansAny, true)}
       </label>
       <label className="text-[11.5px] font-medium text-muted">
-        Target tags
+        {m.targetTags}
         {listInput('target_tags', 'web, ssh')}
       </label>
     </div>
@@ -559,6 +555,7 @@ function Notice({ tone = 'info', children }: { tone?: 'info' | 'warn'; children:
 }
 
 export function RulesEditor() {
+  const m = useMessages(securityUiMessages);
   const owner = useSecurityUi((s) => s.editing);
   const focusRule = useSecurityUi((s) => s.focusRule);
   const openRules = useSecurityUi((s) => s.openRules);
@@ -568,7 +565,7 @@ export function RulesEditor() {
   const [direction, setDirection] = useState<Direction>('inbound');
   const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   const [lastRuleMenu, setLastRuleMenu] = useState<{ x: number; y: number } | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<AddNotice | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   const focused = useRef<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -592,7 +589,7 @@ export function RulesEditor() {
     (tabbables(row)[0] ?? row).focus({ preventScroll: true });
   }, [highlight, direction]);
 
-  const audit = getAudit(ir);
+  const audit = useAudit();
   const rules = useMemo(() => (owner ? (audit.topology.rules.get(owner) ?? []) : []), [audit, owner]);
   if (!node || !kind) return null;
 
@@ -621,57 +618,60 @@ export function RulesEditor() {
     const openFirewall = firewall && inbound && !PUBLIC_PRESETS.has(presetId) && rules.some((r) => fromInternet(r));
     setNotice(
       openFirewall
-        ? `This firewall's source ranges apply to every rule, and they include the internet — ${draft.description} is now open to it. Narrow the source ranges above.`
+        ? { kind: 'open-firewall', preset: presetId }
         : placeholder && !firewall
-          ? `${draft.description} allows ${PLACEHOLDER_CIDR}, a placeholder private range — change the source to the network that needs it.`
+          ? { kind: 'placeholder', preset: presetId }
           : addStyle.mode === 'resource'
-            ? `Added as a ${addStyle.type} resource, like this ${KIND_INFO[kind].title.toLowerCase()}'s other rules.`
+            ? { kind: 'resource', type: addStyle.type }
             : null,
     );
     requestAnimationFrame(() => tableRef.current?.scrollTo({ top: tableRef.current.scrollHeight, behavior: scrollBehavior() }));
   };
 
+  const presetName = (id: string) => {
+    const p = PRESETS.find((x) => x.id === id);
+    return p ? presetLabel(p) : id;
+  };
+  const noticeText =
+    notice?.kind === 'open-firewall'
+      ? m.openFirewall(presetName(notice.preset))
+      : notice?.kind === 'placeholder'
+        ? m.placeholderRange(presetName(notice.preset), PLACEHOLDER_CIDR)
+        : notice?.kind === 'resource'
+          ? m.addedAsResource(notice.type, kind)
+          : null;
+
   return (
     <Modal
       open
       wide
-      label={`Rules for ${node.name}`}
+      label={m.rulesFor(node.name)}
       onClose={() => openRules(null)}
       title={
         <div className="flex items-center gap-2.5">
           <ResourceIcon category={def?.category ?? 'identity'} type={node.type} size={30} />
           <div>
-            <h2 className="text-[15px] font-semibold leading-tight">Rules · {node.name}</h2>
-            <p className="text-[11.5px] text-faint">{KIND_INFO[kind].title} · {node.id}</p>
+            <h2 className="text-[15px] font-semibold leading-tight">{m.rulesTitle(node.name)}</h2>
+            <p className="text-[11.5px] text-faint">{m.kindTitle(kind)} · {node.id}</p>
           </div>
         </div>
       }
     >
-      <div className="flex max-h-[72vh] flex-col" aria-label="Rules editor">
-        <Notice>{KIND_INFO[kind].note}</Notice>
-        {disabled ? <Notice tone="warn">This firewall is disabled — its rules have no effect.</Notice> : null}
-        {mixesStyles(ir, node) ? (
-          <Notice tone="warn">
-            This {KIND_INFO[kind].title.toLowerCase()} mixes inline rules with standalone rule resources — Terraform will keep
-            undoing one with the other. Move them to one style in code.
-          </Notice>
-        ) : null}
-        {hidden.length ? (
-          <Notice tone="warn">
-            Some rules are built with {hidden.map((h) => h.reason).join(', ')} and aren't listed here — edit them in code.
-          </Notice>
-        ) : null}
-        {notice ? <Notice tone="warn">{notice}</Notice> : null}
+      <div className="flex max-h-[72vh] flex-col" aria-label={m.rulesEditor}>
+        <Notice>{m.kindNote(kind)}</Notice>
+        {disabled ? <Notice tone="warn">{m.firewallDisabled}</Notice> : null}
+        {mixesStyles(ir, node) ? <Notice tone="warn">{m.mixesStyles(kind)}</Notice> : null}
+        {hidden.length ? <Notice tone="warn">{m.hiddenRules(hidden.map((h) => h.reason).join(', '))}</Notice> : null}
+        {noticeText ? <Notice tone="warn">{noticeText}</Notice> : null}
         {shown.some((r) => r.unmodeled?.length) ? (
           <Notice>
-            Greyed-out rows are written with expressions or syntax the editor can't rewrite safely — use{' '}
-            <Code2 className="inline h-3 w-3 align-[-2px]" aria-label="Edit in code" /> to edit them in code.
+            {m.greyedBefore} <Code2 className="inline h-3 w-3 align-[-2px]" aria-label={m.editInCode} /> {m.greyedAfter}
           </Notice>
         ) : null}
         {firewall ? <FirewallSettings node={node} apply={apply} /> : null}
         <div className="flex items-center gap-2 px-5 pt-3">
           {!firewall ? (
-            <div className="flex rounded-[8px] border bg-surface-2 p-0.5" role="tablist" aria-label="Direction">
+            <div className="flex rounded-[8px] border bg-surface-2 p-0.5" role="tablist" aria-label={m.direction}>
               {(['inbound', 'outbound'] as const).map((d) => (
                 <button
                   key={d}
@@ -685,7 +685,7 @@ export function RulesEditor() {
                   )}
                 >
                   {d === 'inbound' ? <ArrowDownToLine className="h-3.5 w-3.5" /> : <ArrowUpFromLine className="h-3.5 w-3.5" />}
-                  {d === 'inbound' ? 'Inbound' : 'Outbound'}
+                  {d === 'inbound' ? m.inbound : m.outbound}
                   <span className="rounded-full bg-surface-2 px-1.5 text-[10.5px] text-faint">{count(d)}</span>
                 </button>
               ))}
@@ -702,39 +702,45 @@ export function RulesEditor() {
             }}
             className="inline-flex h-8 items-center gap-1.5 rounded-sm bg-primary px-3 text-[12.5px] font-semibold text-primary-fg shadow-xs hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Plus className="h-3.5 w-3.5" /> Add rule
+            <Plus className="h-3.5 w-3.5" /> {m.addRule}
           </button>
         </div>
         <div ref={tableRef} className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-3">
           {shown.length === 0 ? (
             <div className="rounded-[12px] border border-dashed px-4 py-8 text-center text-[12.5px] text-muted">
               {hidden.length
-                ? 'No rules the editor can show.'
+                ? m.noRulesShown
                 : kind === 'sg' && direction === 'inbound'
-                  ? 'No inbound rules — nothing can connect to resources in this group.'
+                  ? m.noInbound
                   : kind === 'sg'
-                    ? 'No outbound rules — resources in this group cannot start connections.'
-                    : 'No rules yet.'}{' '}
-              {style.mode === 'blocked' ? style.reason : <>Use <b>Add rule</b> to start from a preset.</>}
+                    ? m.noOutbound
+                    : m.noRules}{' '}
+              {style.mode === 'blocked' ? (
+                style.reason
+              ) : (
+                <>
+                  {m.usePresetBefore} <b>{m.addRule}</b> {m.usePresetAfter}
+                </>
+              )}
             </div>
           ) : (
             <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-[10px] border text-left">
               <thead className="bg-surface-2/70 text-[10.5px] font-bold uppercase tracking-wider text-faint">
                 <tr>
-                  {kind === 'nacl' ? <th className="px-2 py-2">Rule #</th> : null}
-                  {kind === 'nsg' ? <th className="px-2 py-2">Priority</th> : null}
-                  {kind === 'nacl' || kind === 'nsg' ? <th className="px-2 py-2">Action</th> : null}
-                  <th className="px-2 py-2">Service</th>
-                  <th className="px-2 py-2">Protocol</th>
-                  <th className="px-2 py-2">Ports</th>
-                  {!firewall ? <th className="px-2 py-2">{direction === 'inbound' ? 'Source' : 'Destination'}</th> : null}
-                  {kind === 'sg' ? <th className="px-2 py-2">Description</th> : null}
-                  {kind === 'nsg' ? <th className="px-2 py-2">Name</th> : null}
+                  {kind === 'nacl' ? <th className="px-2 py-2">{m.ruleNo}</th> : null}
+                  {kind === 'nsg' ? <th className="px-2 py-2">{m.priority}</th> : null}
+                  {kind === 'nacl' || kind === 'nsg' ? <th className="px-2 py-2">{m.action}</th> : null}
+                  <th className="px-2 py-2">{m.service}</th>
+                  <th className="px-2 py-2">{m.protocol}</th>
+                  <th className="px-2 py-2">{m.ports_}</th>
+                  {!firewall ? <th className="px-2 py-2">{direction === 'inbound' ? m.source : m.destination}</th> : null}
+                  {kind === 'sg' ? <th className="px-2 py-2">{m.description}</th> : null}
+                  {kind === 'nsg' ? <th className="px-2 py-2">{m.name}</th> : null}
                   <th className="px-2 py-2">
-                    <span className="sr-only">Risk</span>
+                    <span className="sr-only">{m.risk}</span>
                   </th>
                   <th className="px-2 py-2">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{m.actions}</span>
                   </th>
                 </tr>
               </thead>
@@ -762,12 +768,12 @@ export function RulesEditor() {
         <ContextMenu
           x={addMenu.x}
           y={addMenu.y}
-          label="Add rule"
+          label={m.addRule}
           onClose={() => setAddMenu(null)}
           entries={PRESETS.map((p) => ({
             id: p.id,
-            label: p.label,
-            shortcut: p.protocol === 'all' ? 'all' : p.fromPort === null ? p.protocol : String(p.fromPort),
+            label: presetLabel(p),
+            shortcut: p.protocol === 'all' ? m.allShortcut : p.fromPort === null ? p.protocol : String(p.fromPort),
             onSelect: () => addPreset(p.id),
           }))}
         />
@@ -776,12 +782,12 @@ export function RulesEditor() {
         <ContextMenu
           x={lastRuleMenu.x}
           y={lastRuleMenu.y}
-          label="Last rule of the firewall"
+          label={m.lastRule}
           onClose={() => setLastRuleMenu(null)}
           entries={[
             {
               id: 'delete-firewall',
-              label: 'Delete the whole firewall',
+              label: m.deleteFirewall,
               icon: Trash2,
               danger: true,
               onSelect: () => {
@@ -789,7 +795,8 @@ export function RulesEditor() {
                 useEditor.getState().deleteResources([node.id]);
               },
             },
-            { id: 'keep', label: 'Keep it (a firewall needs one rule)', onSelect: () => setLastRuleMenu(null) },
+            { id: 'keep', label: m.keepFirewall, onSelect: () => setLastRuleMenu(null) },
+
           ]}
         />
       ) : null}

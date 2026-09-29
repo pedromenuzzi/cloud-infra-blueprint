@@ -12,8 +12,10 @@ import { showToast } from '@/components/Toast';
 import { MOD } from '@/features/command/paletteStore';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useEditor } from '@/features/editor/store';
+import { messagesFor } from '@/i18n/messages';
 import type { AuditResult } from '@/security/audit';
 import { securityDelta, type SecurityDelta } from '@/security/delta';
+import { securityUiMessages } from './messages';
 import { getAudit, useSecurityUi } from './securityStore';
 
 /** how long the edits have to settle before they are judged */
@@ -58,12 +60,15 @@ export function startSecurityDelta(): () => void {
     const before = baseline;
     reset();
     if (!before) return;
+    // `before` may be worded in another language (a switch mid-burst): findings compare by their English key
     const delta = securityDelta(before, getAudit(useEditor.getState().ir));
     if (!delta) return;
+    const m = messagesFor(securityUiMessages);
     showToast(delta.message, 'warning', {
-      hint: `${MOD} Z to undo`,
-      ...(delta.target ? { action: { label: 'Show', onClick: () => show(delta) } } : {}),
+      hint: m.undoHint(MOD),
+      ...(delta.target ? { action: { label: m.show, onClick: () => show(delta) } } : {}),
     });
+
   };
   const unsubscribe = useEditor.subscribe((state, prev) => {
     const kind = editKind(prev, state);

@@ -7,37 +7,35 @@ import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
 import { scrollBehavior } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import { useMessages } from '@/i18n/messages';
 import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
 import type { AccessExplanation } from '@/security/access';
-import { SEVERITY_ORDER, type Finding, type Severity } from '@/security/audit';
+import { SEVERITY_ORDER, type Finding } from '@/security/audit';
 import { FRAMEWORKS } from '@/security/compliance';
+import { portText } from '@/security/model';
 import type { Exposure } from '@/security/topology';
 import { AccessPaths } from './AccessPaths';
 import { ComplianceBadges } from './ComplianceBadges';
-import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useSecurityUi } from './securityStore';
-
-const SEVERITY_LABEL: Record<Severity, string> = {
-  critical: 'Critical',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
-};
+import { securityUiMessages } from './messages';
+import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useAudit, useSecurityUi } from './securityStore';
 
 function nameOf(id: string) {
   return id.split('.').slice(1).join('.') || id;
 }
 
-const portList = (ports: string[]) => ports.map((p) => (/^\d/.test(p) ? `:${p}` : p)).join(', ');
+/** ":443, :80, all TCP" — port labels as words in the UI language */
+const portList = (ports: string[]) => ports.map((p) => (/^\d/.test(p) ? `:${p}` : portText(p))).join(', ');
 
 function ResourceChip({ id, onClick }: { id: string; onClick(): void }) {
+  const m = useMessages(securityUiMessages);
   const type = id.split('.')[0];
   const def = getDef(type);
   return (
     <button
       type="button"
       onClick={onClick}
-      title={`Show ${id} on the canvas`}
+      title={m.showOnCanvas(id)}
       className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border bg-surface-2 py-0.5 pl-0.5 pr-2 text-[11px] font-medium text-foreground transition-colors hover:border-border-strong"
     >
       <ResourceIcon category={def?.category ?? 'compute'} type={type} size={18} />
@@ -90,6 +88,7 @@ function ExposedRow({
   onToggle(): void;
   onShow(): void;
 }) {
+  const m = useMessages(securityUiMessages);
   const pathsId = useId();
   return (
     <li data-exposed={id}>
@@ -103,11 +102,11 @@ function ExposedRow({
             type="button"
             aria-expanded={open}
             aria-controls={pathsId}
-            aria-label={`Why is ${nameOf(id)} reachable?`}
+            aria-label={m.whyReachable(nameOf(id))}
             onClick={onToggle}
             className="flex shrink-0 items-center gap-0.5 rounded-[6px] px-1.5 py-0.5 text-[11.5px] font-semibold text-primary transition-colors hover:bg-surface-2 hover:text-primary-hover"
           >
-            Why <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+            {m.why} <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
           </button>
         ) : null}
       </div>
@@ -121,7 +120,7 @@ function ExposedRow({
 }
 
 export function SecurityPanel() {
-  const ir = useEditor((s) => s.ir);
+  const m = useMessages(securityUiMessages);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
   const lens = useSecurityUi((s) => s.lens);
   const setLens = useSecurityUi((s) => s.setLens);
@@ -134,7 +133,7 @@ export function SecurityPanel() {
   const [why, setWhy] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
-  const audit = getAudit(ir);
+  const audit = useAudit();
   const exposed = [...audit.topology.exposure].filter(([, e]) => e.level === 'internet');
   const unknown = [...audit.topology.exposure].filter(([, e]) => e.level === 'unknown');
   const fixable = audit.findings.filter((f) => f.fix);
@@ -195,22 +194,22 @@ export function SecurityPanel() {
     const ops = f.fix!.ops(useEditor.getState().ir);
     if (ops.length === 0) return;
     applyCanvasOps(ops);
-    showToast(`Fixed — ${f.title.toLowerCase()}`, 'success');
+    showToast(m.fixed(f.title), 'success');
   };
 
   return (
     // starts below the canvas's top-center stats pill so it never covers it
     <aside
       ref={panelRef}
-      aria-label="Security"
+      aria-label={m.security}
       className="bp-drawer-left mt-10 flex w-full flex-col overflow-hidden rounded-[14px] border bg-surface-1 shadow-xl"
     >
       <div className="flex items-center gap-2 border-b px-3.5 py-3">
         <ShieldCheck className="h-4 w-4 text-primary" />
-        <h2 className="flex-1 text-[13.5px] font-semibold">Security</h2>
+        <h2 className="flex-1 text-[13.5px] font-semibold">{m.security}</h2>
         <button
           type="button"
-          aria-label="Close security panel"
+          aria-label={m.closePanel}
           onClick={() => setPanel(false)}
           className="rounded-[6px] p-1 text-faint transition-colors hover:bg-surface-2 hover:text-foreground"
         >
@@ -223,14 +222,10 @@ export function SecurityPanel() {
           <GradeRing grade={audit.grade} score={audit.score} />
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-semibold">
-              {audit.grade === null
-                ? 'Nothing to audit yet'
-                : audit.findings.length === 0
-                  ? 'No issues found'
-                  : `${audit.findings.length} issue${audit.findings.length === 1 ? '' : 's'} to review`}
+              {audit.grade === null ? m.nothingToAudit : audit.findings.length === 0 ? m.noIssues : m.issuesToReview(audit.findings.length)}
             </div>
             <div className="mt-0.5 text-[11.5px] text-faint">
-              {audit.score !== null ? `Score ${audit.score} / 100` : 'Add networks, workloads or security groups'}
+              {audit.score !== null ? m.score(audit.score) : m.addSomething}
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1">
               {SEVERITY_ORDER.filter((s) => audit.counts[s] > 0).map((s) => (
@@ -239,7 +234,7 @@ export function SecurityPanel() {
                   className={cn('rounded-full px-1.5 py-px text-[10.5px] font-semibold', SEVERITY_TEXT[s])}
                   style={{ background: `color-mix(in srgb, ${SEVERITY_COLORS[s]} 12%, transparent)` }}
                 >
-                  {audit.counts[s]} {SEVERITY_LABEL[s].toLowerCase()}
+                  {m.severityCount(audit.counts[s], s)}
                 </span>
               ))}
             </div>
@@ -249,10 +244,8 @@ export function SecurityPanel() {
         <label className="mx-3.5 flex cursor-pointer items-center gap-3 rounded-[10px] border bg-surface-2/60 px-3 py-2.5">
           <ScanEye className="h-4 w-4 shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
-            <span className="block text-[12.5px] font-semibold">Security lens</span>
-            <span className="block text-[11px] leading-snug text-faint">
-              Show internet exposure and allowed traffic on the canvas
-            </span>
+            <span className="block text-[12.5px] font-semibold">{m.lens}</span>
+            <span className="block text-[11px] leading-snug text-faint">{m.lensHint}</span>
           </span>
           <input
             type="checkbox"
@@ -260,18 +253,18 @@ export function SecurityPanel() {
             checked={lens}
             onChange={(e) => setLens(e.target.checked)}
             className="bp-switch"
-            aria-label="Security lens"
+            aria-label={m.lens}
           />
         </label>
 
         <section className="px-3.5 pt-4">
           <h3 className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
-            <Globe className="h-3 w-3" /> Internet-facing
+            <Globe className="h-3 w-3" /> {m.internetFacing}
           </h3>
           {exposed.length === 0 ? (
             <p className="flex items-center gap-1.5 text-[12px] text-muted">
               <Lock className="h-3.5 w-3.5 text-success" />{' '}
-              {unknown.length ? 'Nothing is confirmed reachable from the internet.' : 'Nothing is reachable from the internet.'}
+              {unknown.length ? m.nothingConfirmed : m.nothingReachable}
             </p>
           ) : (
             <ul className="space-y-1">
@@ -291,7 +284,7 @@ export function SecurityPanel() {
           {unknown.length > 0 ? (
             <>
               <h3 className="mb-1.5 mt-3 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
-                <ShieldQuestion className="h-3 w-3" /> Can't verify
+                <ShieldQuestion className="h-3 w-3" /> {m.cantVerify}
               </h3>
               <ul className="space-y-1">
                 {unknown.map(([id, e]) => (
@@ -306,20 +299,20 @@ export function SecurityPanel() {
 
         <section className="px-3.5 pb-4 pt-4">
           <div className="mb-1.5 flex items-center justify-between">
-            <h3 className="text-[10.5px] font-bold uppercase tracking-wider text-faint">Findings</h3>
+            <h3 className="text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.findings}</h3>
             {fixable.length > 1 ? (
               <button
                 type="button"
                 onClick={fixAllFindings}
                 className="flex items-center gap-1 text-[11.5px] font-semibold text-primary hover:text-primary-hover"
               >
-                <Sparkles className="h-3 w-3" /> Fix all {fixable.length}
+                <Sparkles className="h-3 w-3" /> {m.fixAll(fixable.length)}
               </button>
             ) : null}
           </div>
           {frameworks.length > 0 ? (
-            <div role="group" aria-label="Filter findings by framework" className="mb-2 flex flex-wrap gap-1">
-              {[{ id: 'all' as const, short: 'All', name: 'All findings', count: audit.findings.length }, ...frameworks].map((f) => (
+            <div role="group" aria-label={m.filterByFramework} className="mb-2 flex flex-wrap gap-1">
+              {[{ id: 'all' as const, short: m.all, name: m.allFindings, count: audit.findings.length }, ...frameworks].map((f) => (
                 <button
                   key={f.id}
                   type="button"
@@ -342,8 +335,8 @@ export function SecurityPanel() {
           {audit.findings.length === 0 ? (
             <div className="rounded-[12px] border border-dashed px-4 py-6 text-center">
               <ShieldCheck className="mx-auto h-6 w-6 text-success" />
-              <p className="mt-2 text-[12.5px] font-semibold">All checks pass</p>
-              <p className="mt-0.5 text-[11.5px] text-faint">Open ports, public databases, encryption, IMDSv2, S3 access, unused groups.</p>
+              <p className="mt-2 text-[12.5px] font-semibold">{m.allPass}</p>
+              <p className="mt-0.5 text-[11.5px] text-faint">{m.allPassHint}</p>
             </div>
           ) : (
             <ul className="space-y-2">
@@ -367,7 +360,8 @@ export function SecurityPanel() {
                       <span className="min-w-0 flex-1">
                         <span className="block text-[12.5px] font-semibold leading-snug">{f.title}</span>
                         <span className={cn('text-[10.5px] font-semibold uppercase tracking-wide', SEVERITY_TEXT[f.severity])}>
-                          {SEVERITY_LABEL[f.severity]}
+                          {m.severity(f.severity)}
+
                         </span>
                       </span>
                       <ChevronDown className={cn('mt-0.5 h-3.5 w-3.5 shrink-0 text-faint transition-transform', open && 'rotate-180')} />
