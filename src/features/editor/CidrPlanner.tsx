@@ -296,6 +296,7 @@ function PlannerActions({ ir, plan }: { ir: IR; plan: NetworkPlan }) {
         <label className="min-w-0 flex-1">
           <span className="mb-1 block text-[11px] font-medium text-muted">{m.subnetSize}</span>
           <Select
+            aria-label={m.subnetSizeLabel}
             value={prefix ?? ''}
             onChange={(e) => setPicked(Number(e.target.value))}
             disabled={prefix === undefined}

@@ -46,6 +46,8 @@ export const cidrPlannerMessages = defineMessages(
     noRoomSplit: (count: number, prefix: number) => `No room for ${count} × /${prefix} — pick a smaller size.`,
     splitPlan: (count: number, prefix: number, zones: string) => `${count} × /${prefix} in ${zones}`,
     subnetSize: 'Subnet size',
+    /** the size picker's accessible name */
+    subnetSizeLabel: 'Subnet size',
     noRoom: ' — no room',
     addSubnet: 'Add subnet',
     usablePerSubnet: (usable: string, provider: CloudProvider, reserved: number) =>
@@ -113,9 +115,10 @@ export const cidrPlannerMessages = defineMessages(
     setRegion: 'Defina a região do provider AWS para dividir entre as zonas de disponibilidade dela.',
     noRoomSplit: (count, prefix) => `Não há espaço para ${count} × /${prefix} — escolha um tamanho menor.`,
     splitPlan: (count, prefix, zones) => `${count} × /${prefix} em ${zones}`,
-    subnetSize: 'Tamanho da sub-rede',
+    subnetSize: 'Tamanho',
+    subnetSizeLabel: 'Tamanho da sub-rede',
     noRoom: ' — sem espaço',
-    addSubnet: 'Adicionar sub-rede',
+    addSubnet: 'Nova sub-rede',
     usablePerSubnet: (usable, provider, reserved) =>
       `${usable} utilizáveis por sub-rede — ${withArticle(provider)} reserva ${reserved} endereços em cada uma.`,
     full: (id) => `${id} está cheia — não sobrou bloco livre para uma nova sub-rede.`,
