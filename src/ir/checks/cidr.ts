@@ -3,6 +3,7 @@
  * sibling or a peer, or break a cloud's size limits. Only values that are
  * certain (literals, variable defaults) are compared.
  */
+import { messagesFor } from '@/i18n/messages';
 import {
   blockContains,
   blocksOverlap,
@@ -12,22 +13,22 @@ import {
   type IpFamily,
 } from '@/resources/cidr';
 import type { ResourceNode } from '../types';
+import { checkMessages } from './messages';
 import { blocksOf, rangeValue, type NetworkInfo, type NetworkModel, type RangeValue, type SubnetInfo } from './network';
 import { isRepeated, refTarget, resolveString } from './resolve';
 import type { CheckContext } from './types';
 
-const NETWORK_WORD: Record<CloudProvider, string> = { aws: 'VPC', azure: 'VNet', gcp: 'network' };
 const EXAMPLE = { ipv4: '10.0.0.0/16', ipv6: '2001:db8::/56' } as const;
-const FAMILY_NAME = { ipv4: 'IPv4', ipv6: 'IPv6' } as const;
 /** AWS keeps each family in its own argument */
 const AWS_FAMILY_ARG = { ipv4: 'cidr_block', ipv6: 'ipv6_cidr_block' } as const;
 
+/** the warnings in the UI language in effect */
+const t = () => messagesFor(checkMessages);
+
 /** `cidr_block "10.0.1/24"`, with the variable it came from */
 function quoted(r: RangeValue): string {
-  return `${r.field} "${r.text}"${r.via ? ` (from ${r.via})` : ''}`;
+  return `${r.field} "${r.text}"${r.via ? t().from(r.via) : ''}`;
 }
-
-const cidrList = (ranges: RangeValue[]) => ranges.map((r) => r.text).join(', ');
 
 type Role = 'network' | 'subnet';
 
@@ -35,19 +36,14 @@ type Role = 'network' | 'subnet';
 function sizeRule(provider: CloudProvider, role: Role, r: RangeValue): string | undefined {
   const block = r.block!;
   if (provider === 'aws' && block.family === 'ipv4' && (block.prefix < 16 || block.prefix > 28)) {
-    const what = role === 'subnet' ? 'subnet' : 'VPC';
-    return `${r.field} ${r.text} is too ${block.prefix < 16 ? 'large' : 'small'} for a ${what} — AWS allows /16 to /28`;
+    return t().awsSize(r.field, r.text, block.prefix < 16, role);
   }
   if (provider === 'azure' && role === 'subnet') {
-    if (block.family === 'ipv4' && block.prefix > 29) {
-      return `${r.field} ${r.text} is too small — Azure subnets must be /29 or larger`;
-    }
-    if (block.family === 'ipv6' && block.prefix !== 64) {
-      return `${r.field} ${r.text} can't be used — Azure IPv6 subnets must be exactly /64`;
-    }
+    if (block.family === 'ipv4' && block.prefix > 29) return t().azureSubnetTooSmall(r.field, r.text);
+    if (block.family === 'ipv6' && block.prefix !== 64) return t().azureIpv6Size(r.field, r.text);
   }
   if (provider === 'gcp' && role === 'subnet' && r.field === 'ip_cidr_range' && block.prefix > 29) {
-    return `${r.field} ${r.text} is too small — GCP subnet ranges must be /29 or larger`;
+    return t().gcpSubnetTooSmall(r.field, r.text);
   }
   return undefined;
 }
@@ -57,18 +53,17 @@ function checkRanges(ctx: CheckContext, node: ResourceNode, ranges: RangeValue[]
   for (const r of ranges) {
     if (r.owner) continue; // a secondary range: checked on the association that holds it
     if (!r.block) {
-      const hint = EXAMPLE[r.expects ?? 'ipv4'];
-      ctx.warn(node, r.field, `${quoted(r)} isn't a valid CIDR range (expected something like ${hint})`);
+      ctx.warn(node, r.field, t().invalidCidr(quoted(r), EXAMPLE[r.expects ?? 'ipv4']));
       continue;
     }
     if (r.expects && r.block.family !== r.expects) {
       const other = provider === 'aws' ? AWS_FAMILY_ARG[r.block.family] : undefined;
-      const fix = other ? `put it in ${other}` : `${r.field} takes ${FAMILY_NAME[r.expects]} ranges`;
-      ctx.warn(node, r.field, `${quoted(r)} is an ${FAMILY_NAME[r.block.family]} range — ${fix}`);
+      const fix = other ? t().putItIn(other) : t().takesFamily(r.field, r.expects);
+      ctx.warn(node, r.field, t().wrongFamily(quoted(r), r.block.family, fix));
       continue;
     }
     if (r.hostBits) {
-      ctx.warn(node, r.field, `${quoted(r)} has host bits set — the range it describes is ${formatCidrBlock(r.block)}, write that instead`);
+      ctx.warn(node, r.field, t().hostBits(quoted(r), formatCidrBlock(r.block)));
       continue;
     }
     const size = sizeRule(provider, role, r);
@@ -90,17 +85,11 @@ function checkInside(ctx: CheckContext, subnet: SubnetInfo, net: NetworkInfo) {
     const parents = net.ranges.filter((p) => p.block!.family === family);
     if (parents.some((p) => blockContains(p.block!, r.block))) continue;
     if (parents.length === 0) {
-      const name = FAMILY_NAME[family];
-      ctx.warn(subnet.node, r.field, `${r.field} ${r.text} is ${name}, but ${net.node.id} has no ${name} range`);
+      ctx.warn(subnet.node, r.field, t().noFamilyRange(r.field, r.text, family, net.node.id));
       continue;
     }
     const partly = parents.some((p) => blocksOverlap(p.block!, r.block));
-    const range = parents.length === 1 ? `range (${parents[0].text})` : `ranges (${cidrList(parents)})`;
-    ctx.warn(
-      subnet.node,
-      r.field,
-      `${r.field} ${r.text} is ${partly ? 'not fully inside' : 'outside'} ${net.node.id}'s ${range}`,
-    );
+    ctx.warn(subnet.node, r.field, t().outsideNetwork(r.field, r.text, partly, net.node.id, parents.map((p) => p.text)));
   }
 }
 
@@ -115,7 +104,6 @@ function checkSiblings(ctx: CheckContext, net: NetworkInfo) {
     .filter((s) => !isRepeated(s.node))
     .flatMap((s) => usable(s.ranges).map((range) => ({ node: s.node, range })));
   const reported = new Set<string>();
-  const word = NETWORK_WORD[net.provider];
   for (let j = 1; j < owned.length; j++) {
     for (let i = 0; i < j; i++) {
       const a = owned[i];
@@ -126,11 +114,9 @@ function checkSiblings(ctx: CheckContext, net: NetworkInfo) {
       reported.add(key);
       if (a.node === b.node) {
         const first = a.range.field === b.range.field ? a.range.text : `${a.range.field} ${a.range.text}`;
-        ctx.warn(b.node, b.range.field, `${b.range.field} ${b.range.text} overlaps ${first}`);
+        ctx.warn(b.node, b.range.field, t().overlapsOwn(b.range.field, b.range.text, first));
       } else {
-        const who = net.provider === 'gcp' ? 'subnetworks of one network' : `subnets in one ${word}`;
-        const why = `${who} need ranges of their own`;
-        ctx.warn(b.node, b.range.field, `${b.range.field} ${b.range.text} overlaps ${a.node.id} (${a.range.text}) — ${why}`);
+        ctx.warn(b.node, b.range.field, t().overlapsSibling(b.range.field, b.range.text, a.node.id, a.range.text, net.provider));
       }
     }
   }
@@ -151,15 +137,10 @@ function gcpBlocks(net: NetworkInfo): CidrBlock[] {
   return net.subnets.filter((s) => !isRepeated(s.node)).flatMap((s) => usable(s.ranges).map((r) => r.block));
 }
 
-const PEERINGS: Record<string, { a: string; b: string; cloud: string; what: string }> = {
-  aws_vpc_peering_connection: { a: 'vpc_id', b: 'peer_vpc_id', cloud: 'AWS', what: 'VPCs whose ranges overlap' },
-  azurerm_virtual_network_peering: {
-    a: 'virtual_network_name',
-    b: 'remote_virtual_network_id',
-    cloud: 'Azure',
-    what: 'virtual networks whose address spaces overlap',
-  },
-  google_compute_network_peering: { a: 'network', b: 'peer_network', cloud: 'GCP', what: 'networks whose subnet ranges overlap' },
+const PEERINGS: Record<string, { a: string; b: string; cloud: CloudProvider }> = {
+  aws_vpc_peering_connection: { a: 'vpc_id', b: 'peer_vpc_id', cloud: 'aws' },
+  azurerm_virtual_network_peering: { a: 'virtual_network_name', b: 'remote_virtual_network_id', cloud: 'azure' },
+  google_compute_network_peering: { a: 'network', b: 'peer_network', cloud: 'gcp' },
 };
 
 /** Peered networks can't overlap; unpeered ones in one project get a softer heads-up. */
@@ -176,11 +157,7 @@ function checkNetworkOverlaps(ctx: CheckContext, model: NetworkModel) {
     const blocks = (n: NetworkInfo) => (n.provider === 'gcp' ? gcpBlocks(n) : ownBlocks(n));
     const hit = overlapBetween(blocks(a), blocks(b));
     if (!hit) continue;
-    ctx.warn(
-      peering,
-      spec.b,
-      `${a.node.id} (${formatCidrBlock(hit[0])}) and ${b.node.id} (${formatCidrBlock(hit[1])}) overlap — ${spec.cloud} can't peer ${spec.what}`,
-    );
+    ctx.warn(peering, spec.b, t().peeringOverlap(spec.cloud, a.node.id, formatCidrBlock(hit[0]), b.node.id, formatCidrBlock(hit[1])));
   }
 
   const candidates = model.networks.filter((n) => n.provider !== 'gcp' && !isRepeated(n.node));
@@ -192,13 +169,7 @@ function checkNetworkOverlaps(ctx: CheckContext, model: NetworkModel) {
       const hit = overlapBetween(ownBlocks(a), ownBlocks(b));
       if (!hit) continue;
       const field = b.ranges.find((r) => r.block && blocksOverlap(r.block, hit[1]) && !r.owner)?.field ?? b.ranges[0]?.field;
-      const word = NETWORK_WORD[b.provider];
-      ctx.warn(
-        b.node,
-        field,
-        `${formatCidrBlock(hit[1])} overlaps ${a.node.id} (${formatCidrBlock(hit[0])}) — ` +
-          `fine while the two ${word}s stay apart, but they could never be peered`,
-      );
+      ctx.warn(b.node, field, t().networksOverlap(formatCidrBlock(hit[1]), a.node.id, formatCidrBlock(hit[0]), b.provider));
       break;
     }
   }

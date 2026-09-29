@@ -3,7 +3,9 @@
  * ./monaco.ts turns them into Monaco items (kept apart so they unit-test
  * without an editor).
  */
+import { messagesFor } from '@/i18n/messages';
 import { exportedEntries, isRequired, parseType, settableEntries } from './lookup';
+import { schemaMessages, type SchemaText } from './messages';
 import type { SchemaAttribute, SchemaBlock, SchemaBlockType, SchemaEntry } from './types';
 
 export interface SchemaCompletion {
@@ -43,36 +45,39 @@ export function blockSnippet(block: SchemaBlockType): string {
   return block.nesting === 'map' ? `${block.name} "\${1:key}" {\n  $0\n}` : `${block.name} {\n  $0\n}`;
 }
 
-const nestingLabel = (b: SchemaBlockType) =>
-  b.nesting === 'single' || (b.nesting === 'list' && b.maxItems === 1)
-    ? 'block'
+/** `block`, `block map`, `block list (max 3)` — in the UI language in effect */
+export function nestingLabel(b: SchemaBlockType, m: SchemaText = messagesFor(schemaMessages)): string {
+  return b.nesting === 'single' || (b.nesting === 'list' && b.maxItems === 1)
+    ? m.block
     : b.nesting === 'map'
-      ? 'block map'
-      : `block ${b.nesting}${b.maxItems > 1 ? ` (max ${b.maxItems})` : ''}`;
+      ? m.blockMap
+      : m.blockNesting(b.nesting, b.maxItems);
+}
 
-/** one line: `list(string)` · required · sensitive */
+/** one line: `list(string)` · required · sensitive — in the UI language in effect */
 export function entryDetail(entry: SchemaEntry): string {
+  const m = messagesFor(schemaMessages);
   const parts: string[] = [];
   if (entry.kind === 'attribute') {
     parts.push(entry.type);
-    parts.push(entry.required ? 'required' : entry.optional ? 'optional' : 'read-only');
-    if (entry.computed && (entry.optional || entry.required)) parts.push('computed');
-    if (entry.sensitive) parts.push('sensitive');
-    if (entry.writeOnly) parts.push('write-only');
+    parts.push(entry.required ? m.required : entry.optional ? m.optional : m.readOnlyDetail);
+    if (entry.computed && (entry.optional || entry.required)) parts.push(m.computed);
+    if (entry.sensitive) parts.push(m.sensitive);
+    if (entry.writeOnly) parts.push(m.writeOnly);
   } else {
-    parts.push(nestingLabel(entry));
-    parts.push(entry.minItems > 0 ? 'required' : 'optional');
+    parts.push(nestingLabel(entry, m));
+    parts.push(entry.minItems > 0 ? m.required : m.optional);
   }
-  if (entry.deprecated) parts.push('deprecated');
+  if (entry.deprecated) parts.push(m.deprecatedDetail);
   return parts.join(' · ');
 }
 
-/** markdown for hovers and completion docs */
+/** markdown for hovers and completion docs (the description is the provider's, in English) */
 export function entryMarkdown(entry: SchemaEntry, heading = true): string {
   const lines: string[] = [];
   if (heading) lines.push(`**${entry.name}** · \`${entryDetail(entry)}\``);
   if (entry.description) lines.push(entry.description);
-  if (entry.deprecated) lines.push(`**Deprecated**${entry.deprecation ? ` — ${entry.deprecation}` : ''}`);
+  if (entry.deprecated) lines.push(messagesFor(schemaMessages).deprecatedHeading(entry.deprecation));
   return lines.join('\n\n');
 }
 

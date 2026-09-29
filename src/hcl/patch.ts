@@ -13,6 +13,7 @@
  * patch is refused instead of splicing into the wrong bytes. A patch that
  * would lose a block or add parse errors is refused too.
  */
+import { messagesFor } from '@/i18n/messages';
 import { exprEquals, renameInExpression, renameInHcl } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
 import { applyOps } from '@/ir/ops';
@@ -54,6 +55,7 @@ import {
   posFromComment,
   shiftParsedBlock,
 } from './parser';
+import { hclMessages, type StaleReason } from './messages';
 
 interface Edit {
   start: number;
@@ -621,19 +623,19 @@ function removalRange(text: string, b: Block, next: Block | undefined): [number,
 }
 
 /** Why `text` no longer holds the blocks parsed from it, or null when it still does. */
-function staleness(text: string | undefined, blocks: Block[]): string | null {
+function staleness(text: string | undefined, blocks: Block[]): StaleReason | null {
   if (blocks.some((b) => b.node.trivia.sourceText === undefined)) return null; // not from the parser
-  if (text === undefined) return blocks.length > 0 ? 'the file is gone' : null;
+  if (text === undefined) return blocks.length > 0 ? 'gone' : null;
   const sorted = [...blocks].sort((a, b) => a.node.trivia.rawTextRange!.start - b.node.trivia.rawTextRange!.start);
   let cursor = 0;
   for (const b of sorted) {
     const { rawTextRange: range, sourceText } = b.node.trivia;
-    if (range!.start < cursor || range!.end > text.length) return 'a block moved';
-    if (!onlyTrivia(text, cursor, range!.start)) return 'text between blocks changed';
-    if (text.slice(range!.start, range!.end) !== sourceText) return 'a block changed';
+    if (range!.start < cursor || range!.end > text.length) return 'moved';
+    if (!onlyTrivia(text, cursor, range!.start)) return 'between';
+    if (text.slice(range!.start, range!.end) !== sourceText) return 'changed';
     cursor = range!.end;
   }
-  return onlyTrivia(text, cursor, text.length) ? null : 'text after the last block changed';
+  return onlyTrivia(text, cursor, text.length) ? null : 'after';
 }
 
 function appendBlocks(text: string, blocks: string[], eol: string): string {
@@ -703,12 +705,7 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
   for (const file of touched) {
     const reason = staleness(files[file], oldByFile.get(file) ?? []);
     if (reason) {
-      return {
-        stale: {
-          file,
-          message: `Canvas edit not applied: ${file} changed since it was last parsed (${reason}). Fix the code errors first.`,
-        },
-      };
+      return { stale: { file, message: messagesFor(hclMessages).stale(file, reason) } };
     }
   }
 
@@ -876,7 +873,7 @@ function verify(
   if (ids(expected) !== ids(fresh.ir) || counts(expected) !== counts(fresh.ir)) {
     return {
       file: touched[0] ?? '',
-      message: 'Canvas edit not applied: the patched code would not declare the expected blocks.',
+      message: messagesFor(hclMessages).wrongBlocks,
     };
   }
   const errorsIn = (diags: Diagnostic[], file: string) => diags.filter((d) => isError(d) && d.file === file);
@@ -885,7 +882,7 @@ function verify(
   for (const file of touched) {
     const after = errorsIn(fresh.diagnostics, file);
     if (after.length > errorsIn(before, file).length) {
-      return { file, message: `Canvas edit not applied: it would break ${file} (${after[0].message}).` };
+      return { file, message: messagesFor(hclMessages).wouldBreak(file, after[0].message) };
     }
   }
   return null;
@@ -908,7 +905,7 @@ export function applyOpsWithPatches(
   for (const [file, edits] of planned.edits) {
     const patched = applyEdits(nextFiles[file] ?? '', edits);
     if (patched === null) {
-      return refuse(files, ir, { file, message: 'Canvas edit not applied: conflicting edits.' });
+      return refuse(files, ir, { file, message: messagesFor(hclMessages).conflicting });
     }
     nextFiles[file] = patched;
   }

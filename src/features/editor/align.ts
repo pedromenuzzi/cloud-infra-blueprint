@@ -3,9 +3,11 @@
  * parent container (the IR convention), so only siblings — resources in the
  * same container, or all at the top level — can be lined up together.
  */
+import { messagesFor } from '@/i18n/messages';
 import { NODE_H, NODE_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
 import type { IR, ResourceNode } from '@/ir/types';
+import { alignMessages } from './align.messages';
 
 export type AlignMode = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom';
 export type DistributeAxis = 'horizontal' | 'vertical';
@@ -34,12 +36,12 @@ function boxes(ir: IR, ids: string[]): Box[] {
     }));
 }
 
-/** Why the selection can't be aligned, or null when it can. */
+/** Why the selection can't be aligned (in the UI language in effect), or null when it can. */
 export function alignBlocker(ir: IR, ids: string[], min = 2): string | null {
   const list = boxes(ir, ids);
-  if (list.length < min) return `Select at least ${min} resources`;
+  if (list.length < min) return messagesFor(alignMessages).atLeast(min);
   const parents = new Set(list.map((b) => b.node.parentId ?? ''));
-  if (parents.size > 1) return 'Select resources in the same container';
+  if (parents.size > 1) return messagesFor(alignMessages).sameContainer;
   return null;
 }
 

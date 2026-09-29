@@ -1,8 +1,13 @@
+import type { Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { block, list, lit, literalString } from '@/ir/expr';
 import { blocksOf } from '@/security/model';
+import { resourceMessages } from './messages';
 import { defineResource } from './types';
 
 const litStr = literalString;
+/** subtitle text in the UI language (or `locale`) */
+const t = (locale?: Locale) => messagesFor(resourceMessages, locale);
 
 const AZURE_LOCATIONS = ['eastus', 'eastus2', 'westus2', 'westeurope', 'northeurope', 'brazilsouth'];
 /** where a resource dropped outside a resource group lands */
@@ -153,9 +158,9 @@ export const AZURE_RESOURCES = [
     ],
     defaults: { ...located },
     connections: [rgConnection],
-    subtitle: (args) => {
+    subtitle: (args, locale) => {
       const n = blocksOf(args.security_rule).length;
-      return n ? `${n} rule${n === 1 ? '' : 's'}` : 'no inline rules';
+      return n ? t(locale).ruleCountPlural(n) : t(locale).noInlineRules;
     },
   }),
 
@@ -183,7 +188,7 @@ export const AZURE_RESOURCES = [
     blockConnections: [
       { targetTypes: ['azurerm_subnet'], block: 'ip_configuration', arg: 'subnet_id', attr: 'id', mode: 'set' },
     ],
-    subtitle: () => 'network interface',
+    subtitle: (_, locale) => t(locale).networkInterface,
   }),
 
   defineResource({
@@ -292,7 +297,7 @@ export const AZURE_RESOURCES = [
     connections: [
       { targetTypes: ['azurerm_storage_account'], arg: 'storage_account_id', attr: 'id', mode: 'set' },
     ],
-    subtitle: (args) => litStr(args.index_document) ?? 'static website',
+    subtitle: (args, locale) => litStr(args.index_document) ?? t(locale).staticWebsite,
   }),
 
   defineResource({
@@ -388,7 +393,7 @@ export const AZURE_RESOURCES = [
         mode: 'set',
       },
     ],
-    subtitle: () => 'CDN endpoint',
+    subtitle: (_, locale) => t(locale).cdnEndpoint,
   }),
 
   defineResource({
@@ -435,7 +440,7 @@ export const AZURE_RESOURCES = [
     ],
     defaults: { allocation_method: lit('Static'), sku: lit('Standard'), ...located },
     connections: [rgConnection],
-    subtitle: (args) => `${litStr(args.allocation_method) ?? 'Static'} IP`,
+    subtitle: (args, locale) => t(locale).publicIp(litStr(args.allocation_method) ?? 'Static'),
   }),
 
   defineResource({
@@ -486,7 +491,7 @@ export const AZURE_RESOURCES = [
     ],
     defaults: { https_only: lit(true), ...located, site_config: block({}) },
     connections: [planConnection, rgConnection],
-    subtitle: () => 'web app',
+    subtitle: (_, locale) => t(locale).webApp,
   }),
 
   defineResource({
@@ -523,7 +528,7 @@ export const AZURE_RESOURCES = [
       rgConnection,
       { targetTypes: ['azurerm_storage_account'], arg: 'storage_account_name', attr: 'name', mode: 'set' },
     ],
-    subtitle: () => 'functions',
+    subtitle: (_, locale) => t(locale).functions,
   }),
 
   defineResource({
@@ -622,7 +627,7 @@ export const AZURE_RESOURCES = [
       ...located,
     },
     connections: [rgConnection],
-    subtitle: () => 'secrets',
+    subtitle: (_, locale) => t(locale).secrets,
   }),
 
   defineResource({
@@ -722,7 +727,7 @@ export const AZURE_RESOURCES = [
     connections: [
       { targetTypes: ['azurerm_servicebus_namespace'], arg: 'namespace_id', attr: 'id', mode: 'set' },
     ],
-    subtitle: () => 'queue',
+    subtitle: (_, locale) => t(locale).queue,
   }),
 
   defineResource({
@@ -745,6 +750,6 @@ export const AZURE_RESOURCES = [
       { targetTypes: ['azurerm_subnet'], arg: 'subnet_id', attr: 'id', mode: 'set' },
       { targetTypes: ['azurerm_network_security_group'], arg: 'network_security_group_id', attr: 'id', mode: 'set' },
     ],
-    subtitle: () => 'subnet ↔ NSG',
+    subtitle: (_, locale) => t(locale).subnetNsg,
   }),
 ];
