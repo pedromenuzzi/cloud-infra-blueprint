@@ -17,6 +17,7 @@ import { CATEGORY_COLORS } from '@/resources/icons';
 import { docsUrl, getDef } from '@/resources/registry';
 import { CATEGORY_LABELS, CATEGORY_ORDER, type Category } from '@/resources/types';
 import { SEVERITY_ORDER, type AuditResult, type Severity } from '@/security/audit';
+import { controlLabel, CONTROLS, FRAMEWORKS, frameworkOf } from '@/security/compliance';
 import { drawDiagram, type DiagramVector, type Region } from './diagramVector';
 
 export type Paper = keyof typeof PAPER;
@@ -1097,18 +1098,35 @@ function* security(c: Cursor, input: ArchDocInput): Generator<void, void> {
   }
 
   const exposed = [...audit.topology.exposure].filter(([, e]) => e.level === 'internet');
+  const port = (p: string) => (/^\d/.test(p) ? `:${p}` : p);
   if (exposed.length) {
     c.heading('Reachable from the internet', String(exposed.length));
     for (const [id, e] of exposed) {
       const name = fitText(nameOf(id), c.width * 0.6, 'bold', 9);
       const dx = c.left + 19 + textWidth(name, 'bold', 9);
-      const detail = wrapText(`open on ${e.ports.map((p) => (/^\d/.test(p) ? `:${p}` : p)).join(', ')}`, c.left + c.width - dx, 'regular', 9);
+      const detail = wrapText(`open on ${e.ports.map(port).join(', ')}`, c.left + c.width - dx, 'regular', 9);
       const h = 15 + (detail.length - 1) * 12;
       c.ensure(h);
       c.page.circle(c.left + 4, c.y + 6, 2.6, { fill: TRAFFIC_COLOR.internet });
       c.page.text(name, c.left + 13, baseline(c.y, 9, 12), { font: 'bold', size: 9, color: INK });
       detail.forEach((line, i) => c.page.text(line, dx, baseline(c.y + i * 12, 9, 12), { size: 9, color: MUTED }));
       c.y += h;
+      // why: the chain of controls per port, Internet and the resource itself left implicit
+      for (const access of (audit.topology.access.get(id)?.open ?? []).slice(0, 8)) {
+        const chain = access.paths[0].steps
+          .filter((s) => s.kind !== 'internet' && s.kind !== 'resource')
+          .map((s) => (s.kind === 'sg' && s.detail ? `${s.title} ${s.detail.split(/ (?:allows|denies) /)[0]}` : s.title));
+        const label = port(access.ports);
+        const lx = c.left + 13;
+        const px = lx + Math.max(34, textWidth(label, 'mono', 7.5) + 8);
+        const lines = wrapText(`via ${chain.join('  ›  ')}`, c.left + c.width - px, 'regular', 7.5);
+        const lh = 7.5 * LEAD;
+        c.ensure(lines.length * lh + 2);
+        c.page.text(label, lx, baseline(c.y, 7.5, lh), { font: 'mono', size: 7.5, color: INK });
+        lines.forEach((line, i) => c.page.text(line, px, baseline(c.y + i * lh, 7.5, lh), { size: 7.5, color: MUTED }));
+        c.y += lines.length * lh + 2;
+      }
+      c.y += 3;
     }
     c.y += 12;
   }
@@ -1121,7 +1139,8 @@ function* security(c: Cursor, input: ArchDocInput): Generator<void, void> {
     const width = c.width - 24;
     const detail = wrapText(f.detail, width, 'regular', 8.5);
     const meta = [`Resource: ${nameOf(f.resource)}`, f.fix ? `Suggested fix: ${f.fix.label}` : ''].filter(Boolean).join('   ·   ');
-    const h = 16 + detail.length * 8.5 * LEAD + 16 + 12;
+    const controls = f.controls?.length ? wrapText(`Controls: ${f.controls.map(controlLabel).join(', ')}`, width, 'regular', 7.5) : [];
+    const h = 16 + detail.length * 8.5 * LEAD + 16 + 12 + controls.length * 10;
     c.ensure(h);
     const color = SEVERITY_COLOR[f.severity];
     c.page.rect(c.left, c.y, c.width, h, { stroke: LINE, lineWidth: 0.7, radius: 5 });
@@ -1137,8 +1156,44 @@ function* security(c: Cursor, input: ArchDocInput): Generator<void, void> {
       y += 8.5 * LEAD;
     }
     c.page.text(fitText(meta, width, 'regular', 7.5), c.left + 12, y + 11, { size: 7.5, color: FAINT });
+    controls.forEach((line, j) => c.page.text(line, c.left + 12, y + 21 + j * 10, { size: 7.5, color: MUTED }));
     c.y += h + 8;
   }
+
+  // the benchmark controls the findings fail, framework by framework
+  const failed = CONTROLS.map((control) => ({
+    control,
+    findings: audit.findings.filter((f) => f.controls?.some((x) => x.framework === control.framework && x.id === control.id)),
+  })).filter((x) => x.findings.length);
+  if (!failed.length) return;
+  c.y += 4;
+  c.heading('Compliance controls', plural(failed.length, 'failed control'));
+  c.paragraph(
+    `Findings mapped to ${FRAMEWORKS.filter((f) => failed.some((x) => x.control.framework === f.id)).map((f) => `${f.name} (${f.version})`).join(', ')}. ` +
+      'Only controls that can be decided from the Terraform are checked — a clean result here is not a certification.',
+    { size: 8, color: MUTED, gap: 8 },
+  );
+  yield* c.table(
+    [
+      { title: 'Control', share: 0.2 },
+      { title: 'Requirement', share: 0.56 },
+      { title: 'Findings', share: 0.24 },
+    ],
+    failed.map(({ control, findings }) => {
+      const worst = findings.map((f) => f.severity).sort((a, b) => SEVERITY_ORDER.indexOf(a) - SEVERITY_ORDER.indexOf(b))[0];
+      return {
+        accent: SEVERITY_COLOR[worst],
+        cells: [
+          [
+            { text: control.id, font: 'bold', size: 8.5 },
+            { text: frameworkOf(control.framework).short, size: 7, color: FAINT },
+          ],
+          [{ text: control.title, size: 8 }],
+          [{ text: [...new Set(findings.map((f) => nameOf(f.resource)))].join(', '), size: 8, color: MUTED, maxLines: 3 }],
+        ],
+      } satisfies Row;
+    }),
+  );
 }
 
 /** `# @blueprint:pos=…` lines only matter to the editor */
