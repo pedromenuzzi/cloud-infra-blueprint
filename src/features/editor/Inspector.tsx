@@ -31,6 +31,7 @@ import type { FieldDef } from '@/resources/types';
 import { canvasApi } from './canvasApi';
 import { looksLikeTraversal, removeConnectionOps } from './connections';
 import { useLayout } from './layoutStore';
+import { SchemaFields } from './SchemaFields';
 import { orderedFiles, useEditor } from './store';
 
 type Tab = 'rules' | 'properties' | 'connections' | 'code';
@@ -394,6 +395,24 @@ function TagsField({ node, field }: { node: ResourceNode; field: FieldDef }) {
   );
 }
 
+/** the editor for a field — also used by the schema's "All arguments" (SchemaFields) */
+function fieldControl(node: ResourceNode, field: FieldDef): React.ReactNode {
+  switch (field.type) {
+    case 'select':
+      return <SelectField node={node} field={field} />;
+    case 'boolean':
+      return <BooleanField node={node} field={field} />;
+    case 'number':
+      return <NumberField node={node} field={field} />;
+    case 'list':
+      return <ListField node={node} field={field} />;
+    case 'tags':
+      return <TagsField node={node} field={field} />;
+    default:
+      return <StringOrRefField node={node} field={field} />;
+  }
+}
+
 function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
   const missing = field.required && !node.args[field.name];
   const label = (
@@ -406,29 +425,9 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
       ) : null}
     </span>
   );
-  let control: React.ReactNode;
-  switch (field.type) {
-    case 'select':
-      control = <SelectField node={node} field={field} />;
-      break;
-    case 'boolean':
-      control = <BooleanField node={node} field={field} />;
-      break;
-    case 'number':
-      control = <NumberField node={node} field={field} />;
-      break;
-    case 'list':
-      control = <ListField node={node} field={field} />;
-      break;
-    case 'tags':
-      control = <TagsField node={node} field={field} />;
-      break;
-    default:
-      control = <StringOrRefField node={node} field={field} />;
-  }
   return (
     <Field label={label} hint={field.doc}>
-      {control}
+      {fieldControl(node, field)}
     </Field>
   );
 }
@@ -640,7 +639,7 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
   const applyOps = useOps();
   const ir = useEditor((s) => s.ir);
   const def = getDef(node.type);
-  const knownFields = new Set(def?.fields.map((f) => f.name) ?? []);
+  const knownFields = useMemo(() => new Set(def?.fields.map((f) => f.name) ?? []), [def]);
   const extraArgs = Object.keys(node.args).filter((k) => !knownFields.has(k) && !/[\s"]/.test(k));
 
   return (
@@ -675,18 +674,26 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
 
       {def?.fields.map((f) => <FieldRow key={f.name} node={node} field={f} />)}
 
-      {extraArgs.length > 0 ? (
-        <div className="border-t pt-3">
-          <h4 className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-faint">
-            Other arguments
-          </h4>
-          <div className="space-y-3">
-            {extraArgs.map((name) => (
-              <FieldRow key={name} node={node} field={{ name, type: 'string' }} />
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {/* the provider schema's other arguments and blocks, once loaded; until then the plain list */}
+      <SchemaFields
+        node={node}
+        curated={knownFields}
+        renderControl={(field) => fieldControl(node, field)}
+        fallback={
+          extraArgs.length > 0 ? (
+            <div className="border-t pt-3">
+              <h4 className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-faint">
+                Other arguments
+              </h4>
+              <div className="space-y-3">
+                {extraArgs.map((name) => (
+                  <FieldRow key={name} node={node} field={{ name, type: 'string' }} />
+                ))}
+              </div>
+            </div>
+          ) : null
+        }
+      />
     </div>
   );
 }
@@ -965,7 +972,8 @@ export function Inspector() {
               Read-only until the code parses — fix the errors in the code pane.
             </p>
           ) : null}
-          <fieldset disabled={codeErrored} className="min-h-0 flex-1 overflow-y-auto">
+          {/* min-w-0: a fieldset is min-content wide by default — long argument names would widen the panel */}
+          <fieldset disabled={codeErrored} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
             {tab === 'rules' ? <RulesTab node={node} /> : null}
             {tab === 'properties' ? <PropertiesTab node={node} /> : null}
             {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
