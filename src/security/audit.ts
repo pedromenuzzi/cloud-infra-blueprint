@@ -6,6 +6,7 @@ import { block, collectRefs, lit, ref, refTargetAddress } from '@/ir/expr';
 import { applyOps, type Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { resourceAddress } from '@/ir/types';
+import { controlsFor, type Control, type FindingFacts } from './compliance';
 import { removeElementsOps, restrictRuleOps } from './edit';
 import {
   blocksOf,
@@ -50,6 +51,8 @@ export interface Finding {
   ruleId?: string;
   /** something the audit couldn't evaluate — an A can't be claimed */
   unverified?: boolean;
+  /** benchmark controls it fails (compliance.ts) */
+  controls?: Control[];
   fix?: { label: string; ops(ir: IR): Op[] };
 }
 
@@ -264,6 +267,8 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
   const name = (id: string) => id.split('.').slice(1).join('.') || id;
   const internetFlows = topology.flows.filter((f) => f.from === 'internet');
+  /** what the compliance table needs to know about rule findings, by finding id */
+  const ruleFacts = new Map<string, Partial<FindingFacts>>();
 
   // 1. rules open to the internet — one finding per rule block (split port lists merge back)
   for (const [owner, rules] of topology.rules) {
@@ -295,6 +300,13 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
         : shown.map(serviceName).join(', ');
       // an IPv6 twin of an IPv4 rule must not read as the same finding twice
       const v6only = internetFamilies(first).every((f) => f === 'ipv6');
+      if (!risk.unverified) {
+        ruleFacts.set(`rule:${key}`, {
+          owner: first.ownerKind,
+          traffic: known.map((r) => topology.effective.get(r.id) ?? NO_TRAFFIC).reduce(trafficUnion, NO_TRAFFIC),
+          families: [...new Set(known.flatMap(internetFamilies))],
+        });
+      }
       findings.push({
         id: `rule:${key}`,
         severity: risk.severity,
@@ -319,6 +331,9 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
     if (ownerNode && OWNER_TYPES[ownerNode.type] === 'nacl') {
       const allowed = rules.map((r) => topology.effective.get(r.id) ?? NO_TRAFFIC).reduce(trafficUnion, NO_TRAFFIC);
       if (trafficAll(allowed)) {
+        ruleFacts.set(`nacl-open:${owner}`, {
+          families: [...new Set(rules.filter((r) => topology.effective.has(r.id)).flatMap(internetFamilies))],
+        });
         findings.push({
           id: `nacl-open:${owner}`,
           severity: 'low',
@@ -447,7 +462,22 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
     });
   }
 
-  // 3. unused security groups (the default SG always exists; outputs / modules count as use)
+  // 3. the VPC's default security group should stay empty (CIS AWS 5.4, Security Hub EC2.2)
+  for (const r of ir.resources) {
+    if (r.type !== 'aws_default_security_group') continue;
+    const count = (topology.rules.get(r.id) ?? []).length + (topology.hidden.get(r.id) ?? []).length;
+    if (count === 0) continue;
+    findings.push({
+      id: `default-sg:${r.id}`,
+      severity: 'low',
+      title: 'Default security group allows traffic',
+      detail: `${name(r.id)} keeps ${count} rule${count === 1 ? '' : 's'}. Leave the VPC's default group empty (no ingress or egress blocks) and give each workload a group of its own.`,
+      resource: r.id,
+      related: [],
+    });
+  }
+
+  // 4. unused security groups (the default SG always exists; outputs / modules count as use)
   const referencedByRules = new Set(
     [...topology.rules.values()].flat().flatMap((r) => r.peers.flatMap((p) => (p.kind === 'group' ? [p.ref] : []))),
   );
@@ -463,6 +493,12 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
       resource: r.id,
       related: [],
     });
+  }
+
+  for (const f of findings) {
+    const kind = f.id.split(':')[0];
+    const controls = controlsFor({ kind, type: byId.get(f.resource)?.type ?? '', ...ruleFacts.get(f.id) });
+    if (controls.length) f.controls = controls;
   }
 
   const order = (s: Severity) => SEVERITY_ORDER.indexOf(s);
