@@ -8,20 +8,25 @@
  * diagramVector.ts; a diagram too big for one readable page is also split
  * into page-sized tiles.
  */
-import { estimateProject, PROVIDER_NAME } from '@/cost/estimate';
+import { estimateProject, providerName } from '@/cost/estimate';
 import { approx, describeLine, priceDate, usd } from '@/cost/format';
 import { PRICE_BOOK } from '@/cost/prices/prices';
 import type { CloudProvider, ProjectCost, ResourceCost } from '@/cost/types';
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { exprPreview, refTargetAddress } from '@/ir/expr';
 import type { Expression, IR, IREdge, Provider, ResourceNode } from '@/ir/types';
 import { providerOfSourceName } from '@/ir/types';
 import { fitText, splitToWidth, textWidth, wrapText, type PdfFont } from '@/lib/pdf/metrics';
 import { PAPER, PdfDocument, tint, type PdfColor, type PdfPage } from '@/lib/pdf/writer';
+import { categoryLabel as catalogCategory, resourceName, resourceShortName } from '@/resources/i18n';
 import { CATEGORY_COLORS } from '@/resources/icons';
 import { docsUrl, getDef } from '@/resources/registry';
-import { CATEGORY_LABELS, CATEGORY_ORDER, type Category } from '@/resources/types';
+import { CATEGORY_ORDER, type Category } from '@/resources/types';
 import { SEVERITY_ORDER, type AuditResult, type Severity } from '@/security/audit';
-import { controlLabel, CONTROLS, FRAMEWORKS, frameworkOf } from '@/security/compliance';
+import { controlLabel, controlsIn, FRAMEWORKS, frameworkOf } from '@/security/compliance';
+import { portText } from '@/security/model';
+import { docMessages, type DocMessages } from './archDoc.messages';
 import { drawDiagram, type DiagramVector, type Region } from './diagramVector';
 
 export type Paper = keyof typeof PAPER;
@@ -49,6 +54,8 @@ export interface ArchDocInput {
   generatedAt: Date;
   /** deflate page content (tests turn it off to read the text back) */
   compress?: boolean;
+  /** the document's language — the UI language by default; `audit` should be worded in it too */
+  locale?: Locale;
 }
 
 // ------------------------------------------------------------------ style
@@ -68,20 +75,15 @@ export const BOTTOM_SPACE = 52;
 /** footer baseline, from the bottom edge */
 export const FOOTER_BASELINE = 24;
 
-const PROVIDER_LABEL: Record<Provider, string> = { aws: 'AWS', azure: 'Azure', gcp: 'Google Cloud', other: 'Other' };
 const PROVIDER_COLOR: Record<Provider, PdfColor> = { aws: '#ff9900', azure: '#0078d4', gcp: '#4285f4', other: '#64748b' };
 const SEVERITY_COLOR: Record<Severity, PdfColor> = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#64748b' };
 const GRADE_COLOR: Record<string, PdfColor> = { A: '#10b981', B: '#84cc16', C: '#f59e0b', D: '#f97316', F: '#ef4444' };
 const TRAFFIC_COLOR = { internet: '#0ea5e9', internal: '#10b981', risky: '#ef4444' };
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-export function formatDocDate(d: Date): string {
-  const p = (v: number) => String(v).padStart(2, '0');
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}`;
+/** "29 Sep 2026, 09:00" / "29 de set. de 2026, 09:00" */
+export function formatDocDate(d: Date, locale: Locale = currentLocale()): string {
+  return messagesFor(docMessages, locale).date(d);
 }
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** baseline for text of `size` vertically centered in a line box starting at `top` */
 const baseline = (top: number, size: number, lineHeight: number) => top + (lineHeight - size * 0.925) / 2 + size * 0.718;
@@ -92,7 +94,6 @@ const baseline = (top: number, size: number, lineHeight: number) => top + (lineH
 // whatever the expression looks like (literal, interpolation, list, object).
 
 const MASK = '••••••';
-const SCRIPT_HIDDEN = '(script hidden)';
 
 /** names (arguments, variables, outputs, object keys) whose values are secrets */
 const SECRET_NAME =
@@ -130,14 +131,14 @@ export function redactSecrets(text: string, inline = true): string {
 }
 
 /** exprPreview with the values of secret-named object keys masked */
-function safePreview(e: Expression | undefined): string {
+function safePreview(e: Expression | undefined, t: DocMessages): string {
   if (!e) return '';
   switch (e.kind) {
     case 'list':
-      return `[${e.items.map(safePreview).join(', ')}]`;
+      return `[${e.items.map((i) => safePreview(i, t)).join(', ')}]`;
     case 'object': {
       const inner = Object.entries(e.fields)
-        .map(([k, v]) => `${k} = ${SCRIPT_ARG.test(k) ? SCRIPT_HIDDEN : SECRET_NAME.test(k) ? MASK : safePreview(v)}`)
+        .map(([k, v]) => `${k} = ${SCRIPT_ARG.test(k) ? t.scriptHidden : SECRET_NAME.test(k) ? MASK : safePreview(v, t)}`)
         .join(', ');
       return `{ ${inner} }`;
     }
@@ -154,20 +155,20 @@ function categoryOf(r: ResourceNode): CategoryKey {
   return getDef(r.type)?.category ?? 'other';
 }
 
-function categoryLabel(c: CategoryKey): string {
-  return c === 'other' ? 'Other' : CATEGORY_LABELS[c];
+function categoryLabel(c: CategoryKey, locale: Locale): string {
+  return c === 'other' ? messagesFor(docMessages, locale).other : catalogCategory(c, locale);
 }
 
 function categoryColor(c: CategoryKey): PdfColor {
   return c === 'other' ? '#64748b' : CATEGORY_COLORS[c].solid;
 }
 
-function serviceName(type: string): string {
-  return getDef(type)?.displayName ?? type.replace(/^(aws|azurerm|google)_/, '').replace(/_/g, ' ');
+function serviceName(type: string, locale: Locale): string {
+  return getDef(type) ? resourceName(type, locale) : type.replace(/^(aws|azurerm|google)_/, '').replace(/_/g, ' ');
 }
 
-function shortName(type: string): string {
-  return getDef(type)?.shortName ?? serviceName(type);
+function shortName(type: string, locale: Locale): string {
+  return getDef(type) ? resourceShortName(type, locale) : serviceName(type, locale);
 }
 
 /** literal value of an expression, following `var.x` to its default */
@@ -202,7 +203,7 @@ export function providerSummary(ir: IR): Array<{ provider: Provider; regions: st
   return [...out.values()].filter((e) => e.count > 0);
 }
 
-function settingValue(e: Expression): string | undefined {
+function settingValue(e: Expression, t: DocMessages): string | undefined {
   switch (e.kind) {
     case 'literal':
       return e.value === null ? undefined : String(e.value);
@@ -210,7 +211,7 @@ function settingValue(e: Expression): string | undefined {
       // references to other resources are listed as connections instead
       return refTargetAddress(e.path) ? undefined : e.path;
     case 'list': {
-      const items = e.items.map(settingValue);
+      const items = e.items.map((i) => settingValue(i, t));
       if (items.length === 0 || items.some((i) => i === undefined)) return undefined;
       return items.length > 3 ? `${items.slice(0, 3).join(', ')} +${items.length - 3}` : items.join(', ');
     }
@@ -219,14 +220,15 @@ function settingValue(e: Expression): string | undefined {
       return flat.length > 44 ? `${flat.slice(0, 43)}…` : flat;
     }
     case 'blocks':
-      return plural(e.items.length, 'block');
+      return t.blocks(e.items.length);
     default:
       return undefined;
   }
 }
 
 /** the few arguments worth reading, schema order first, secrets masked */
-export function keySettings(r: ResourceNode, max = 6): string[] {
+export function keySettings(r: ResourceNode, max = 6, locale: Locale = currentLocale()): string[] {
+  const t = messagesFor(docMessages, locale);
   const order = [...(getDef(r.type)?.fields.map((f) => f.name) ?? []), ...Object.keys(r.args)];
   const seen = new Set<string>();
   const out: string[] = [];
@@ -235,9 +237,9 @@ export function keySettings(r: ResourceNode, max = 6): string[] {
     seen.add(key);
     const e = r.args[key];
     if (!e || key === 'tags' || key === 'tags_all') continue;
-    const value = settingValue(e);
+    const value = settingValue(e, t);
     if (value === undefined || value === '') continue;
-    if (SCRIPT_ARG.test(key)) out.push(`${key}: ${SCRIPT_HIDDEN}`);
+    if (SCRIPT_ARG.test(key)) out.push(`${key}: ${t.scriptHidden}`);
     // a true/false switch (manage_master_user_password = true) gives nothing away
     else if (isSecretArg(r.type, key) && !(e.kind === 'literal' && typeof e.value === 'boolean')) out.push(`${key}: ${MASK}`);
     else out.push(`${key}: ${redactSecrets(value)}`);
@@ -245,11 +247,11 @@ export function keySettings(r: ResourceNode, max = 6): string[] {
   return out;
 }
 
-function placement(r: ResourceNode, byId: Map<string, ResourceNode>): string {
+function placement(r: ResourceNode, byId: Map<string, ResourceNode>, locale: Locale): string {
   const chain: string[] = [];
   let cur = r.parentId ? byId.get(r.parentId) : undefined;
   while (cur && chain.length < 6) {
-    chain.unshift(`${cur.name} (${shortName(cur.type)})`);
+    chain.unshift(`${cur.name} (${shortName(cur.type, locale)})`);
     cur = cur.parentId ? byId.get(cur.parentId) : undefined;
   }
   return chain.join(' › ');
@@ -542,21 +544,21 @@ interface LegendItem {
   draw?: (page: PdfPage, x: number, y: number) => void;
 }
 
-function legendItems(lens: boolean): LegendItem[] {
+function legendItems(lens: boolean, t: DocMessages): LegendItem[] {
   const items: LegendItem[] = [
     {
-      label: 'Network boundary (VPC, subnet, group)',
+      label: t.legendBoundary,
       draw: (page, x, y) => page.rect(x, y - 5, 22, 10, { stroke: '#a855f7', lineWidth: 0.9, dash: [2.5, 1.8], radius: 2.5 }),
     },
     {
-      label: 'Uses / depends on',
+      label: t.legendUses,
       draw: (page, x, y) => {
         page.line(x, y, x + 19, y, { color: EDGE_REF, width: 1.2 });
         arrowHead(page, x + 22, y, EDGE_REF);
       },
     },
     {
-      label: 'Security group / firewall link',
+      label: t.legendSecurity,
       draw: (page, x, y) => {
         page.line(x, y, x + 19, y, { color: EDGE_SECURITY, width: 1.2, dash: [3, 2.2] });
         arrowHead(page, x + 22, y, EDGE_SECURITY);
@@ -565,7 +567,7 @@ function legendItems(lens: boolean): LegendItem[] {
   ];
   if (lens) {
     items.push({
-      label: 'Allowed traffic (security lens)',
+      label: t.legendTraffic,
       draw: (page, x, y) => {
         page.line(x, y, x + 19, y, { color: TRAFFIC_COLOR.internet, width: 1.6 });
         arrowHead(page, x + 22, y, TRAFFIC_COLOR.internet);
@@ -670,13 +672,20 @@ function pageHeader(page: PdfPage, title: string, meta: string, reserve?: number
 }
 
 /** draw `region` of the diagram into `box`, clipped, centered */
-function diagramInBox(page: PdfPage, d: DiagramVector, box: { x: number; y: number; w: number; h: number }, region: Region, scale: number) {
+function diagramInBox(
+  page: PdfPage,
+  d: DiagramVector,
+  box: { x: number; y: number; w: number; h: number },
+  region: Region,
+  scale: number,
+  locale: Locale,
+) {
   page.rect(box.x, box.y, box.w, box.h, { fill: d.palette.canvas, stroke: '#d3e0f0', lineWidth: 0.8, radius: 8 });
   const w = region.w * scale;
   const h = region.h * scale;
   page.save();
   page.clipRect(box.x + 0.4, box.y + 0.4, box.w - 0.8, box.h - 0.8, 7.6);
-  drawDiagram(page, d, { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, scale, region });
+  drawDiagram(page, d, { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, scale, region, locale });
   page.restore();
 }
 
@@ -684,32 +693,33 @@ function diagramInBox(page: PdfPage, d: DiagramVector, box: { x: number; y: numb
  * The diagram page — and, for a diagram too big to read on one page, an
  * overview with numbered areas followed by one page per area.
  */
-function* diagramPages(doc: PdfDocument, input: ArchDocInput, meta: string): Generator<string, void> {
+function* diagramPages(doc: PdfDocument, input: ArchDocInput, meta: string, locale: Locale): Generator<string, void> {
+  const t = messagesFor(docMessages, locale);
   const paper = PAPER[input.paper];
   const portrait = { width: paper.width, height: paper.height };
   const landscape = { width: paper.height, height: paper.width };
   const d = input.diagram;
-  const legend = legendItems(!!d?.lens);
+  const legend = legendItems(!!d?.lens, t);
   const rowsFor = (s: Size) => legendRows(legend, s.width - MARGIN * 2);
   const boxFor = (s: Size) => diagramBox(s, rowsFor(s).length);
 
   const region = d ? diagramRegion(d) : undefined;
   const size = region && fitScale(region, boxFor(portrait)) > fitScale(region, boxFor(landscape)) ? portrait : landscape;
   const page = doc.addPage(size.width, size.height);
-  doc.bookmark('Diagram', page, 0);
+  doc.bookmark(t.diagram, page, 0);
   pageHeader(page, input.title, meta);
   const box = boxFor(size);
 
   if (!d || !region) {
     page.rect(box.x, box.y, box.w, box.h, { fill: SOFT, stroke: '#d3e0f0', lineWidth: 0.8, radius: 8 });
-    page.text('The diagram could not be rendered.', box.x + box.w / 2, box.y + box.h / 2, { size: 10, color: MUTED, align: 'center' });
+    page.text(t.noDiagram, box.x + box.w / 2, box.y + box.h / 2, { size: 10, color: MUTED, align: 'center' });
     drawLegend(page, rowsFor(size), box.y + box.h + LEGEND_GAP);
     return;
   }
 
   const scale = Math.min(fitScale(region, box), MAX_SCALE);
   if (scale >= TILE_BELOW) {
-    diagramInBox(page, d, box, region, scale);
+    diagramInBox(page, d, box, region, scale, locale);
     drawLegend(page, rowsFor(size), box.y + box.h + LEGEND_GAP);
     return;
   }
@@ -722,11 +732,11 @@ function* diagramPages(doc: PdfDocument, input: ArchDocInput, meta: string): Gen
   const tilePages = grid.tiles.map(() => doc.addPage(tileSize.width, tileSize.height));
   const first = tilePages[0].index + 1;
   const last = tilePages[tilePages.length - 1].index + 1;
-  const note: LegendItem = { label: `Numbered areas are printed at a readable size on pages ${first}–${last} (click one to jump).` };
+  const note: LegendItem = { label: t.numberedAreas(first, last) };
   const rows = legendRows([...legend, note], size.width - MARGIN * 2);
   const overviewBox = diagramBox(size, rows.length);
   const overviewScale = Math.min(fitScale(region, overviewBox), MAX_SCALE);
-  diagramInBox(page, d, overviewBox, region, overviewScale);
+  diagramInBox(page, d, overviewBox, region, overviewScale, locale);
   drawLegend(page, rows, overviewBox.y + overviewBox.h + LEGEND_GAP);
 
   // the areas, numbered and linked to their pages
@@ -755,13 +765,13 @@ function* diagramPages(doc: PdfDocument, input: ArchDocInput, meta: string): Gen
   const k = Math.min(150 / region.w, 42 / region.h);
   const mw = region.w * k;
   const mh = region.h * k;
-  for (const [i, t] of grid.tiles.entries()) {
-    yield `Drawing the diagram (area ${i + 1} of ${grid.tiles.length})…`;
+  for (const [i, tile] of grid.tiles.entries()) {
+    yield t.drawingArea(i + 1, grid.tiles.length);
     const p = tilePages[i];
     const row = Math.floor(i / grid.cols) + 1;
     const col = (i % grid.cols) + 1;
-    pageHeader(p, `Diagram — area ${i + 1} of ${grid.tiles.length}`, `${input.title}   ·   row ${row} of ${grid.rows}, column ${col} of ${grid.cols}`, mw + 12);
-    diagramInBox(p, d, tileBox, t, grid.scale);
+    pageHeader(p, t.areaTitle(i + 1, grid.tiles.length), t.areaMeta(input.title, row, grid.rows, col, grid.cols), mw + 12);
+    diagramInBox(p, d, tileBox, tile, grid.scale, locale);
     const mx = p.width - MARGIN - mw;
     const my = MARGIN + 2 + (42 - mh) / 2;
     p.rect(mx, my, mw, mh, { fill: SOFT, stroke: LINE, lineWidth: 0.5 });
@@ -775,7 +785,7 @@ function* diagramPages(doc: PdfDocument, input: ArchDocInput, meta: string): Gen
       p.rect(rx, ry, rw, rh, { stroke: PRIMARY, lineWidth: 0.4, opacity: 0.6 });
       if (j !== i) p.linkTo(rx, ry, rw, rh, tilePages[j], 0);
     });
-    const back = 'Whole diagram and legend on page 1';
+    const back = t.backToOverview;
     const by = tileBox.y + tileBox.h + LEGEND_GAP;
     p.text(back, MARGIN, by + 2.6, { size: 7.5, color: PRIMARY });
     p.linkTo(MARGIN, by - 6, textWidth(back, 'regular', 7.5), 12, page, 0);
@@ -794,10 +804,12 @@ function overview(
   input: ArchDocInput,
   toc: TocEntry[],
   cost: ProjectCost | null,
+  locale: Locale,
 ): { page: PdfPage; rows: Array<{ entry: TocEntry; y: number }> } {
+  const t = messagesFor(docMessages, locale);
   const { ir, edges, audit } = input;
   c.newPage();
-  c.section('overview', 'Overview', `Generated ${formatDocDate(input.generatedAt)} with Cloud Blueprint.`);
+  c.section('overview', t.overview, t.generated(formatDocDate(input.generatedAt, locale)));
 
   const notes = input.notes?.trim();
   if (notes) {
@@ -813,7 +825,7 @@ function overview(
       const h = part.length * lh + 34;
       c.page.rect(c.left, c.y, c.width, h, { fill: '#f8fafc', stroke: LINE, lineWidth: 0.6, radius: 5 });
       c.page.rect(c.left, c.y, 3, h, { fill: PRIMARY, radius: 1.5 });
-      c.page.text(at === 0 ? 'NOTES' : 'NOTES (CONTINUED)', c.left + 14, c.y + 16, { font: 'bold', size: 7, color: MUTED });
+      c.page.text(at === 0 ? t.notes : t.notesContinued, c.left + 14, c.y + 16, { font: 'bold', size: 7, color: MUTED });
       let y = c.y + 22;
       for (const line of part) {
         c.page.text(line, c.left + 14, baseline(y, size, lh), { size, color: INK });
@@ -827,34 +839,37 @@ function overview(
   // stat tiles
   const containers = ir.resources.filter((r) => getDef(r.type)?.container).length;
   const tiles: Array<{ value: string; label: string; color?: PdfColor }> = [
-    { value: String(ir.resources.length), label: 'Resources' },
-    { value: String(edges.length), label: 'Connections' },
+    { value: String(ir.resources.length), label: t.tileResources },
+    { value: String(edges.length), label: t.tileConnections },
     // five tiles (with the cost one) leave no room for the long label
-    { value: String(containers), label: cost ? 'Networks' : 'Networks & groups' },
+    { value: String(containers), label: t.tileNetworks(!!cost) },
   ];
   if (input.sections.security && audit.grade) {
-    tiles.push({ value: audit.grade, label: `Security score ${audit.score}`, color: GRADE_COLOR[audit.grade] });
+    tiles.push({ value: audit.grade, label: t.tileScore(audit.score), color: GRADE_COLOR[audit.grade] });
   } else {
-    tiles.push({ value: String(ir.variables.length), label: 'Variables' });
+    tiles.push({ value: String(ir.variables.length), label: t.tileVariables });
   }
-  if (cost) tiles.push({ value: cost.counts.fixed ? approx(cost.total) : '$0', label: 'Est. per month' });
+  if (cost) tiles.push({ value: approx(cost.counts.fixed ? cost.total : 0, locale), label: t.tileCost });
   const gap = 10;
   const tw = (c.width - gap * (tiles.length - 1)) / tiles.length;
   c.ensure(54);
   tiles.forEach((t, i) => {
     const x = c.left + i * (tw + gap);
     c.page.rect(x, c.y, tw, 54, { stroke: LINE, lineWidth: 0.8, radius: 6 });
-    c.page.text(fitText(t.value, tw - 24, 'bold', 19), x + 12, c.y + 27, { font: 'bold', size: 19, color: t.color ?? INK });
+    // a longer value ("~US$ 1.234" in Portuguese) shrinks to fit before it would be cut
+    let size = 19;
+    while (size > 13 && textWidth(t.value, 'bold', size) > tw - 24) size -= 0.5;
+    c.page.text(fitText(t.value, tw - 24, 'bold', size), x + 12, c.y + 27, { font: 'bold', size, color: t.color ?? INK });
     c.page.text(fitText(t.label.toUpperCase(), tw - 24, 'bold', 6.8), x + 12, c.y + 43, { font: 'bold', size: 6.8, color: MUTED });
   });
   c.y += 54 + 22;
 
   // providers, one row each (regions wrap under themselves)
-  c.heading('Cloud providers');
+  c.heading(t.cloudProviders);
   for (const p of providerSummary(ir)) {
-    const label = PROVIDER_LABEL[p.provider];
+    const label = providerName(p.provider, locale);
     const dx = c.left + 14 + textWidth(label, 'bold', 9.5) + 8;
-    const detail = `${plural(p.count, 'resource')}${p.regions.length ? ` · ${p.regions.length > 1 ? 'regions' : 'region'} ${p.regions.join(', ')}` : ''}`;
+    const detail = t.providerDetail(p.count, p.regions);
     const lines = wrapText(detail, c.left + c.width - dx, 'regular', 9);
     c.ensure(17 + (lines.length - 1) * 13);
     c.page.circle(c.left + 4, c.y + 6.5, 3.2, { fill: PROVIDER_COLOR[p.provider] });
@@ -865,7 +880,7 @@ function overview(
   c.y += 14;
 
   // resources per category, as bars
-  c.heading('Resources by category');
+  c.heading(t.byCategoryTitle);
   const counts = new Map<CategoryKey, number>();
   for (const r of ir.resources) counts.set(categoryOf(r), (counts.get(categoryOf(r)) ?? 0) + 1);
   const cats = ([...CATEGORY_ORDER, 'other'] as CategoryKey[]).filter((k) => counts.has(k));
@@ -875,7 +890,7 @@ function overview(
   for (const k of cats) {
     const n = counts.get(k)!;
     c.ensure(17);
-    c.page.text(fitText(categoryLabel(k), labelW - 8, 'regular', 9), c.left, baseline(c.y, 9, 13), { size: 9, color: INK });
+    c.page.text(fitText(categoryLabel(k, locale), labelW - 8, 'regular', 9), c.left, baseline(c.y, 9, 13), { size: 9, color: INK });
     c.page.rect(c.left + labelW, c.y + 3, barW, 7, { fill: SOFT, radius: 3.5 });
     c.page.rect(c.left + labelW, c.y + 3, Math.max(7, (barW * n) / most), 7, { fill: categoryColor(k), radius: 3.5 });
     c.page.text(String(n), c.left + c.width, baseline(c.y, 9, 13), { font: 'bold', size: 9, color: INK, align: 'right' });
@@ -884,7 +899,7 @@ function overview(
   c.y += 14;
 
   // table of contents — page numbers are filled in once every section is laid out
-  c.heading('In this document');
+  c.heading(t.inThisDocument);
   c.ensure(toc.length * 17);
   const page = c.page;
   const rows = toc.map((entry) => {
@@ -895,10 +910,11 @@ function overview(
   return { page, rows };
 }
 
-function* inventory(c: Cursor, input: ArchDocInput): Generator<void, void> {
+function* inventory(c: Cursor, input: ArchDocInput, locale: Locale): Generator<void, void> {
+  const t = messagesFor(docMessages, locale);
   const { ir } = input;
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
-  c.section('inventory', 'Resource inventory', 'Every resource in the design, grouped by category, with the settings that matter most.');
+  c.section('inventory', t.inventory, t.inventoryHint);
   const groups = new Map<CategoryKey, ResourceNode[]>();
   for (const r of ir.resources) {
     const k = categoryOf(r);
@@ -908,9 +924,9 @@ function* inventory(c: Cursor, input: ArchDocInput): Generator<void, void> {
   for (const k of [...CATEGORY_ORDER, 'other'] as CategoryKey[]) {
     const list = groups.get(k);
     if (!list) continue;
-    rows.push({ cells: [], group: { label: categoryLabel(k), color: categoryColor(k), note: String(list.length) } });
+    rows.push({ cells: [], group: { label: categoryLabel(k, locale), color: categoryColor(k), note: String(list.length) } });
     for (const r of list) {
-      const settings = keySettings(r);
+      const settings = keySettings(r, 6, locale);
       rows.push({
         cells: [
           [
@@ -918,36 +934,36 @@ function* inventory(c: Cursor, input: ArchDocInput): Generator<void, void> {
             { text: r.type, font: 'mono', size: 6.6, color: FAINT, url: docsUrl(r.type) },
           ],
           [
-            { text: serviceName(r.type) },
-            { text: PROVIDER_LABEL[r.provider], size: 7, color: FAINT },
+            { text: serviceName(r.type, locale) },
+            { text: providerName(r.provider, locale), size: 7, color: FAINT },
           ],
           // each setting gets a few lines at most, so a huge value can't hide the ones after it
           settings.length ? settings.map((s) => ({ text: s, size: 7.5, color: INK, maxLines: 3 })) : [{ text: '—', color: FAINT }],
-          [{ text: placement(r, byId) || '—', size: 7.5, color: r.parentId ? MUTED : FAINT }],
+          [{ text: placement(r, byId, locale) || '—', size: 7.5, color: r.parentId ? MUTED : FAINT }],
         ],
       });
     }
   }
   yield* c.table(
     [
-      { title: 'Resource', share: 0.27 },
-      { title: 'Service', share: 0.19 },
-      { title: 'Configuration', share: 0.34 },
-      { title: 'Placement', share: 0.2 },
+      { title: t.colResource, share: 0.27 },
+      { title: t.colService, share: 0.19 },
+      { title: t.colConfiguration, share: 0.34 },
+      { title: t.colPlacement, share: 0.2 },
     ],
     rows,
   );
 
   if (ir.variables.length || ir.outputs.length) {
-    c.section('variables', 'Variables & outputs', 'Inputs someone deploying this must provide, and the values it exposes.');
+    c.section('variables', t.variablesOutputs, t.variablesHint);
     if (ir.variables.length) {
-      c.heading('Variables', String(ir.variables.length));
+      c.heading(t.variables, String(ir.variables.length));
       yield* c.table(
         [
-          { title: 'Name', share: 0.24 },
-          { title: 'Type', share: 0.14 },
-          { title: 'Default', share: 0.24 },
-          { title: 'Description', share: 0.38 },
+          { title: t.colName, share: 0.24 },
+          { title: t.colType, share: 0.14 },
+          { title: t.colDefault, share: 0.24 },
+          { title: t.colDescription, share: 0.38 },
         ],
         ir.variables.map((v) => {
           const flagged = v.args.sensitive?.kind === 'literal' && v.args.sensitive.value === true;
@@ -961,13 +977,13 @@ function* inventory(c: Cursor, input: ArchDocInput): Generator<void, void> {
               [
                 def
                   ? {
-                      text: hidden ? '(sensitive)' : redactSecrets(safePreview(def)),
+                      text: hidden ? t.sensitive : redactSecrets(safePreview(def, t)),
                       size: 7.5,
                       font: hidden ? 'regular' : 'mono',
                       color: hidden ? FAINT : INK,
                       maxLines: 6,
                     }
-                  : { text: 'required', size: 7.5, font: 'bold', color: '#b45309' },
+                  : { text: t.required, size: 7.5, font: 'bold', color: '#b45309' },
               ],
               [{ text: description ? redactSecrets(description, false) : '—', size: 7.5, color: description ? INK : FAINT }],
             ],
@@ -976,12 +992,12 @@ function* inventory(c: Cursor, input: ArchDocInput): Generator<void, void> {
       );
     }
     if (ir.outputs.length) {
-      c.heading('Outputs', String(ir.outputs.length));
+      c.heading(t.outputs, String(ir.outputs.length));
       yield* c.table(
         [
-          { title: 'Name', share: 0.24 },
-          { title: 'Value', share: 0.38 },
-          { title: 'Description', share: 0.38 },
+          { title: t.colName, share: 0.24 },
+          { title: t.colValue, share: 0.38 },
+          { title: t.colDescription, share: 0.38 },
         ],
         ir.outputs.map((o) => {
           const flagged = o.args.sensitive?.kind === 'literal' && o.args.sensitive.value === true;
@@ -992,7 +1008,7 @@ function* inventory(c: Cursor, input: ArchDocInput): Generator<void, void> {
               [{ text: o.name, font: 'mono', size: 7.5 }],
               [
                 {
-                  text: hidden ? '(sensitive)' : redactSecrets(safePreview(o.args.value)),
+                  text: hidden ? t.sensitive : redactSecrets(safePreview(o.args.value, t)),
                   font: hidden ? 'regular' : 'mono',
                   size: 7.5,
                   color: hidden ? FAINT : INK,
@@ -1012,7 +1028,8 @@ function literalText(e: Expression | undefined): string | undefined {
   return e?.kind === 'literal' && typeof e.value === 'string' && e.value.trim() ? e.value : undefined;
 }
 
-function* connections(c: Cursor, input: ArchDocInput): Generator<void, void> {
+function* connections(c: Cursor, input: ArchDocInput, locale: Locale): Generator<void, void> {
+  const t = messagesFor(docMessages, locale);
   const { ir, edges, audit } = input;
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
   const who = (id: string): Run[] => {
@@ -1020,21 +1037,21 @@ function* connections(c: Cursor, input: ArchDocInput): Generator<void, void> {
     if (!r) return [{ text: id, font: 'mono', size: 7.5 }];
     return [
       { text: r.name, font: 'bold', size: 8.5 },
-      { text: serviceName(r.type), size: 7, color: FAINT },
+      { text: serviceName(r.type, locale), size: 7, color: FAINT },
     ];
   };
-  c.section('connections', 'Connections & traffic', 'How the resources relate to each other and which network traffic the rules allow.');
+  c.section('connections', t.connectionsTitle, t.connectionsHint);
 
   const flows = [...audit.topology.flows].sort((a, b) => Number(b.from === 'internet') - Number(a.from === 'internet'));
   const risky = new Set(audit.findings.filter((f) => f.severity === 'critical' || f.severity === 'high').map((f) => f.resource));
   if (flows.length) {
-    c.heading('Allowed network traffic', plural(flows.length, 'flow'));
+    c.heading(t.allowedTraffic, t.flows(flows.length));
     yield* c.table(
       [
-        { title: 'From', share: 0.3 },
-        { title: 'To', share: 0.3 },
-        { title: 'Ports', share: 0.2 },
-        { title: 'Reach', share: 0.2 },
+        { title: t.colFrom, share: 0.3 },
+        { title: t.colTo, share: 0.3 },
+        { title: t.colPorts, share: 0.2 },
+        { title: t.colReach, share: 0.2 },
       ],
       flows.map((f) => {
         const internet = f.from === 'internet';
@@ -1044,8 +1061,8 @@ function* connections(c: Cursor, input: ArchDocInput): Generator<void, void> {
           cells: [
             internet ? [{ text: 'Internet', font: 'bold', size: 8.5 }, { text: '0.0.0.0/0', font: 'mono', size: 7, color: FAINT }] : who(f.from),
             who(f.to),
-            [{ text: f.ports.map((p) => (/^\d/.test(p) ? `:${p}` : p)).join('  '), font: 'mono', size: 8 }],
-            [{ text: internet ? (tone === TRAFFIC_COLOR.risky ? 'Public — at risk' : 'Public') : 'Internal', size: 8, font: 'bold', color: tone }],
+            [{ text: f.ports.map((p) => (/^\d/.test(p) ? `:${p}` : portText(p, locale))).join('  '), font: 'mono', size: 8 }],
+            [{ text: internet ? (tone === TRAFFIC_COLOR.risky ? t.publicAtRisk : t.public) : t.internal, size: 8, font: 'bold', color: tone }],
           ],
         } satisfies Row;
       }),
@@ -1053,17 +1070,13 @@ function* connections(c: Cursor, input: ArchDocInput): Generator<void, void> {
   }
 
   if (edges.length) {
-    c.heading('Dependencies', plural(edges.length, 'connection'));
-    c.paragraph('Each row means the first resource refers to the second in its configuration. Resources nested inside a network are shown by placement instead.', {
-      size: 8,
-      color: MUTED,
-      gap: 8,
-    });
+    c.heading(t.dependencies, t.connections(edges.length));
+    c.paragraph(t.dependenciesHint, { size: 8, color: MUTED, gap: 8 });
     yield* c.table(
       [
-        { title: 'Resource', share: 0.32 },
-        { title: 'Uses', share: 0.32 },
-        { title: 'Through', share: 0.36 },
+        { title: t.colResource, share: 0.32 },
+        { title: t.colUses, share: 0.32 },
+        { title: t.colThrough, share: 0.36 },
       ],
       edges.map(
         (e) =>
@@ -1075,49 +1088,50 @@ function* connections(c: Cursor, input: ArchDocInput): Generator<void, void> {
     );
   }
 
-  if (!flows.length && !edges.length) c.paragraph('The resources are not connected to each other yet.', { color: MUTED });
+  if (!flows.length && !edges.length) c.paragraph(t.notConnected, { color: MUTED });
 }
 
-function* security(c: Cursor, input: ArchDocInput): Generator<void, void> {
+function* security(c: Cursor, input: ArchDocInput, locale: Locale): Generator<void, void> {
+  const t = messagesFor(docMessages, locale);
   const { audit, ir } = input;
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
   const nameOf = (id: string) => {
     const r = byId.get(id);
-    return r ? `${r.name} (${shortName(r.type)})` : id;
+    return r ? `${r.name} (${shortName(r.type, locale)})` : id;
   };
-  c.section('security', 'Security review', 'Automated checks of firewall rules, exposure and common misconfigurations.');
+  c.section('security', t.securityTitle, t.securityHint);
 
   if (audit.grade) {
     c.ensure(70);
     const color = GRADE_COLOR[audit.grade];
     c.page.circle(c.left + 24, c.y + 24, 24, { fill: color });
     c.page.text(audit.grade, c.left + 24, c.y + 32, { font: 'bold', size: 24, color: '#ffffff', align: 'center' });
-    c.page.text(`Security score ${audit.score}/100`, c.left + 62, c.y + 18, { font: 'bold', size: 12, color: INK });
+    c.page.text(t.score(audit.score), c.left + 62, c.y + 18, { font: 'bold', size: 12, color: INK });
     let x = c.left + 62;
     const any = SEVERITY_ORDER.some((s) => audit.counts[s] > 0);
     for (const s of SEVERITY_ORDER) {
       if (!audit.counts[s]) continue;
-      const label = `${audit.counts[s]} ${s}`;
+      const label = t.severityCount(audit.counts[s], s);
       const w = textWidth(label, 'bold', 7.5) + 14;
       c.page.rect(x, c.y + 26, w, 14, { fill: tint(SEVERITY_COLOR[s], 0.85), radius: 7 });
       c.page.text(label, x + 7, c.y + 36, { font: 'bold', size: 7.5, color: SEVERITY_COLOR[s] });
       x += w + 6;
     }
-    if (!any) c.page.text('No issues found.', x, c.y + 36, { size: 8.5, color: MUTED });
+    if (!any) c.page.text(t.noIssues, x, c.y + 36, { size: 8.5, color: MUTED });
     c.y += 64;
   } else if (audit.findings.length === 0) {
-    c.paragraph('The design has no security groups, firewalls or exposed services to review yet.', { color: MUTED });
+    c.paragraph(t.nothingToReview, { color: MUTED });
     return;
   }
 
   const exposed = [...audit.topology.exposure].filter(([, e]) => e.level === 'internet');
-  const port = (p: string) => (/^\d/.test(p) ? `:${p}` : p);
+  const port = (p: string) => (/^\d/.test(p) ? `:${p}` : portText(p, locale));
   if (exposed.length) {
-    c.heading('Reachable from the internet', String(exposed.length));
+    c.heading(t.reachable, String(exposed.length));
     for (const [id, e] of exposed) {
       const name = fitText(nameOf(id), c.width * 0.6, 'bold', 9);
       const dx = c.left + 19 + textWidth(name, 'bold', 9);
-      const detail = wrapText(`open on ${e.ports.map(port).join(', ')}`, c.left + c.width - dx, 'regular', 9);
+      const detail = wrapText(t.openOn(e.ports.map(port).join(', ')), c.left + c.width - dx, 'regular', 9);
       const h = 15 + (detail.length - 1) * 12;
       c.ensure(h);
       c.page.circle(c.left + 4, c.y + 6, 2.6, { fill: TRAFFIC_COLOR.internet });
@@ -1128,11 +1142,11 @@ function* security(c: Cursor, input: ArchDocInput): Generator<void, void> {
       for (const access of (audit.topology.access.get(id)?.open ?? []).slice(0, 8)) {
         const chain = access.paths[0].steps
           .filter((s) => s.kind !== 'internet' && s.kind !== 'resource')
-          .map((s) => (s.kind === 'sg' && s.detail ? `${s.title} ${s.detail.split(/ (?:allows|denies) /)[0]}` : s.title));
+          .map((s) => (s.kind === 'sg' && s.ref ? `${s.title} ${s.ref}` : s.title));
         const label = port(access.ports);
         const lx = c.left + 13;
         const px = lx + Math.max(34, textWidth(label, 'mono', 7.5) + 8);
-        const lines = wrapText(`via ${chain.join('  ›  ')}`, c.left + c.width - px, 'regular', 7.5);
+        const lines = wrapText(t.via(chain.join('  ›  ')), c.left + c.width - px, 'regular', 7.5);
         const lh = 7.5 * LEAD;
         c.ensure(lines.length * lh + 2);
         c.page.text(label, lx, baseline(c.y, 7.5, lh), { font: 'mono', size: 7.5, color: INK });
@@ -1145,20 +1159,20 @@ function* security(c: Cursor, input: ArchDocInput): Generator<void, void> {
   }
 
   if (!audit.findings.length) return;
-  c.heading('Findings', String(audit.findings.length));
+  c.heading(t.findings, String(audit.findings.length));
   const findings = [...audit.findings].sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity));
   for (const [i, f] of findings.entries()) {
     if (i % YIELD_EVERY === YIELD_EVERY - 1) yield;
     const width = c.width - 24;
     const detail = wrapText(f.detail, width, 'regular', 8.5);
-    const meta = [`Resource: ${nameOf(f.resource)}`, f.fix ? `Suggested fix: ${f.fix.label}` : ''].filter(Boolean).join('   ·   ');
-    const controls = f.controls?.length ? wrapText(`Controls: ${f.controls.map(controlLabel).join(', ')}`, width, 'regular', 7.5) : [];
+    const meta = [t.resource(nameOf(f.resource)), f.fix ? t.suggestedFix(f.fix.label) : ''].filter(Boolean).join('   ·   ');
+    const controls = f.controls?.length ? wrapText(t.controls(f.controls.map(controlLabel).join(', ')), width, 'regular', 7.5) : [];
     const h = 16 + detail.length * 8.5 * LEAD + 16 + 12 + controls.length * 10;
     c.ensure(h);
     const color = SEVERITY_COLOR[f.severity];
     c.page.rect(c.left, c.y, c.width, h, { stroke: LINE, lineWidth: 0.7, radius: 5 });
     c.page.rect(c.left, c.y, 3, h, { fill: color, radius: 1.5 });
-    const pill = f.severity.toUpperCase();
+    const pill = t.severityPill(f.severity);
     const pw = textWidth(pill, 'bold', 6.5) + 10;
     c.page.rect(c.left + 12, c.y + 8, pw, 11, { fill: color, radius: 5.5 });
     c.page.text(pill, c.left + 17, c.y + 15.8, { font: 'bold', size: 6.5, color: '#ffffff' });
@@ -1174,23 +1188,26 @@ function* security(c: Cursor, input: ArchDocInput): Generator<void, void> {
   }
 
   // the benchmark controls the findings fail, framework by framework
-  const failed = CONTROLS.map((control) => ({
+  const failed = controlsIn(locale).map((control) => ({
     control,
     findings: audit.findings.filter((f) => f.controls?.some((x) => x.framework === control.framework && x.id === control.id)),
   })).filter((x) => x.findings.length);
   if (!failed.length) return;
   c.y += 4;
-  c.heading('Compliance controls', plural(failed.length, 'failed control'));
+  c.heading(t.complianceControls, t.failedControls(failed.length));
   c.paragraph(
-    `Findings mapped to ${FRAMEWORKS.filter((f) => failed.some((x) => x.control.framework === f.id)).map((f) => `${f.name} (${f.version})`).join(', ')}. ` +
-      'Only controls that can be decided from the Terraform are checked — a clean result here is not a certification.',
+    t.complianceHint(
+      FRAMEWORKS.filter((f) => failed.some((x) => x.control.framework === f.id))
+        .map((f) => `${f.name} (${f.version})`)
+        .join(', '),
+    ),
     { size: 8, color: MUTED, gap: 8 },
   );
   yield* c.table(
     [
-      { title: 'Control', share: 0.2 },
-      { title: 'Requirement', share: 0.56 },
-      { title: 'Findings', share: 0.24 },
+      { title: t.colControl, share: 0.2 },
+      { title: t.colRequirement, share: 0.56 },
+      { title: t.colFindings, share: 0.24 },
     ],
     failed.map(({ control, findings }) => {
       const worst = findings.map((f) => f.severity).sort((a, b) => SEVERITY_ORDER.indexOf(a) - SEVERITY_ORDER.indexOf(b))[0];
@@ -1215,7 +1232,7 @@ const COST_KIND_ORDER = { fixed: 0, usage: 1, unknown: 2, free: 3 } as const;
 const AMBER = '#b45309';
 
 /** amounts as bars: a label, a bar sized against the largest, the amount */
-function costBars(c: Cursor, groups: Array<{ label: string; color: PdfColor; monthly: number; note?: string; text?: string }>) {
+function costBars(c: Cursor, groups: Array<{ label: string; color: PdfColor; monthly: number; note?: string; text?: string }>, locale: Locale) {
   const most = Math.max(0.01, ...groups.map((g) => g.monthly));
   const labelW = 150;
   const amountW = 64;
@@ -1229,17 +1246,18 @@ function costBars(c: Cursor, groups: Array<{ label: string; color: PdfColor; mon
     }
     c.page.rect(c.left + labelW, c.y + 3, barW, 7, { fill: SOFT, radius: 3.5 });
     if (g.monthly > 0) c.page.rect(c.left + labelW, c.y + 3, Math.max(7, (barW * g.monthly) / most), 7, { fill: g.color, radius: 3.5 });
-    c.page.text(g.text ?? usd(g.monthly), c.left + c.width, baseline(c.y, 9, 13), g.text ? { size: 8, color: MUTED, align: 'right' } : { font: 'bold', size: 9, color: INK, align: 'right' });
+    c.page.text(g.text ?? usd(g.monthly, locale), c.left + c.width, baseline(c.y, 9, 13), g.text ? { size: 8, color: MUTED, align: 'right' } : { font: 'bold', size: 9, color: INK, align: 'right' });
     c.y += 17;
   }
   c.y += 10;
 }
 
-function costRow(item: ResourceCost): Row {
+function costRow(item: ResourceCost, locale: Locale): Row {
+  const t = messagesFor(docMessages, locale);
   const how: Run[] =
     item.kind === 'fixed'
       ? [
-          ...item.breakdown.map((l) => ({ text: describeLine(l), size: 7.5, color: INK, maxLines: 2 })),
+          ...item.breakdown.map((l) => ({ text: describeLine(l, locale), size: 7.5, color: INK, maxLines: 2 })),
           ...item.assumptions.slice(0, 3).map((a) => ({ text: a, size: 7, color: FAINT, maxLines: 2 })),
         ]
       : [{ text: item.note ?? '', size: 7.5, color: MUTED, maxLines: 4 }];
@@ -1247,17 +1265,17 @@ function costRow(item: ResourceCost): Row {
   const amount: Run[] =
     item.kind === 'fixed'
       ? [
-          { text: usd(item.monthly ?? 0), font: 'bold', size: 8.5 },
-          ...(item.count !== 1 ? [{ text: `${item.count} × ${usd(one)}`, size: 7, color: FAINT }] : []),
+          { text: usd(item.monthly ?? 0, locale), font: 'bold', size: 8.5 },
+          ...(item.count !== 1 ? [{ text: `${item.count} × ${usd(one, locale)}`, size: 7, color: FAINT }] : []),
         ]
-      : [{ text: item.kind === 'usage' ? 'usage-based' : 'not estimated', font: 'bold', size: 7.5, color: item.kind === 'usage' ? PRIMARY : AMBER }];
+      : [{ text: item.kind === 'usage' ? t.kindUsage : t.kindUnknown, font: 'bold', size: 7.5, color: item.kind === 'usage' ? PRIMARY : AMBER }];
   return {
     cells: [
       [
         { text: item.name, font: 'bold' },
         { text: item.type, font: 'mono', size: 6.6, color: FAINT, url: docsUrl(item.type) },
       ],
-      [{ text: serviceName(item.type) }, ...(item.region ? [{ text: item.region, size: 7, color: FAINT }] : [])],
+      [{ text: serviceName(item.type, locale) }, ...(item.region ? [{ text: item.region, size: 7, color: FAINT }] : [])],
       how,
       amount,
     ],
@@ -1265,23 +1283,24 @@ function costRow(item: ResourceCost): Row {
 }
 
 /** the estimate: headline, totals by category (and cloud), a row per resource, then every assumption */
-function* costEstimate(c: Cursor, cost: ProjectCost): Generator<void, void> {
-  c.section('cost', 'Cost estimate', 'Monthly on-demand estimate from public list prices — for planning, not a quote.');
+function* costEstimate(c: Cursor, cost: ProjectCost, locale: Locale): Generator<void, void> {
+  const t = messagesFor(docMessages, locale);
+  c.section('cost', t.costTitle, t.costHint);
   const { counts, total } = cost;
   const clouds = cost.byProvider.filter((g): g is typeof g & { key: CloudProvider } => g.key !== 'other');
 
   // headline
-  const extras = [counts.usage ? `${counts.usage} usage-based` : '', counts.unknown ? `${counts.unknown} not estimated` : ''].filter(Boolean);
-  const summary = `${counts.fixed ? `${usd(total)} for ${plural(counts.fixed, 'priced resource')}` : 'Nothing here has a fixed monthly price'}${extras.length ? `, plus ${extras.join(' and ')}` : ''}.`;
-  const dates = clouds.map((g) => `${PROVIDER_NAME[g.key]}: ${g.region} prices, ${priceDate(g.retrieved ?? '')}`);
+  const extras = [counts.usage ? t.usageBased(counts.usage) : '', counts.unknown ? t.notEstimated(counts.unknown) : ''].filter(Boolean);
+  const summary = `${counts.fixed ? t.pricedFor(usd(total, locale), counts.fixed) : t.nothingFixed}${t.plus(extras)}.`;
+  const dates = clouds.map((g) => t.pricesOn(providerName(g.key, locale), g.region, priceDate(g.retrieved ?? '', locale)));
   const lines = wrapText(summary, c.width - 190, 'regular', 8.5);
   const h = Math.max(58, 40 + lines.length * 12, 20 + dates.length * 11);
   c.ensure(h);
   c.page.rect(c.left, c.y, c.width, h, { stroke: LINE, lineWidth: 0.8, radius: 6 });
   c.page.rect(c.left, c.y, 3, h, { fill: '#10b981', radius: 1.5 });
-  const big = counts.fixed ? approx(total) : '$0';
+  const big = approx(counts.fixed ? total : 0, locale);
   c.page.text(big, c.left + 16, c.y + 27, { font: 'bold', size: 20, color: INK });
-  c.page.text('/ month', c.left + 22 + textWidth(big, 'bold', 20), c.y + 27, { size: 9.5, color: MUTED });
+  c.page.text(t.perMonth, c.left + 22 + textWidth(big, 'bold', 20), c.y + 27, { size: 9.5, color: MUTED });
   lines.forEach((line, i) => c.page.text(line, c.left + 16, c.y + 43 + i * 12, { size: 8.5, color: MUTED }));
   dates.forEach((d, i) =>
     c.page.text(fitText(d, 170, 'regular', 7.5), c.left + c.width - 12, c.y + 18 + i * 11, { size: 7.5, color: FAINT, align: 'right' }),
@@ -1290,27 +1309,32 @@ function* costEstimate(c: Cursor, cost: ProjectCost): Generator<void, void> {
 
   const categories = cost.byCategory.filter((g) => g.monthly > 0);
   if (categories.length) {
-    c.heading('By category');
-    costBars(c, categories.map((g) => ({ label: categoryLabel(g.key), color: categoryColor(g.key), monthly: g.monthly })));
+    c.heading(t.byCategory);
+    costBars(
+      c,
+      categories.map((g) => ({ label: categoryLabel(g.key, locale), color: categoryColor(g.key), monthly: g.monthly })),
+      locale,
+    );
   }
   if (clouds.length > 1) {
-    c.heading('By cloud');
+    c.heading(t.byCloud);
     costBars(
       c,
       clouds.map((g) => ({
-        label: PROVIDER_NAME[g.key],
+        label: providerName(g.key, locale),
         note: g.region,
         color: PROVIDER_COLOR[g.key],
         monthly: g.monthly,
-        text: g.priced ? undefined : 'no fixed price',
+        text: g.priced ? undefined : t.noFixedPrice,
       })),
+      locale,
     );
   }
 
   // one row per resource that costs (or may cost) something, grouped by category
   const charged = cost.items.filter((i) => i.kind !== 'free');
   if (charged.length) {
-    c.heading('By resource', plural(charged.length, 'resource'));
+    c.heading(t.byResource, t.resources(charged.length));
     const rows: Row[] = [];
     for (const k of [...CATEGORY_ORDER, 'other'] as CategoryKey[]) {
       const list = charged
@@ -1318,22 +1342,22 @@ function* costEstimate(c: Cursor, cost: ProjectCost): Generator<void, void> {
         .sort((a, b) => COST_KIND_ORDER[a.kind] - COST_KIND_ORDER[b.kind] || (b.monthly ?? 0) - (a.monthly ?? 0));
       if (!list.length) continue;
       const subtotal = cost.byCategory.find((g) => g.key === k)?.monthly ?? 0;
-      rows.push({ cells: [], group: { label: categoryLabel(k), color: categoryColor(k), note: subtotal > 0 ? usd(subtotal) : undefined } });
-      for (const item of list) rows.push(costRow(item));
+      rows.push({ cells: [], group: { label: categoryLabel(k, locale), color: categoryColor(k), note: subtotal > 0 ? usd(subtotal, locale) : undefined } });
+      for (const item of list) rows.push(costRow(item, locale));
     }
     yield* c.table(
       [
-        { title: 'Resource', share: 0.24 },
-        { title: 'Service', share: 0.18 },
-        { title: 'How it is priced', share: 0.43 },
-        { title: 'Per month', share: 0.15 },
+        { title: t.colResource, share: 0.24 },
+        { title: t.colService, share: 0.18 },
+        { title: t.colHow, share: 0.43 },
+        { title: t.colPerMonth, share: 0.15 },
       ],
       rows,
     );
     if (counts.fixed) {
       c.ensure(20);
-      const label = 'Total for the priced resources';
-      const amount = `${usd(total)} / month`;
+      const label = t.total;
+      const amount = t.totalAmount(usd(total, locale));
       c.page.text(amount, c.left + c.width, baseline(c.y, 10, 14), { font: 'bold', size: 10, color: INK, align: 'right' });
       c.page.text(label, c.left + c.width - textWidth(amount, 'bold', 10) - 12, baseline(c.y, 9, 14), { size: 9, color: MUTED, align: 'right' });
       c.y += 26;
@@ -1343,23 +1367,20 @@ function* costEstimate(c: Cursor, cost: ProjectCost): Generator<void, void> {
   const freeItems = cost.items.filter((i) => i.kind === 'free');
   if (freeItems.length) {
     const names = new Map<string, number>();
-    for (const i of freeItems) names.set(shortName(i.type), (names.get(shortName(i.type)) ?? 0) + 1);
+    for (const i of freeItems) names.set(shortName(i.type, locale), (names.get(shortName(i.type, locale)) ?? 0) + 1);
     const list = [...names].map(([n, k]) => (k > 1 ? `${n} ×${k}` : n)).join(', ');
-    c.paragraph(`No charge of their own (${freeItems.length}): ${list}.`, { size: 8, color: MUTED, gap: 12 });
+    c.paragraph(t.noCharge(freeItems.length, list), { size: 8, color: MUTED, gap: 12 });
   }
 
-  c.heading('Assumptions');
+  c.heading(t.assumptions);
   for (const a of cost.assumptions) c.paragraph(`•  ${a}`, { size: 8, color: MUTED, gap: 2 });
   c.y += 6;
-  c.paragraph(
-    'This is an estimate for planning, not a quote. Real bills depend on usage, discounts, taxes and price changes — check the provider’s pricing calculator before committing to a budget.',
-    { size: 8, color: INK, gap: 6 },
-  );
+  c.paragraph(t.notAQuote, { size: 8, color: INK, gap: 6 });
   const hosts = clouds.map((g) => {
     const names = [...new Set(PRICE_BOOK[g.key].meta.sources.map((s) => s.replace(/^https?:\/\/([^/]+).*$/, '$1')))];
-    return `${PROVIDER_NAME[g.key]}: ${names.join(', ')}`;
+    return `${providerName(g.key, locale)}: ${names.join(', ')}`;
   });
-  if (hosts.length) c.paragraph(`Price sources — ${hosts.join('; ')}.`, { size: 7, color: FAINT });
+  if (hosts.length) c.paragraph(t.sources(hosts.join('; ')), { size: 7, color: FAINT });
 }
 
 /** `# @blueprint:pos=…` lines only matter to the editor */
@@ -1375,11 +1396,12 @@ export function sourceLines(text: string): Array<{ no: number; text: string }> {
     .filter((l) => !LAYOUT_COMMENT.test(l.text));
 }
 
-function* sourceCode(c: Cursor, input: ArchDocInput): Generator<void, void> {
+function* sourceCode(c: Cursor, input: ArchDocInput, locale: Locale): Generator<void, void> {
+  const t = messagesFor(docMessages, locale);
   const files = input.files.filter(([, text]) => text.trim());
   if (!files.length) return;
   c.newPage();
-  c.section('code', 'Terraform source', `${plural(files.length, 'file')} from the project (canvas layout comments left out).`);
+  c.section('code', t.sourceTitle, t.sourceHint(files.length));
   const size = 7;
   const lh = size * 1.42;
   for (const [name, text] of files) {
@@ -1387,7 +1409,7 @@ function* sourceCode(c: Cursor, input: ArchDocInput): Generator<void, void> {
     // wide enough for the longest line number, right-aligned 8 pt before the code
     const digits = String(lines[lines.length - 1]?.no ?? 1).length;
     const gutter = Math.max(26, digits * size * 0.6 + 10);
-    c.heading(name, plural(lines.length, 'line'));
+    c.heading(name, t.lines(lines.length));
     for (const [i, line] of lines.entries()) {
       if (i % (YIELD_EVERY * 10) === YIELD_EVERY * 10 - 1) yield;
       const comment = /^\s*(?:#|\/\/)/.test(line.text);
@@ -1409,10 +1431,10 @@ function* step(label: string, work: Generator<void, void>): Generator<string, vo
   for (let s = work.next(); !s.done; s = work.next()) yield label;
 }
 
-function footers(doc: PdfDocument, title: string) {
+function footers(doc: PdfDocument, title: string, t: DocMessages) {
   doc.pages.forEach((page, i) => {
     const y = page.height - FOOTER_BASELINE;
-    const number = `Page ${i + 1} of ${doc.pageCount}`;
+    const number = t.page(i + 1, doc.pageCount);
     page.text(fitText(title, page.width - MARGIN * 2 - textWidth(number, 'regular', 7.5) - 24, 'regular', 7.5), MARGIN, y, { size: 7.5, color: FAINT });
     page.text(number, page.width - MARGIN, y, { size: 7.5, color: FAINT, align: 'right' });
   });
@@ -1422,47 +1444,49 @@ function footers(doc: PdfDocument, title: string) {
 
 /** the document, built in steps; each `yield` names the next step */
 function* build(input: ArchDocInput): Generator<string, Uint8Array> {
+  const locale = input.locale ?? currentLocale();
+  const t = messagesFor(docMessages, locale);
   const { ir, edges } = input;
   const doc = new PdfDocument(
     {
       title: input.title,
-      subject: 'Cloud architecture document',
+      subject: t.subject,
       creator: 'Cloud Blueprint',
       created: input.generatedAt,
     },
     input.compress ?? true,
   );
   const providers = providerSummary(ir)
-    .map((p) => (p.regions.length ? `${PROVIDER_LABEL[p.provider]} (${p.regions.join(', ')})` : PROVIDER_LABEL[p.provider]))
+    .map((p) => (p.regions.length ? `${providerName(p.provider, locale)} (${p.regions.join(', ')})` : providerName(p.provider, locale)))
     .join(' + ');
-  const meta = [providers, plural(ir.resources.length, 'resource'), plural(edges.length, 'connection'), formatDocDate(input.generatedAt)]
+  const meta = [providers, t.resources(ir.resources.length), t.connections(edges.length), formatDocDate(input.generatedAt, locale)]
     .filter(Boolean)
     .join('   ·   ');
-  yield 'Drawing the diagram…';
-  yield* diagramPages(doc, input, meta);
+  yield t.drawing;
+  yield* diagramPages(doc, input, meta, locale);
 
   const hasVars = ir.variables.length > 0 || ir.outputs.length > 0;
   const toc: TocEntry[] = [
-    { key: 'diagram', title: 'Diagram' },
-    { key: 'overview', title: 'Overview' },
-    ...(input.sections.inventory ? [{ key: 'inventory', title: 'Resource inventory' }] : []),
-    ...(input.sections.inventory && hasVars ? [{ key: 'variables', title: 'Variables & outputs' }] : []),
-    ...(input.sections.connections ? [{ key: 'connections', title: 'Connections & traffic' }] : []),
-    ...(input.sections.security ? [{ key: 'security', title: 'Security review' }] : []),
-    ...(input.sections.cost ? [{ key: 'cost', title: 'Cost estimate' }] : []),
-    ...(input.sections.code && input.files.some(([, t]) => t.trim()) ? [{ key: 'code', title: 'Terraform source' }] : []),
+    { key: 'diagram', title: t.diagram },
+    { key: 'overview', title: t.overview },
+    ...(input.sections.inventory ? [{ key: 'inventory', title: t.inventory }] : []),
+    ...(input.sections.inventory && hasVars ? [{ key: 'variables', title: t.variablesOutputs }] : []),
+    ...(input.sections.connections ? [{ key: 'connections', title: t.connectionsTitle }] : []),
+    ...(input.sections.security ? [{ key: 'security', title: t.securityTitle }] : []),
+    ...(input.sections.cost ? [{ key: 'cost', title: t.costTitle }] : []),
+    ...(input.sections.code && input.files.some(([, text]) => text.trim()) ? [{ key: 'code', title: t.sourceTitle }] : []),
   ];
 
   const paper = PAPER[input.paper];
   const c = new Cursor(doc, paper);
-  const cost = input.sections.cost ? estimateProject(ir, PRICE_BOOK) : null;
-  yield 'Writing the overview…';
-  const contents = overview(c, input, toc, cost);
-  if (input.sections.inventory) yield* step('Writing the inventory…', inventory(c, input));
-  if (input.sections.connections) yield* step('Writing connections…', connections(c, input));
-  if (input.sections.security) yield* step('Writing the security review…', security(c, input));
-  if (cost) yield* step('Estimating the cost…', costEstimate(c, cost));
-  if (input.sections.code) yield* step('Adding the source…', sourceCode(c, input));
+  const cost = input.sections.cost ? estimateProject(ir, PRICE_BOOK, locale) : null;
+  yield t.writingOverview;
+  const contents = overview(c, input, toc, cost, locale);
+  if (input.sections.inventory) yield* step(t.writingInventory, inventory(c, input, locale));
+  if (input.sections.connections) yield* step(t.writingConnections, connections(c, input, locale));
+  if (input.sections.security) yield* step(t.writingSecurity, security(c, input, locale));
+  if (cost) yield* step(t.estimating, costEstimate(c, cost, locale));
+  if (input.sections.code) yield* step(t.addingSource, sourceCode(c, input, locale));
   c.flush();
 
   // now every section has a page: fill in the table of contents
@@ -1480,13 +1504,14 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
     contents.page.linkTo(c.left, y, c.width, 14, target.page, Math.max(0, target.y - 6));
   }
 
-  footers(doc, input.title);
+  footers(doc, input.title, t);
   // compressing is the heaviest step: a page at a time
   const saving = doc.saveSteps();
   for (let step = saving.next(); ; step = saving.next()) {
     if (step.done) return step.value;
-    yield 'Saving…';
+    yield t.saving;
   }
+
 }
 
 export function buildArchitecturePdf(input: ArchDocInput): Uint8Array {

@@ -10,12 +10,14 @@ import { showToast } from '@/components/Toast';
 import { Button, Field, Input, Modal, Textarea } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { orderedFiles, useEditor } from '@/features/editor/store';
-import { getAudit } from '@/features/security/securityStore';
+import { getAudit, useAudit } from '@/features/security/securityStore';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import { downloadBlob } from '@/lib/download';
 import { unsupportedChars } from '@/lib/pdf/metrics';
 import { cn, slugify } from '@/lib/utils';
 import type { DocSections, Paper } from './archDoc';
 import type { DiagramVector } from './diagramVector';
+import { exportMessages } from './messages';
 
 const PREFS_KEY = 'cb-pdf-export';
 
@@ -69,7 +71,7 @@ const useExportPdf = create<ExportPdfState>(() => ({ open: false, drafts: {} }))
 
 export function openExportPdf() {
   if (useEditor.getState().ir.resources.length === 0) {
-    showToast('Nothing to export yet — add a resource first', 'info');
+    showToast(messagesFor(exportMessages).nothingToExport, 'info');
     return;
   }
   useExportPdf.setState({ open: true });
@@ -80,24 +82,24 @@ export function ExportPdfHost() {
   return open ? <ExportPdfDialog onClose={() => useExportPdf.setState({ open: false })} /> : null;
 }
 
-const SECTION_ROWS: Array<{ key: keyof DocSections; icon: LucideIcon; title: string; hint: string }> = [
-  { key: 'inventory', icon: ListTree, title: 'Resource inventory', hint: 'Every resource with its key settings, plus variables and outputs' },
-  { key: 'connections', icon: Waypoints, title: 'Connections & traffic', hint: 'Dependencies and the network flows the rules allow' },
-  { key: 'security', icon: ShieldCheck, title: 'Security review', hint: '' },
-  { key: 'cost', icon: CircleDollarSign, title: 'Cost estimate', hint: 'Monthly on-demand estimate per resource, with its assumptions' },
-  { key: 'code', icon: Code2, title: 'Terraform source', hint: 'Every .tf file as an appendix — check it for secrets before sharing' },
+const SECTION_ROWS: Array<{ key: keyof DocSections; icon: LucideIcon }> = [
+  { key: 'inventory', icon: ListTree },
+  { key: 'connections', icon: Waypoints },
+  { key: 'security', icon: ShieldCheck },
+  { key: 'cost', icon: CircleDollarSign },
+  { key: 'code', icon: Code2 },
 ];
 
 /** file-name friendly: accents dropped rather than turned into dashes */
-function fileName(title: string): string {
-  return `${slugify(title.normalize('NFD').replace(/[̀-ͯ]/g, ''))}-architecture.pdf`;
+function fileName(title: string, suffix: string): string {
+  return `${slugify(title.normalize('NFD').replace(/[̀-ͯ]/g, ''))}-${suffix}.pdf`;
 }
 
 function ExportPdfDialog({ onClose }: { onClose(): void }) {
+  const m = useMessages(exportMessages);
   const projectId = useEditor((s) => s.projectId) ?? '';
   const projectName = useEditor((s) => s.projectName);
-  const ir = useEditor((s) => s.ir);
-  const audit = getAudit(ir);
+  const audit = useAudit();
   const draft = useExportPdf.getState().drafts[projectId];
   const [title, setTitle] = useState(draft?.title ?? projectName);
   const [notes, setNotes] = useState(draft?.notes ?? '');
@@ -116,9 +118,7 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
   const saveDraft = (next: { title: string; notes: string }) =>
     useExportPdf.setState((s) => ({ drafts: { ...s.drafts, [projectId]: next } }));
 
-  const securityHint = audit.grade
-    ? `Grade ${audit.grade} · ${audit.findings.length === 0 ? 'no findings' : `${audit.findings.length} finding${audit.findings.length === 1 ? '' : 's'}`}`
-    : 'Exposure, firewall rules and misconfigurations';
+  const securityHint = m.securityHint(audit.grade, audit.findings.length);
 
   const generate = async (e: FormEvent) => {
     e.preventDefault();
@@ -127,23 +127,26 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
     const controller = new AbortController();
     running.current = controller;
     const { signal } = controller;
-    setStage('Reading the diagram…');
+    // the document is written in the language in effect when it is asked for
+    const t = messagesFor(exportMessages);
+    setStage(t.reading);
     let diagram: DiagramVector | null = null;
-    let diagramError = 'the canvas is not open';
+    let diagramError = t.canvasClosed;
     try {
       diagram = (await canvasApi()?.captureDiagram({ signal })) ?? null;
       if (signal.aborted) return;
       // the document is still built, with a placeholder where the diagram goes
-      if (!diagram) diagramError = 'the canvas is empty';
+      if (!diagram) diagramError = t.canvasEmpty;
     } catch (err) {
       if (signal.aborted) return;
       diagramError = (err as Error).message;
     }
-    setStage('Writing PDF…');
+    setStage(t.writing);
     try {
       const { buildArchitecturePdfAsync } = await import('./archDoc');
       if (signal.aborted) return;
       const state = useEditor.getState();
+      const docAudit = getAudit(state.ir);
       const bytes = await buildArchitecturePdfAsync(
         {
           title: docTitle,
@@ -151,22 +154,23 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
           ir: state.ir,
           edges: state.edges,
           files: orderedFiles(state.files).map((f) => [f, state.files[f]]),
-          audit: getAudit(state.ir),
+          audit: docAudit,
           diagram,
           sections: prefs.sections,
           paper: prefs.paper,
           generatedAt: new Date(),
+          locale: docAudit.locale,
         },
         { signal, onStage: (label) => !signal.aborted && setStage(label) },
       );
       if (signal.aborted) return;
-      downloadBlob(new Blob([bytes.slice().buffer], { type: 'application/pdf' }), fileName(docTitle));
-      if (diagram) showToast('PDF downloaded — ready to share', 'success');
-      else showToast(`PDF downloaded, but the diagram could not be rendered (${diagramError})`, 'info');
+      downloadBlob(new Blob([bytes.slice().buffer], { type: 'application/pdf' }), fileName(docTitle, t.fileSuffix));
+      if (diagram) showToast(t.downloaded, 'success');
+      else showToast(t.downloadedNoDiagram(diagramError), 'info');
       onClose();
     } catch (err) {
       if (signal.aborted) return;
-      showToast(`Couldn't create the PDF: ${(err as Error).message}`, 'error');
+      showToast(t.failed((err as Error).message), 'error');
       setStage(null);
     } finally {
       if (running.current === controller) running.current = null;
@@ -178,7 +182,7 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
     if (running.current) {
       running.current.abort();
       running.current = null;
-      showToast('PDF export cancelled', 'info');
+      showToast(messagesFor(exportMessages).cancelled, 'info');
     }
     onClose();
   };
@@ -187,19 +191,16 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
     <Modal
       open
       onClose={close}
-      label="Export PDF document"
+      label={m.title}
       title={
         <span className="flex items-center gap-2 text-[15px] font-semibold">
-          <FileText className="h-4 w-4 text-muted" /> Export PDF document
+          <FileText className="h-4 w-4 text-muted" /> {m.title}
         </span>
       }
     >
       <form onSubmit={(e) => void generate(e)} className="space-y-4 p-5">
-        <p className="text-[12.5px] leading-relaxed text-muted">
-          A document you can send to anyone: the diagram, then a plain-language summary of what it contains. It is built
-          in your browser — nothing is uploaded.
-        </p>
-        <Field label="Title">
+        <p className="text-[12.5px] leading-relaxed text-muted">{m.intro}</p>
+        <Field label={m.docTitle}>
           <Input
             autoFocus
             value={title}
@@ -212,13 +213,13 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
             }}
           />
         </Field>
-        <Field label="Notes for the reader" hint="Optional — the goal of this design, open questions, who to talk to.">
+        <Field label={m.notes} hint={m.notesHint}>
           <Textarea
             rows={3}
             value={notes}
             maxLength={2000}
             disabled={busy}
-            placeholder="Proposed architecture for…"
+            placeholder={m.notesPlaceholder}
             onChange={(e) => {
               setNotes(e.target.value);
               saveDraft({ title, notes: e.target.value });
@@ -228,41 +229,39 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
         {unsupported.length > 0 ? (
           <p role="status" className="-mt-2 flex items-start gap-1.5 text-[11.5px] leading-snug text-warning">
             <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
-            <span>
-              The PDF's fonts can't show {unsupported.slice(0, 6).join(' ')}
-              {unsupported.length > 6 ? ' …' : ''} — they will print as “?”. Western European text (accents included)
-              is fine.
-            </span>
+            <span>{m.unsupported(unsupported.slice(0, 6).join(' '), unsupported.length > 6)}</span>
           </p>
         ) : null}
 
         <fieldset disabled={busy}>
-          <legend className="mb-1 block text-xs font-medium text-muted">Include</legend>
+          <legend className="mb-1 block text-xs font-medium text-muted">{m.include}</legend>
           <div className="divide-y rounded-[10px] border">
             {SECTION_ROWS.map((row) => (
               <label key={row.key} className="flex cursor-pointer items-center gap-3 px-3 py-2">
                 <row.icon className="h-4 w-4 shrink-0 text-muted" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[12.5px] font-semibold">{row.title}</span>
-                  <span className="block text-[11px] leading-snug text-faint">{row.key === 'security' ? securityHint : row.hint}</span>
+                  <span className="block text-[12.5px] font-semibold">{m.sections[row.key].title}</span>
+                  <span className="block text-[11px] leading-snug text-faint">
+                    {row.key === 'security' ? securityHint : m.sections[row.key].hint}
+                  </span>
                 </span>
                 <input
                   type="checkbox"
                   role="switch"
                   className="bp-switch"
-                  aria-label={row.title}
+                  aria-label={m.sections[row.key].title}
                   checked={prefs.sections[row.key]}
                   onChange={(e) => updatePrefs({ ...prefs, sections: { ...prefs.sections, [row.key]: e.target.checked } })}
                 />
               </label>
             ))}
           </div>
-          <p className="mt-1.5 text-[11px] text-faint">The diagram and an overview are always included.</p>
+          <p className="mt-1.5 text-[11px] text-faint">{m.alwaysIncluded}</p>
         </fieldset>
 
         <div className="flex items-center justify-between">
           <span id="pdf-paper" className="text-xs font-medium text-muted">
-            Paper size
+            {m.paper}
           </span>
           <div role="radiogroup" aria-labelledby="pdf-paper" className="flex rounded-md border bg-surface-2 p-0.5">
             {(['a4', 'letter'] as const).map((p) => (
@@ -278,7 +277,7 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
                   prefs.paper === p ? 'bg-surface-1 text-foreground shadow-xs' : 'text-muted hover:text-foreground',
                 )}
               >
-                {p === 'a4' ? 'A4' : 'Letter'}
+                {p === 'a4' ? 'A4' : m.letter}
               </button>
             ))}
           </div>
@@ -286,11 +285,12 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
 
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="outline" onClick={close}>
-            Cancel
+            {m.cancel}
           </Button>
           <Button type="submit" disabled={busy || !title.trim()}>
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            {stage ?? 'Download PDF'}
+            {stage ?? m.download}
+
           </Button>
         </div>
       </form>
