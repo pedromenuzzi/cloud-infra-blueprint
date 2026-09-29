@@ -4,9 +4,10 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ArrowUpRight,
-  Copy,
+  Code2,
   Globe,
   Lock,
+  PanelRightClose,
   Plus,
   ShieldCheck,
   ShieldQuestion,
@@ -21,11 +22,10 @@ import { getAudit, SEVERITY_TEXT, useSecurityUi } from '@/features/security/secu
 import { OWNER_TYPES, peerLabel, portLabel, serviceName } from '@/security/model';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
-import { emitResource } from '@/hcl/emitter';
 import { exprPreview, lit, literalString, ref } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
-import { copyText } from '@/lib/download';
+import { useMessages } from '@/i18n/messages';
 import { cn, tfName } from '@/lib/utils';
 import { PROVIDER_LABELS, ResourceIcon } from '@/resources/icons';
 import { withinBounds } from '@/resources/fieldRules';
@@ -34,12 +34,13 @@ import type { FieldDef } from '@/resources/types';
 import { canvasApi } from './canvasApi';
 import { CidrPlanner } from './CidrPlanner';
 import { looksLikeTraversal, removeConnectionOps } from './connections';
+import { layoutMessages } from './layout.messages';
 import { MultiSelectPanel } from './MultiSelectPanel';
 import { useLayout } from './layoutStore';
 import { SchemaFields } from './SchemaFields';
 import { orderedFiles, useEditor } from './store';
 
-type Tab = 'rules' | 'properties' | 'connections' | 'code';
+type Tab = 'rules' | 'properties' | 'connections';
 
 /* ------------------------------------------------------------- field rows */
 
@@ -793,30 +794,6 @@ function ConnectionsTab({ node }: { node: ResourceNode }) {
   );
 }
 
-function CodeTab({ node }: { node: ResourceNode }) {
-  const hcl = useMemo(() => emitResource(node), [node]);
-  return (
-    <div className="p-3.5">
-      <div className="relative rounded-sm border bg-surface-2">
-        <pre className="max-h-[50vh] overflow-auto p-3 font-mono text-[11px] leading-[1.65] text-foreground">
-          {hcl}
-        </pre>
-        <Button
-          variant="outline"
-          size="icon"
-          className="absolute right-2 top-2 h-7 w-7"
-          aria-label="Copy block"
-          onClick={() => {
-            void copyText(hcl).then(() => showToast('Block copied', 'success'));
-          }}
-        >
-          <Copy className="h-3 w-3" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 /** Project summary — opened from the canvas stats pill. */
 export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
   const projectName = useEditor((s) => s.projectName);
@@ -909,7 +886,13 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
   );
 }
 
-export function Inspector() {
+/**
+ * The selected resource's settings. `docked`: a full-height column beside
+ * the canvas instead of a card floating over it. `onMinimize`: the page can
+ * fold it into a slim tab (the editor; the viewer can't).
+ */
+export function Inspector({ docked = false, onMinimize }: { docked?: boolean; onMinimize?(): void } = {}) {
+  const m = useMessages(layoutMessages);
   const selection = useEditor((s) => s.selection);
   const selectedIds = useEditor((s) => s.selectedIds);
   const ir = useEditor((s) => s.ir);
@@ -918,7 +901,7 @@ export function Inspector() {
   const [tabChoice, setTab] = useState<Tab>('properties');
   const node = selection ? ir.resources.find((r) => r.id === selection) : undefined;
   const isOwner = node ? OWNER_TYPES[node.type] !== undefined : false;
-  const tabs: Tab[] = isOwner ? ['rules', 'properties', 'connections', 'code'] : ['properties', 'connections', 'code'];
+  const tabs: Tab[] = isOwner ? ['rules', 'properties', 'connections'] : ['properties', 'connections'];
   const tab: Tab = tabs.includes(tabChoice) ? tabChoice : 'properties';
   // security groups & co open on their rules
   useEffect(() => {
@@ -927,11 +910,22 @@ export function Inspector() {
   }, [node?.id]);
   const def = node ? getDef(node.type) : undefined;
 
-  if (selectedIds.length > 1) return <MultiSelectPanel ids={selectedIds} />;
+  if (selectedIds.length > 1) {
+    return docked ? (
+      <div className="flex min-h-0 flex-1 p-2">
+        <MultiSelectPanel ids={selectedIds} />
+      </div>
+    ) : (
+      <MultiSelectPanel ids={selectedIds} />
+    );
+  }
   if (!node) return null;
   return (
     <aside
-      className="bp-pop-in flex w-full flex-col overflow-hidden rounded-[14px] border bg-surface-1 shadow-xl"
+      className={cn(
+        'flex w-full flex-col overflow-hidden bg-surface-1',
+        docked ? 'min-h-0 flex-1' : 'bp-pop-in rounded-[14px] border shadow-xl',
+      )}
       aria-label="Inspector"
     >
       {
@@ -949,6 +943,18 @@ export function Inspector() {
               </div>
               {node.provider !== 'other' ? (
                 <Badge variant={node.provider}>{PROVIDER_LABELS[node.provider]}</Badge>
+              ) : null}
+              {onMinimize ? (
+                <button
+                  type="button"
+                  aria-label={m.hide.inspector}
+                  title={m.hide.inspector}
+                  data-minimize
+                  onClick={onMinimize}
+                  className="-mr-1 rounded-[6px] p-1 text-faint transition-colors hover:bg-surface-2 hover:text-foreground"
+                >
+                  <PanelRightClose className="h-3.5 w-3.5" />
+                </button>
               ) : null}
               <button
                 type="button"
@@ -978,22 +984,34 @@ export function Inspector() {
                 ) : null}
               </p>
             ) : null}
-            <div className="mt-3 flex rounded-sm border bg-surface-2 p-0.5" role="tablist">
-              {tabs.map((t) => (
-                <button
-                  key={t}
-                  role="tab"
-                  aria-selected={tab === t}
-                  type="button"
-                  onClick={() => setTab(t)}
-                  className={cn(
-                    'flex-1 rounded-[5px] px-2 py-1 text-[11.5px] font-semibold capitalize transition-colors',
-                    tab === t ? 'bg-surface-1 text-foreground shadow-xs' : 'text-muted hover:text-foreground',
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
+            <div className="mt-3 flex items-stretch gap-1.5">
+              <div className="flex min-w-0 flex-1 rounded-sm border bg-surface-2 p-0.5" role="tablist">
+                {tabs.map((t) => (
+                  <button
+                    key={t}
+                    role="tab"
+                    aria-selected={tab === t}
+                    type="button"
+                    onClick={() => setTab(t)}
+                    className={cn(
+                      'min-w-0 flex-1 truncate rounded-[5px] px-1.5 py-1 text-[11.5px] font-semibold capitalize transition-colors',
+                      tab === t ? 'bg-surface-1 text-foreground shadow-xs' : 'text-muted hover:text-foreground',
+                    )}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              {/* not a tab: the block is shown where it lives, in the code editor, highlighted */}
+              <button
+                type="button"
+                title={m.codeButtonTitle}
+                onClick={() => useEditor.getState().revealInCode(node.id)}
+                className="flex shrink-0 items-center gap-1 rounded-sm border bg-surface-2 px-2 text-[11.5px] font-semibold text-muted transition-colors hover:border-primary/40 hover:text-primary"
+              >
+                <Code2 className="h-3.5 w-3.5" />
+                {m.codeButton}
+              </button>
             </div>
           </div>
 
@@ -1017,7 +1035,6 @@ export function Inspector() {
               {tab === 'rules' ? <RulesTab node={node} /> : null}
               {tab === 'properties' ? <PropertiesTab node={node} /> : null}
               {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
-              {tab === 'code' ? <CodeTab node={node} /> : null}
             </fieldset>
           </div>
 
