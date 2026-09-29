@@ -76,10 +76,13 @@ test('the viewer shows the project read-only: drag, delete, connect and typing c
 
   // the code can't be typed into
   const code = page.locator('[data-testid="monaco"] .view-lines');
-  const text = await code.textContent();
+  // Monaco only draws the lines in view: compare from the top, whatever the scroll
   await code.click();
+  await page.keyboard.press('Control+Home');
+  const text = await code.textContent();
   await page.keyboard.type('zzz_typed');
   await page.keyboard.press('Enter');
+  await page.keyboard.press('Control+Home');
   await expect(code).not.toContainText('zzz_typed');
   expect(await code.textContent()).toBe(text);
 
