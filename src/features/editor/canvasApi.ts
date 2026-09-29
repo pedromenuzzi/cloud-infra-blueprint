@@ -12,6 +12,8 @@ export interface CanvasApi {
   zoomOut(): void;
   /** re-layout every resource (one undo step) */
   tidy(): Promise<void>;
+  /** re-layout one container's contents (one undo step) */
+  arrangeInside(containerId: string): void;
   exportImage(format: 'png' | 'svg'): Promise<void>;
   /** the whole diagram as vector geometry for the PDF document; null when the canvas is empty */
   captureDiagram(options?: CaptureOptions): Promise<DiagramVector | null>;

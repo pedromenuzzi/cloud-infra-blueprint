@@ -19,6 +19,7 @@ import type { Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS, ProviderChip, ResourceIcon } from '@/resources/icons';
 import type { Category } from '@/resources/types';
+import { useDropTone } from './dropHint';
 import { useEditor } from './store';
 
 /** security-lens decorations (undefined when the lens is off) */
@@ -172,11 +173,26 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
 export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlowNode>) {
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
   const readOnly = useEditor((s) => s.readOnly);
+  // something dragged over it: it would go in (solid outline) or can't (dashed red)
+  const drop = useDropTone(id);
   return (
     <div
       style={catVars(data.category)}
-      className={cn('bp-container h-full w-full rounded-[16px]', selected && 'bp-container-selected', data.security?.dim && 'bp-dim')}
+      data-drop={drop ?? undefined}
+      className={cn(
+        'bp-container relative h-full w-full rounded-[16px]',
+        selected && 'bp-container-selected',
+        data.security?.dim && 'bp-dim',
+        drop === 'ok' && 'outline-[2.5px] outline-offset-2 outline-primary',
+        drop === 'no' && 'outline-[2.5px] outline-offset-2 outline-dashed outline-danger',
+      )}
     >
+      {drop ? (
+        <div
+          aria-hidden
+          className={cn('pointer-events-none absolute inset-0 rounded-[16px]', drop === 'ok' ? 'bg-primary/8' : 'bg-danger/8')}
+        />
+      ) : null}
       <NodeResizer
         isVisible={selected && !readOnly}
         minWidth={240}

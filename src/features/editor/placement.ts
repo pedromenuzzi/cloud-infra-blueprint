@@ -235,3 +235,20 @@ export function absolutePosition(ir: IR, node: ResourceNode): { x: number; y: nu
   }
   return { x, y };
 }
+
+/** whether two siblings overlap anywhere (big sibling groups are skipped: too slow to check) */
+export function hasOverlaps(ir: IR, limit = 300): boolean {
+  const groups = new Map<string, Rect[]>();
+  for (const r of ir.resources) {
+    if (!r.position) continue;
+    const key = r.parentId ?? '';
+    groups.set(key, [...(groups.get(key) ?? []), boxOf(r)]);
+  }
+  for (const boxes of groups.values()) {
+    if (boxes.length > limit) continue;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) if (hits(boxes[i], boxes[j], -4)) return true;
+    }
+  }
+  return false;
+}

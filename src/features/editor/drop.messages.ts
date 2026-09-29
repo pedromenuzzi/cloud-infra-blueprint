@@ -30,8 +30,6 @@ export const dropMessages = defineMessages(
     connected: (name: string, target: string) => `Connected ${name} to ${target}`,
     undoHint: (mod: string) => `${mod} Z to undo`,
     fixGone: 'That changed in the meantime — drag it again',
-    /** the drag hint's live region */
-    hintLabel: 'Drop target',
   },
   {
     into: (c: Noun, name: string) => `Para ${o(c)} ${name}`,
@@ -52,6 +50,5 @@ export const dropMessages = defineMessages(
     connected: (name: string, target: string) => `${name} conectado a ${target}`,
     undoHint: (mod: string) => `${mod} Z para desfazer`,
     fixGone: 'Isso mudou nesse meio-tempo — arraste de novo',
-    hintLabel: 'Destino ao soltar',
   },
 );

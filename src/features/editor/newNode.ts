@@ -143,17 +143,18 @@ export function buildNewNode(
 export function placeNewNode(
   ir: IR,
   def: ResourceDef,
-  at: { x: number; y: number },
+  /** null: no particular spot — the container's next free cell */
+  at: { x: number; y: number } | null,
   container?: { node: ResourceNode; x: number; y: number },
 ): { node: ResourceNode; ops: Op[] } {
   const size = sizeFor(def.type);
   const keep = isContainerType(def.type) ? size : {};
-  const centered = { x: at.x - size.w / 2, y: at.y - size.h / 2 };
+  const centered = at ? { x: at.x - size.w / 2, y: at.y - size.h / 2 } : undefined;
   if (!container) {
-    return buildNewNode(ir, def, { ...freeSpotAround(ir, undefined, size, centered), ...keep });
+    return buildNewNode(ir, def, { ...freeSpotAround(ir, undefined, size, centered ?? { x: 40, y: 40 }), ...keep });
   }
   const spot = slotIn(ir, container.node, size, {
-    preferred: { x: centered.x - container.x, y: centered.y - container.y },
+    preferred: centered ? { x: centered.x - container.x, y: centered.y - container.y } : undefined,
   });
   const { node, ops } = buildNewNode(ir, def, { ...spot, ...keep }, container.node);
   return { node, ops: [...ops, ...makeRoomOps(ir, container.node.id, { ...spot, ...size })] };

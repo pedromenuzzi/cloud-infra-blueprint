@@ -46,6 +46,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { focusIsLost, Kbd, restoreFocus, useLayer } from '@/components/ui';
 import { ALIGN_ACTIONS, alignActionBlocker } from '@/features/editor/alignActions';
+import { arrangeMessages } from '@/features/editor/arrange.messages';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { useLayout } from '@/features/editor/layoutStore';
@@ -60,7 +61,8 @@ import { importNote, pickTerraformFiles, readTerraformFiles } from '@/lib/import
 import { createProject, detectProviders, listProjects, uniqueProjectName, type Project } from '@/lib/storage';
 import { cn, slugify, timeAgo } from '@/lib/utils';
 import { ResourceIcon } from '@/resources/icons';
-import { getDef } from '@/resources/registry';
+import { useMessages } from '@/i18n/messages';
+import { getDef, isContainerType } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
 import { useTheme } from '@/theme/useTheme';
 import { MOD, takePaletteReturnFocus, usePalette } from './paletteStore';
@@ -135,6 +137,8 @@ export function CommandPalette() {
   const canRedo = useEditor((s) => s.future.length > 0);
   const editorReady = inEditor && projectId !== null;
   const ir = useEditor((s) => s.ir);
+  const am = useMessages(arrangeMessages);
+  const arrangeTarget = selection ? ir.resources.find((r) => r.id === selection) : undefined;
   const audit = editorReady ? getAudit(ir) : null;
   const fixable = audit ? audit.findings.filter((f) => f.fix).length : 0;
   const projects = useMemo(
@@ -228,7 +232,16 @@ export function CommandPalette() {
                       }}
                     />
                     <Item value="fit" icon={Maximize} label="Fit view" shortcut="⇧1" onSelect={() => run(() => canvasApi()?.fitView())} />
-                    <Item value="tidy" icon={WandSparkles} label="Tidy up layout" keywords={['auto layout', 'arrange', 'organize']} onSelect={() => run(() => void canvasApi()?.tidy())} />
+                    <Item value="tidy" icon={WandSparkles} label={am.command} keywords={am.keywords} onSelect={() => run(() => void canvasApi()?.tidy())} />
+                    {arrangeTarget && isContainerType(arrangeTarget.type) && ir.resources.some((r) => r.parentId === arrangeTarget.id) ? (
+                      <Item
+                        value="arrange-inside"
+                        icon={WandSparkles}
+                        label={am.arrangeInside(arrangeTarget.name)}
+                        keywords={am.keywords}
+                        onSelect={() => run(() => canvasApi()?.arrangeInside(arrangeTarget.id))}
+                      />
+                    ) : null}
                     <Item value="minimap" icon={MapIcon} label="Toggle minimap" onSelect={() => run(() => canvasApi()?.toggleMinimap())} />
                     {selection ? (
                       <>

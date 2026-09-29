@@ -44,11 +44,11 @@ test('after one visit, the dashboard and the editor work offline', async ({ page
   await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
   // ELK came from the cache too: tidy up works
   const before = (await storedProject(page, SEED_PROJECT))!.files['main.tf'];
-  await page.getByRole('button', { name: 'Tidy up layout' }).click();
+  await page.getByRole('button', { name: 'Auto-arrange' }).click();
   await expect
     .poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf'], { timeout: 15_000 })
     .not.toBe(before);
-  await expect(page.getByText(/Couldn't tidy/)).toBeHidden();
+  await expect(page.getByText(/Couldn't arrange/)).toBeHidden();
 
   await page.getByRole('link', { name: 'Back to dashboard' }).click();
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
