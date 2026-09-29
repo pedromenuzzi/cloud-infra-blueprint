@@ -14,7 +14,10 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { getAudit, useSecurityUi } from '@/features/security/securityStore';
+import { CostLine } from '@/features/cost/CostLine';
+import { AccessPaths } from '@/features/security/AccessPaths';
+import { ComplianceBadges } from '@/features/security/ComplianceBadges';
+import { getAudit, SEVERITY_TEXT, useSecurityUi } from '@/features/security/securityStore';
 import { OWNER_TYPES, peerLabel, portLabel, serviceName } from '@/security/model';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
@@ -29,8 +32,11 @@ import { withinBounds } from '@/resources/fieldRules';
 import { docsUrl, getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
 import { canvasApi } from './canvasApi';
+import { CidrPlanner } from './CidrPlanner';
 import { looksLikeTraversal, removeConnectionOps } from './connections';
+import { MultiSelectPanel } from './MultiSelectPanel';
 import { useLayout } from './layoutStore';
+import { SchemaFields } from './SchemaFields';
 import { orderedFiles, useEditor } from './store';
 
 type Tab = 'rules' | 'properties' | 'connections' | 'code';
@@ -394,6 +400,24 @@ function TagsField({ node, field }: { node: ResourceNode; field: FieldDef }) {
   );
 }
 
+/** the editor for a field — also used by the schema's "All arguments" (SchemaFields) */
+function fieldControl(node: ResourceNode, field: FieldDef): React.ReactNode {
+  switch (field.type) {
+    case 'select':
+      return <SelectField node={node} field={field} />;
+    case 'boolean':
+      return <BooleanField node={node} field={field} />;
+    case 'number':
+      return <NumberField node={node} field={field} />;
+    case 'list':
+      return <ListField node={node} field={field} />;
+    case 'tags':
+      return <TagsField node={node} field={field} />;
+    default:
+      return <StringOrRefField node={node} field={field} />;
+  }
+}
+
 function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
   const missing = field.required && !node.args[field.name];
   const label = (
@@ -406,29 +430,9 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
       ) : null}
     </span>
   );
-  let control: React.ReactNode;
-  switch (field.type) {
-    case 'select':
-      control = <SelectField node={node} field={field} />;
-      break;
-    case 'boolean':
-      control = <BooleanField node={node} field={field} />;
-      break;
-    case 'number':
-      control = <NumberField node={node} field={field} />;
-      break;
-    case 'list':
-      control = <ListField node={node} field={field} />;
-      break;
-    case 'tags':
-      control = <TagsField node={node} field={field} />;
-      break;
-    default:
-      control = <StringOrRefField node={node} field={field} />;
-  }
   return (
     <Field label={label} hint={field.doc}>
-      {control}
+      {fieldControl(node, field)}
     </Field>
   );
 }
@@ -437,21 +441,30 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
 
 const RISK_TONE = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#64748b' } as const;
 const EXPOSURE_TONE = { internet: '#0ea5e9', unknown: '#f59e0b', restricted: '#10b981', isolated: '#64748b' } as const;
+/** the same tones as text, at AA contrast in both themes */
+const EXPOSURE_TEXT = {
+  internet: 'text-[#0369a1] dark:text-[#38bdf8]',
+  unknown: 'text-warning',
+  restricted: 'text-success',
+  isolated: 'text-muted',
+} as const;
 const portList = (ports: string[]) => ports.map((p) => (/^\d/.test(p) ? `:${p}` : p)).join(', ');
 
-/** Security summary for a workload: exposure, protecting groups, findings. */
+/** Security summary for a workload: exposure and why, protecting groups, findings. */
 function ExposureCard({ node }: { node: ResourceNode }) {
   const ir = useEditor((s) => s.ir);
   const audit = getAudit(ir);
   const exposure = audit.topology.exposure.get(node.id);
+  const access = audit.topology.access.get(node.id);
   const findings = audit.findings.filter((f) => f.resource === node.id);
   if (!exposure && findings.length === 0) return null;
-  const inbound = audit.topology.flows.filter((f) => f.to === node.id);
+  // the internet's way in is spelled out per port below
+  const inbound = audit.topology.flows.filter((f) => f.to === node.id && !(f.from === 'internet' && access?.open.length));
   const tone = EXPOSURE_TONE[exposure?.level ?? 'isolated'];
   return (
     <div className="rounded-[10px] border p-2.5" style={{ borderColor: `color-mix(in srgb, ${tone} 35%, transparent)` }}>
       {exposure ? (
-        <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: tone }}>
+        <div className={cn('flex items-center gap-1.5 text-[12px] font-semibold', EXPOSURE_TEXT[exposure.level])}>
           {exposure.level === 'internet' ? (
             <Globe className="h-3.5 w-3.5" />
           ) : exposure.level === 'unknown' ? (
@@ -495,10 +508,18 @@ function ExposureCard({ node }: { node: ResourceNode }) {
           ))}
         </div>
       ) : null}
+      {access ? (
+        <div className="mt-2.5 border-t pt-2.5" data-testid="access-explanation">
+          <AccessPaths access={access} />
+        </div>
+      ) : null}
       {findings.map((f) => (
         <div key={f.id} className="mt-2 flex items-start gap-1.5 text-[11.5px]">
           <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: RISK_TONE[f.severity] }} />
-          <span className="min-w-0 flex-1 text-foreground">{f.title}</span>
+          <span className="min-w-0 flex-1 text-foreground">
+            {f.title}
+            <ComplianceBadges controls={f.controls} className="mt-1" />
+          </span>
           {f.fix ? (
             <button
               type="button"
@@ -534,9 +555,10 @@ function RulesTab({ node }: { node: ResourceNode }) {
         <div className="space-y-1.5">
           {findings.map((f) => (
             <div key={f.id} className="rounded-[9px] border p-2" style={{ borderColor: `color-mix(in srgb, ${RISK_TONE[f.severity]} 40%, transparent)`, background: `color-mix(in srgb, ${RISK_TONE[f.severity]} 6%, transparent)` }}>
-              <div className="flex items-start gap-1.5 text-[11.5px] font-semibold" style={{ color: RISK_TONE[f.severity] }}>
+              <div className={cn('flex items-start gap-1.5 text-[11.5px] font-semibold', SEVERITY_TEXT[f.severity])}>
                 <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" /> {f.title}
               </div>
+              <ComplianceBadges controls={f.controls} className="mt-1 pl-5" />
               {f.fix ? (
                 <button
                   type="button"
@@ -640,12 +662,14 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
   const applyOps = useOps();
   const ir = useEditor((s) => s.ir);
   const def = getDef(node.type);
-  const knownFields = new Set(def?.fields.map((f) => f.name) ?? []);
+  const knownFields = useMemo(() => new Set(def?.fields.map((f) => f.name) ?? []), [def]);
   const extraArgs = Object.keys(node.args).filter((k) => !knownFields.has(k) && !/[\s"]/.test(k));
 
   return (
     <div className="space-y-3.5 p-3.5">
       <ExposureCard node={node} />
+      <CostLine node={node} />
+      <CidrPlanner node={node} />
       {/* the block label, not the `name` argument most resources also have */}
       <Field
         label="Terraform name"
@@ -675,18 +699,26 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
 
       {def?.fields.map((f) => <FieldRow key={f.name} node={node} field={f} />)}
 
-      {extraArgs.length > 0 ? (
-        <div className="border-t pt-3">
-          <h4 className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-faint">
-            Other arguments
-          </h4>
-          <div className="space-y-3">
-            {extraArgs.map((name) => (
-              <FieldRow key={name} node={node} field={{ name, type: 'string' }} />
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {/* the provider schema's other arguments and blocks, once loaded; until then the plain list */}
+      <SchemaFields
+        node={node}
+        curated={knownFields}
+        renderControl={(field) => fieldControl(node, field)}
+        fallback={
+          extraArgs.length > 0 ? (
+            <div className="border-t pt-3">
+              <h4 className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-faint">
+                Other arguments
+              </h4>
+              <div className="space-y-3">
+                {extraArgs.map((name) => (
+                  <FieldRow key={name} node={node} field={{ name, type: 'string' }} />
+                ))}
+              </div>
+            </div>
+          ) : null
+        }
+      />
     </div>
   );
 }
@@ -789,6 +821,7 @@ function CodeTab({ node }: { node: ResourceNode }) {
 export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
   const projectName = useEditor((s) => s.projectName);
   const renameProject = useEditor((s) => s.renameProject);
+  const readOnly = useEditor((s) => s.readOnly);
   const ir = useEditor((s) => s.ir);
   const edges = useEditor((s) => s.edges);
   const files = useEditor((s) => s.files);
@@ -806,6 +839,7 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
         <Input
           key={projectName}
           defaultValue={projectName}
+          readOnly={readOnly}
           onBlur={(e) => {
             if (e.target.value.trim() && e.target.value !== projectName) {
               renameProject(e.target.value);
@@ -877,8 +911,10 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
 
 export function Inspector() {
   const selection = useEditor((s) => s.selection);
+  const selectedIds = useEditor((s) => s.selectedIds);
   const ir = useEditor((s) => s.ir);
   const codeErrored = useEditor((s) => s.codeErrored);
+  const readOnly = useEditor((s) => s.readOnly);
   const [tabChoice, setTab] = useState<Tab>('properties');
   const node = selection ? ir.resources.find((r) => r.id === selection) : undefined;
   const isOwner = node ? OWNER_TYPES[node.type] !== undefined : false;
@@ -891,6 +927,7 @@ export function Inspector() {
   }, [node?.id]);
   const def = node ? getDef(node.type) : undefined;
 
+  if (selectedIds.length > 1) return <MultiSelectPanel ids={selectedIds} />;
   if (!node) return null;
   return (
     <aside
@@ -960,29 +997,43 @@ export function Inspector() {
             </div>
           </div>
 
-          {codeErrored ? (
+          {readOnly ? (
+            <p role="status" className="border-b bg-surface-2/60 px-3.5 py-2 text-[11.5px] font-medium text-muted">
+              Read-only view — make a copy to edit.
+            </p>
+          ) : codeErrored ? (
             <p role="status" className="border-b bg-warning/10 px-3.5 py-2 text-[11.5px] font-medium text-warning">
               Read-only until the code parses — fix the errors in the code pane.
             </p>
           ) : null}
-          <fieldset disabled={codeErrored} className="min-h-0 flex-1 overflow-y-auto">
-            {tab === 'rules' ? <RulesTab node={node} /> : null}
-            {tab === 'properties' ? <PropertiesTab node={node} /> : null}
-            {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
-            {tab === 'code' ? <CodeTab node={node} /> : null}
-          </fieldset>
-
-          <div className="border-t p-3">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={codeErrored}
-              className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
-              onClick={() => useEditor.getState().deleteResources([node.id])}
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Delete resource
-            </Button>
+          {/* disabled, nothing inside takes focus: the scroll area itself must, for keyboard scrolling */}
+          <div
+            role={codeErrored || readOnly ? 'group' : undefined}
+            tabIndex={codeErrored || readOnly ? 0 : undefined}
+            aria-label={codeErrored || readOnly ? 'Resource settings (read-only)' : undefined}
+            className="min-h-0 flex-1 overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+          >
+            <fieldset disabled={codeErrored || readOnly} className="min-w-0">
+              {tab === 'rules' ? <RulesTab node={node} /> : null}
+              {tab === 'properties' ? <PropertiesTab node={node} /> : null}
+              {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
+              {tab === 'code' ? <CodeTab node={node} /> : null}
+            </fieldset>
           </div>
+
+          {readOnly ? null : (
+            <div className="border-t p-3">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={codeErrored}
+                className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
+                onClick={() => useEditor.getState().deleteResources([node.id])}
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete resource
+              </Button>
+            </div>
+          )}
         </>
       }
     </aside>

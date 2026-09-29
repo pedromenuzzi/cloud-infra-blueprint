@@ -113,6 +113,15 @@ export function shareUrl(payload: SharePayload): string {
   return `${base}#share=${encodeShare(payload)}`;
 }
 
+/**
+ * A read-only view link: the same compact payload as a share link, opened in
+ * the viewer instead of imported. `embed` hides the app chrome (for iframes).
+ */
+export function viewUrl(payload: SharePayload, options: { embed?: boolean } = {}): string {
+  const base = `${location.origin}${import.meta.env.BASE_URL ?? '/'}`;
+  return `${base}#view=${encodeShare(payload)}${options.embed ? '&embed=1' : ''}`;
+}
+
 export interface ShareLinkInfo {
   url: string;
   /** length of the URL in bytes (it's ASCII) */
@@ -127,7 +136,15 @@ export interface ShareLinkInfo {
 
 /** The share URL plus a warning when it's too long to travel safely. */
 export function shareLinkInfo(payload: SharePayload): ShareLinkInfo {
-  const url = shareUrl(payload);
+  return linkInfo(shareUrl(payload), payload);
+}
+
+/** The read-only view URL, with the same size checks as a share link. */
+export function viewLinkInfo(payload: SharePayload, options: { embed?: boolean } = {}): ShareLinkInfo {
+  return linkInfo(viewUrl(payload, options), payload);
+}
+
+function linkInfo(url: string, payload: SharePayload): ShareLinkInfo {
   const bytes = url.length;
   const tooLarge = strToU8(JSON.stringify({ v: VERSION, n: payload.name, f: payload.files })).length > MAX_SHARE_BYTES;
   const long = bytes > SHARE_URL_SOFT_LIMIT;
@@ -170,6 +187,36 @@ export function readShareFromLocation(): ShareDecodeResult | null {
   const m = SHARE_FRAGMENT.exec(location.hash);
   if (!m) return null;
   return /^[A-Za-z0-9_-]+$/.test(m[1]) ? decodeShareResult(m[1]) : { ok: false, error: 'invalid' };
+}
+
+export interface ViewLink {
+  result: ShareDecodeResult;
+  /** `&embed=1`: no app chrome — the diagram and an "Open" link only */
+  embed: boolean;
+}
+
+const VIEW_FRAGMENT = /^#view=([^&]*)((?:&[^&]*)*)$/s;
+
+/** `#view=<payload>[&embed=1]` — null when `hash` isn't a view link. */
+export function parseViewHash(hash: string): ViewLink | null {
+  const m = VIEW_FRAGMENT.exec(hash);
+  if (!m) return null;
+  const embed = new URLSearchParams(m[2].slice(1)).get('embed') === '1';
+  const result: ShareDecodeResult = /^[A-Za-z0-9_-]+$/.test(m[1])
+    ? decodeShareResult(m[1])
+    : { ok: false, error: 'invalid' };
+  return { result, embed };
+}
+
+/** Is this fragment a view link? (cheap: nothing is decoded) */
+export function isViewHash(hash: string): boolean {
+  return hash.startsWith('#view=');
+}
+
+/** Is this fragment an embedded view link (`#view=…&embed=1`)? */
+export function isEmbedHash(hash: string): boolean {
+  const amp = hash.indexOf('&');
+  return isViewHash(hash) && amp !== -1 && new URLSearchParams(hash.slice(amp + 1)).get('embed') === '1';
 }
 
 /** Drop the `#share=…` fragment without a navigation (keeps the router's history state). */

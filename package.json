@@ -24,7 +24,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "templates:emit": "vite-node scripts/emit-templates.ts",
-    "catalog:emit": "vite-node scripts/emit-catalog.ts"
+    "catalog:emit": "vite-node scripts/emit-catalog.ts",
+    "schema:generate": "vite-node scripts/generate-schema.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",
@@ -56,6 +57,7 @@
     "typescript-eslint": "^8.71.0",
     "vite": "^6.3.5",
     "vite-node": "3.2.4",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^3.1.4"
   }
 }

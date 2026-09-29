@@ -33,11 +33,33 @@ between them.
 - 🛡️ **Security audit**: findings ranked by severity with plain-language explanations and
   one-click fixes, a canvas lens that highlights what's exposed to the internet, and a
   firewall rule editor for AWS security groups / NACLs, Azure NSGs and GCP firewalls.
+- 🧮 **Validation & CIDR planner**: warnings for overlapping or out-of-range CIDRs, invalid
+  cloud names and AZs outside the region, plus an inspector planner that carves new subnets
+  (or splits a VPC across AZs) from the free address space.
+- 💵 **Cost estimate**: a live "~$27/mo" on the canvas, a per-resource breakdown in the inspector
+  and the PDF — on-demand list prices shipped with the app (no network calls), every assumption shown.
+- 🧭 **Security explained**: a clickable per-port "Why is this reachable?" path (IGW → route → subnet → rules), CIS / AWS FSBP control IDs on findings, and a toast when an edit lowers the grade.
 - 📄 **PDF export**: a shareable architecture document — the diagram plus a readable summary
   of resources, connections, security findings and the code — generated in the browser.
 - 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the
   diagram and the code side by side with the new lines highlighted — any step opens in
   the editor.
+- 📚 **The real provider schemas**: every argument of every AWS / AzureRM / Google resource — searchable in the inspector, completed, documented and validated ("did you mean…?") in the code — loaded per provider, only when used.
+
+### Your data, anywhere
+
+- 🗄️ **Backup & restore**: download every project as one `.zip` (a folder of `.tf` files per
+  project + a `manifest.json`); restoring shows what's new, already there or different, and
+  lets you add copies or replace — nothing is overwritten without asking.
+- 📊 **Storage meter** on the dashboard: how much of the browser's storage your projects use,
+  a "Back up and free space" nudge from 70%, and a one-click request for persistent storage.
+- ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor —
+  Monaco, auto-layout, fonts — open without a connection; a new version shows an
+  "Update available — Reload" prompt instead of breaking the open tab.
+- 📁 **Folder sync** (Chrome / Edge): *Open folder…* imports a Terraform root module linked to
+  its folder, or *Sync with folder…* links an existing project. Saves write through to the
+  `.tf` files, edits made on disk load back when you return to the tab, and changes on both
+  sides ask before anything is overwritten. Other browsers get the `.zip` export instead.
 
 ### Built for speed
 
@@ -46,6 +68,8 @@ between them.
 - ✨ **Quick add**: double-click the canvas to drop a service exactly there (nested into the
   VPC / subnet / group under the cursor).
 - 🪄 **Tidy up**: one-click layered auto-layout (ELK) that understands containers — one undo step.
+- 🧲 **Multi-select** (Shift-drag or `Ctrl`-click): align and distribute, set a shared setting,
+  tag, connect (e.g. one security group to five instances) or delete them all — one undo step each.
 - 🔁 **Selection sync**: pick a node and the code scrolls to its block; click inside a block and
   the node is selected.
 - 🖱️ **Right-click actions**: show in code, rename (`F2`), duplicate (`⌘D`), copy address,
@@ -53,6 +77,13 @@ between them.
 - 📥 **Import** existing Terraform: drop `.tf` files, a folder or a `.zip` on the dashboard.
   The root module is imported; `modules/` directories are skipped for now (modules aren't
   supported yet), and so are `.terraform/`, state files and the lock file.
+- 🐙 **Import from GitHub**: paste `owner/repo`, a repository, folder (`…/tree/<ref>/<path>`),
+  `.tf` file or gist link and pick one of the root modules found. It talks to GitHub's public
+  API straight from your browser — no token needed for public repos; an optional token (kept in
+  memory only, never stored or put in a link) opens private repos and raises the 60 requests/hour limit.
+- 👁️ **Read-only view links**: *Copy view link* shares a project that opens in a viewer —
+  pan, zoom, inspect, read the code, export PDF/PNG — without editing or saving anything;
+  *Make a copy to edit* imports it. Add `&embed=1` for an iframe.
 - 🖼️ **Export** the diagram as PNG or SVG, alongside the Terraform zip.
 - 🎨 **A real icon system**: every service has its own glyph on a category-colored tile;
   floating edges attach to the nearest side and animate the data flow of the selection.
@@ -74,6 +105,28 @@ keystrokes ──▶ debounced parse ──▶ new IR (positions carried over) �
   file itself is the complete source of truth — git-diff friendly.
 - **Anything the parser can't model** (complex expressions, `dynamic` blocks, `locals`,
   `data` sources) is preserved verbatim and shown as-is.
+
+## Open in Cloud Blueprint & embed
+
+Put a badge in your Terraform repo's README — it opens the GitHub import prefilled with your
+repo (`#gh=owner/repo[/path][@ref]`; nothing is fetched until the visitor confirms):
+
+```md
+[![Open in Cloud Blueprint](https://img.shields.io/badge/Open_in-Cloud_Blueprint-2563eb)](https://pedromenuzzi.github.io/cloud-infra-blueprint/#gh=OWNER/REPO/infra/prod@main)
+```
+
+Embed a live, read-only diagram in docs or a wiki: in the editor, *Copy view link*, then in
+the viewer *Share → Copy embed code* (or add `&embed=1` to a view link yourself). The embed
+shows only the diagram — pan, zoom, select — with an "Open" link; it never takes focus or
+opens a dialog on load, and never writes to the visitor's storage.
+
+```html
+<iframe src="https://pedromenuzzi.github.io/cloud-infra-blueprint/#view=<payload>&embed=1"
+        title="My architecture — Cloud Blueprint" width="100%" height="480"
+        style="border:0;border-radius:12px" loading="lazy"></iframe>
+```
+
+The whole project travels in the URL fragment, which browsers never send to a server.
 
 ## Quick start
 
@@ -100,6 +153,8 @@ bash scripts/terraform-validate.sh .tf-catalog
 ```
 
 First E2E run on a new machine: `pnpm exec playwright install --with-deps chromium`.
+The service worker is blocked in every E2E spec (it would serve cached files past `page.route()`
+mocks) except `e2e/pwa.spec.ts`, which opts in to test the offline app and the update prompt.
 
 That's it — there is no database, no API keys, no backend to configure.
 
@@ -133,6 +188,7 @@ The app is a fully static SPA. Any free static host works:
 | Export / share | fflate (zip download + import, deflated share-links in the URL fragment), html-to-image (PNG/SVG) |
 | Command palette | [cmdk](https://cmdk.paco.me), loaded on first use |
 | Auto-layout | [ELK](https://eclipse.dev/elk/) (`elkjs`), loaded on first use |
+| Offline | [vite-plugin-pwa](https://vite-pwa-org.netlify.app) (Workbox) generates the service worker at build time; no runtime dependency |
 | Icons | [Lucide](https://lucide.dev) glyphs on category-colored tiles (`src/resources/icons.tsx`) |
 
 ### Repo map
@@ -146,9 +202,10 @@ src/
 ├── tutorials/   # step-by-step lessons (diagram + code, diff-highlighted)
 ├── security/    # security model, topology analysis, audit findings + fixes, rule editing
 ├── features/    # editor (canvas, code, palette, inspector, topbar), security panel, PDF export, templates modal
-├── routes/      # landing, dashboard, editor, tutorials, 404
+├── routes/      # landing, dashboard, editor, read-only viewer, tutorials, 404
 ├── components/  # design-system UI kit, thumbnails, theme toggle, toasts, app shell (errors, share links, storage notices)
-└── lib/         # localStorage projects, Terraform import, zip export, share links, PDF writer, utils
+├── features/data/ # backup & restore, storage meter, offline app (service worker), folder sync UI
+└── lib/         # localStorage projects, backup format, folder sync, Terraform + GitHub import, zip export, share/view links, PDF writer, utils
 e2e/             # Playwright specs (editor, navigation, share links, import, persistence, PDF, regressions)
 ```
 
@@ -172,7 +229,7 @@ e2e/             # Playwright specs (editor, navigation, share links, import, pe
 - [ ] **F5** — GitHub/GitLab push, org template libraries
 - [x] **F3.5** — Premium UX: command palette, quick add, tidy layout, selection sync,
   import/export, per-service icons, first-run tips
-- [ ] **F6** — PWA offline install, guided onboarding tour, community template gallery
+- [ ] **F6** — ~~PWA offline install~~ (done), guided onboarding tour, community template gallery
 
 The client-only architecture is deliberate: parsing/emitting runs in the browser, so a
 future backend only needs to store snapshots and relay WebSockets — exactly as specified

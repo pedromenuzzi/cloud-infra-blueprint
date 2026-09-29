@@ -3,7 +3,7 @@ import { lineColOf } from '@/hcl/parser';
 import { prefersReducedMotion } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { ensureMonacoSetup, monaco, setCompletionSource } from './monaco/setup';
-import { orderedFiles, useEditor } from './store';
+import { orderedFiles, READ_ONLY_HINT, useEditor } from './store';
 
 ensureMonacoSetup();
 
@@ -46,6 +46,7 @@ export function CodePane() {
   const selection = useEditor((s) => s.selection);
   const selectionOrigin = useEditor((s) => s.selectionOrigin);
   const revealSeq = useEditor((s) => s.revealSeq);
+  const readOnly = useEditor((s) => s.readOnly);
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
   /** resource waiting to be scrolled into view once its file's model is active */
   const pendingRevealRef = useRef<string | null>(null);
@@ -100,6 +101,9 @@ export function CodePane() {
       wordBasedSuggestions: 'off',
       quickSuggestions: { other: true, strings: true, comments: false },
       fixedOverflowWidgets: true,
+      readOnly: useEditor.getState().readOnly,
+      domReadOnly: useEditor.getState().readOnly,
+      readOnlyMessage: { value: READ_ONLY_HINT },
     });
     // code → canvas: explicit caret moves (click, arrows) select the enclosing resource
     let syncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -152,6 +156,11 @@ export function CodePane() {
       editorRef.current = null;
     };
   }, []);
+
+  // a read-only view: the code can be read, selected and copied — not typed into
+  useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly, domReadOnly: readOnly });
+  }, [readOnly]);
 
   // dispose stale models when switching projects
   useEffect(() => {

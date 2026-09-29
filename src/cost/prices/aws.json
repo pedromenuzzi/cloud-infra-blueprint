@@ -1,0 +1,416 @@
+{
+  "meta": {
+    "region": "us-east-1",
+    "currency": "USD",
+    "retrieved": "2026-09-29",
+    "sources": [
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRDS/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonElastiCache/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEKS/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonECS/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSELB/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonVPC/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRoute53/current/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awskms/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSSecretsManager/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSLambda/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudFront/current/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonDynamoDB/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSQueueService/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonSNS/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonApiGateway/current/us-east-1/index.json",
+      "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonECR/current/us-east-1/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20(N.%20Virginia)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20(Ohio)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20West%20(N.%20California)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20West%20(Oregon)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/Canada%20(Central)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/South%20America%20(Sao%20Paulo)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/EU%20(Ireland)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/EU%20(London)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/EU%20(Paris)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/EU%20(Frankfurt)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/EU%20(Stockholm)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/Asia%20Pacific%20(Mumbai)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/Asia%20Pacific%20(Singapore)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/Asia%20Pacific%20(Sydney)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/Asia%20Pacific%20(Tokyo)/Linux/index.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ebs.json",
+      "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/natgateway.json"
+    ]
+  },
+  "regions": {
+    "us-east-1": 1,
+    "us-east-2": 1,
+    "us-west-1": 1.19,
+    "us-west-2": 1,
+    "ca-central-1": 1.112,
+    "sa-east-1": 1.595,
+    "eu-west-1": 1.096,
+    "eu-west-2": 1.135,
+    "eu-west-3": 1.135,
+    "eu-central-1": 1.154,
+    "eu-north-1": 1.063,
+    "ap-south-1": 1.032,
+    "ap-southeast-1": 1.255,
+    "ap-southeast-2": 1.262,
+    "ap-northeast-1": 1.292
+  },
+  "ec2": {
+    "t3.nano": 0.0052,
+    "t3.micro": 0.0104,
+    "t3.small": 0.0208,
+    "t3.medium": 0.0416,
+    "t3.large": 0.0832,
+    "t3.xlarge": 0.1664,
+    "t3.2xlarge": 0.3328,
+    "t3a.micro": 0.0094,
+    "t3a.small": 0.0188,
+    "t3a.medium": 0.0376,
+    "t4g.nano": 0.0042,
+    "t4g.micro": 0.0084,
+    "t4g.small": 0.0168,
+    "t4g.medium": 0.0336,
+    "t4g.large": 0.0672,
+    "t2.micro": 0.0116,
+    "m5.large": 0.096,
+    "m5.xlarge": 0.192,
+    "m6i.large": 0.096,
+    "m6i.xlarge": 0.192,
+    "m7i.large": 0.1008,
+    "m7g.large": 0.0816,
+    "c5.large": 0.085,
+    "c5.xlarge": 0.17,
+    "c6i.large": 0.085,
+    "c7g.large": 0.0725,
+    "r5.large": 0.126,
+    "r6i.large": 0.126,
+    "r7g.large": 0.1071
+  },
+  "ebs": {
+    "gp3": 0.08,
+    "gp2": 0.1,
+    "io1": 0.125,
+    "io2": 0.125,
+    "st1": 0.045,
+    "sc1": 0.015,
+    "standard": 0.05
+  },
+  "rds": {
+    "instance": {
+      "db.t3.micro": {
+        "postgres": {
+          "single": 0.018,
+          "multi": 0.036
+        },
+        "mysql": {
+          "single": 0.017,
+          "multi": 0.034
+        },
+        "mariadb": {
+          "single": 0.017,
+          "multi": 0.034
+        }
+      },
+      "db.t3.small": {
+        "postgres": {
+          "single": 0.036,
+          "multi": 0.072
+        },
+        "mysql": {
+          "single": 0.034,
+          "multi": 0.068
+        },
+        "mariadb": {
+          "single": 0.034,
+          "multi": 0.068
+        }
+      },
+      "db.t3.medium": {
+        "postgres": {
+          "single": 0.072,
+          "multi": 0.145
+        },
+        "mysql": {
+          "single": 0.068,
+          "multi": 0.136
+        },
+        "mariadb": {
+          "single": 0.068,
+          "multi": 0.136
+        }
+      },
+      "db.t3.large": {
+        "postgres": {
+          "single": 0.145,
+          "multi": 0.29
+        },
+        "mysql": {
+          "single": 0.136,
+          "multi": 0.272
+        },
+        "mariadb": {
+          "single": 0.136,
+          "multi": 0.272
+        }
+      },
+      "db.t4g.micro": {
+        "postgres": {
+          "single": 0.016,
+          "multi": 0.032
+        },
+        "mysql": {
+          "single": 0.016,
+          "multi": 0.032
+        },
+        "mariadb": {
+          "single": 0.016,
+          "multi": 0.032
+        }
+      },
+      "db.t4g.small": {
+        "postgres": {
+          "single": 0.032,
+          "multi": 0.065
+        },
+        "mysql": {
+          "single": 0.032,
+          "multi": 0.065
+        },
+        "mariadb": {
+          "single": 0.032,
+          "multi": 0.065
+        }
+      },
+      "db.t4g.medium": {
+        "postgres": {
+          "single": 0.065,
+          "multi": 0.129
+        },
+        "mysql": {
+          "single": 0.065,
+          "multi": 0.129
+        },
+        "mariadb": {
+          "single": 0.065,
+          "multi": 0.129
+        }
+      },
+      "db.t4g.large": {
+        "postgres": {
+          "single": 0.129,
+          "multi": 0.258
+        },
+        "mysql": {
+          "single": 0.129,
+          "multi": 0.258
+        },
+        "mariadb": {
+          "single": 0.129,
+          "multi": 0.258
+        }
+      },
+      "db.m5.large": {
+        "postgres": {
+          "single": 0.178,
+          "multi": 0.356
+        },
+        "mysql": {
+          "single": 0.171,
+          "multi": 0.342
+        },
+        "mariadb": {
+          "single": 0.171,
+          "multi": 0.342
+        }
+      },
+      "db.m6g.large": {
+        "postgres": {
+          "single": 0.159,
+          "multi": 0.318
+        },
+        "mysql": {
+          "single": 0.152,
+          "multi": 0.304
+        },
+        "mariadb": {
+          "single": 0.152,
+          "multi": 0.304
+        }
+      },
+      "db.m6i.large": {
+        "postgres": {
+          "single": 0.178,
+          "multi": 0.356
+        },
+        "mysql": {
+          "single": 0.171,
+          "multi": 0.342
+        },
+        "mariadb": {
+          "single": 0.171,
+          "multi": 0.342
+        }
+      },
+      "db.m7g.large": {
+        "postgres": {
+          "single": 0.168,
+          "multi": 0.337
+        },
+        "mysql": {
+          "single": 0.168,
+          "multi": 0.337
+        },
+        "mariadb": {
+          "single": 0.168,
+          "multi": 0.337
+        }
+      },
+      "db.r5.large": {
+        "postgres": {
+          "single": 0.25,
+          "multi": 0.5
+        },
+        "mysql": {
+          "single": 0.24,
+          "multi": 0.48
+        },
+        "mariadb": {
+          "single": 0.24,
+          "multi": 0.48
+        }
+      },
+      "db.r6g.large": {
+        "postgres": {
+          "single": 0.225,
+          "multi": 0.45
+        },
+        "mysql": {
+          "single": 0.215,
+          "multi": 0.43
+        },
+        "mariadb": {
+          "single": 0.215,
+          "multi": 0.43
+        }
+      }
+    },
+    "storage": {
+      "gp2": {
+        "single": 0.115,
+        "multi": 0.23
+      },
+      "gp3": {
+        "single": 0.115,
+        "multi": 0.23
+      },
+      "io1": {
+        "single": 0.125,
+        "multi": 0.25
+      },
+      "standard": {
+        "single": 0.1,
+        "multi": 0.2
+      }
+    }
+  },
+  "elasticache": {
+    "cache.t3.micro": {
+      "redis": 0.017,
+      "memcached": 0.017,
+      "valkey": 0.0136
+    },
+    "cache.t3.small": {
+      "redis": 0.034,
+      "memcached": 0.034,
+      "valkey": 0.0272
+    },
+    "cache.t3.medium": {
+      "redis": 0.068,
+      "memcached": 0.068,
+      "valkey": 0.0544
+    },
+    "cache.t4g.micro": {
+      "redis": 0.016,
+      "memcached": 0.016,
+      "valkey": 0.0128
+    },
+    "cache.t4g.small": {
+      "redis": 0.032,
+      "memcached": 0.032,
+      "valkey": 0.0256
+    },
+    "cache.t4g.medium": {
+      "redis": 0.065,
+      "memcached": 0.065,
+      "valkey": 0.052
+    },
+    "cache.m6g.large": {
+      "redis": 0.149,
+      "memcached": 0.149,
+      "valkey": 0.1192
+    },
+    "cache.m7g.large": {
+      "redis": 0.158,
+      "memcached": 0.158,
+      "valkey": 0.1264
+    },
+    "cache.r6g.large": {
+      "redis": 0.206,
+      "memcached": 0.206,
+      "valkey": 0.1648
+    },
+    "cache.r7g.large": {
+      "redis": 0.219,
+      "memcached": 0.219,
+      "valkey": 0.1752
+    }
+  },
+  "eks": {
+    "clusterHour": 0.1
+  },
+  "fargate": {
+    "vcpuHour": 0.04048,
+    "gbHour": 0.004445,
+    "armVcpuHour": 0.03238,
+    "armGbHour": 0.00356
+  },
+  "elb": {
+    "albHour": 0.0225,
+    "albLcuHour": 0.008,
+    "nlbHour": 0.0225,
+    "nlbLcuHour": 0.006
+  },
+  "publicIpv4Hour": 0.005,
+  "nat": {
+    "hour": 0.045,
+    "gb": 0.045
+  },
+  "route53": {
+    "zoneMonth": 0.5,
+    "queriesPerMillion": 0.4
+  },
+  "kms": {
+    "keyMonth": 1,
+    "requestsPer10k": 0.03
+  },
+  "secretsManager": {
+    "secretMonth": 0.4,
+    "apiPer10k": 0.05
+  },
+  "usage": {
+    "lambdaRequestsPerMillion": 0.2,
+    "lambdaGbSecond": 0.0000166667,
+    "s3StandardGbMonth": 0.023,
+    "cloudfrontGb": 0.085,
+    "cloudfrontHttpsPer10k": 0.01,
+    "dynamodbWritePerMillion": 0.625,
+    "dynamodbReadPerMillion": 0.125,
+    "dynamodbGbMonth": 0.25,
+    "sqsPerMillion": 0.4,
+    "snsPerMillion": 0.5,
+    "apiGatewayHttpPerMillion": 1,
+    "ecrGbMonth": 0.1
+  }
+}

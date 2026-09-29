@@ -181,6 +181,24 @@ describe('architecture document', () => {
     });
   }
 
+  it('security review: the way in for each exposed port, and the benchmark controls the findings fail', () => {
+    const files = TEMPLATES.find((t) => t.slug === 'aws-web-app')!.build('demo');
+    const open = files['main.tf'].replace(
+      '  egress {',
+      '  ingress {\n    from_port   = 22\n    to_port     = 22\n    protocol    = "tcp"\n    cidr_blocks = ["0.0.0.0/0"]\n  }\n\n  egress {',
+    );
+    const bytes = buildArchitecturePdf(inputFor({ ...files, 'main.tf': open }));
+    expectWellFormed(bytes);
+    const text = pdfText(bytes);
+    expect(text).toMatch(/:22\s+via Internet gateway igw › Route 0\.0\.0\.0\/0 -> igw › Subnet public_a › Security group web ingress #4/);
+    expect(text).toContain('Controls: CIS AWS 5.2, FSBP EC2.13, FSBP EC2.18, FSBP EC2.19');
+    expect(text).toContain('Compliance controls');
+    expect(text).toContain('Ensure no security groups allow ingress from 0.0.0.0/0');
+    expect(text).toContain('EC2 instances should use Instance Metadata');
+    expectLaidOut(bytes, 'security review');
+    expectNoStrandedHeadings(bytes, 'security review');
+  });
+
   it('leaves out the sections that are switched off', () => {
     const input = inputFor(TEMPLATES[0].build('demo'), {
       sections: { inventory: false, connections: false, security: false, code: false },

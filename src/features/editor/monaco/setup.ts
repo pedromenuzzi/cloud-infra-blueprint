@@ -8,6 +8,13 @@ import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import type { IR } from '@/ir/types';
 import { emptyIR } from '@/ir/types';
 import { allDefs, getDef } from '@/resources/registry';
+import {
+  schemaBodySuggestions,
+  schemaEntryAt,
+  schemaHoverContents,
+  schemaReferenceSuggestions,
+  schemaTypeHover,
+} from '@/schema/monaco';
 
 export { monaco };
 
@@ -219,6 +226,14 @@ export function ensureMonacoSetup() {
         return { suggestions };
       }
 
+      // `aws_instance.web.` → the attributes it exports (provider schema, once loaded)
+      const assigned = /^\s*([\w-]+)\s*=/.exec(line)?.[1];
+      const assignedField = assigned ? getDef(enclosingResourceType(model, position.lineNumber) ?? '')?.fields.find((f) => f.name === assigned) : undefined;
+      const exported = schemaReferenceSuggestions(monaco, model, position, (t) =>
+        assignedField?.refTo?.includes(t) ? (assignedField.refAttr ?? 'id') : undefined,
+      );
+      if (exported) return { suggestions: exported };
+
       // value position → what fits this argument: its options, references of
       // the types it takes (with the right attribute), variables
       const value = /^\s*([\w-]+)\s*=\s*(\[[^\]]*?)?([\w.]*)$/.exec(line);
@@ -280,7 +295,9 @@ export function ensureMonacoSetup() {
       if (/^\s*[\w-]*$/.test(line)) {
         const type = enclosingResourceType(model, position.lineNumber);
         const def = type ? getDef(type) : undefined;
-        if (def) {
+        // provider schema: every other argument and block — nested blocks get only their own
+        const schemaItems = schemaBodySuggestions(monaco, model, position, range, new Set(def?.fields.map((f) => f.name)));
+        if (def && !schemaItems?.nested) {
           for (const f of def.fields) {
             const insert = f.options
               ? `${f.name} = "\${1|${f.options.join(',')}|}"`
@@ -305,6 +322,7 @@ export function ensureMonacoSetup() {
             });
           }
         }
+        if (schemaItems) suggestions.push(...schemaItems.suggestions);
         suggestions.push({
           label: 'res — resource block',
           kind: monaco.languages.CompletionItemKind.Snippet,
@@ -335,9 +353,14 @@ export function ensureMonacoSetup() {
           ],
         };
       }
+      const typeHover = schemaTypeHover(word.word);
+      if (typeHover) return { contents: typeHover };
       const type = enclosingResourceType(model, position.lineNumber);
       const parentDef = type ? getDef(type) : undefined;
       const field = parentDef?.fields.find((f) => f.name === word.word);
+      // provider schema: any argument or block (nested too) and `aws_x.name.<attr>`
+      const hit = schemaEntryAt(model, position);
+      if (hit) return { contents: schemaHoverContents(hit.entry, hit.argument ? field?.doc : undefined) };
       if (field) {
         return {
           contents: [

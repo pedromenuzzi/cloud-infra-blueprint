@@ -77,7 +77,14 @@ interface EditorState {
   parseDiagnostics: Diagnostic[];
   warnings: Diagnostic[];
   codeErrored: boolean;
+  /** a read-only view (a `#view=` link): nothing can be edited and nothing is ever stored */
+  readOnly: boolean;
   selection: string | null;
+  /**
+   * Every selected resource (box or Ctrl-click on the canvas); always holds
+   * `selection`, the one the inspector shows, when there is one.
+   */
+  selectedIds: string[];
   /** who changed the selection last — the code pane only scrolls for canvas picks */
   selectionOrigin: 'canvas' | 'code';
   /** bumped by revealInCode so the code pane scrolls + flashes the block */
@@ -92,8 +99,11 @@ interface EditorState {
   past: Array<Record<string, string>>;
   future: Array<Record<string, string>>;
 
-  /** `keepView` keeps the open file + selection when they still exist (reload from another tab) */
-  load(project: Project, options?: { keepView?: boolean }): void;
+  /**
+   * `keepView` keeps the open file + selection when they still exist (reload from another tab).
+   * `readOnly` opens a project that isn't stored (a view link): edits are refused, nothing persists.
+   */
+  load(project: Project, options?: { keepView?: boolean; readOnly?: boolean }): void;
   /**
    * Settle a conflict: 'reload' takes the other tab's version, 'overwrite'
    * keeps this tab's, 'restore' puts a deleted project back, 'fork' saves this
@@ -105,6 +115,8 @@ interface EditorState {
   onCodeChange(file: string, text: string): void;
   setActiveFile(file: string): void;
   setSelection(id: string | null, origin?: 'canvas' | 'code'): void;
+  /** the canvas selection; the primary stays when it's still in it unless `primary` says otherwise */
+  setSelectedIds(ids: string[], primary?: string | null): void;
   renameProject(name: string): void;
   revealInCode(nodeId: string): void;
   /** delete resources + their nested children + references to them, as one undo step */
@@ -120,6 +132,8 @@ let codeBurstBase: Record<string, string> | null = null;
 
 const hasErrors = (diagnostics: Diagnostic[]) => diagnostics.some((d) => d.severity === 'error');
 
+export const READ_ONLY_HINT = 'This is a read-only view — make a copy to edit it';
+
 /* persistence bookkeeping for the open project */
 /** the stored project as this tab last loaded or wrote it — its `rev` guards against stale writes */
 let stored: Project | null = null;
@@ -132,7 +146,8 @@ export const useEditor = create<EditorState>((set, get) => {
   const save = (): boolean => {
     clearTimeout(persistTimer);
     persistTimer = undefined;
-    const { projectId: id, files, projectName, conflict } = get();
+    const { projectId: id, files, projectName, conflict, readOnly } = get();
+    if (readOnly) return true; // a view link is never written anywhere
     if (!id || !dirty) return !dirty;
     if (conflict) return false; // waiting for the user's choice — never overwrite silently
     const result = updateProject(id, { files, name: projectName }, { expectedRev: stored?.rev ?? 0 });
@@ -150,8 +165,8 @@ export const useEditor = create<EditorState>((set, get) => {
   saveNow = save;
 
   const persist = () => {
-    const { projectId } = get();
-    if (!projectId) return;
+    const { projectId, readOnly } = get();
+    if (!projectId || readOnly) return;
     dirty = true;
     if (get().conflict) return;
     set({ saveState: 'saving' });
@@ -202,7 +217,9 @@ export const useEditor = create<EditorState>((set, get) => {
     parseDiagnostics: [],
     warnings: [],
     codeErrored: false,
+    readOnly: false,
     selection: null,
+    selectedIds: [],
     selectionOrigin: 'canvas',
     revealSeq: 0,
     activeFile: 'main.tf',
@@ -229,7 +246,8 @@ export const useEditor = create<EditorState>((set, get) => {
       clearTimeout(parseTimer);
       parseTimer = undefined;
       codeBurstBase = null;
-      stored = project;
+      const readOnly = options.readOnly === true;
+      stored = readOnly ? null : project;
       dirty = false;
       const { ir, diagnostics } = parseProject(project.files);
       const errored = diagnostics.some((d) => d.severity === 'error');
@@ -246,6 +264,7 @@ export const useEditor = create<EditorState>((set, get) => {
         warnings: derived.warnings,
         parseDiagnostics: diagnostics,
         codeErrored: errored,
+        readOnly,
         selection: keep && derived.ir.resources.some((r) => r.id === selection) ? selection : null,
         activeFile:
           keep && fileList.includes(activeFile)
@@ -323,6 +342,10 @@ export const useEditor = create<EditorState>((set, get) => {
 
     applyCanvasOps(ops, select) {
       if (ops.length === 0) return;
+      if (get().readOnly) {
+        showToast(READ_ONLY_HINT, 'info');
+        return;
+      }
       // the IR only matches the text once the typed code has been parsed
       if ((parseTimer !== undefined || codeBurstBase) && !commitCode()) {
         showToast('Fix the errors in the code first — the canvas is read-only until it parses', 'error');
@@ -366,6 +389,7 @@ export const useEditor = create<EditorState>((set, get) => {
     },
 
     onCodeChange(file, text) {
+      if (get().readOnly) return;
       if (!codeBurstBase) {
         codeBurstBase = { ...get().files };
         pushHistory(codeBurstBase);
@@ -385,8 +409,16 @@ export const useEditor = create<EditorState>((set, get) => {
       set({ selection: id, selectionOrigin: origin });
     },
 
+    setSelectedIds(ids, primary) {
+      const { selection, selectedIds } = get();
+      const next = primary !== undefined ? primary : selection && ids.includes(selection) ? selection : (ids[ids.length - 1] ?? null);
+      if (next === selection && sameIds(ids, selectedIds)) return;
+      set({ selectedIds: ids, selection: next, selectionOrigin: 'canvas' });
+    },
+
     renameProject(name) {
-      const { projectId } = get();
+      const { projectId, readOnly } = get();
+      if (readOnly) return;
       const clean = name.trim() || 'Untitled';
       set({ projectName: clean });
       if (!projectId) return;
@@ -395,7 +427,11 @@ export const useEditor = create<EditorState>((set, get) => {
     },
 
     deleteResources(ids) {
-      const { ir, edges } = get();
+      const { ir, edges, readOnly } = get();
+      if (readOnly) {
+        showToast(READ_ONLY_HINT, 'info');
+        return 0;
+      }
       const { ops, removed } = deleteResourcesOps(ir, edges, ids);
       if (ops.length > 0) get().applyCanvasOps(ops, null);
       return removed.length;
@@ -414,8 +450,8 @@ export const useEditor = create<EditorState>((set, get) => {
     },
 
     undo() {
-      const { past, files } = get();
-      if (past.length === 0) return;
+      const { past, files, readOnly } = get();
+      if (past.length === 0 || readOnly) return;
       clearTimeout(parseTimer);
       parseTimer = undefined;
       codeBurstBase = null;
@@ -432,14 +468,15 @@ export const useEditor = create<EditorState>((set, get) => {
         warnings: derived.warnings,
         parseDiagnostics: diagnostics,
         codeErrored: hasErrors(diagnostics),
-        selection: null,
+        // keep what's selected when it still exists (undoing an align keeps the selection)
+        selection: keptSelection(get().selection, derived.ir),
       });
       persist();
     },
 
     redo() {
-      const { future, files } = get();
-      if (future.length === 0) return;
+      const { future, files, readOnly } = get();
+      if (future.length === 0 || readOnly) return;
       clearTimeout(parseTimer);
       parseTimer = undefined;
       codeBurstBase = null;
@@ -456,11 +493,27 @@ export const useEditor = create<EditorState>((set, get) => {
         warnings: derived.warnings,
         parseDiagnostics: diagnostics,
         codeErrored: hasErrors(diagnostics),
-        selection: null,
+        // keep what's selected when it still exists (undoing an align keeps the selection)
+        selection: keptSelection(get().selection, derived.ir),
       });
       persist();
     },
   };
+});
+
+const keptSelection = (id: string | null, ir: IR) => (id && ir.resources.some((r) => r.id === id) ? id : null);
+
+const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
+
+// Keep the multi-selection consistent wherever the primary selection or the
+// IR changes: a primary outside it means a single pick, deleted ids leave it.
+useEditor.subscribe((state, prev) => {
+  if (state.selection === prev.selection && state.ir === prev.ir && state.selectedIds === prev.selectedIds) return;
+  const exists = new Set(state.ir.resources.map((r) => r.id));
+  let ids = state.selectedIds.filter((id) => exists.has(id));
+  if (state.selection === null) ids = [];
+  else if (!ids.includes(state.selection)) ids = [state.selection];
+  if (!sameIds(ids, state.selectedIds)) useEditor.setState({ selectedIds: ids });
 });
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -479,7 +532,8 @@ export function flushPendingSave(): boolean {
 function onStorageChanged(e: StorageEvent) {
   if (e.key !== PROJECTS_KEY && e.key !== null) return;
   const state = useEditor.getState();
-  if (!state.projectId || state.conflict) return;
+  // a view link isn't one of the stored projects: other tabs' writes never concern it
+  if (!state.projectId || state.conflict || state.readOnly) return;
   const current = getProject(state.projectId);
   if (!current) {
     clearTimeout(persistTimer);

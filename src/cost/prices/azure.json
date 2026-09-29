@@ -1,0 +1,223 @@
+{
+  "meta": {
+    "region": "eastus",
+    "currency": "USD",
+    "retrieved": "2026-09-29",
+    "sources": [
+      "https://prices.azure.com/api/retail/prices",
+      "https://azure.microsoft.com/en-us/pricing/details/managed-disks/"
+    ]
+  },
+  "regions": {
+    "eastus": 1,
+    "eastus2": 1,
+    "centralus": 1.146,
+    "westus2": 1,
+    "westus3": 1,
+    "canadacentral": 1.115,
+    "brazilsouth": 1.611,
+    "northeurope": 1.097,
+    "westeurope": 1.157,
+    "uksouth": 1.156,
+    "francecentral": 1.167,
+    "germanywestcentral": 1.157,
+    "southeastasia": 1.269,
+    "australiaeast": 1.269,
+    "japaneast": 1.309,
+    "centralindia": 1.077
+  },
+  "vm": {
+    "Standard_B1s": 0.0104,
+    "Standard_B1ms": 0.0207,
+    "Standard_B2s": 0.0416,
+    "Standard_B2ms": 0.0832,
+    "Standard_B4ms": 0.166,
+    "Standard_B2s_v2": 0.0832,
+    "Standard_B2ats_v2": 0.0094,
+    "Standard_D2s_v3": 0.096,
+    "Standard_D4s_v3": 0.192,
+    "Standard_D2s_v5": 0.096,
+    "Standard_D4s_v5": 0.192,
+    "Standard_D2as_v5": 0.086,
+    "Standard_E2s_v5": 0.126,
+    "Standard_F2s_v2": 0.0846,
+    "Standard_DS2_v2": 0.146
+  },
+  "disk": {
+    "Standard_LRS": [
+      {
+        "tier": "S4",
+        "gb": 32,
+        "month": 1.536
+      },
+      {
+        "tier": "S6",
+        "gb": 64,
+        "month": 3.008
+      },
+      {
+        "tier": "S10",
+        "gb": 128,
+        "month": 5.888
+      },
+      {
+        "tier": "S15",
+        "gb": 256,
+        "month": 11.328
+      },
+      {
+        "tier": "S20",
+        "gb": 512,
+        "month": 21.76
+      }
+    ],
+    "StandardSSD_LRS": [
+      {
+        "tier": "E4",
+        "gb": 32,
+        "month": 2.4
+      },
+      {
+        "tier": "E6",
+        "gb": 64,
+        "month": 4.8
+      },
+      {
+        "tier": "E10",
+        "gb": 128,
+        "month": 9.6
+      },
+      {
+        "tier": "E15",
+        "gb": 256,
+        "month": 19.2
+      },
+      {
+        "tier": "E20",
+        "gb": 512,
+        "month": 38.4
+      }
+    ],
+    "Premium_LRS": [
+      {
+        "tier": "P4",
+        "gb": 32,
+        "month": 5.2795
+      },
+      {
+        "tier": "P6",
+        "gb": 64,
+        "month": 10.207
+      },
+      {
+        "tier": "P10",
+        "gb": 128,
+        "month": 19.71
+      },
+      {
+        "tier": "P15",
+        "gb": 256,
+        "month": 38.012142
+      },
+      {
+        "tier": "P20",
+        "gb": 512,
+        "month": 73.22
+      }
+    ]
+  },
+  "appService": {
+    "linux": {
+      "F1": 0,
+      "B1": 0.017,
+      "B2": 0.034,
+      "B3": 0.067,
+      "S1": 0.095,
+      "S2": 0.19,
+      "S3": 0.38,
+      "P0v3": 0.0775,
+      "P1v3": 0.155,
+      "P2v3": 0.31,
+      "P3v3": 0.62
+    },
+    "windows": {
+      "F1": 0,
+      "B1": 0.075,
+      "B2": 0.15,
+      "B3": 0.3,
+      "S1": 0.1,
+      "S2": 0.2,
+      "S3": 0.4,
+      "P0v3": 0.1575,
+      "P1v3": 0.315,
+      "P2v3": 0.63,
+      "P3v3": 1.26
+    }
+  },
+  "sqlDatabase": {
+    "Basic": 4.897083,
+    "S0": 14.718625,
+    "S1": 29.434208,
+    "S2": 73.608333,
+    "S3": 147.177125,
+    "P1": 456.25,
+    "P2": 912.5
+  },
+  "postgresFlexible": {
+    "compute": {
+      "B_Standard_B1ms": 0.017,
+      "B_Standard_B2s": 0.068,
+      "B_Standard_B2ms": 0.136,
+      "GP_Standard_D2s_v3": 0.171,
+      "GP_Standard_D4s_v3": 0.342,
+      "GP_Standard_D2ds_v5": 0.178,
+      "GP_Standard_D4ds_v5": 0.356,
+      "MO_Standard_E2ds_v5": 0.25,
+      "MO_Standard_E4s_v3": 0.4724
+    },
+    "storageGbMonth": 0.115
+  },
+  "publicIp": {
+    "standardHour": 0.005
+  },
+  "redis": {
+    "Basic_C0": 0.022,
+    "Basic_C1": 0.055,
+    "Basic_C2": 0.09,
+    "Basic_C3": 0.18,
+    "Basic_C4": 0.21,
+    "Basic_C5": 0.42,
+    "Basic_C6": 0.84,
+    "Standard_C0": 0.055,
+    "Standard_C1": 0.138,
+    "Standard_C2": 0.225,
+    "Standard_C3": 0.45,
+    "Standard_C4": 0.525,
+    "Standard_C5": 1.05,
+    "Standard_C6": 2.1,
+    "Premium_P1": 0.555,
+    "Premium_P2": 1.11,
+    "Premium_P3": 2.219,
+    "Premium_P4": 4.44,
+    "Premium_P5": 10.05
+  },
+  "containerRegistry": {
+    "Basic": 5.067417,
+    "Standard": 20.27575,
+    "Premium": 50.692417
+  },
+  "serviceBus": {
+    "standardBaseHour": 0.013441,
+    "premiumUnitHour": 0.9275
+  },
+  "aks": {
+    "standardClusterHour": 0.1,
+    "premiumClusterHour": 0.6
+  },
+  "usage": {
+    "blobHotLrsGbMonth": 0.0208,
+    "keyVaultPer10k": 0.03,
+    "functionsPerMillion": 0.2,
+    "functionsGbSecond": 0.000016
+  }
+}

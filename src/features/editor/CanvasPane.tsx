@@ -44,6 +44,7 @@ import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { showToast } from '@/components/Toast';
 import { Button, Kbd } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { CostChip } from '@/features/cost/CostChip';
 import { captureDiagram } from '@/features/export/captureDiagram';
 import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
@@ -64,6 +65,7 @@ import { exportDiagramImage } from './exportImage';
 import { removeReferencesOps } from './connections';
 import { ProjectOverview } from './Inspector';
 import { useLayout } from './layoutStore';
+import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
 import { buildNewNode, duplicateNode } from './newNode';
 import { ResourcePicker } from './ResourcePicker';
 import { computeTidyOps } from './tidy';
@@ -291,14 +293,9 @@ function buildFlow(
 
 type AnyFlowEdge = FlowEdgeType | SecFlowEdgeType;
 
-/**
- * Selection flags for a fresh or existing node list. A multi-selection made
- * on the canvas survives as long as it contains the primary selection (the
- * one the inspector shows); otherwise only the primary is selected.
- */
-function withSelection(list: FlowNode[], previous: FlowNode[], primary: string | null): FlowNode[] {
-  const kept = new Set(previous.filter((n) => n.selected).map((n) => n.id));
-  const want = primary && kept.has(primary) ? kept : new Set(primary ? [primary] : []);
+/** Selection flags from the store's selection, touching only the nodes that change. */
+function withSelection(list: FlowNode[], selectedIds: string[]): FlowNode[] {
+  const want = new Set(selectedIds);
   return list.map((n) => (Boolean(n.selected) === want.has(n.id) ? n : { ...n, selected: want.has(n.id) }));
 }
 
@@ -315,7 +312,11 @@ function CanvasInner() {
   const irEdges = useEditor((s) => s.edges);
   const warnings = useEditor((s) => s.warnings);
   const selection = useEditor((s) => s.selection);
+  const selectedIds = useEditor((s) => s.selectedIds);
   const codeErrored = useEditor((s) => s.codeErrored);
+  const readOnly = useEditor((s) => s.readOnly);
+  /** nothing on the canvas can change: code that doesn't parse, or a read-only view */
+  const locked = codeErrored || readOnly;
   const selectionOrigin = useEditor((s) => s.selectionOrigin);
   const setSelection = useEditor((s) => s.setSelection);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
@@ -344,15 +345,18 @@ function CanvasInner() {
 
   useEffect(() => {
     const built = buildFlow({ ir, edges: irEdges, warnings }, lensOn ? getAudit(ir) : null);
-    const primary = useEditor.getState().selection;
-    setNodes((previous) => withSelection(built.nodes, previous, primary));
+    const { selection: primary, selectedIds: picked } = useEditor.getState();
+    setNodes(withSelection(built.nodes, picked));
     setEdges(withActiveEdges(built.edges, primary));
   }, [ir, irEdges, warnings, lensOn, setNodes, setEdges]);
 
   useEffect(() => {
-    setNodes((previous) => withSelection(previous, previous, selection));
+    setNodes((previous) => withSelection(previous, selectedIds));
+  }, [selectedIds, setNodes]);
+
+  useEffect(() => {
     setEdges((previous) => withActiveEdges(previous, selection));
-  }, [selection, setNodes, setEdges]);
+  }, [selection, setEdges]);
 
   // React Flow can drop a node's measurement when its size changes (a container
   // growing around a moved child) and hidden tabs skip the first pass; re-measure
@@ -431,14 +435,7 @@ function CanvasInner() {
   /** set while a Shift-drag box selection is in progress */
   const boxSelecting = useRef(false);
 
-  const syncSelection = useCallback(
-    (ids: string[]) => {
-      const current = useEditor.getState().selection;
-      const primary = ids.length === 0 ? null : current && ids.includes(current) ? current : ids[ids.length - 1];
-      if (primary !== current) setSelection(primary);
-    },
-    [setSelection],
-  );
+  const syncSelection = useCallback((ids: string[]) => useEditor.getState().setSelectedIds(ids), []);
 
   const onSelectionChange = useCallback(
     (params: OnSelectionChangeParams) => {
@@ -909,6 +906,29 @@ function CanvasInner() {
     if (menu.nodeId) {
       const node = byId.get(menu.nodeId);
       if (!node) return [];
+      // right-click inside a multi-selection acts on all of it
+      const picked = useEditor.getState().selectedIds;
+      if (picked.length > 1 && picked.includes(node.id)) {
+        const { ir: current } = useEditor.getState();
+        return [
+          ...ALIGN_ACTIONS.map((a) => ({
+            id: a.id,
+            label: a.label,
+            icon: a.icon,
+            disabled: alignActionBlocker(a, current, picked) !== null,
+            onSelect: () => applyCanvasOps(a.ops(useEditor.getState().ir, picked)),
+          })),
+          'separator' as const,
+          {
+            id: 'delete-all',
+            label: `Delete ${picked.length} resources`,
+            icon: Trash2,
+            shortcut: 'Del',
+            danger: true,
+            onSelect: () => useEditor.getState().deleteResources(picked),
+          },
+        ];
+      }
       const docs = docsUrl(node.type);
       return [
         {
@@ -960,7 +980,7 @@ function CanvasInner() {
       'separator',
       ...exportEntries,
     ];
-  }, [menu, byId, duplicate, rf, tidy, exportImage]);
+  }, [menu, byId, duplicate, rf, tidy, exportImage, applyCanvasOps]);
 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const stats = `${plural(ir.resources.length, 'resource')}, ${plural(irEdges.length, 'connection')}`;
@@ -979,7 +999,7 @@ function CanvasInner() {
         const onPane = target.closest('.react-flow__pane') && !target.closest('.react-flow__node');
         // containers are nodes too: double-clicking inside one adds a resource into it
         const inContainer = target.closest('.react-flow__node-container') && !target.closest('.react-flow__resize-control');
-        if ((onPane || inContainer) && !codeErrored) setQuickAdd({ x: e.clientX, y: e.clientY });
+        if ((onPane || inContainer) && !locked) setQuickAdd({ x: e.clientX, y: e.clientY });
       }}
       onKeyDown={(e) => {
         if (e.key.startsWith('Arrow')) lastArrowKey.current = Date.now();
@@ -1023,15 +1043,15 @@ function CanvasInner() {
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        nodesDraggable={!codeErrored && !spaceHeld}
-        nodesConnectable={!codeErrored}
+        nodesDraggable={!locked && !spaceHeld}
+        nodesConnectable={!locked}
         onDelete={onDelete}
         onDrop={onDrop}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
         }}
-        deleteKeyCode={codeErrored ? null : ['Delete', 'Backspace']}
+        deleteKeyCode={locked ? null : ['Delete', 'Backspace']}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
         minZoom={0.05}
@@ -1049,7 +1069,7 @@ function CanvasInner() {
           minimap={minimap}
           tidying={tidying}
           onToggleMinimap={toggleMinimap}
-          onTidy={() => void tidy()}
+          onTidy={readOnly ? undefined : () => void tidy()}
           onExport={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setMenu({ x: r.left, y: r.top - 112, nodeId: null, exportOnly: true });
@@ -1090,6 +1110,7 @@ function CanvasInner() {
             >
               {stats}
             </button>
+            <CostChip />
             {warnings.length > 0 ? (
               <button
                 type="button"
@@ -1111,17 +1132,25 @@ function CanvasInner() {
               Code has errors — fix them to edit the canvas again
             </span>
           ) : null}
-          {!overview ? <EditorTips /> : null}
+          {!overview && !readOnly ? <EditorTips /> : null}
         </Panel>
-        {ir.resources.length === 0 && !codeErrored ? <EmptyCanvas /> : null}
+        {ir.resources.length === 0 && !locked ? <EmptyCanvas /> : null}
       </ReactFlow>
 
       {menu ? (
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          entries={menuEntries}
-          label={menu.nodeId ? 'Resource actions' : menu.exportOnly ? 'Export' : 'Canvas actions'}
+          entries={readOnly ? viewOnlyEntries(menuEntries) : menuEntries}
+          label={
+            menu.nodeId
+              ? selectedIds.length > 1 && selectedIds.includes(menu.nodeId)
+                ? 'Selection actions'
+                : 'Resource actions'
+              : menu.exportOnly
+                ? 'Export'
+                : 'Canvas actions'
+          }
           onClose={() => setMenu(null)}
         />
       ) : null}
@@ -1146,6 +1175,22 @@ export function sizeOf(internal: { measured: { width?: number; height?: number }
     w: internal.measured.width ?? internal.width ?? NODE_W,
     h: internal.measured.height ?? internal.height ?? NODE_H,
   };
+}
+
+/** Menu entries that change the project — left out of a read-only view's menus. */
+const EDIT_ENTRIES = new Set(['add', 'rename', 'duplicate', 'delete', 'tidy', 'delete-all', ...ALIGN_ACTIONS.map((a) => a.id)]);
+
+function viewOnlyEntries(entries: MenuEntry[]): MenuEntry[] {
+  const out: MenuEntry[] = [];
+  for (const e of entries) {
+    if (e !== 'separator' && EDIT_ENTRIES.has(e.id)) continue;
+    // no leading or doubled separators once entries are gone…
+    if (e === 'separator' && (out.length === 0 || out[out.length - 1] === 'separator')) continue;
+    out.push(e);
+  }
+  // …and no trailing one
+  while (out[out.length - 1] === 'separator') out.pop();
+  return out;
 }
 
 const MINIMAP_KEY = 'cb-minimap';

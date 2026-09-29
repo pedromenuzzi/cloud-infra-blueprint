@@ -5,6 +5,7 @@ import { MOD } from '@/features/command/paletteStore';
 import { useEditor } from '@/features/editor/store';
 import type { IR } from '@/ir/types';
 import { auditSecurity, planFixAll, type AuditResult } from '@/security/audit';
+import type { FrameworkId } from '@/security/compliance';
 
 const LENS_KEY = 'cb-security-lens';
 
@@ -22,16 +23,33 @@ interface SecurityUiState {
   panelOpen: boolean;
   /** owner resource whose rules are open in the full editor */
   editing: string | null;
+  /** the row the rules editor brings into view and focuses */
+  focusRule: string | null;
+  /** exposed resource whose access paths the panel shows open */
+  explaining: string | null;
+  /** finding the panel opens and scrolls to */
+  spotlight: string | null;
+  /** the panel lists only findings mapped to this framework */
+  framework: FrameworkId | 'all';
   setLens(on: boolean): void;
   toggleLens(): void;
   setPanel(open: boolean): void;
-  openRules(owner: string | null): void;
+  /** open the rules editor on `owner`, at the row of `rule` when given */
+  openRules(owner: string | null, rule?: string): void;
+  /** open the panel with this resource's "why is it reachable?" expanded */
+  explain(resource: string | null): void;
+  setSpotlight(finding: string | null): void;
+  setFramework(framework: FrameworkId | 'all'): void;
 }
 
 export const useSecurityUi = create<SecurityUiState>((set, get) => ({
   lens: readLens(),
   panelOpen: false,
   editing: null,
+  focusRule: null,
+  explaining: null,
+  spotlight: null,
+  framework: 'all',
   setLens(lens) {
     set({ lens });
     try {
@@ -46,8 +64,17 @@ export const useSecurityUi = create<SecurityUiState>((set, get) => ({
   setPanel(panelOpen) {
     set({ panelOpen });
   },
-  openRules(editing) {
-    set({ editing });
+  openRules(editing, rule) {
+    set({ editing, focusRule: editing && rule ? rule : null });
+  },
+  explain(explaining) {
+    set({ explaining, ...(explaining ? { panelOpen: true } : {}) });
+  },
+  setSpotlight(spotlight) {
+    set({ spotlight });
+  },
+  setFramework(framework) {
+    set({ framework });
   },
 }));
 
@@ -73,6 +100,14 @@ export const GRADE_COLORS: Record<string, string> = {
   C: '#f59e0b',
   D: '#f97316',
   F: '#ef4444',
+};
+
+/** severity as text: AA contrast in both themes (SEVERITY_COLORS are for dots, tints and borders) */
+export const SEVERITY_TEXT: Record<string, string> = {
+  critical: 'text-danger',
+  high: 'text-[#c2410c] dark:text-[#fb923c]',
+  medium: 'text-warning',
+  low: 'text-muted',
 };
 
 export const SEVERITY_COLORS: Record<string, string> = {

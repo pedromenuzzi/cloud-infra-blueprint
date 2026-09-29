@@ -3,8 +3,12 @@ import { applyOpsWithPatches } from '@/hcl/patch';
 import { parseProject } from '@/hcl/parser';
 import type { Op } from '@/ir/ops';
 import type { IR } from '@/ir/types';
+import { TEMPLATES } from '@/templates';
+import type { AccessExplanation, PathStep } from './access';
 import { auditSecurity, planFixAll, ruleRisk } from './audit';
 import { coversFamily, isPrivateCidr, parseCidr } from './cidr';
+import { controlLabel, CONTROLS, FRAMEWORKS } from './compliance';
+import { securityDelta } from './delta';
 import {
   addRuleOps,
   mixesStyles,
@@ -18,7 +22,7 @@ import {
 } from './edit';
 import { extractRules, extractSecurity, peerLabel, serviceName, type SecurityRule } from './model';
 import { analyzeSecurity } from './topology';
-import { evaluateInbound, trafficLabels } from './traffic';
+import { evaluateInbound, NO_TRAFFIC, trafficLabels, trafficUnion } from './traffic';
 
 const AWS = `
 resource "aws_vpc" "main" {
@@ -1647,5 +1651,506 @@ describe('traffic evaluation', () => {
     const { rules } = extractSecurity(load(AZURE_BASE + nsg('vm', nsgRule('name = "dns"\n    priority = 100\n    direction = "Inbound"\n    access = "Allow"\n    protocol = "Udp"\n    destination_port_range = "53"\n    source_address_prefix = "*"'))).ir);
     const ev = evaluateInbound(rules.get('azurerm_network_security_group.vm')!, true);
     expect(trafficLabels(ev.allowed)).toEqual(['53/udp']);
+  });
+});
+
+// ============================================================ access paths: why is it reachable?
+
+const kinds = (steps: PathStep[]) => steps.map((s) => s.kind);
+const accessOf = (src: string, id: string) => {
+  const a = analyzeSecurity(load(src).ir).access.get(id);
+  expect(a, `access for ${id}`).toBeDefined();
+  return a!;
+};
+const portOf = (a: AccessExplanation, ports: string) => {
+  const p = a.open.find((x) => x.ports === ports);
+  expect(p, `open port ${ports} (have ${a.open.map((x) => x.ports).join(', ')})`).toBeDefined();
+  return p!;
+};
+const blockedOf = (a: AccessExplanation, ports: string) => {
+  const b = a.blocked.filter((x) => x.ports === ports);
+  expect(b.length, `blocked ${ports} (have ${a.blocked.map((x) => `${x.ports}: ${x.reason}`).join('; ')})`).toBeGreaterThan(0);
+  return b;
+};
+const httpsSg = (name: string, extra = '') => `
+resource "aws_security_group" "${name}" {
+  vpc_id = aws_vpc.main.id
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ${extra}
+}
+`;
+const sshIngress = `ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }`;
+
+describe('access paths: AWS', () => {
+  it('Internet → IGW → route → public subnet → SG rule → instance, with its public IP source', () => {
+    const a = accessOf(VPC + httpsSg('web') + instance('web', 'web'), 'aws_instance.web');
+    const [path] = portOf(a, '443').paths;
+    expect(path.families).toEqual(['ipv4']);
+    expect(kinds(path.steps)).toEqual(['internet', 'gateway', 'route', 'subnet', 'sg', 'resource']);
+    const [, igw, route, subnet, sg, target] = path.steps;
+    expect(igw).toMatchObject({ title: 'Internet gateway igw', resource: 'aws_internet_gateway.igw' });
+    expect(route).toMatchObject({ title: 'Route 0.0.0.0/0 → igw', resource: 'aws_route_table.public' });
+    expect(route.detail).toBe('route table public, associated with subnet public');
+    expect(subnet).toMatchObject({ resource: 'aws_subnet.public', detail: 'public · assigns public IPs on launch' });
+    expect(sg).toMatchObject({
+      title: 'Security group web',
+      detail: 'ingress #1 allows HTTPS from 0.0.0.0/0',
+      rule: { owner: 'aws_security_group.web', id: 'aws_security_group.web:ingress:0' },
+    });
+    expect(target).toMatchObject({ resource: 'aws_instance.web', detail: 'public address: map_public_ip_on_launch = true on subnet public' });
+  });
+
+  it('adds the NACL rule that admits each port, and explains the port a NACL deny stops', () => {
+    const nacl = `
+resource "aws_network_acl" "public" {
+  vpc_id     = aws_vpc.main.id
+  subnet_ids = [aws_subnet.public.id]
+  ingress {
+    rule_no    = 90
+    action     = "deny"
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidr_block = "0.0.0.0/0"
+  }
+  ingress {
+    rule_no    = 100
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 0
+    to_port    = 1023
+    cidr_block = "0.0.0.0/0"
+  }
+}`;
+    const src = VPC + nacl + httpsSg('web', sshIngress) + instance('web', 'web');
+    const t = analyzeSecurity(load(src).ir);
+    expect(t.exposure.get('aws_instance.web')).toMatchObject({ level: 'internet', ports: ['443'] });
+    const a = t.access.get('aws_instance.web')!;
+    const [path] = portOf(a, '443').paths;
+    expect(kinds(path.steps)).toEqual(['internet', 'gateway', 'route', 'subnet', 'nacl', 'sg', 'resource']);
+    expect(path.steps[4]).toMatchObject({
+      title: 'Network ACL public · rule #100',
+      rule: { owner: 'aws_network_acl.public', id: 'aws_network_acl.public:ingress:1' },
+      verdict: 'allow',
+    });
+    // "Port 22 from the internet: blocked by NACL #90 (deny)"
+    const [ssh] = blockedOf(a, '22');
+    expect(ssh.reason).toBe('blocked by NACL public #90 (deny)');
+    const stop = ssh.steps.find((s) => s.verdict === 'deny')!;
+    expect(stop).toMatchObject({ kind: 'nacl', rule: { owner: 'aws_network_acl.public', id: 'aws_network_acl.public:ingress:0' } });
+    // past the NACL: the SG rule that would admit it, and the instance, for context
+    expect(ssh.steps.slice(-2).map((s) => [s.kind, s.unreached])).toEqual([
+      ['sg', true],
+      ['resource', true],
+    ]);
+  });
+
+  it('a port no NACL rule allows stops at the default rule', () => {
+    const nacl = `
+resource "aws_network_acl" "public" {
+  vpc_id     = aws_vpc.main.id
+  subnet_ids = [aws_subnet.public.id]
+  ingress {
+    rule_no    = 100
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 443
+    to_port    = 443
+    cidr_block = "0.0.0.0/0"
+  }
+}`;
+    const a = accessOf(VPC + nacl + httpsSg('web', sshIngress) + instance('web', 'web'), 'aws_instance.web');
+    const [ssh] = blockedOf(a, '22');
+    expect(ssh.reason).toBe('blocked by NACL public: no rule allows it (rule *)');
+    expect(ssh.steps.find((s) => s.verdict === 'deny')).toMatchObject({ title: 'Network ACL public · rule *', rule: { owner: 'aws_network_acl.public' } });
+  });
+
+  it('standalone rules, Elastic IPs and the main route table are named as such', () => {
+    const src = `
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+}
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+}
+resource "aws_subnet" "a" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "10.0.1.0/24"
+}
+resource "aws_default_route_table" "main" {
+  default_route_table_id = aws_vpc.main.default_route_table_id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+}
+resource "aws_security_group" "web" {
+  vpc_id = aws_vpc.main.id
+}
+resource "aws_vpc_security_group_ingress_rule" "https" {
+  security_group_id = aws_security_group.web.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+}
+resource "aws_instance" "web" {
+  ami                    = "ami-1"
+  instance_type          = "t3.micro"
+  subnet_id              = aws_subnet.a.id
+  vpc_security_group_ids = [aws_security_group.web.id]
+  metadata_options {
+    http_tokens = "required"
+  }
+}
+resource "aws_eip" "web" {
+  instance = aws_instance.web.id
+}`;
+    const [path] = portOf(accessOf(src, 'aws_instance.web'), '443').paths;
+    expect(kinds(path.steps)).toEqual(['internet', 'gateway', 'route', 'subnet', 'sg', 'address', 'resource']);
+    expect(path.steps[2]).toMatchObject({ resource: 'aws_default_route_table.main' });
+    expect(path.steps[2].detail).toMatch(/the VPC's main route table — subnet a has no association of its own/);
+    expect(path.steps[4]).toMatchObject({
+      detail: 'rule https allows HTTPS from 0.0.0.0/0',
+      rule: { owner: 'aws_security_group.web', id: 'aws_vpc_security_group_ingress_rule.https' },
+    });
+    expect(path.steps[5]).toMatchObject({ kind: 'address', title: 'Elastic IP web', resource: 'aws_eip.web' });
+    expect(path.steps[6].detail).toBe('public address: Elastic IP web');
+  });
+
+  it('associate_public_ip_address, internet-facing load balancers and databases in the default VPC', () => {
+    const inst = accessOf(
+      VPC.replace('map_public_ip_on_launch = true', 'map_public_ip_on_launch = false') +
+        httpsSg('web') +
+        instance('web', 'web', 'subnet_id = aws_subnet.public.id\n  associate_public_ip_address = true'),
+      'aws_instance.web',
+    );
+    expect(portOf(inst, '443').paths[0].steps.at(-1)!.detail).toBe('public address: associate_public_ip_address = true');
+
+    const lb = portOf(accessOf(AWS, 'aws_lb.web'), '443').paths[0].steps;
+    expect(kinds(lb)).toEqual(['internet', 'gateway', 'route', 'subnet', 'sg', 'resource']);
+    expect(lb.at(-1)!.detail).toBe('public address: internet-facing (internal = false)');
+
+    const db = `${httpsSg('db').replace(/443/g, '5432')}
+resource "aws_db_instance" "db" {
+  engine                 = "postgres"
+  instance_class         = "db.t3.micro"
+  publicly_accessible    = true
+  storage_encrypted      = true
+  vpc_security_group_ids = [aws_security_group.db.id]
+}`;
+    const steps = portOf(accessOf(VPC + db, 'aws_db_instance.db'), '5432').paths[0].steps;
+    expect(steps.map((s) => s.title).slice(0, 2)).toEqual(['Internet', 'Default VPC']);
+    expect(steps.at(-1)!.detail).toBe('public address: publicly_accessible = true');
+  });
+
+  it('explains what keeps a resource off the internet: no public IP, no route to an internet gateway', () => {
+    // the AWS fixture: SSH is open on the app SG, but the instance lives in a private subnet
+    const a = accessOf(AWS, 'aws_instance.app');
+    expect(a.open).toEqual([]);
+    const [ssh] = blockedOf(a, '22');
+    expect(ssh.reason).toBe('no public IP address and no route to an internet gateway');
+    const stops = ssh.steps.filter((s) => s.verdict === 'deny');
+    expect(stops.map((s) => s.kind)).toEqual(['address', 'route']);
+    expect(stops[1]).toMatchObject({ resource: 'aws_subnet.private' });
+    expect(stops[1].detail).toMatch(/subnet private has no route table association/);
+
+    // an IGW subnet, but nothing gives the instance a public IP
+    const noIp = accessOf(
+      VPC.replace('map_public_ip_on_launch = true', 'map_public_ip_on_launch = false') + sshSg('web') + instance('web', 'web'),
+      'aws_instance.web',
+    );
+    const [only] = blockedOf(noIp, '22');
+    expect(only.reason).toBe('no public IP address');
+    expect(only.steps.find((s) => s.verdict === 'deny')!.detail).toMatch(/subnet public doesn't assign public IPs/);
+  });
+
+  it('an IPv4 and an IPv6 rule for the same port are two ways in; one rule for both families is one', () => {
+    const src = VPC + sshSg('web', 'cidr_blocks = ["0.0.0.0/0"]\n    ipv6_cidr_blocks = ["::/0"]') + instance('web', 'web');
+    const one = portOf(accessOf(src, 'aws_instance.web'), '22');
+    expect(one.paths).toHaveLength(1);
+    expect(one.paths[0].families).toEqual(['ipv4', 'ipv6']);
+    expect(one.paths[0].steps[0].detail).toBe('any address, IPv4 and IPv6');
+
+    const twin = VPC + httpsSg('web', 'ingress {\n    from_port = 443\n    to_port = 443\n    protocol = "tcp"\n    ipv6_cidr_blocks = ["::/0"]\n  }') + instance('web', 'web');
+    const two = portOf(accessOf(twin, 'aws_instance.web'), '443');
+    expect(two.paths.map((p) => p.families)).toEqual([['ipv4'], ['ipv6']]);
+  });
+
+  it('ports written as expressions get a path marked unverifiable', () => {
+    const src = VPC + sshSg('web').replace('from_port   = 22', 'from_port   = var.port').replace('to_port     = 22', 'to_port     = var.port') + instance('web', 'web');
+    const p = portOf(accessOf(src, 'aws_instance.web'), 'var.port');
+    expect(p.traffic).toBeNull();
+    expect(p.paths[0].steps.find((s) => s.kind === 'sg')!.detail).toMatch(/can't be verified/);
+  });
+
+  it('every template: the open paths add up to exactly the exposed ports', () => {
+    for (const t of TEMPLATES) {
+      const topo = analyzeSecurity(parseProject(t.build('demo')).ir);
+      for (const [id, e] of topo.exposure) {
+        const a = topo.access.get(id);
+        if (e.level !== 'internet') {
+          expect(a?.open ?? [], `${t.slug} ${id}`).toEqual([]);
+          continue;
+        }
+        const verified = a!.open.filter((p) => p.traffic);
+        const union = verified.map((p) => p.traffic!).reduce(trafficUnion, NO_TRAFFIC);
+        const unverified = new Set(a!.open.filter((p) => !p.traffic).map((p) => p.ports));
+        expect(trafficLabels(union), `${t.slug} ${id}`).toEqual(e.ports.filter((p) => !unverified.has(p)));
+        for (const p of a!.open) for (const path of p.paths) expect(path.steps[0].kind).toBe('internet');
+      }
+    }
+  });
+});
+
+describe('access paths: Azure and GCP', () => {
+  const allow = (name: string, priority: number, port: number, source = '*') =>
+    nsgRule(`name = "${name}"\n    priority = ${priority}\n    direction = "Inbound"\n    access = "Allow"\n    protocol = "Tcp"\n    destination_port_range = "${port}"\n    source_address_prefix = "${source}"`);
+  const deny = (name: string, priority: number, port: number) =>
+    nsgRule(`name = "${name}"\n    priority = ${priority}\n    direction = "Inbound"\n    access = "Deny"\n    protocol = "Tcp"\n    destination_port_range = "${port}"\n    source_address_prefix = "Internet"`);
+
+  it('Azure: Internet → subnet NSG rule → NIC NSG rule → public IP → VM', () => {
+    const src = AZURE_BASE + nsg('subnet', allow('ssh', 100, 22)) + nsg('nic', allow('ssh-nic', 110, 22), 'nic');
+    const [path] = portOf(accessOf(src, 'azurerm_linux_virtual_machine.vm'), '22').paths;
+    expect(kinds(path.steps)).toEqual(['internet', 'nsg', 'nsg', 'address', 'resource']);
+    expect(path.steps[1]).toMatchObject({
+      title: 'NSG subnet · ssh',
+      detail: 'priority 100 · allows SSH from * · on the subnet app',
+      rule: { owner: 'azurerm_network_security_group.subnet', id: 'azurerm_network_security_group.subnet:security_rule:0' },
+    });
+    expect(path.steps[2]).toMatchObject({ title: 'NSG nic · ssh-nic', detail: 'priority 110 · allows SSH from * · on the NIC vm' });
+    expect(path.steps[3]).toMatchObject({ title: 'Public IP vm', detail: 'on NIC vm', resource: 'azurerm_public_ip.vm' });
+  });
+
+  it('Azure: what the NIC NSG does not allow stops at its DenyAllInBound; a deny above an allow stops it too', () => {
+    const src = AZURE_BASE + nsg('subnet', allow('ssh', 100, 22)) + nsg('nic', allow('https', 110, 443), 'nic');
+    const [ssh] = blockedOf(accessOf(src, 'azurerm_linux_virtual_machine.vm'), '22');
+    expect(ssh.reason).toBe('blocked by NSG nic: no rule allows it (DenyAllInBound)');
+    expect(ssh.steps.map((s) => s.kind)).toEqual(['internet', 'nsg', 'nsg', 'nsg', 'address', 'resource']);
+    expect(ssh.steps[1].verdict).toBe('allow');
+    expect(ssh.steps[2]).toMatchObject({ title: 'NSG nic · DenyAllInBound', verdict: 'deny' });
+    expect(ssh.steps[3]).toMatchObject({ title: 'NSG subnet · ssh', unreached: true });
+
+    const shadowed = AZURE_BASE + nsg('vm', deny('deny-ssh', 100, 22) + allow('ssh', 200, 22));
+    const [b] = blockedOf(accessOf(shadowed, 'azurerm_linux_virtual_machine.vm'), '22');
+    expect(b.reason).toBe('blocked by NSG vm rule deny-ssh (priority 100, deny)');
+  });
+
+  it('GCP: Internet → firewall (priority, targets) → instance with its external IP; a higher-priority deny blocks', () => {
+    const fw = (name: string, body: string, extra = '') => `
+resource "google_compute_firewall" "${name}" {
+  name          = "${name}"
+  network       = google_compute_network.vpc.id
+  source_ranges = ["0.0.0.0/0"]
+  ${extra}
+  ${body}
+}`;
+    const src = GCP_BASE + fw('ssh', 'allow {\n    protocol = "tcp"\n    ports    = ["22"]\n  }', 'target_tags = ["web"]');
+    const [path] = portOf(accessOf(src, 'google_compute_instance.web'), '22').paths;
+    expect(kinds(path.steps)).toEqual(['internet', 'firewall', 'resource']);
+    expect(path.steps[1]).toMatchObject({
+      title: 'Firewall ssh',
+      detail: 'priority 1000 · allows SSH from 0.0.0.0/0 · targets tag web',
+      rule: { owner: 'google_compute_firewall.ssh', id: 'google_compute_firewall.ssh:allow:0' },
+    });
+    expect(path.steps[2].detail).toBe('public address: external IP (access_config on network_interface #1)');
+
+    const denied = src + fw('deny_ssh', 'deny {\n    protocol = "tcp"\n    ports    = ["22"]\n  }', 'priority = 100');
+    const [b] = blockedOf(accessOf(denied, 'google_compute_instance.web'), '22');
+    expect(b.reason).toBe('blocked by firewall deny_ssh (priority 100, deny)');
+    expect(b.steps.find((s) => s.verdict === 'deny')!.detail).toMatch(/every instance in the network/);
+  });
+
+  it('GCP: an instance without access_config has no external IP', () => {
+    const src = GCP_BASE.replace('    access_config {}\n', '') + `
+resource "google_compute_firewall" "ssh" {
+  name          = "ssh"
+  network       = google_compute_network.vpc.id
+  source_ranges = ["0.0.0.0/0"]
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+}`;
+    const [b] = blockedOf(accessOf(src, 'google_compute_instance.web'), '22');
+    expect(b.reason).toBe('no external IP');
+  });
+});
+
+// ============================================================ compliance mapping
+
+describe('compliance mapping', () => {
+  const controlsOf = (src: string, title: RegExp | string) => {
+    const f = auditSecurity(load(src).ir).findings.find((x) => (typeof title === 'string' ? x.title === title : title.test(x.title)));
+    expect(f, `finding ${title}`).toBeDefined();
+    return (f!.controls ?? []).map(controlLabel);
+  };
+
+  it('AWS security groups: SSH / RDP by address family, unauthorized and high-risk ports', () => {
+    expect(controlsOf(VPC + sshSg('web') + instance('web', 'web'), 'SSH (port 22) is open to the internet')).toEqual([
+      'CIS AWS 5.2',
+      'FSBP EC2.13',
+      'FSBP EC2.18',
+      'FSBP EC2.19',
+    ]);
+    expect(controlsOf(VPC + sshSg('web', 'ipv6_cidr_blocks = ["::/0"]') + instance('web', 'web'), /over IPv6/)).toEqual([
+      'CIS AWS 5.3',
+      'FSBP EC2.13',
+      'FSBP EC2.18',
+      'FSBP EC2.19',
+    ]);
+    const rdp = sshSg('web').replace(/= 22/g, '= 3389');
+    expect(controlsOf(VPC + rdp + instance('web', 'web'), 'RDP (port 3389) is open to the internet')).toEqual([
+      'CIS AWS 5.2',
+      'FSBP EC2.14',
+      'FSBP EC2.18',
+      'FSBP EC2.19',
+    ]);
+    const wide = sshSg('web').replace('from_port   = 22', 'from_port   = 10000').replace('to_port     = 22', 'to_port     = 10100');
+    expect(controlsOf(VPC + wide + instance('web', 'web'), /Wide port range/)).toEqual(['FSBP EC2.18']);
+  });
+
+  it('NACLs, the default security group and hardening checks', () => {
+    const naclSsh = `${VPC}
+resource "aws_network_acl" "public" {
+  vpc_id     = aws_vpc.main.id
+  subnet_ids = [aws_subnet.public.id]
+  ingress {
+    rule_no    = 100
+    action     = "allow"
+    protocol   = "tcp"
+    from_port  = 22
+    to_port    = 22
+    cidr_block = "0.0.0.0/0"
+  }
+}`;
+    expect(controlsOf(naclSsh, /Network ACL allows SSH/)).toEqual(['CIS AWS 5.1', 'FSBP EC2.21']);
+    const allowAll = naclSsh.replace('protocol   = "tcp"', 'protocol   = "-1"').replace('from_port  = 22', 'from_port  = 0').replace('to_port    = 22', 'to_port    = 0');
+    expect(controlsOf(allowAll, 'Network ACL allows all inbound traffic')).toEqual(['CIS AWS 5.1', 'FSBP EC2.21']);
+
+    const defaultSg = `${VPC}
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.main.id
+  ingress {
+    protocol  = -1
+    self      = true
+    from_port = 0
+    to_port   = 0
+  }
+}`;
+    const audit = auditSecurity(load(defaultSg).ir);
+    expect(audit.findings.map((f) => [f.severity, f.title])).toEqual([['low', 'Default security group allows traffic']]);
+    expect(audit.findings[0].controls!.map(controlLabel)).toEqual(['CIS AWS 5.4', 'FSBP EC2.2']);
+    // an empty default group is what the benchmarks ask for
+    expect(findingIds(`${VPC}\nresource "aws_default_security_group" "default" {\n  vpc_id = aws_vpc.main.id\n}`)).toEqual([]);
+
+    const hardening = auditSecurity(load(AWS).ir).findings;
+    const byTitle = (t: string) => (hardening.find((f) => f.title === t)?.controls ?? []).map(controlLabel);
+    expect(byTitle('Database is publicly accessible')).toEqual(['FSBP RDS.2']);
+    expect(byTitle('Database storage is not encrypted')).toEqual(['FSBP RDS.3']);
+    expect(byTitle('Instance metadata allows IMDSv1')).toEqual(['FSBP EC2.8']);
+
+    expect(controlsOf('resource "aws_s3_bucket" "logs" {\n  bucket = "logs"\n}', 'Bucket has no public access block')).toEqual(['FSBP S3.1', 'FSBP S3.8']);
+    const alb = `
+resource "aws_lb" "web" {
+  load_balancer_type = "application"
+}
+resource "aws_lb_listener" "http" {
+  load_balancer_arn = aws_lb.web.arn
+  port              = 80
+  protocol          = "HTTP"
+}`;
+    expect(controlsOf(alb, 'Load balancer only serves plain HTTP')).toEqual(['FSBP ELB.1']);
+    // launch templates and Aurora clusters aren't what EC2.8 / RDS.3 evaluate
+    const lt = 'resource "aws_launch_template" "web" {\n  image_id = "ami-1"\n}';
+    expect(controlsOf(lt, 'Launch template allows IMDSv1')).toEqual([]);
+    expect(controlsOf('resource "aws_rds_cluster" "db" {\n  engine = "aurora-postgresql"\n}', 'Database storage is not encrypted')).toEqual([]);
+  });
+
+  it('Azure NSGs and GCP firewalls: SSH and RDP from the internet', () => {
+    const rule = (port: number) =>
+      nsgRule(`name = "r${port}"\n    priority = 100\n    direction = "Inbound"\n    access = "Allow"\n    protocol = "Tcp"\n    destination_port_range = "${port}"\n    source_address_prefix = "Internet"`);
+    expect(controlsOf(AZURE_BASE + nsg('vm', rule(22)), 'SSH (port 22) is open to the internet')).toEqual(['CIS Azure 6.2']);
+    expect(controlsOf(AZURE_BASE + nsg('vm', rule(3389)), 'RDP (port 3389) is open to the internet')).toEqual(['CIS Azure 6.1']);
+    const fw = (port: number) => `${GCP_BASE}
+resource "google_compute_firewall" "admin" {
+  name          = "admin"
+  network       = google_compute_network.vpc.id
+  source_ranges = ["0.0.0.0/0"]
+  allow {
+    protocol = "tcp"
+    ports    = ["${port}"]
+  }
+}`;
+    expect(controlsOf(fw(22), 'SSH (port 22) is open to the internet')).toEqual(['CIS GCP 3.6']);
+    expect(controlsOf(fw(3389), 'RDP (port 3389) is open to the internet')).toEqual(['CIS GCP 3.7']);
+  });
+
+  it("what the audit can't verify maps to nothing; every control is a known framework's", () => {
+    const expr = sshSg('web').replace('from_port   = 22', 'from_port   = var.port').replace('to_port     = 22', 'to_port     = var.port');
+    expect(controlsOf(VPC + expr + instance('web', 'web'), /can't be verified/)).toEqual([]);
+    expect(new Set(CONTROLS.map((c) => `${c.framework}:${c.id}`)).size).toBe(CONTROLS.length);
+    for (const c of CONTROLS) expect(FRAMEWORKS.map((f) => f.id)).toContain(c.framework);
+  });
+});
+
+// ============================================================ security delta
+
+describe('security delta', () => {
+  const audit = (src: string) => auditSecurity(load(src).ir);
+  const base = VPC + httpsSg('web') + instance('web', 'web');
+
+  it('a new SSH-from-anywhere rule drops the grade: named, with the workload it reaches', () => {
+    const before = audit(base);
+    const after = audit(VPC + httpsSg('web', sshIngress) + instance('web', 'web'));
+    const delta = securityDelta(before, after)!;
+    expect(delta).toMatchObject({ before: 'A', after: 'C', gradeDropped: true, target: 'aws_instance.web' });
+    expect(delta.message).toBe('Security grade A → C: SSH (22) is now open to the internet on aws_instance.web');
+    expect(delta.added.map((f) => f.severity)).toEqual(['critical']);
+  });
+
+  it('improvements, renames and rules shifting position are not worse', () => {
+    const risky = VPC + httpsSg('web', sshIngress) + instance('web', 'web');
+    expect(securityDelta(audit(risky), audit(base))).toBeNull();
+    expect(securityDelta(audit(base), audit(base))).toBeNull();
+    // same risk under another name
+    expect(securityDelta(audit(risky), audit(risky.replace(/"web"/g, '"api"').replace(/\.web\./g, '.api.')))).toBeNull();
+    // deleting the safe rule in front of the risky one moves it to index 0
+    const shifted = VPC + sshSg('web') + instance('web', 'web');
+    expect(securityDelta(audit(risky), audit(shifted))).toBeNull();
+  });
+
+  it('a new high finding counts even when the grade holds', () => {
+    const before = audit(AWS); // D already
+    const db2 = AWS + `
+resource "aws_db_instance" "db2" {
+  engine                 = "postgres"
+  instance_class         = "db.t3.micro"
+  publicly_accessible    = true
+  storage_encrypted      = true
+  vpc_security_group_ids = [aws_security_group.db.id]
+}`;
+    const after = audit(db2);
+    expect(after.grade).toBe(before.grade);
+    const delta = securityDelta(before, after)!;
+    expect(delta.gradeDropped).toBe(false);
+    expect(delta.message).toBe('New high security risk: Database is publicly accessible — aws_db_instance.db2');
+    expect(delta.target).toBe('aws_db_instance.db2');
+  });
+
+  it('an existing risk that becomes reachable is new', () => {
+    const before = audit(VPC + sshSg('web'));
+    const after = audit(VPC + sshSg('web') + instance('web', 'web'));
+    expect(securityDelta(before, after)?.message).toMatch(/SSH \(22\) is now open to the internet on aws_instance\.web$/);
   });
 });

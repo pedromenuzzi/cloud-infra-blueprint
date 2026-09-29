@@ -3,6 +3,7 @@ import {
   Copy,
   FileDown,
   FileUp,
+  Github,
   LayoutTemplate,
   Pencil,
   Plus,
@@ -18,6 +19,9 @@ import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Kbd, LogoMark, Select } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { DataPanel, StorageNudge } from '@/features/data/DataPanel';
+import { OpenFolderButton } from '@/features/data/OpenFolderButton';
+import { openGithubImport } from '@/features/import/githubImportStore';
 import { TemplateModal } from '@/features/templates/TemplateModal';
 import type { Provider } from '@/ir/types';
 import { exportZip } from '@/lib/download';
@@ -381,7 +385,7 @@ export default function DashboardPage() {
                 Your cloud architecture designs — saved in this browser, exportable as Terraform.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 whitespace-nowrap">
               <button
                 type="button"
                 onClick={() => openPalette(true)}
@@ -392,6 +396,10 @@ export default function DashboardPage() {
               <Button variant="outline" onClick={() => fileInput.current?.click()}>
                 <FileUp className="h-4 w-4" /> Import .tf
               </Button>
+              <Button variant="outline" aria-label="Import from GitHub…" title="Import from GitHub…" onClick={() => openGithubImport()}>
+                <Github className="h-4 w-4" /> <span className="max-sm:hidden">GitHub</span>
+              </Button>
+              <OpenFolderButton />
               <Button onClick={() => setTemplatesOpen(true)}>
                 New Project <Plus className="h-4 w-4" />
               </Button>
@@ -410,6 +418,8 @@ export default function DashboardPage() {
               />
             </div>
           </div>
+
+          <StorageNudge projects={projects} />
 
           {/* quick start */}
           <section className="mt-7" aria-label="Quick start">
@@ -529,6 +539,8 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
+
+          <DataPanel projects={projects} onChanged={refresh} />
 
           <p className="mt-10 text-center text-[11.5px] text-faint">
             Tip: drop a folder of <code className="font-mono">.tf</code> files or a{' '}

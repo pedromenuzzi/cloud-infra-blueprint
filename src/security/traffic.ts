@@ -7,7 +7,7 @@
  * IPv4 and IPv6 are evaluated separately — a deny on 0.0.0.0/0 does not stop
  * ::/0.
  */
-import { internetFamilies, type SecurityRule } from './model';
+import { internetFamilies, type IpFamily, type SecurityRule } from './model';
 
 export type Ports = ReadonlyArray<readonly [number, number]>;
 
@@ -110,17 +110,30 @@ export function ruleTraffic(rule: Pick<SecurityRule, 'protocol' | 'fromPort' | '
   }
 }
 
-export function trafficLabels(t: Traffic): string[] {
-  if (trafficAll(t)) return ['all'];
+/** Traffic split into the pieces a person reads: one per port range, protocol or flag. */
+export function trafficParts(t: Traffic): Array<{ label: string; traffic: Traffic }> {
+  if (trafficAll(t)) return [{ label: 'all', traffic: ALL_TRAFFIC }];
   const fmt = ([a, b]: readonly [number, number]) => (a === b ? String(a) : `${a}-${b}`);
-  const out: string[] = [];
-  if (portsFull(t.tcp)) out.push('all TCP');
-  else out.push(...t.tcp.map(fmt));
-  if (portsFull(t.udp)) out.push('all UDP');
-  else out.push(...t.udp.map((r) => `${fmt(r)}/udp`));
-  if (t.icmp) out.push('icmp');
-  if (t.other) out.push('other protocols');
+  const out: Array<{ label: string; traffic: Traffic }> = [];
+  if (portsFull(t.tcp)) out.push({ label: 'all TCP', traffic: { ...NO_TRAFFIC, tcp: ALL_PORTS } });
+  else out.push(...t.tcp.map((r) => ({ label: fmt(r), traffic: { ...NO_TRAFFIC, tcp: [r] } })));
+  if (portsFull(t.udp)) out.push({ label: 'all UDP', traffic: { ...NO_TRAFFIC, udp: ALL_PORTS } });
+  else out.push(...t.udp.map((r) => ({ label: `${fmt(r)}/udp`, traffic: { ...NO_TRAFFIC, udp: [r] } })));
+  if (t.icmp) out.push({ label: 'icmp', traffic: { ...NO_TRAFFIC, icmp: true } });
+  if (t.other) out.push({ label: 'other protocols', traffic: { ...NO_TRAFFIC, other: true } });
   return out;
+}
+
+export function trafficLabels(t: Traffic): string[] {
+  return trafficParts(t).map((p) => p.label);
+}
+
+/** One rule deciding some internet traffic, for one address family. */
+export interface RuleMatch {
+  rule: SecurityRule;
+  family: IpFamily;
+  /** ordered owners: the traffic this rule is the first match for; security groups: all it allows */
+  traffic: Traffic;
 }
 
 export interface Evaluation {
@@ -132,6 +145,10 @@ export interface Evaluation {
   unverified: SecurityRule[];
   /** allow rules whose sources are expressions — they might be the internet */
   unknownSources: SecurityRule[];
+  /** the evidence: which rule decides which internet traffic, allows and denies, in evaluation order */
+  matches: RuleMatch[];
+  /** per family, internet traffic no rule matches — refused by the implicit default (deny) */
+  unmatched: Record<IpFamily, Traffic>;
 }
 
 const rank = (r: SecurityRule) => r.priority ?? Number.MAX_SAFE_INTEGER;
@@ -145,7 +162,14 @@ export function evaluateInbound(rules: SecurityRule[], ordered: boolean): Evalua
   const sorted = ordered
     ? [...inbound].sort((a, b) => rank(a) - rank(b) || (a.action === b.action ? 0 : a.action === 'deny' ? -1 : 1))
     : inbound.filter((r) => r.action === 'allow');
-  const result: Evaluation = { allowed: NO_TRAFFIC, perRule: new Map(), unverified: [], unknownSources: [] };
+  const result: Evaluation = {
+    allowed: NO_TRAFFIC,
+    perRule: new Map(),
+    unverified: [],
+    unknownSources: [],
+    matches: [],
+    unmatched: { ipv4: ALL_TRAFFIC, ipv6: ALL_TRAFFIC },
+  };
   for (const family of ['ipv4', 'ipv6'] as const) {
     let remaining = ALL_TRAFFIC;
     for (const rule of sorted) {
@@ -156,12 +180,14 @@ export function evaluateInbound(rules: SecurityRule[], ordered: boolean): Evalua
         continue;
       }
       const effective = ordered ? trafficIntersect(matched, remaining) : matched;
+      if (!trafficEmpty(effective)) result.matches.push({ rule, family, traffic: effective });
       if (rule.action === 'allow') {
         result.allowed = trafficUnion(result.allowed, effective);
         result.perRule.set(rule.id, trafficUnion(result.perRule.get(rule.id) ?? NO_TRAFFIC, effective));
       }
-      if (ordered) remaining = trafficSubtract(remaining, effective);
+      remaining = trafficSubtract(remaining, effective);
     }
+    result.unmatched[family] = remaining;
   }
   for (const rule of sorted) {
     if (rule.action === 'allow' && rule.peers.some((p) => p.kind === 'expr') && internetFamilies(rule).length === 0) {
