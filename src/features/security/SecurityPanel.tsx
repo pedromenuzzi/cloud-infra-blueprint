@@ -15,7 +15,7 @@ import { FRAMEWORKS } from '@/security/compliance';
 import type { Exposure } from '@/security/topology';
 import { AccessPaths } from './AccessPaths';
 import { ComplianceBadges } from './ComplianceBadges';
-import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, getAudit, useSecurityUi } from './securityStore';
+import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useSecurityUi } from './securityStore';
 
 const SEVERITY_LABEL: Record<Severity, string> = {
   critical: 'Critical',
@@ -236,8 +236,8 @@ export function SecurityPanel() {
               {SEVERITY_ORDER.filter((s) => audit.counts[s] > 0).map((s) => (
                 <span
                   key={s}
-                  className="rounded-full px-1.5 py-px text-[10.5px] font-semibold"
-                  style={{ color: SEVERITY_COLORS[s], background: `color-mix(in srgb, ${SEVERITY_COLORS[s]} 12%, transparent)` }}
+                  className={cn('rounded-full px-1.5 py-px text-[10.5px] font-semibold', SEVERITY_TEXT[s])}
+                  style={{ background: `color-mix(in srgb, ${SEVERITY_COLORS[s]} 12%, transparent)` }}
                 >
                   {audit.counts[s]} {SEVERITY_LABEL[s].toLowerCase()}
                 </span>
@@ -366,7 +366,7 @@ export function SecurityPanel() {
                       <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: SEVERITY_COLORS[f.severity] }} />
                       <span className="min-w-0 flex-1">
                         <span className="block text-[12.5px] font-semibold leading-snug">{f.title}</span>
-                        <span className="text-[10.5px] font-semibold uppercase tracking-wide" style={{ color: SEVERITY_COLORS[f.severity] }}>
+                        <span className={cn('text-[10.5px] font-semibold uppercase tracking-wide', SEVERITY_TEXT[f.severity])}>
                           {SEVERITY_LABEL[f.severity]}
                         </span>
                       </span>

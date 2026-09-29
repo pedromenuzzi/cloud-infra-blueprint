@@ -102,6 +102,14 @@ export const GRADE_COLORS: Record<string, string> = {
   F: '#ef4444',
 };
 
+/** severity as text: AA contrast in both themes (SEVERITY_COLORS are for dots, tints and borders) */
+export const SEVERITY_TEXT: Record<string, string> = {
+  critical: 'text-danger',
+  high: 'text-[#c2410c] dark:text-[#fb923c]',
+  medium: 'text-warning',
+  low: 'text-muted',
+};
+
 export const SEVERITY_COLORS: Record<string, string> = {
   critical: '#ef4444',
   high: '#f97316',

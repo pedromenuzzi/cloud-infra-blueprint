@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 import { familiesLabel, type AccessExplanation, type BlockedPort, type PathStep, type PortAccess, type StepKind } from '@/security/access';
 import { trafficRisk } from '@/security/audit';
 import { serviceName } from '@/security/model';
-import { SEVERITY_COLORS, useSecurityUi } from './securityStore';
+import { SEVERITY_COLORS, SEVERITY_TEXT, useSecurityUi } from './securityStore';
 
 const STEP_ICONS: Record<StepKind, LucideIcon> = {
   internet: Globe,
@@ -199,7 +199,7 @@ function OpenPort({ port, defaultOpen }: { port: PortAccess; defaultOpen?: boole
         />
       }
     >
-      {risk ? <p className="text-[11px] font-medium" style={{ color: SEVERITY_COLORS[risk.severity] }}>{risk.title}</p> : null}
+      {risk ? <p className={cn('text-[11px] font-medium', SEVERITY_TEXT[risk.severity])}>{risk.title}</p> : null}
       {port.paths.map((p, i) => (
         <div key={i}>
           {port.paths.length > 1 ? <p className="mb-1 text-[10.5px] font-semibold text-faint">Way {i + 1} · {familiesLabel(p.families)}</p> : null}
