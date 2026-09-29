@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { Button, Modal } from '@/components/ui';
+import { openGithubImport, readGithubFragment } from '@/features/import/githubImportStore';
 import {
   clearShareFragment,
   readShareFromLocation,
@@ -50,6 +51,13 @@ export function ShareLinkHost() {
       setPending({ payload, origin, existing: findProjectByOrigin(origin) });
     };
     const check = () => {
+      // `#gh=owner/repo[/path][@ref]`: the GitHub import dialog, prefilled
+      const gh = readGithubFragment(location.hash);
+      if (gh) {
+        clearShareFragment();
+        openGithubImport(gh, { fromLink: true });
+        return;
+      }
       const result = readShareFromLocation();
       if (!result) return;
       clearShareFragment(); // handled once, whatever happens next

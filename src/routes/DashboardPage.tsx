@@ -3,6 +3,7 @@ import {
   Copy,
   FileDown,
   FileUp,
+  Github,
   LayoutTemplate,
   Pencil,
   Plus,
@@ -18,6 +19,7 @@ import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Kbd, LogoMark, Select } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { openGithubImport } from '@/features/import/githubImportStore';
 import { TemplateModal } from '@/features/templates/TemplateModal';
 import type { Provider } from '@/ir/types';
 import { exportZip } from '@/lib/download';
@@ -391,6 +393,9 @@ export default function DashboardPage() {
               </button>
               <Button variant="outline" onClick={() => fileInput.current?.click()}>
                 <FileUp className="h-4 w-4" /> Import .tf
+              </Button>
+              <Button variant="outline" aria-label="Import from GitHub…" title="Import from GitHub…" onClick={() => openGithubImport()}>
+                <Github className="h-4 w-4" /> <span className="max-sm:hidden">GitHub</span>
               </Button>
               <Button onClick={() => setTemplatesOpen(true)}>
                 New Project <Plus className="h-4 w-4" />

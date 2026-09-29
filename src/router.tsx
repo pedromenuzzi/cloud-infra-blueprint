@@ -6,6 +6,7 @@ import { ConfirmHost } from '@/components/Confirm';
 import { ShareLinkHost } from '@/components/ShareLinkHost';
 import { StorageNotices } from '@/components/StorageNotices';
 import { CommandHost } from '@/features/command/CommandHost';
+import { GithubImportHost } from '@/features/import/GithubImportHost';
 import { lazyWithReload } from '@/lib/chunkReload';
 import { isEmbedHash, isViewHash } from '@/lib/share';
 
@@ -50,6 +51,7 @@ function Root() {
         <>
           <StorageNotices />
           <CommandHost />
+          <GithubImportHost />
         </>
       )}
       <ConfirmHost />
