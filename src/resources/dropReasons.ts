@@ -325,7 +325,7 @@ export const reasonMessages = defineMessages(
     lambda: () =>
       'Uma função Lambda roda fora da sua VPC por padrão — para acessar recursos privados, defina sub-redes em vpc_config (no código)',
     serverless: (r: Noun) =>
-      `${Um(r)} é serverless e roda fora da sua rede VPC — acesse recursos privados por um conector de Acesso VPC sem servidor (no código)`,
+      `${Um(r)} é sem servidor e roda fora da sua rede VPC — acesse recursos privados por um conector de Acesso VPC sem servidor (no código)`,
     spans: (r: Noun, inSubnet: boolean) =>
       inSubnet
         ? `${Um(r)} cobre várias sub-redes — ${ele(r)} é conectad${lo(r)} a cada uma em vez de ficar dentro`

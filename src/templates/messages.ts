@@ -26,7 +26,7 @@ export const TEMPLATE_TEXT_PT: Record<TemplateSlug, TemplateText> = {
     description: 'Serviço ECS Fargate atrás de um ALB, com registro ECR e toda a rede da VPC.',
   },
   'aws-serverless-api': {
-    name: 'API serverless na AWS',
+    name: 'API sem servidor na AWS',
     description: 'API Gateway HTTP → Lambda → DynamoDB, com um perfil do IAM de privilégio mínimo.',
   },
   'aws-secure-3tier': {
@@ -48,7 +48,7 @@ export const TEMPLATE_TEXT_PT: Record<TemplateSlug, TemplateText> = {
   },
   'gcp-cloud-run': {
     name: 'Cloud Run no GCP',
-    description: 'Contêineres serverless no Cloud Run, com imagens vindas do Artifact Registry.',
+    description: 'Contêineres sem servidor no Cloud Run, com imagens vindas do Artifact Registry.',
   },
   'gcp-static-site': {
     name: 'Site estático no GCP',
@@ -65,7 +65,7 @@ export const TEMPLATE_TAGS_PT: Record<TemplateTag, string> = {
   'Web Apps': 'Apps web',
   'Static Sites': 'Sites estáticos',
   Containers: 'Contêineres',
-  Serverless: 'Serverless',
+  Serverless: 'Sem servidor',
   Security: 'Segurança',
   Data: 'Dados',
 };

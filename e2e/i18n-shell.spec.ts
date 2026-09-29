@@ -112,7 +112,7 @@ test('the landing page switches from its header picker', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Bidirecional de verdade' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Três passos. Sem enrolação.' })).toBeVisible();
   // template cards in the UI language
-  await expect(page.getByRole('heading', { name: 'API serverless na AWS' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'API sem servidor na AWS' })).toBeVisible();
   await expect(page).toHaveTitle('Cloud Blueprint — Desenhe sua nuvem. Gere o Terraform na hora.');
   await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
 });
@@ -128,7 +128,7 @@ test('dashboard dialogs in Portuguese: templates, restore, GitHub import', async
   await expect(templates.getByRole('heading', { name: 'Site estático no Azure' })).toBeVisible();
   // English words still find templates
   await templates.getByPlaceholder('Buscar templates…').fill('serverless');
-  await expect(templates.getByRole('heading', { name: 'API serverless na AWS' })).toBeVisible();
+  await expect(templates.getByRole('heading', { name: 'API sem servidor na AWS' })).toBeVisible();
   await templates.getByRole('button', { name: 'Fechar' }).click();
 
   await page.getByTestId('restore-input').setInputFiles({ name: 'backup.zip', mimeType: 'application/zip', buffer: backupZip() });
