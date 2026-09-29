@@ -130,9 +130,11 @@ test.describe('dropping where a resource can’t go', () => {
     await page.getByRole('button', { name: 'Create a DB subnet group in main' }).click();
     await expect(page.getByText(/Created aws_db_subnet_group\.main with public_a and public_b/)).toBeVisible();
     await expect(canvasStats(page)).toHaveText(/^12 resources/);
-    const tf = await mainTf(page);
-    expect(tf).toMatch(/resource "aws_db_subnet_group" "main" \{[^}]*subnet_ids\s*=\s*\[aws_subnet\.public_a\.id, aws_subnet\.public_b\.id\]/);
-    expect(tf).toMatch(/db_subnet_group_name\s*=\s*aws_db_subnet_group\.main\.name/);
+    // (autosave is debounced)
+    await expect
+      .poll(() => mainTf(page))
+      .toMatch(/resource "aws_db_subnet_group" "main" \{[^}]*subnet_ids\s*=\s*\[aws_subnet\.public_a\.id, aws_subnet\.public_b\.id\]/);
+    expect(await mainTf(page)).toMatch(/db_subnet_group_name\s*=\s*aws_db_subnet_group\.main\.name/);
     // drawn inside the group, inside the VPC
     const group = (await node(page, 'aws_db_subnet_group.main').boundingBox())!;
     const db = (await node(page, 'aws_db_instance.main').boundingBox())!;
