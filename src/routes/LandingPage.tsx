@@ -21,15 +21,21 @@ import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button, Kbd, Logo } from '@/components/ui';
+import { useMessages } from '@/i18n/messages';
 import { REPO_URL } from '@/lib/links';
 import { createProject, openDemoProject, uniqueProjectName } from '@/lib/storage';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn, slugify } from '@/lib/utils';
+import { resourceShortName } from '@/resources/i18n';
 import { CATEGORY_COLORS, ProviderChip, ProviderDot, ResourceIcon } from '@/resources/icons';
 import { allDefs, getDef } from '@/resources/registry';
 import type { Category } from '@/resources/types';
 import { getTemplate, TEMPLATES } from '@/templates';
+import { templateDescription, templateName } from '@/templates/i18n';
 import { scrollBehavior } from '@/lib/motion';
+import { landingMessages } from './LandingPage.messages';
+
+type Text = (typeof landingMessages)['en'];
 
 /* ------------------------------------------------------------ hero demo */
 
@@ -64,12 +70,13 @@ resource "aws_sqs_queue" "events" {
 
 const NODE_W = 172;
 const NODE_H = 58;
+/** subtitles: code (`nodejs22.x`), a product name, or a word from the messages */
 const HERO_NODES = [
-  { id: 'api', type: 'aws_apigatewayv2_api', subtitle: 'HTTP API', x: 20, y: 30 },
-  { id: 'handler', type: 'aws_lambda_function', subtitle: 'nodejs22.x', x: 222, y: 30 },
-  { id: 'orders', type: 'aws_dynamodb_table', subtitle: 'on-demand', x: 424, y: 30 },
-  { id: 'lambda', type: 'aws_iam_role', subtitle: 'IAM role', x: 222, y: 180 },
-  { id: 'events', type: 'aws_sqs_queue', subtitle: 'queue', x: 424, y: 180 },
+  { id: 'api', type: 'aws_apigatewayv2_api', subtitle: (_: Text) => 'HTTP API', x: 20, y: 30 },
+  { id: 'handler', type: 'aws_lambda_function', subtitle: (_: Text) => 'nodejs22.x', x: 222, y: 30 },
+  { id: 'orders', type: 'aws_dynamodb_table', subtitle: (m: Text) => m.subtitleOnDemand, x: 424, y: 30 },
+  { id: 'lambda', type: 'aws_iam_role', subtitle: (m: Text) => m.subtitleRole, x: 222, y: 180 },
+  { id: 'events', type: 'aws_sqs_queue', subtitle: (m: Text) => m.subtitleQueue, x: 424, y: 180 },
 ] as const;
 const HERO_EDGES: Array<[string, string, 'reference' | 'security']> = [
   ['api', 'handler', 'reference'],
@@ -102,6 +109,7 @@ function useFitScale(baseWidth: number) {
 }
 
 function HeroDemo() {
+  const m = useMessages(landingMessages);
   const [active, setActive] = useState(1);
   const { ref, scale } = useFitScale(CANVAS_W);
   const codeRef = useRef<HTMLDivElement>(null);
@@ -202,17 +210,17 @@ function HeroDemo() {
                     <ResourceIcon category={def.category} type={def.type} size={34} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[9px] font-bold uppercase tracking-[0.07em]" style={{ color: `var(--cat-text-${def.category})` }}>
-                        {def.shortName}
+                        {resourceShortName(def.type)}
                       </span>
                       <span className="block truncate text-[12.5px] font-semibold leading-tight text-foreground">{n.id}</span>
-                      <span className="block truncate text-[10.5px] text-muted">{n.subtitle}</span>
+                      <span className="block truncate text-[10.5px] text-muted">{n.subtitle(m)}</span>
                     </span>
                   </button>
                 );
               })}
             </div>
             <span className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full border bg-surface-1/90 px-2.5 py-1 text-[11px] font-medium text-muted shadow-xs backdrop-blur">
-              <MousePointerClick className="h-3 w-3" /> Click a resource
+              <MousePointerClick className="h-3 w-3" /> {m.clickResource}
             </span>
           </div>
           <div className="relative">
@@ -243,7 +251,7 @@ function HeroDemo() {
         </div>
       </div>
       <span className="absolute -top-3.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border bg-surface-1 px-3 py-1 text-[12px] font-semibold text-primary shadow-md">
-        <Sparkles className="h-3.5 w-3.5" /> Live two-way sync
+        <Sparkles className="h-3.5 w-3.5" /> {m.liveSync}
       </span>
     </div>
   );
@@ -251,61 +259,16 @@ function HeroDemo() {
 
 /* --------------------------------------------------------------- content */
 
-const FEATURES: Array<{ icon: LucideIcon; category: Category; title: string; body: string }> = [
-  {
-    icon: RefreshCw,
-    category: 'network',
-    title: 'Truly bidirectional',
-    body: 'Drag a resource and the HCL writes itself. Type Terraform and the diagram rebuilds. Comments and formatting survive every round-trip.',
-  },
-  {
-    icon: Boxes,
-    category: 'compute',
-    title: '80+ services, three clouds',
-    body: 'AWS, Azure and GCP in one palette — from VPCs and Lambdas to AKS, Pub/Sub and Key Vault — with real nesting and connection rules.',
-  },
-  {
-    icon: Command,
-    category: 'integration',
-    title: 'Keyboard-first',
-    body: 'Press ⌘K to add resources, jump anywhere or run any action. Double-click the canvas to drop a service right where you want it.',
-  },
-  {
-    icon: WandSparkles,
-    category: 'containers',
-    title: 'One-click tidy layout',
-    body: 'A layered auto-layout that understands containers — messy imports become a clean, readable architecture in a second.',
-  },
-  {
-    icon: FileUp,
-    category: 'storage',
-    title: 'Bring your own Terraform',
-    body: 'Drop existing .tf files, a folder or a .zip. The diagram draws itself from the references already in your code.',
-  },
-  {
-    icon: FileDown,
-    category: 'edge',
-    title: 'Export everything',
-    body: 'Download a ready-to-apply Terraform zip, a crisp PNG/SVG of the diagram, or share the whole project as a link.',
-  },
-  {
-    icon: ShieldCheck,
-    category: 'identity',
-    title: 'Private by design',
-    body: 'No account, no server, no tracking. Projects live in your browser; share links keep the data in the URL fragment.',
-  },
-  {
-    icon: Sparkles,
-    category: 'database',
-    title: 'Diagnostics as you type',
-    body: 'Unclosed blocks, missing required arguments and dangling references are flagged instantly — on the canvas and in the code.',
-  },
-];
-
-const STEPS = [
-  { n: '01', title: 'Start anywhere', body: 'Pick a template, import your .tf files, or open a blank canvas.' },
-  { n: '02', title: 'Design both ways', body: 'Drag, connect and nest on the canvas — or just write HCL. Both stay in sync.' },
-  { n: '03', title: 'Ship it', body: 'Export the Terraform and run terraform apply. Diagram included.' },
+/** the tiles; their words live in landingMessages.features */
+const FEATURES: Array<{ key: keyof Text['features']; icon: LucideIcon; category: Category }> = [
+  { key: 'sync', icon: RefreshCw, category: 'network' },
+  { key: 'clouds', icon: Boxes, category: 'compute' },
+  { key: 'keyboard', icon: Command, category: 'integration' },
+  { key: 'layout', icon: WandSparkles, category: 'containers' },
+  { key: 'import', icon: FileUp, category: 'storage' },
+  { key: 'export', icon: FileDown, category: 'edge' },
+  { key: 'private', icon: ShieldCheck, category: 'identity' },
+  { key: 'diagnostics', icon: Sparkles, category: 'database' },
 ];
 
 function FeatureTile({ icon: Icon, category }: { icon: LucideIcon; category: Category }) {
@@ -325,6 +288,7 @@ function FeatureTile({ icon: Icon, category }: { icon: LucideIcon; category: Cat
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const m = useMessages(landingMessages);
   useDocumentTitle(null);
   const resourceCount = useMemo(() => allDefs().length, []);
   const showcase = useMemo(
@@ -349,11 +313,13 @@ export default function LandingPage() {
     const t = getTemplate(slug);
     if (!t) return;
     try {
+      // named in the UI language; its HCL (from the slug) stays code
+      const name = templateName(t);
       const project = createProject({
-        name: uniqueProjectName(t.name),
-        files: t.build(slugify(t.name)),
+        name: uniqueProjectName(name),
+        files: t.build(slugify(name)),
         templateSlug: t.slug,
-        description: t.description,
+        description: templateDescription(t),
       });
       navigate(`/editor/${project.id}`);
     } catch {
@@ -364,22 +330,22 @@ export default function LandingPage() {
   return (
     <div className="min-h-full overflow-x-hidden bg-background">
       <header className="sticky top-0 z-40 border-b bg-background/75 backdrop-blur-md">
-        <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6" aria-label="Main">
+        <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between px-6" aria-label={m.mainNav}>
           <Link to="/" className="focus-visible:outline-2 focus-visible:outline-primary">
             <Logo />
           </Link>
           <div className="hidden items-center gap-7 text-[13px] font-medium text-muted md:flex">
             <a href="#features" className="hover:text-foreground">
-              Features
+              {m.navFeatures}
             </a>
             <a href="#how" className="hover:text-foreground">
-              How it works
+              {m.navHow}
             </a>
             <a href="#templates" className="hover:text-foreground">
-              Templates
+              {m.navTemplates}
             </a>
             <Link to="/tutorials" className="hover:text-foreground">
-              Tutorials
+              {m.navTutorials}
             </Link>
             <a href={REPO_URL} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-foreground">
               <Github className="h-3.5 w-3.5" /> GitHub
@@ -388,7 +354,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-2">
             <LanguageSwitcher />
             <ThemeToggle />
-            <Button onClick={() => navigate('/dashboard')}>Open the app</Button>
+            <Button onClick={() => navigate('/dashboard')}>{m.openApp}</Button>
           </div>
         </nav>
       </header>
@@ -402,26 +368,23 @@ export default function LandingPage() {
               className="bp-fade-in inline-flex items-center gap-2 rounded-full border bg-surface-1/80 py-1 pl-1.5 pr-3 text-[12px] font-medium text-muted shadow-xs backdrop-blur transition-colors hover:text-foreground"
             >
               <span className="flex items-center gap-1 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-semibold text-primary">
-                <Sparkles className="h-3 w-3" /> New
+                <Sparkles className="h-3 w-3" /> {m.badgeNew}
               </span>
-              {resourceCount} services · command palette · auto-layout
+              {m.badgeText(resourceCount)}
               <ArrowRight className="h-3 w-3" />
             </a>
             <h1 className="bp-rise mx-auto mt-6 max-w-4xl text-balance text-[44px] font-bold leading-[1.04] tracking-[-0.035em] md:text-[64px]">
-              Design cloud infrastructure visually.{' '}
-              <span className="bp-gradient-text">Ship Terraform instantly.</span>
+              {m.heroTitle} <span className="bp-gradient-text">{m.heroAccent}</span>
             </h1>
             <p className="bp-rise mx-auto mt-6 max-w-2xl text-pretty text-[17px] leading-relaxed text-muted [animation-delay:80ms]">
-              The blueprint editor that keeps your architecture diagram and your Terraform code in
-              perfect sync — for AWS, Azure and GCP. Free, open source, and it runs entirely in
-              your browser.
+              {m.heroBody}
             </p>
             <div className="bp-rise mt-9 flex flex-wrap items-center justify-center gap-3 [animation-delay:160ms]">
               <Button size="lg" className="h-11 px-6 text-[14.5px] shadow-md" onClick={() => navigate('/dashboard')}>
-                Start building — it’s free <ArrowRight className="h-4 w-4" />
+                {m.startFree} <ArrowRight className="h-4 w-4" />
               </Button>
               <Button size="lg" variant="outline" className="h-11 px-5 text-[14.5px]" onClick={openDemo}>
-                <Play className="h-4 w-4" /> Open live demo
+                <Play className="h-4 w-4" /> {m.openDemo}
               </Button>
             </div>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[12.5px] text-faint">
@@ -435,7 +398,7 @@ export default function LandingPage() {
                 <ProviderDot provider="gcp" size={8} /> Google Cloud
               </span>
               <span>·</span>
-              <span>No account · No server · MIT licensed</span>
+              <span>{m.trust}</span>
             </div>
 
             <HeroDemo />
@@ -445,10 +408,10 @@ export default function LandingPage() {
         <section className="border-y bg-surface-1/70">
           <dl className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-6 py-10 text-center md:grid-cols-4">
             {[
-              [`${resourceCount}`, 'cloud services'],
-              [`${TEMPLATES.length}`, 'production templates'],
-              ['3', 'clouds, one canvas'],
-              ['0', 'servers or accounts'],
+              [`${resourceCount}`, m.statServices],
+              [`${TEMPLATES.length}`, m.statTemplates],
+              ['3', m.statClouds],
+              ['0', m.statServers],
             ].map(([value, label]) => (
               <div key={label}>
                 <dt className="sr-only">{label}</dt>
@@ -461,20 +424,21 @@ export default function LandingPage() {
 
         <section id="features" className="mx-auto max-w-6xl scroll-mt-16 px-6 py-24">
           <div className="mx-auto max-w-2xl text-center">
-            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">Features</p>
+            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.featuresEyebrow}</p>
             <h2 className="mt-3 text-balance text-[36px] font-bold leading-tight tracking-[-0.03em]">
-              Everything you need to go from whiteboard to <span className="font-mono text-[0.9em]">terraform apply</span>
+              {m.featuresTitleBefore}
+              <span className="font-mono text-[0.9em]">terraform apply</span>
             </h2>
           </div>
           <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {FEATURES.map((f) => (
               <div
-                key={f.title}
+                key={f.key}
                 className="group rounded-[16px] border bg-surface-1 p-5 shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-lg"
               >
                 <FeatureTile icon={f.icon} category={f.category} />
-                <h3 className="mt-4 text-[15px] font-semibold tracking-[-0.01em]">{f.title}</h3>
-                <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted">{f.body}</p>
+                <h3 className="mt-4 text-[15px] font-semibold tracking-[-0.01em]">{m.features[f.key].title}</h3>
+                <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted">{m.features[f.key].body}</p>
               </div>
             ))}
           </div>
@@ -483,16 +447,16 @@ export default function LandingPage() {
         <section id="how" className="scroll-mt-16 border-y bg-surface-1/70">
           <div className="mx-auto max-w-6xl px-6 py-24">
             <div className="mx-auto max-w-2xl text-center">
-              <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">How it works</p>
-              <h2 className="mt-3 text-[36px] font-bold tracking-[-0.03em]">Three steps. No yak shaving.</h2>
+              <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.howEyebrow}</p>
+              <h2 className="mt-3 text-[36px] font-bold tracking-[-0.03em]">{m.howTitle}</h2>
             </div>
             <ol className="mt-14 grid gap-6 md:grid-cols-3">
-              {STEPS.map((s, i) => (
-                <li key={s.n} className="relative rounded-[16px] border bg-background p-6">
-                  <span className="bp-gradient-text font-mono text-[28px] font-bold">{s.n}</span>
+              {m.steps.map((s, i) => (
+                <li key={i} className="relative rounded-[16px] border bg-background p-6">
+                  <span className="bp-gradient-text font-mono text-[28px] font-bold">{String(i + 1).padStart(2, '0')}</span>
                   <h3 className="mt-3 text-[16px] font-semibold">{s.title}</h3>
                   <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted">{s.body}</p>
-                  {i < STEPS.length - 1 ? (
+                  {i < m.steps.length - 1 ? (
                     <ArrowRight className="absolute -right-5 top-1/2 hidden h-4 w-4 -translate-y-1/2 text-faint md:block" />
                   ) : null}
                 </li>
@@ -504,11 +468,11 @@ export default function LandingPage() {
         <section id="templates" className="mx-auto max-w-6xl scroll-mt-16 px-6 py-24">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">Templates</p>
-              <h2 className="mt-3 text-[36px] font-bold tracking-[-0.03em]">Start from a proven pattern</h2>
+              <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.templatesEyebrow}</p>
+              <h2 className="mt-3 text-[36px] font-bold tracking-[-0.03em]">{m.templatesTitle}</h2>
             </div>
             <Button variant="outline" onClick={() => navigate('/dashboard?new=1')}>
-              Browse all {TEMPLATES.length} <ArrowRight className="h-4 w-4" />
+              {m.browseAll(TEMPLATES.length)} <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -524,14 +488,14 @@ export default function LandingPage() {
                 </div>
                 <div className="p-5">
                   <div className="flex items-center gap-2">
-                    <h3 className="flex-1 truncate text-[15px] font-semibold">{t.name}</h3>
+                    <h3 className="flex-1 truncate text-[15px] font-semibold">{templateName(t)}</h3>
                     {t.providers.map((p) => (
                       <ProviderChip key={p} provider={p} />
                     ))}
                   </div>
-                  <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted">{t.description}</p>
+                  <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-muted">{templateDescription(t)}</p>
                   <span className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-primary">
-                    Use template <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                    {m.useTemplate} <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                   </span>
                 </div>
               </button>
@@ -542,18 +506,16 @@ export default function LandingPage() {
         <section className="px-6 pb-24">
           <div className="bp-cta relative mx-auto max-w-6xl overflow-hidden rounded-[24px] px-8 py-16 text-center text-white">
             <h2 className="relative text-balance text-[34px] font-bold tracking-[-0.03em] md:text-[42px]">
-              Your next architecture is one drag away.
+              {m.ctaTitle}
             </h2>
-            <p className="relative mx-auto mt-4 max-w-xl text-[15.5px] text-white/80">
-              Open the editor, pick a template and export real Terraform in minutes. No sign-up.
-            </p>
+            <p className="relative mx-auto mt-4 max-w-xl text-[15.5px] text-white/80">{m.ctaBody}</p>
             <div className="relative mt-8 flex flex-wrap items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={() => navigate('/dashboard')}
                 className="inline-flex h-11 items-center gap-2 rounded-md bg-white px-6 text-[14.5px] font-semibold text-slate-900 shadow-lg transition-transform hover:-translate-y-0.5"
               >
-                Start building <ArrowRight className="h-4 w-4" />
+                {m.startBuilding} <ArrowRight className="h-4 w-4" />
               </button>
               <a
                 href={REPO_URL}
@@ -561,7 +523,7 @@ export default function LandingPage() {
                 rel="noreferrer"
                 className="inline-flex h-11 items-center gap-2 rounded-md border border-white/30 px-5 text-[14.5px] font-semibold text-white transition-colors hover:bg-white/10"
               >
-                <Github className="h-4 w-4" /> Star on GitHub
+                <Github className="h-4 w-4" /> {m.starOnGithub}
               </a>
             </div>
           </div>
@@ -571,9 +533,9 @@ export default function LandingPage() {
       <footer className="border-t">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 text-[12.5px] text-muted md:flex-row">
           <Logo size={18} />
-          <span>Free & open source · MIT license · Built with React Flow, Monaco and a lot of HCL</span>
+          <span>{m.footer}</span>
           <a href={REPO_URL} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-foreground">
-            <Github className="h-4 w-4" /> Star on GitHub
+            <Github className="h-4 w-4" /> {m.starOnGithub}
           </a>
         </div>
       </footer>
