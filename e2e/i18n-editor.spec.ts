@@ -116,7 +116,7 @@ test('a switch mid-edit re-words the editor in place: history, code, selection, 
   await page.getByRole('button', { name: 'Refazer', exact: true }).click();
   await expect(node(page, 'aws_iam_role.web_copy')).toBeVisible();
 
-  // Monaco's own hover and the marker messages follow too (produced again from the same code)
+  // ⌘K opened afterwards speaks Portuguese, and finds resources by their Portuguese kind
   await page.keyboard.press('Control+k');
   await expect(page.getByPlaceholder('Buscar ou executar um comando…')).toBeVisible();
   await expect(page.getByRole('option', { name: /Auditoria de segurança/ })).toBeVisible();

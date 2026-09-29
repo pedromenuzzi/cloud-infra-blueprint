@@ -177,8 +177,12 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
     editorRef.current?.updateOptions({ readOnly, domReadOnly: readOnly });
   }, [readOnly]);
 
-  // a language switch re-words the read-only tooltip in place (the editor, its models and undo stay)
+  // a language switch re-words the read-only tooltip in place (the editor, its models and undo stay);
+  // the editor was created in the language in effect, so nothing to do until it changes
+  const wordedIn = useRef(locale);
   useEffect(() => {
+    if (wordedIn.current === locale) return;
+    wordedIn.current = locale;
     editorRef.current?.updateOptions({ readOnlyMessage: { value: readOnlyHint() } });
   }, [locale]);
 
