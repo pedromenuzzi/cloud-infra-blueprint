@@ -507,7 +507,7 @@ export function Logo({ size = 26, className }: { size?: number; className?: stri
 
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <kbd className="whitespace-nowrap rounded-[4px] border border-border-strong bg-surface-2 px-1.5 py-px font-mono text-[10.5px] text-muted">
+    <kbd className="shrink-0 whitespace-nowrap rounded-[4px] border border-border-strong bg-surface-2 px-1.5 py-px font-mono text-[10.5px] text-muted">
       {children}
     </kbd>
   );

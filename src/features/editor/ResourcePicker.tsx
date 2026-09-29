@@ -1,10 +1,14 @@
 import { Command } from 'cmdk';
 import { useMemo } from 'react';
 import { useLayer } from '@/components/ui';
+import { useLocale } from '@/i18n/locale';
+import { useMessages } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
+import { categoryLabel, resourceDescription, resourceName, resourceShortName } from '@/resources/i18n';
 import { PROVIDER_LABELS, ProviderChip, ResourceIcon } from '@/resources/icons';
 import { allDefs } from '@/resources/registry';
-import { CATEGORY_LABELS, CATEGORY_ORDER, type ResourceDef } from '@/resources/types';
+import { CATEGORY_ORDER, type ResourceDef } from '@/resources/types';
+import { paletteMessages } from './Palette.messages';
 
 /** AA text on the chip's tint (ProviderChip's inline brand color is too light as text) */
 const CHIP_TEXT: Record<Provider, string> = {
@@ -45,6 +49,7 @@ export function ResourceGroups({
   preferred?: Provider[];
   headingPrefix?: string;
 }) {
+  const locale = useLocale((s) => s.locale);
   const groups = useMemo(() => {
     const rank = (d: ResourceDef) => {
       const i = preferred.indexOf(d.provider);
@@ -60,17 +65,21 @@ export function ResourceGroups({
   return (
     <>
       {groups.map((g) => (
-        <Command.Group key={g.category} heading={`${headingPrefix}${CATEGORY_LABELS[g.category]}`}>
+        <Command.Group key={g.category} heading={`${headingPrefix}${categoryLabel(g.category, locale)}`}>
           {g.defs.map((def) => (
             <Command.Item
               key={def.type}
               value={`add ${def.type}`}
+              // the name on screen first (it ranks the matches), then both languages: "sub-rede" finds a subnet in English too
               keywords={[
-                def.displayName,
-                def.shortName,
+                resourceName(def.type, locale),
+                ...(['en', 'pt-BR'] as const).flatMap((l) => [
+                  resourceName(def.type, l),
+                  resourceShortName(def.type, l),
+                  categoryLabel(def.category, l),
+                  resourceDescription(def.type, l) ?? '',
+                ]),
                 PROVIDER_LABELS[def.provider],
-                CATEGORY_LABELS[def.category],
-                def.description ?? '',
               ]}
               onSelect={() => onPick(def)}
               className="bp-cmd-item"
@@ -78,7 +87,7 @@ export function ResourceGroups({
               <ResourceIcon category={def.category} type={def.type} size={26} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-medium text-foreground">
-                  {def.displayName}
+                  {resourceName(def.type, locale)}
                 </span>
                 <span className="block truncate font-mono text-[10.5px] text-faint">{def.type}</span>
               </span>
@@ -101,11 +110,12 @@ export function ResourcePicker({
   onClose(): void;
   preferred?: Provider[];
 }) {
+  const m = useMessages(paletteMessages);
   // a layer, so Esc closes this popover first and page shortcuts stand down
   useLayer(true, onClose);
   return (
     <Command
-      label="Add a resource"
+      label={m.pickerLabel}
       filter={wordFilter}
       className="bp-cmd flex max-h-[380px] flex-col"
       onKeyDown={(e) => {
@@ -115,11 +125,9 @@ export function ResourcePicker({
         }
       }}
     >
-      <Command.Input autoFocus placeholder="Add a resource…" className="bp-cmd-input" />
+      <Command.Input autoFocus placeholder={m.pickerPlaceholder} className="bp-cmd-input" />
       <Command.List className="bp-cmd-list">
-        <Command.Empty className="px-3 py-6 text-center text-[12.5px] text-faint">
-          No resources match.
-        </Command.Empty>
+        <Command.Empty className="px-3 py-6 text-center text-[12.5px] text-faint">{m.noMatch}</Command.Empty>
         <ResourceGroups onPick={onPick} preferred={preferred} />
       </Command.List>
     </Command>

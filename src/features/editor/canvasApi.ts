@@ -19,6 +19,12 @@ export interface CanvasApi {
   captureDiagram(options?: CaptureOptions): Promise<DiagramVector | null>;
   /** add a catalog resource — at a screen point, or the viewport center */
   addResource(type: string, screen?: { x: number; y: number }): void;
+  /**
+   * With a container selected: add a catalog resource as if dropped on it
+   * (into its next free cell, into the ancestor that takes it, or beside it
+   * with the reason) — one undo step. The new id; null without a container.
+   */
+  addToSelection(type: string): string | null;
   duplicate(nodeId: string): void;
   /** pan (without zooming) so a resource is on screen */
   focusNode(nodeId: string): void;

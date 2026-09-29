@@ -2,18 +2,21 @@ import { ChevronDown, Plus, Search } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
 import { Input, Kbd } from '@/components/ui';
 import { MOD } from '@/features/command/paletteStore';
+import { useLocale } from '@/i18n/locale';
 import { useMessages } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
 import { detectProviders } from '@/lib/storage';
 import { cn } from '@/lib/utils';
+import { categoryLabel, resourceDescription, resourceName } from '@/resources/i18n';
 import { PROVIDER_COLORS, PROVIDER_LABELS, ProviderDot, ResourceIcon } from '@/resources/icons';
 import { defsByProvider } from '@/resources/registry';
-import { CATEGORY_LABELS, type Category, type ResourceDef } from '@/resources/types';
+import type { Category, ResourceDef } from '@/resources/types';
 import { PALETTE_MIME } from './CanvasPane';
 import { canvasApi } from './canvasApi';
 import { paletteDragStarted } from './canvasDrag';
 import { layoutMessages } from './layout.messages';
 import { useLayout } from './layoutStore';
+import { paletteMessages } from './Palette.messages';
 import { HidePanelButton, PanelGrip } from './PanelChrome';
 import { buildNewNode } from './newNode';
 import { useEditor } from './store';
@@ -25,9 +28,18 @@ const itemKey = (def: ResourceDef) => `res:${def.type}`;
 const headerKey = (category: Category) => `cat:${category}`;
 
 function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
+  const m = useMessages(paletteMessages);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
+  const name = resourceName(def.type);
 
   const addAtFreeSpot = () => {
+    // a container is selected: into it (or where its network takes it), exactly like a drop on it
+    const inside = canvasApi()?.addToSelection(def.type) ?? null;
+    if (inside) {
+      if (useLayout.getState().compact) useLayout.getState().closeDrawer();
+      setTimeout(() => canvasApi()?.focusNode(inside), 60);
+      return;
+    }
     const state = useEditor.getState();
     const tops = state.ir.resources.filter((r) => !r.parentId && r.position);
     const maxY = tops.length
@@ -47,7 +59,7 @@ function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
       draggable
       tabIndex={active ? 0 : -1}
       data-rove={itemKey(def)}
-      aria-label={`Add ${def.displayName} (${def.type})`}
+      aria-label={m.add(name, def.type)}
       onDragStart={(e) => {
         e.dataTransfer.setData(PALETTE_MIME, def.type);
         e.dataTransfer.effectAllowed = 'copy';
@@ -55,14 +67,12 @@ function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
         paletteDragStarted();
       }}
       onClick={addAtFreeSpot}
-      title={`${def.displayName} — drag to the canvas or click to add\n${def.description ?? ''}`}
+      title={m.itemTitle(name, resourceDescription(def.type) ?? '')}
       className="group flex w-full cursor-grab items-center gap-2.5 rounded-[8px] border border-transparent px-2 py-1.5 text-left transition-colors outline-none hover:border-border hover:bg-surface-2 focus-visible:border-primary focus-visible:bg-surface-2 active:cursor-grabbing"
     >
       <ResourceIcon category={def.category} type={def.type} size={28} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-medium leading-tight">
-          {def.displayName}
-        </span>
+        <span className="block truncate text-[12.5px] font-medium leading-tight">{name}</span>
         <span className="block truncate font-mono text-[10px] leading-tight text-faint">
           {def.type}
         </span>
@@ -83,7 +93,9 @@ function readCollapsed(): Set<Category> {
 }
 
 export function Palette() {
-  const m = useMessages(layoutMessages);
+  const lm = useMessages(layoutMessages);
+  const m = useMessages(paletteMessages);
+  const locale = useLocale((s) => s.locale);
   const side = useLayout((s) => s.paletteSide);
   // open on the project's own cloud
   const [provider, setProvider] = useState<Provider>(
@@ -119,7 +131,8 @@ export function Palette() {
       .map((g) => ({
         ...g,
         defs: q
-          ? g.defs.filter((d) => `${d.displayName} ${d.type}`.toLowerCase().includes(q))
+          ? // either language finds it: "sub-rede" and "subnet" alike
+            g.defs.filter((d) => `${resourceName(d.type, 'pt-BR')} ${d.displayName} ${d.type}`.toLowerCase().includes(q))
           : g.defs,
       }))
       .filter((g) => g.defs.length > 0);
@@ -182,13 +195,13 @@ export function Palette() {
   return (
     <aside
       className={cn('flex w-60 shrink-0 flex-col bg-surface-1', side === 'left' ? 'border-r' : 'border-l')}
-      aria-label="Resource palette"
+      aria-label={m.title}
     >
-      <h2 className="sr-only">Resource palette</h2>
+      <h2 className="sr-only">{m.title}</h2>
       <div className="flex items-center gap-1 border-b py-1 pl-1.5 pr-2">
         <PanelGrip panel="palette" />
         <span className="flex-1 truncate text-[11px] font-bold uppercase tracking-wider text-faint" aria-hidden="true">
-          {m.resourcesTitle}
+          {lm.resourcesTitle}
         </span>
         <HidePanelButton panel="palette" />
       </div>
@@ -197,8 +210,8 @@ export function Palette() {
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" />
           <Input
             className="h-8 pl-8"
-            placeholder="Search resources…"
-            aria-label="Search resources"
+            placeholder={m.searchPlaceholder}
+            aria-label={m.search}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -212,7 +225,7 @@ export function Palette() {
         <div
           className="mt-2.5 flex gap-1"
           role="tablist"
-          aria-label="Cloud provider"
+          aria-label={m.cloudProvider}
           onKeyDown={onProviderKeyDown}
         >
           {PROVIDERS.map((p) => (
@@ -225,7 +238,7 @@ export function Palette() {
               tabIndex={provider === p ? 0 : -1}
               type="button"
               onClick={() => setProvider(p)}
-              title={`${counts[p]} ${PROVIDER_LABELS[p]} resources`}
+              title={m.providerCount(counts[p], PROVIDER_LABELS[p])}
               className={cn(
                 'flex flex-1 items-center justify-center gap-1.5 rounded-sm border px-2 py-1.5 text-[12px] font-semibold transition-colors',
                 provider === p
@@ -251,7 +264,7 @@ export function Palette() {
           ref={listRef}
           role="toolbar"
           aria-orientation="vertical"
-          aria-label={`${PROVIDER_LABELS[provider]} resources — arrow keys to move, Enter to add`}
+          aria-label={m.list(PROVIDER_LABELS[provider])}
           onKeyDown={onListKeyDown}
           onFocus={(e) => {
             const key = (e.target as HTMLElement).dataset.rove;
@@ -272,7 +285,7 @@ export function Palette() {
                     className="flex w-full items-center gap-1.5 rounded-[6px] px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint outline-none transition-colors hover:text-muted focus-visible:bg-surface-2 focus-visible:text-foreground focus-visible:ring-1 focus-visible:ring-primary"
                   >
                     <ChevronDown className={cn('h-3 w-3 transition-transform', !open && '-rotate-90')} />
-                    <span className="flex-1 text-left">{CATEGORY_LABELS[g.category]}</span>
+                    <span className="min-w-0 flex-1 truncate text-left">{categoryLabel(g.category, locale)}</span>
                     <span className="font-medium normal-case tracking-normal">{g.defs.length}</span>
                   </button>
                 </h3>
@@ -288,13 +301,14 @@ export function Palette() {
           })}
         </div>
         {groups.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[12px] text-faint">No resources match.</p>
+          <p className="px-2 py-6 text-center text-[12px] text-faint">{m.noMatch}</p>
         ) : null}
       </div>
 
       <p className="border-t px-3 py-2 text-[10.5px] leading-relaxed text-faint">
-        Drag onto the canvas or click to add — drop inside a VPC / subnet / group to nest.
-        Double-click the canvas or press <Kbd>{MOD} K</Kbd> to search.
+        {m.footer[0]}
+        <Kbd>{MOD} K</Kbd>
+        {m.footer[1]}
       </p>
     </aside>
   );
