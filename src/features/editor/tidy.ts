@@ -41,6 +41,7 @@ interface Size {
 interface Cell extends Size {
   x: number;
   y: number;
+  col: number;
 }
 
 /** "public_a" → tier "public", zone "a"; "db-1b" → "db", "1b" */
@@ -111,7 +112,8 @@ class Arranger {
       plans.push({ cols: leafColumns(n), beside: false });
     } else {
       // above: a band as wide as the sub-containers (or the square grid, if wider)
-      const fit = Math.floor((block.w + ARRANGE.gapX) / (NODE_W + ARRANGE.gapX));
+      // (up to half a resource wider: the sub-containers stretch to match)
+      const fit = Math.floor((block.w + ARRANGE.gapX + NODE_W / 2) / (NODE_W + ARRANGE.gapX));
       plans.push({ cols: Math.min(n, Math.max(leafColumns(n), fit)), beside: false });
       // beside: a column block no taller than the sub-containers
       const rows = Math.max(1, Math.floor((block.h + ARRANGE.gapY) / (NODE_H + ARRANGE.gapY)));
@@ -147,16 +149,23 @@ class Arranger {
     const groupOrigin = chosen.plan.beside || n === 0
       ? { x: ARRANGE.pad, y: ARRANGE.top }
       : { x: ARRANGE.pad, y: ARRANGE.top + chosen.grid.h + ARRANGE.bandGap };
+    // resources above a narrower row of sub-containers: widen the columns so both end together
+    const stretch = !chosen.plan.beside && block.cols > 0 ? Math.max(0, chosen.grid.w - block.w) / block.cols : 0;
     for (const [id, cell] of block.cells) {
-      this.out.set(id, { x: groupOrigin.x + cell.x, y: groupOrigin.y + cell.y, w: cell.w, h: cell.h });
+      this.out.set(id, {
+        x: groupOrigin.x + cell.x + Math.round(cell.col * stretch),
+        y: groupOrigin.y + cell.y,
+        w: cell.w + Math.round((cell.col + 1) * stretch) - Math.round(cell.col * stretch),
+        h: cell.h,
+      });
     }
     return chosen.size;
   }
 
   /** sibling containers in a matrix or rows, sizes evened out so they line up */
-  private arrangeGroups(subs: ResourceNode[], sizes: Map<string, Size>): Size & { cells: Map<string, Cell> } {
+  private arrangeGroups(subs: ResourceNode[], sizes: Map<string, Size>): Size & { cells: Map<string, Cell>; cols: number } {
     const cells = new Map<string, Cell>();
-    if (subs.length === 0) return { w: 0, h: 0, cells };
+    if (subs.length === 0) return { w: 0, h: 0, cells, cols: 0 };
     // the most common kind (subnets) may form a tier × zone matrix; the rest follow in a row
     const counts = new Map<string, number>();
     for (const s of subs) counts.set(s.type, (counts.get(s.type) ?? 0) + 1);
@@ -179,13 +188,13 @@ class Arranger {
       row.forEach((s, c) => {
         // several rows: columns line up; one row: same-type siblings share a width
         const w = rows.length > 1 ? colW[c] : (typeW.get(s?.type ?? '') ?? 0);
-        if (s) cells.set(s.id, { x, y, w: Math.max(w, sizes.get(s.id)!.w), h: rowH[r] });
+        if (s) cells.set(s.id, { x, y, w: Math.max(w, sizes.get(s.id)!.w), h: rowH[r], col: c });
         x += (s ? Math.max(w, sizes.get(s.id)!.w) : w) + ARRANGE.groupGap;
       });
       width = Math.max(width, x - ARRANGE.groupGap);
       y += rowH[r] + ARRANGE.groupGap;
     });
-    return { w: width, h: y - ARRANGE.groupGap, cells };
+    return { w: width, h: y - ARRANGE.groupGap, cells, cols };
   }
 
   /**

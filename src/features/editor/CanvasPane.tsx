@@ -610,7 +610,8 @@ function CanvasInner() {
     try {
       const ops = await computeTidyOps(state.ir, state.edges, isContainerType);
       if (applyLayout(ops)) {
-        setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(450) }), 60);
+        // once containers are re-measured at their new sizes (after the glide)
+        setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(400) }), motionMs(480) + 60);
       }
     } catch (err) {
       showToast(messagesFor(arrangeMessages).failed((err as Error).message), 'error');
