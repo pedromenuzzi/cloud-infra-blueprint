@@ -18,6 +18,7 @@ import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Kbd, LogoMark, Select } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { OpenFolderButton } from '@/features/data/OpenFolderButton';
 import { TemplateModal } from '@/features/templates/TemplateModal';
 import type { Provider } from '@/ir/types';
 import { exportZip } from '@/lib/download';
@@ -392,6 +393,7 @@ export default function DashboardPage() {
               <Button variant="outline" onClick={() => fileInput.current?.click()}>
                 <FileUp className="h-4 w-4" /> Import .tf
               </Button>
+              <OpenFolderButton />
               <Button onClick={() => setTemplatesOpen(true)}>
                 New Project <Plus className="h-4 w-4" />
               </Button>

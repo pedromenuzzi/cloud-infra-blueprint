@@ -44,6 +44,10 @@ between them.
 - ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor —
   Monaco, auto-layout, fonts — open without a connection; a new version shows an
   "Update available — Reload" prompt instead of breaking the open tab.
+- 📁 **Folder sync** (Chrome / Edge): *Open folder…* imports a Terraform root module linked to
+  its folder, or *Sync with folder…* links an existing project. Saves write through to the
+  `.tf` files, edits made on disk load back when you return to the tab, and changes on both
+  sides ask before anything is overwritten. Other browsers get the `.zip` export instead.
 
 ### Built for speed
 
