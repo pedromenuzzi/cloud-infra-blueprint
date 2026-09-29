@@ -43,6 +43,7 @@ between them.
 - 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the
   diagram and the code side by side with the new lines highlighted — any step opens in
   the editor.
+- 📚 **The real provider schemas**: every argument of every AWS / AzureRM / Google resource — searchable in the inspector, completed, documented and validated ("did you mean…?") in the code — loaded per provider, only when used.
 
 ### Built for speed
 

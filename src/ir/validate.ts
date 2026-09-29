@@ -3,6 +3,7 @@
  * dangling references, cross-cloud references.
  */
 import { fieldBoundsDiagnostics } from '@/resources/fieldRules';
+import { schemaDiagnostics } from '@/schema/validate';
 import type { ResourceDef } from '@/resources/types';
 import { runChecks } from './checks';
 import { collectRefs, refTargetAddress } from './expr';
@@ -62,6 +63,9 @@ export function validateProject(
         out.push({ file, severity: 'warning', message, nodeId: node.id, ...markerAt(node, field) });
       }
     }
+
+    // provider schema (once loaded): unknown / deprecated / mistyped arguments
+    out.push(...schemaDiagnostics(ir, node, def, file, markerAt));
 
     const refs: Array<{ field: string; path: string }> = [];
     for (const [field, expr] of Object.entries(node.args)) collectRefs(expr, field, refs);
