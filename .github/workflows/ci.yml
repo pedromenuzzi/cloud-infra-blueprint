@@ -18,8 +18,54 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+
+  # Real `terraform validate` on every starter template and on one project per
+  # provider holding every palette resource as it's dropped — any diagnostic,
+  # warnings and deprecations included, fails the build.
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugins
+      TF_IN_AUTOMATION: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - name: Plugin cache key
+        id: plugins
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.TF_PLUGIN_CACHE_DIR }}
+          key: terraform-plugins-${{ runner.os }}-${{ steps.plugins.outputs.week }}-${{ hashFiles('src/templates/index.ts') }}
+          restore-keys: |
+            terraform-plugins-${{ runner.os }}-
+      - name: Emit templates and palette catalog
+        run: |
+          pnpm templates:emit .tf-out/templates
+          pnpm exec vite-node scripts/emit-catalog.ts .tf-out/catalog
+      - name: Validate templates (init, validate -json, fmt -check)
+        run: bash scripts/terraform-validate.sh .tf-out/templates
+      - name: Validate palette catalog (init, validate -json, fmt -check)
+        run: bash scripts/terraform-validate.sh .tf-out/catalog
+      - name: Catalog fields match the provider schemas
+        run: |
+          terraform -chdir=.tf-out/templates/multi-cloud-dr providers schema -json > .tf-out/schema.json
+          pnpm exec vite-node scripts/check-catalog-schema.ts .tf-out/schema.json
 
   e2e:
     runs-on: ubuntu-latest

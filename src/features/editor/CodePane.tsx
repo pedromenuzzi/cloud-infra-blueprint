@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { lineColOf } from '@/hcl/parser';
+import { prefersReducedMotion } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { ensureMonacoSetup, monaco, setCompletionSource } from './monaco/setup';
 import { orderedFiles, useEditor } from './store';
@@ -72,9 +73,15 @@ export function CodePane() {
 
   // create the editor once
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
     setCompletionSource(() => useEditor.getState().ir);
-    const editor = monaco.editor.create(containerRef.current, {
+    // Monaco holds on to the last editor it created; a host node we own (and
+    // detach on unmount) keeps that reference from pinning the whole page
+    const host = document.createElement('div');
+    host.style.height = '100%';
+    container.appendChild(host);
+    const editor = monaco.editor.create(host, {
       model: null,
       language: 'hcl',
       fontFamily: "'JetBrains Mono Variable', 'Cascadia Code', monospace",
@@ -87,7 +94,7 @@ export function CodePane() {
       insertSpaces: true,
       padding: { top: 10, bottom: 10 },
       renderLineHighlight: 'line',
-      smoothScrolling: true,
+      smoothScrolling: !prefersReducedMotion(),
       scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
       guides: { indentation: true },
       wordBasedSuggestions: 'off',
@@ -117,6 +124,13 @@ export function CodePane() {
         if (hit && hit.id !== state.selection) state.setSelection(hit.id, 'code');
       }, 120);
     });
+    // one history for canvas and code: Monaco's own undo stack doesn't know
+    // about the edits the canvas makes to the text
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyZ, () => useEditor.getState().undo());
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ, () =>
+      useEditor.getState().redo(),
+    );
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyY, () => useEditor.getState().redo());
     editorRef.current = editor;
 
     // theme follows the app's dark class
@@ -132,11 +146,11 @@ export function CodePane() {
       clearTimeout(syncTimer);
       observer.disconnect();
       editor.dispose();
+      host.remove();
       for (const m of models.values()) m.dispose();
       models.clear();
       editorRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // dispose stale models when switching projects
@@ -208,7 +222,6 @@ export function CodePane() {
     flushReveal();
     const t = setTimeout(() => flashRef.current?.clear(), 1600);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, selectionOrigin, revealSeq]);
 
   // diagnostics → markers
@@ -239,14 +252,18 @@ export function CodePane() {
         if (!node || (node.trivia.sourceFile ?? 'main.tf') !== file) continue;
         const range = node.trivia.rawTextRange;
         if (!range) continue;
-        const pos = lineColOf(files[file] ?? '', range.start);
+        // validation points at the argument or block header when it can; otherwise
+        // find the `resource` line (the range starts at the block's leading comments)
+        const text = files[file] ?? '';
+        const header = text.slice(range.start, range.end).search(/^[ \t]*resource\b/m);
+        const pos = w.start ?? lineColOf(text, range.start + Math.max(0, header));
         markers.push({
           severity: monaco.MarkerSeverity.Warning,
           message: w.message,
           startLineNumber: pos.line,
-          startColumn: 1,
-          endLineNumber: pos.line,
-          endColumn: 80,
+          startColumn: w.start ? pos.col : 1,
+          endLineNumber: w.end?.line ?? pos.line,
+          endColumn: w.end?.col ?? 80,
         });
       }
       monaco.editor.setModelMarkers(model, 'blueprint', markers);
@@ -254,16 +271,32 @@ export function CodePane() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parseDiagnostics, warnings, filesRevision, projectId]);
 
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // scroll the strip itself: scrollIntoView would also move the page and
+    // the browser's Tab starting point
+    const strip = tabsRef.current;
+    const tab = strip?.querySelector<HTMLElement>(`[data-file="${CSS.escape(activeFile)}"]`);
+    if (!strip || !tab) return;
+    const s = strip.getBoundingClientRect();
+    const t = tab.getBoundingClientRect();
+    if (t.left < s.left) strip.scrollLeft -= s.left - t.left + 8;
+    else if (t.right > s.right) strip.scrollLeft += t.right - s.right + 8;
+  }, [activeFile]);
+
   const fileErrors = (file: string) =>
     parseDiagnostics.some((d) => d.file === file && d.severity === 'error');
 
   return (
     <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label="Terraform code">
-      <div className="flex items-center gap-0.5 overflow-x-auto border-b px-1.5 pt-1">
+      <div ref={tabsRef} className="flex items-center gap-0.5 overflow-x-auto border-b px-1.5 pt-1" role="tablist" aria-label="Files">
         {fileList.map((f) => (
           <button
             key={f}
             type="button"
+            role="tab"
+            aria-selected={activeFile === f}
+            data-file={f}
             onClick={() => setActiveFile(f)}
             className={cn(
               'relative shrink-0 rounded-t-[6px] border border-b-0 px-3 py-1.5 font-mono text-[11.5px] transition-colors',

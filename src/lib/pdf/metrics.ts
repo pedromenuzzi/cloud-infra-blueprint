@@ -96,19 +96,34 @@ export function textWidth(text: string, font: PdfFont, size: number): number {
   return (units * size) / 1000;
 }
 
-/** break a word that is wider than `max` on character boundaries */
-function splitWord(word: string, max: number, font: PdfFont, size: number): string[] {
+/** width of one character (possibly transliterated to several glyphs), in 1/1000 em */
+function charUnits(ch: string, font: PdfFont): number {
+  let units = 0;
+  for (const code of encodeWinAnsi(ch)) units += charWidth(code, font);
+  return units;
+}
+
+/**
+ * Split `text` into pieces no wider than `max` points, on character
+ * boundaries — measured as rendered (→ is two glyphs, an emoji one '?') and
+ * never inside a surrogate pair. Linear in the length of the text.
+ */
+export function splitToWidth(text: string, max: number, font: PdfFont, size: number): string[] {
+  const limit = (max * 1000) / size;
   const parts: string[] = [];
   let cur = '';
-  for (const ch of word) {
-    if (cur && textWidth(cur + ch, font, size) > max) {
+  let units = 0;
+  for (const ch of text.normalize('NFC')) {
+    const w = charUnits(ch, font);
+    if (cur && units + w > limit) {
       parts.push(cur);
-      cur = ch;
-    } else {
-      cur += ch;
+      cur = '';
+      units = 0;
     }
+    cur += ch;
+    units += w;
   }
-  if (cur) parts.push(cur);
+  if (cur || parts.length === 0) parts.push(cur);
   return parts;
 }
 
@@ -132,7 +147,7 @@ export function wrapText(text: string, max: number, font: PdfFont, size: number)
       if (textWidth(word, font, size) <= max) {
         cur = word;
       } else {
-        const pieces = splitWord(word, max, font, size);
+        const pieces = splitToWidth(word, max, font, size);
         lines.push(...pieces.slice(0, -1));
         cur = pieces[pieces.length - 1] ?? '';
       }
@@ -145,7 +160,24 @@ export function wrapText(text: string, max: number, font: PdfFont, size: number)
 /** `text`, cut with an ellipsis so it fits in `max` points */
 export function fitText(text: string, max: number, font: PdfFont, size: number): string {
   if (textWidth(text, font, size) <= max) return text;
-  let cut = [...text];
-  while (cut.length > 1 && textWidth(`${cut.join('')}…`, font, size) > max) cut = cut.slice(0, -1);
-  return `${cut.join('').trimEnd()}…`;
+  const limit = (max * 1000) / size - charUnits('…', font);
+  let cut = '';
+  let units = 0;
+  for (const ch of text.normalize('NFC')) {
+    const w = charUnits(ch, font);
+    if (units + w > limit) break;
+    cut += ch;
+    units += w;
+  }
+  return `${cut.trimEnd()}…`;
+}
+
+/** the characters of `text` the standard fonts can't show (they print as '?'), each listed once */
+export function unsupportedChars(text: string): string[] {
+  const out = new Set<string>();
+  for (const ch of text.normalize('NFC')) {
+    if (ch === '?' || ch === '\n' || ch === '\r') continue;
+    if (encodeWinAnsi(ch).includes(0x3f)) out.add(ch);
+  }
+  return [...out];
 }

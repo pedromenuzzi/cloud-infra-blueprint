@@ -1,6 +1,6 @@
 import { refTargetAddress } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
-import type { IR, IREdge } from '@/ir/types';
+import type { Expression, IR, IREdge } from '@/ir/types';
 
 export interface ReferenceToRemove {
   source: string;
@@ -26,20 +26,60 @@ export function removeReferencesOps(ir: IR, refs: ReferenceToRemove[]): Op[] {
     const node = ir.resources.find((n) => n.id === source);
     const expr = node?.args[field];
     if (!node || !expr) continue;
-    const pointsAtTarget = (path: string) => targets.has(refTargetAddress(path) ?? '');
-    if (expr.kind === 'ref') {
-      if (pointsAtTarget(expr.path)) ops.push({ kind: 'unset_arg', nodeId: source, field });
-    } else if (expr.kind === 'list') {
-      const items = expr.items.filter((i) => !(i.kind === 'ref' && pointsAtTarget(i.path)));
-      if (items.length === expr.items.length) continue;
-      ops.push(
-        items.length > 0
-          ? { kind: 'set_arg', nodeId: source, field, value: { kind: 'list', items } }
-          : { kind: 'unset_arg', nodeId: source, field },
-      );
-    }
+    const next = withoutRefs(expr, (path) => targets.has(refTargetAddress(path) ?? ''));
+    if (next === undefined) continue;
+    ops.push(next === null ? { kind: 'unset_arg', nodeId: source, field } : { kind: 'set_arg', nodeId: source, field, value: next });
   }
   return ops;
+}
+
+/**
+ * `expr` without the references `drop` matches: undefined when nothing
+ * changed, null when nothing is left. Looks into nested blocks (EKS
+ * `vpc_config { subnet_ids }`); a nested block itself is kept, even empty.
+ */
+function withoutRefs(expr: Expression, drop: (path: string) => boolean): Expression | null | undefined {
+  switch (expr.kind) {
+    case 'ref':
+      return drop(expr.path) ? null : undefined;
+    case 'list': {
+      const items = expr.items.filter((i) => !(i.kind === 'ref' && drop(i.path)));
+      if (items.length === expr.items.length) return undefined;
+      return items.length > 0 ? { kind: 'list', items } : null;
+    }
+    case 'block': {
+      const body = bodyWithoutRefs(expr.body, drop);
+      return body ? { kind: 'block', body } : undefined;
+    }
+    case 'blocks': {
+      let changed = false;
+      const items = expr.items.map((b) => {
+        const body = bodyWithoutRefs(b, drop);
+        if (!body) return b;
+        changed = true;
+        return body;
+      });
+      return changed ? { kind: 'blocks', items } : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function bodyWithoutRefs(
+  body: Record<string, Expression>,
+  drop: (path: string) => boolean,
+): Record<string, Expression> | undefined {
+  let changed = false;
+  const next = { ...body };
+  for (const [key, value] of Object.entries(body)) {
+    const stripped = withoutRefs(value, drop);
+    if (stripped === undefined) continue;
+    changed = true;
+    if (stripped === null) delete next[key];
+    else next[key] = stripped;
+  }
+  return changed ? next : undefined;
 }
 
 /** Ops that remove the reference an edge represents (shared by canvas + inspector). */
@@ -76,9 +116,17 @@ export function deleteResourcesOps(
   return { ops, removed: [...removed] };
 }
 
-/** True when a string the user typed should be committed as a bare reference. */
-export function looksLikeTraversal(text: string): boolean {
+/**
+ * True when a string the user typed should be committed as a bare reference:
+ * `var.x` / `local.x` / `module.x` / `data.x`, or an attribute of a resource
+ * that exists in the project. Anything else stays a string — a Lambda handler
+ * like `lambda_function.lambda_handler` or a file name like `app_bundle.zip`
+ * looks like a traversal but isn't one.
+ */
+export function looksLikeTraversal(text: string, ir: IR): boolean {
   if (/\s/.test(text)) return false;
   if (/^(var|local|module|data)\.[\w][\w.-]*$/.test(text)) return true;
-  return /^[a-z][a-z0-9]*_[a-z0-9_]+\.[\w-]+(\.[\w.[\]"*-]+)*$/.test(text);
+  if (!/^[a-z][a-z0-9]*_[a-z0-9_]+\.[\w-]+(\[[^\]]*\])?(\.[\w.[\]"*-]+)*$/.test(text)) return false;
+  const address = refTargetAddress(text.replace(/\[[^\]]*\]/, ''));
+  return address !== null && ir.resources.some((r) => r.id === address);
 }

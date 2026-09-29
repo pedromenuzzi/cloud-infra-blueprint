@@ -22,6 +22,7 @@ import {
   Globe,
   KeyRound,
   Layers2,
+  LayoutTemplate,
   Link2,
   Layers3,
   LockKeyhole,
@@ -209,6 +210,7 @@ const SERVICE_GLYPHS: Record<string, Glyph> = {
   azurerm_linux_web_app: AppWindow,
   azurerm_linux_function_app: LambdaGlyph,
   azurerm_storage_account: Archive,
+  azurerm_storage_account_static_website: LayoutTemplate,
   azurerm_mssql_server: Database,
   azurerm_mssql_database: Cylinder,
   azurerm_postgresql_flexible_server: Database,
@@ -326,7 +328,8 @@ export function ProviderChip({ provider, className }: { provider: Provider; clas
         className,
       )}
       style={{
-        color,
+        // brand color for the tint, an AA-contrast shade of it for the text
+        color: provider === 'other' ? 'var(--muted-foreground)' : `var(--${provider}-text, ${color})`,
         background: `color-mix(in srgb, ${color} 13%, transparent)`,
         boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 30%, transparent)`,
       }}

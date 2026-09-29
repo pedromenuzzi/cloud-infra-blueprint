@@ -2,11 +2,31 @@
  * Semantic validation layered above the parser: missing required fields,
  * dangling references, cross-cloud references.
  */
+import { fieldBoundsDiagnostics } from '@/resources/fieldRules';
 import type { ResourceDef } from '@/resources/types';
 import { collectRefs, refTargetAddress } from './expr';
-import type { Diagnostic, IR } from './types';
+import type { Diagnostic, IR, ResourceNode } from './types';
 
 const RESOURCE_PREFIX = /^(aws_|azurerm_|azuread_|google_)/;
+
+/**
+ * Where a warning points: the offending argument's key, else the block header
+ * (never the `# @blueprint:pos` line above it).
+ */
+function markerAt(node: ResourceNode, field?: string): Pick<Diagnostic, 'start' | 'end'> {
+  const spans = node.trivia.spans;
+  if (!spans) return {};
+  const entry = field === undefined ? undefined : spans.body.entries.find((e) => e.key === field);
+  if (entry) {
+    return {
+      start: { line: entry.line, col: entry.col },
+      end: { line: entry.line, col: entry.col + (entry.keyEnd - entry.keyStart) },
+    };
+  }
+  const lastLabel = spans.labels[spans.labels.length - 1];
+  const width = lastLabel ? lastLabel.end - spans.header : 'resource'.length;
+  return { start: { line: spans.line, col: spans.col }, end: { line: spans.line, col: spans.col + width } };
+}
 
 export function validateProject(
   ir: IR,
@@ -32,8 +52,13 @@ export function validateProject(
             severity: 'warning',
             message: `${node.id}: required argument "${field.name}" is missing`,
             nodeId: node.id,
+            ...markerAt(node, value === undefined ? undefined : field.name),
           });
         }
+      }
+      // numbers typed in code or imported that the inspector would have refused
+      for (const { field, message } of fieldBoundsDiagnostics(node, def)) {
+        out.push({ file, severity: 'warning', message, nodeId: node.id, ...markerAt(node, field) });
       }
     }
 
@@ -46,12 +71,14 @@ export function validateProject(
       const looksLikeResource = RESOURCE_PREFIX.test(head) || getDef(head) !== undefined;
       if (!looksLikeResource) continue;
       const target = byId.get(address);
+      const marker = markerAt(node, r.field.split('.')[0]);
       if (!target) {
         out.push({
           file,
           severity: 'warning',
           message: `${node.id}: "${r.field}" references unknown resource ${address}`,
           nodeId: node.id,
+          ...marker,
         });
         continue;
       }
@@ -65,6 +92,7 @@ export function validateProject(
           severity: 'warning',
           message: `${node.id}: cross-cloud reference to ${address} (${node.provider} → ${target.provider})`,
           nodeId: node.id,
+          ...marker,
         });
       }
     }

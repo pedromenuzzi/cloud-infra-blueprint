@@ -13,7 +13,8 @@ import type {
   ResourceNode,
 } from '@/ir/types';
 import { emptyIR, providerOfType, providerSourceName, resourceAddress } from '@/ir/types';
-import { tfName } from '@/lib/utils';
+import { cloudName, nameSlug } from '@/resources/naming';
+import { getDef } from '@/resources/registry';
 
 export interface TemplateDef {
   slug: string;
@@ -58,6 +59,17 @@ function variable(
   return { id: `var.${name}`, name, args, trivia: { leadingComments: [] } };
 }
 
+/**
+ * Cloud-side names for a template: `<app-slug>-<suffix>`, valid for the
+ * resource type (hyphens, alphanumeric-only storage accounts, length caps) —
+ * never the Terraform-style `my_app` identifier.
+ */
+function namer(appName: string) {
+  const slug = nameSlug(appName);
+  const name = (type: string, suffix: string) => lit(cloudName(slug, getDef(type)?.naming, suffix));
+  return { slug, name };
+}
+
 function output(name: string, value: Expression, description?: string) {
   const args: Record<string, Expression> = { value };
   if (description) args.description = lit(description);
@@ -65,9 +77,9 @@ function output(name: string, value: Expression, description?: string) {
 }
 
 const PROVIDER_VERSIONS: Record<string, { source: string; version: string }> = {
-  aws: { source: 'hashicorp/aws', version: '~> 5.0' },
-  azurerm: { source: 'hashicorp/azurerm', version: '~> 4.0' },
-  google: { source: 'hashicorp/google', version: '~> 6.0' },
+  aws: { source: 'hashicorp/aws', version: '~> 6.0' },
+  azurerm: { source: 'hashicorp/azurerm', version: '~> 5.0' },
+  google: { source: 'hashicorp/google', version: '~> 8.0' },
 };
 
 function versionsBlock(providers: Provider[]) {
@@ -91,14 +103,47 @@ function providerBlock(provider: Provider, args: Record<string, Expression>) {
   return { id: `provider.${name}.0`, name, args, trivia: { leadingComments: [] as string[] } };
 }
 
+/**
+ * What makes `aws_vpc.main`'s public subnets public: an internet gateway, a
+ * route table sending 0.0.0.0/0 to it, and that table associated with each
+ * subnet. The gateway and table sit inside the VPC; associations are top-level.
+ */
+function awsPublicRouting(
+  subnets: string[],
+  at: { gateway: CanvasPosition; table: CanvasPosition; associations: CanvasPosition[] },
+): ResourceNode[] {
+  return [
+    res('aws_internet_gateway', 'igw', { vpc_id: ref('aws_vpc.main.id') }, at.gateway, [
+      '# Internet access — the default route that makes the public subnets public',
+    ]),
+    res(
+      'aws_route_table',
+      'public',
+      {
+        vpc_id: ref('aws_vpc.main.id'),
+        route: block({ cidr_block: lit('0.0.0.0/0'), gateway_id: ref('aws_internet_gateway.igw.id') }),
+      },
+      at.table,
+    ),
+    ...subnets.map((subnet, i) =>
+      res(
+        'aws_route_table_association',
+        subnet,
+        { subnet_id: ref(`aws_subnet.${subnet}.id`), route_table_id: ref('aws_route_table.public.id') },
+        at.associations[i],
+      ),
+    ),
+  ];
+}
+
 // --- AWS · Web App -----------------------------------------------------------
 
 function buildAwsWebApp(appName: string): Record<string, string> {
-  const app = tfName(appName);
+  const { slug, name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
-    variable('app_name', { description: 'Application name', type: 'string', default: lit(app) }),
+    variable('app_name', { description: 'Application name', type: 'string', default: lit(slug) }),
     variable('region', { description: 'AWS region', type: 'string', default: lit('us-east-1') }),
     variable('db_password', { description: 'Master password for RDS', type: 'string', sensitive: true }),
   );
@@ -110,7 +155,7 @@ function buildAwsWebApp(appName: string): Record<string, string> {
       'aws_vpc',
       'main',
       { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true), tags: obj({ Name: ref('var.app_name') }) },
-      { x: 40, y: 60, w: 680, h: 430 },
+      { x: 40, y: 60, w: 680, h: 500 },
       ['# Networking'],
     ),
     res(
@@ -139,7 +184,7 @@ function buildAwsWebApp(appName: string): Record<string, string> {
       'aws_security_group',
       'web',
       {
-        name: lit(`${app}-web-sg`),
+        name: name('aws_security_group', 'web-sg'),
         description: lit('Allow HTTP/HTTPS in, Postgres to the DB'),
         vpc_id: ref('aws_vpc.main.id'),
         ingress: blocks([
@@ -174,6 +219,14 @@ function buildAwsWebApp(appName: string): Record<string, string> {
       },
       { x: 32, y: 280 },
     ),
+    ...awsPublicRouting(['public_a', 'public_b'], {
+      gateway: { x: 264, y: 280 },
+      table: { x: 264, y: 392 },
+      associations: [
+        { x: 790, y: 440 },
+        { x: 1030, y: 440 },
+      ],
+    }),
     res(
       'aws_instance',
       'web',
@@ -191,7 +244,7 @@ function buildAwsWebApp(appName: string): Record<string, string> {
       'aws_db_instance',
       'main',
       {
-        identifier: lit(`${app}-db`),
+        identifier: name('aws_db_instance', 'db'),
         engine: lit('postgres'),
         engine_version: lit('15.4'),
         instance_class: lit('db.t3.micro'),
@@ -208,7 +261,7 @@ function buildAwsWebApp(appName: string): Record<string, string> {
       'aws_iam_role',
       'web',
       {
-        name: lit(`${app}-web-role`),
+        name: name('aws_iam_role', 'web-role'),
         assume_role_policy: raw(
           `jsonencode({\n    Version = "2012-10-17"\n    Statement = [{\n      Action    = "sts:AssumeRole"\n      Effect    = "Allow"\n      Principal = { Service = "ec2.amazonaws.com" }\n    }]\n  })`,
         ),
@@ -229,7 +282,7 @@ function buildAwsWebApp(appName: string): Record<string, string> {
 // --- AWS · Static Site -------------------------------------------------------
 
 function buildAwsStaticSite(appName: string): Record<string, string> {
-  const app = tfName(appName);
+  const { name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
@@ -242,7 +295,7 @@ function buildAwsStaticSite(appName: string): Record<string, string> {
     res(
       'aws_s3_bucket',
       'site',
-      { bucket: lit(`${app}-site`), force_destroy: lit(true) },
+      { bucket: name('aws_s3_bucket', 'site'), force_destroy: lit(true) },
       { x: 60, y: 220 },
       ['# Static assets'],
     ),
@@ -302,11 +355,11 @@ function buildAwsStaticSite(appName: string): Record<string, string> {
 // --- AWS · Container Stack ----------------------------------------------------
 
 function buildAwsContainerStack(appName: string): Record<string, string> {
-  const app = tfName(appName);
+  const { slug, name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
-    variable('app_name', { description: 'Application name', type: 'string', default: lit(app) }),
+    variable('app_name', { description: 'Application name', type: 'string', default: lit(slug) }),
     variable('region', { description: 'AWS region', type: 'string', default: lit('us-east-1') }),
   );
   ir.providers.push(providerBlock('aws', { region: ref('var.region') }));
@@ -317,7 +370,7 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
       'aws_vpc',
       'main',
       { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true) },
-      { x: 40, y: 60, w: 700, h: 400 },
+      { x: 40, y: 60, w: 720, h: 430 },
       ['# Networking'],
     ),
     res(
@@ -346,30 +399,39 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
       'aws_security_group',
       'service',
       {
-        name: lit(`${app}-svc-sg`),
+        name: name('aws_security_group', 'svc-sg'),
         description: lit('Service + ALB traffic'),
         vpc_id: ref('aws_vpc.main.id'),
       },
       { x: 32, y: 248 },
     ),
+    ...awsPublicRouting(['public_a', 'public_b'], {
+      gateway: { x: 264, y: 248 },
+      table: { x: 496, y: 248 },
+      associations: [
+        { x: 290, y: 530 },
+        { x: 540, y: 530 },
+      ],
+    }),
     res(
       'aws_lb',
       'main',
       {
-        name: lit(`${app}-alb`),
+        name: name('aws_lb', 'alb'),
         internal: lit(false),
         load_balancer_type: lit('application'),
         subnets: list([ref('aws_subnet.public_a.id'), ref('aws_subnet.public_b.id')]),
         security_groups: list([ref('aws_security_group.service.id')]),
       },
-      { x: 380, y: 260 },
+      // not inside a subnet: it spans both public subnets (see `subnets`)
+      { x: 40, y: 530 },
       ['# Load balancing'],
     ),
     res(
       'aws_lb_target_group',
       'app',
       {
-        name: lit(`${app}-tg`),
+        name: name('aws_lb_target_group', 'tg'),
         port: lit(3000),
         protocol: lit('HTTP'),
         vpc_id: ref('aws_vpc.main.id'),
@@ -394,16 +456,16 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
     res(
       'aws_ecr_repository',
       'app',
-      { name: lit(`${app}-app`) },
+      { name: name('aws_ecr_repository', 'app') },
       { x: 790, y: 170 },
       ['# Containers'],
     ),
-    res('aws_ecs_cluster', 'main', { name: lit(`${app}-cluster`) }, { x: 790, y: 280, w: 340, h: 190 }),
+    res('aws_ecs_cluster', 'main', { name: name('aws_ecs_cluster', 'cluster') }, { x: 790, y: 280, w: 340, h: 190 }),
     res(
       'aws_ecs_service',
       'app',
       {
-        name: lit(`${app}-svc`),
+        name: name('aws_ecs_service', 'svc'),
         cluster: ref('aws_ecs_cluster.main.id'),
         task_definition: ref('aws_ecs_task_definition.app.arn'),
         desired_count: lit(2),
@@ -420,7 +482,7 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
       'aws_ecs_task_definition',
       'app',
       {
-        family: lit(app),
+        family: lit(slug),
         requires_compatibilities: list([lit('FARGATE')]),
         cpu: lit('256'),
         memory: lit('512'),
@@ -441,7 +503,7 @@ function buildAwsContainerStack(appName: string): Record<string, string> {
 // --- AWS · Serverless API -----------------------------------------------------
 
 function buildAwsServerlessApi(appName: string): Record<string, string> {
-  const app = tfName(appName);
+  const { name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
@@ -454,7 +516,7 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
     res(
       'aws_apigatewayv2_api',
       'http',
-      { name: lit(`${app}-api`), protocol_type: lit('HTTP') },
+      { name: name('aws_apigatewayv2_api', 'api'), protocol_type: lit('HTTP') },
       { x: 40, y: 60, w: 520, h: 290 },
       ['# HTTP API'],
     ),
@@ -490,7 +552,7 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
       'aws_lambda_function',
       'api',
       {
-        function_name: lit(`${app}-api`),
+        function_name: name('aws_lambda_function', 'api'),
         role: ref('aws_iam_role.lambda.arn'),
         runtime: lit('nodejs22.x'),
         handler: lit('index.handler'),
@@ -517,7 +579,7 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
       'aws_dynamodb_table',
       'items',
       {
-        name: lit(`${app}-items`),
+        name: name('aws_dynamodb_table', 'items'),
         billing_mode: lit('PAY_PER_REQUEST'),
         hash_key: lit('id'),
         attribute: block({ name: lit('id'), type: lit('S') }),
@@ -529,7 +591,7 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
       'aws_iam_role',
       'lambda',
       {
-        name: lit(`${app}-lambda-role`),
+        name: name('aws_iam_role', 'lambda-role'),
         assume_role_policy: raw(
           `jsonencode({\n    Version = "2012-10-17"\n    Statement = [{\n      Action    = "sts:AssumeRole"\n      Effect    = "Allow"\n      Principal = { Service = "lambda.amazonaws.com" }\n    }]\n  })`,
         ),
@@ -541,7 +603,7 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
       'aws_iam_role_policy',
       'lambda',
       {
-        name: lit(`${app}-lambda-access`),
+        name: name('aws_iam_role_policy', 'lambda-access'),
         role: ref('aws_iam_role.lambda.id'),
         policy: raw(
           `jsonencode({\n    Version = "2012-10-17"\n    Statement = [\n      {\n        Effect   = "Allow"\n        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query"]\n        Resource = aws_dynamodb_table.items.arn\n      },\n      {\n        Effect   = "Allow"\n        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]\n        Resource = "*"\n      }\n    ]\n  })`,
@@ -561,7 +623,7 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
 // --- AWS · Secure 3-tier ------------------------------------------------------
 
 function buildAwsSecure3Tier(appName: string): Record<string, string> {
-  const app = tfName(appName).replace(/_/g, '-');
+  const { slug, name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
@@ -601,7 +663,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'aws_lb',
       'web',
       {
-        name: lit(`${app}-alb`),
+        name: name('aws_lb', 'alb'),
         internal: lit(false),
         load_balancer_type: lit('application'),
         subnets: list([ref('aws_subnet.public_a.id'), ref('aws_subnet.public_b.id')]),
@@ -642,20 +704,21 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'aws_lb_target_group',
       'app',
       {
-        name: lit(`${app}-tg`),
+        name: name('aws_lb_target_group', 'tg'),
         port: lit(8080),
         protocol: lit('HTTP'),
         vpc_id: ref('aws_vpc.main.id'),
         target_type: lit('instance'),
       },
-      { x: 40, y: 460 },
+      // lives in the VPC (vpc_id), next to the security groups — not in a subnet
+      { x: 900, y: 166 },
     ),
 
     // --- network
     res(
       'aws_vpc',
       'main',
-      { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true), tags: obj({ Name: lit(app) }) },
+      { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true), tags: obj({ Name: lit(slug) }) },
       { x: 320, y: 40, w: 1380, h: 640 },
       ['# Network — public, app and data tiers across two AZs'],
     ),
@@ -701,7 +764,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'aws_security_group',
       'alb',
       {
-        name: lit(`${app}-alb-sg`),
+        name: name('aws_security_group', 'alb-sg'),
         description: lit('Public HTTPS (and HTTP → HTTPS redirect) to the load balancer'),
         vpc_id: ref('aws_vpc.main.id'),
         ingress: blocks([sgRule('HTTPS from the internet', 443, internet), sgRule('HTTP, redirected to HTTPS', 80, internet)]),
@@ -714,7 +777,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'aws_security_group',
       'app',
       {
-        name: lit(`${app}-app-sg`),
+        name: name('aws_security_group', 'app-sg'),
         description: lit('App servers: only the load balancer can reach them'),
         vpc_id: ref('aws_vpc.main.id'),
         ingress: block(sgRule('From the load balancer', 8080, { security_groups: list([ref('aws_security_group.alb.id')]) })),
@@ -732,7 +795,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'aws_security_group',
       'db',
       {
-        name: lit(`${app}-db-sg`),
+        name: name('aws_security_group', 'db-sg'),
         description: lit('Database: only the app tier can reach it'),
         vpc_id: ref('aws_vpc.main.id'),
         ingress: block(sgRule('PostgreSQL from the app tier', 5432, { security_groups: list([ref('aws_security_group.app.id')]) })),
@@ -779,14 +842,14 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
     res(
       'aws_db_subnet_group',
       'main',
-      { name: lit(`${app}-db`), subnet_ids: list([ref('aws_subnet.db_a.id'), ref('aws_subnet.db_b.id')]) },
+      { name: name('aws_db_subnet_group', 'db'), subnet_ids: list([ref('aws_subnet.db_a.id'), ref('aws_subnet.db_b.id')]) },
       { x: 1760, y: 570 },
     ),
     res(
       'aws_db_instance',
       'main',
       {
-        identifier: lit(`${app}-db`),
+        identifier: name('aws_db_instance', 'db'),
         engine: lit('postgres'),
         engine_version: lit('16'),
         instance_class: lit('db.t3.micro'),
@@ -814,7 +877,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
 // --- Azure · Web App ----------------------------------------------------------
 
 function buildAzureWebApp(appName: string): Record<string, string> {
-  const app = tfName(appName);
+  const { name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
@@ -828,7 +891,7 @@ function buildAzureWebApp(appName: string): Record<string, string> {
     res(
       'azurerm_resource_group',
       'main',
-      { name: lit(`${app}-rg`), location: ref('var.location') },
+      { name: name('azurerm_resource_group', 'rg'), location: ref('var.location') },
       { x: 40, y: 60, w: 900, h: 520 },
       ['# Everything lives in one resource group'],
     ),
@@ -836,7 +899,7 @@ function buildAzureWebApp(appName: string): Record<string, string> {
       'azurerm_virtual_network',
       'main',
       {
-        name: lit(`${app}-vnet`),
+        name: name('azurerm_virtual_network', 'vnet'),
         address_space: list([lit('10.10.0.0/16')]),
         location: ref('azurerm_resource_group.main.location'),
         resource_group_name: ref('azurerm_resource_group.main.name'),
@@ -858,7 +921,7 @@ function buildAzureWebApp(appName: string): Record<string, string> {
       'azurerm_network_security_group',
       'app',
       {
-        name: lit(`${app}-nsg`),
+        name: name('azurerm_network_security_group', 'nsg'),
         location: ref('azurerm_resource_group.main.location'),
         resource_group_name: ref('azurerm_resource_group.main.name'),
       },
@@ -868,7 +931,7 @@ function buildAzureWebApp(appName: string): Record<string, string> {
       'azurerm_network_interface',
       'app',
       {
-        name: lit(`${app}-nic`),
+        name: name('azurerm_network_interface', 'nic'),
         location: ref('azurerm_resource_group.main.location'),
         resource_group_name: ref('azurerm_resource_group.main.name'),
         ip_configuration: block({
@@ -883,7 +946,7 @@ function buildAzureWebApp(appName: string): Record<string, string> {
       'azurerm_linux_virtual_machine',
       'app',
       {
-        name: lit(`${app}-vm`),
+        name: name('azurerm_linux_virtual_machine', 'vm'),
         location: ref('azurerm_resource_group.main.location'),
         resource_group_name: ref('azurerm_resource_group.main.name'),
         size: lit('Standard_B1s'),
@@ -909,7 +972,7 @@ function buildAzureWebApp(appName: string): Record<string, string> {
       'azurerm_mssql_server',
       'main',
       {
-        name: lit(`${app}-sqlserver`),
+        name: name('azurerm_mssql_server', 'sqlserver'),
         resource_group_name: ref('azurerm_resource_group.main.name'),
         location: ref('azurerm_resource_group.main.location'),
         version: lit('12.0'),
@@ -923,7 +986,7 @@ function buildAzureWebApp(appName: string): Record<string, string> {
       'azurerm_mssql_database',
       'app',
       {
-        name: lit(`${app}-db`),
+        name: name('azurerm_mssql_database', 'db'),
         server_id: ref('azurerm_mssql_server.main.id'),
         sku_name: lit('Basic'),
       },
@@ -939,7 +1002,7 @@ function buildAzureWebApp(appName: string): Record<string, string> {
 // --- GCP · Static Site ----------------------------------------------------------
 
 function buildGcpStaticSite(appName: string): Record<string, string> {
-  const app = tfName(appName);
+  const { name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
@@ -956,7 +1019,7 @@ function buildGcpStaticSite(appName: string): Record<string, string> {
       'google_storage_bucket',
       'site',
       {
-        name: lit(`${app}-site`),
+        name: name('google_storage_bucket', 'site'),
         location: lit('US'),
         storage_class: lit('STANDARD'),
         uniform_bucket_level_access: lit(true),
@@ -969,7 +1032,7 @@ function buildGcpStaticSite(appName: string): Record<string, string> {
       'google_compute_backend_bucket',
       'site',
       {
-        name: lit(`${app}-backend`),
+        name: name('google_compute_backend_bucket', 'backend'),
         bucket_name: ref('google_storage_bucket.site.name'),
         enable_cdn: lit(true),
       },
@@ -979,20 +1042,20 @@ function buildGcpStaticSite(appName: string): Record<string, string> {
     res(
       'google_compute_url_map',
       'site',
-      { name: lit(`${app}-urlmap`), default_service: ref('google_compute_backend_bucket.site.id') },
+      { name: name('google_compute_url_map', 'urlmap'), default_service: ref('google_compute_backend_bucket.site.id') },
       { x: 700, y: 240 },
     ),
     res(
       'google_compute_target_http_proxy',
       'site',
-      { name: lit(`${app}-proxy`), url_map: ref('google_compute_url_map.site.id') },
+      { name: name('google_compute_target_http_proxy', 'proxy'), url_map: ref('google_compute_url_map.site.id') },
       { x: 1020, y: 240 },
     ),
     res(
       'google_compute_global_forwarding_rule',
       'site',
       {
-        name: lit(`${app}-fwd`),
+        name: name('google_compute_global_forwarding_rule', 'fwd'),
         target: ref('google_compute_target_http_proxy.site.id'),
         port_range: lit('80'),
       },
@@ -1001,7 +1064,7 @@ function buildGcpStaticSite(appName: string): Record<string, string> {
     res(
       'google_dns_managed_zone',
       'main',
-      { name: lit(`${app}-zone`), dns_name: ref('var.domain_name') },
+      { name: name('google_dns_managed_zone', 'zone'), dns_name: ref('var.domain_name') },
       { x: 60, y: 80 },
       ['# DNS'],
     ),
@@ -1027,8 +1090,7 @@ function buildGcpStaticSite(appName: string): Record<string, string> {
 // --- Azure · Static Site --------------------------------------------------------
 
 function buildAzureStaticSite(appName: string): Record<string, string> {
-  const app = tfName(appName);
-  const azName = app.replace(/[^a-z0-9]/g, '').slice(0, 16) || 'site';
+  const { name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.providers.push(providerBlock('azure', { features: block({}) }));
@@ -1038,7 +1100,7 @@ function buildAzureStaticSite(appName: string): Record<string, string> {
     res(
       'azurerm_resource_group',
       'main',
-      { name: lit(`${app}-rg`), location: lit('eastus') },
+      { name: name('azurerm_resource_group', 'rg'), location: lit('eastus') },
       { x: 40, y: 60, w: 860, h: 320 },
       ['# Everything lives in one resource group'],
     ),
@@ -1046,24 +1108,30 @@ function buildAzureStaticSite(appName: string): Record<string, string> {
       'azurerm_storage_account',
       'site',
       {
-        name: lit(`${azName}site`),
+        name: name('azurerm_storage_account', 'site'),
         resource_group_name: ref('azurerm_resource_group.main.name'),
         location: ref('azurerm_resource_group.main.location'),
         account_tier: lit('Standard'),
         account_replication_type: lit('LRS'),
-        static_website: block({
-          index_document: lit('index.html'),
-          error_404_document: lit('404.html'),
-        }),
       },
       { x: 40, y: 80 },
       ['# Static assets served from blob storage'],
     ),
     res(
+      'azurerm_storage_account_static_website',
+      'site',
+      {
+        storage_account_id: ref('azurerm_storage_account.site.id'),
+        index_document: lit('index.html'),
+        error_404_document: lit('404.html'),
+      },
+      { x: 40, y: 420 },
+    ),
+    res(
       'azurerm_cdn_profile',
       'main',
       {
-        name: lit(`${app}-cdn`),
+        name: name('azurerm_cdn_profile', 'cdn'),
         location: lit('global'),
         resource_group_name: ref('azurerm_resource_group.main.name'),
         sku: lit('Standard_Microsoft'),
@@ -1075,7 +1143,7 @@ function buildAzureStaticSite(appName: string): Record<string, string> {
       'azurerm_cdn_endpoint',
       'site',
       {
-        name: lit(`${app}-endpoint`),
+        name: name('azurerm_cdn_endpoint', 'endpoint'),
         profile_name: ref('azurerm_cdn_profile.main.name'),
         location: lit('global'),
         resource_group_name: ref('azurerm_resource_group.main.name'),
@@ -1099,7 +1167,7 @@ function buildAzureStaticSite(appName: string): Record<string, string> {
 // --- GCP · Web App ---------------------------------------------------------------
 
 function buildGcpWebApp(appName: string): Record<string, string> {
-  const app = tfName(appName);
+  const { name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
@@ -1113,7 +1181,7 @@ function buildGcpWebApp(appName: string): Record<string, string> {
     res(
       'google_compute_network',
       'main',
-      { name: lit(`${app}-network`), auto_create_subnetworks: lit(false) },
+      { name: name('google_compute_network', 'network'), auto_create_subnetworks: lit(false) },
       { x: 40, y: 60, w: 700, h: 360 },
       ['# Networking'],
     ),
@@ -1121,7 +1189,7 @@ function buildGcpWebApp(appName: string): Record<string, string> {
       'google_compute_subnetwork',
       'app',
       {
-        name: lit(`${app}-subnet`),
+        name: name('google_compute_subnetwork', 'subnet'),
         ip_cidr_range: lit('10.0.1.0/24'),
         region: ref('var.region'),
         network: ref('google_compute_network.main.id'),
@@ -1132,7 +1200,7 @@ function buildGcpWebApp(appName: string): Record<string, string> {
       'google_compute_firewall',
       'allow_http',
       {
-        name: lit(`${app}-allow-http`),
+        name: name('google_compute_firewall', 'allow-http'),
         network: ref('google_compute_network.main.id'),
         direction: lit('INGRESS'),
         source_ranges: list([lit('0.0.0.0/0')]),
@@ -1147,7 +1215,7 @@ function buildGcpWebApp(appName: string): Record<string, string> {
       'google_compute_instance',
       'web',
       {
-        name: lit(`${app}-web`),
+        name: name('google_compute_instance', 'web'),
         machine_type: lit('e2-micro'),
         zone: raw('"${var.region}-a"'),
         boot_disk: block({
@@ -1168,7 +1236,7 @@ function buildGcpWebApp(appName: string): Record<string, string> {
       'google_sql_database_instance',
       'main',
       {
-        name: lit(`${app}-db`),
+        name: name('google_sql_database_instance', 'db'),
         database_version: lit('POSTGRES_16'),
         region: ref('var.region'),
         deletion_protection: lit(false),
@@ -1190,7 +1258,7 @@ function buildGcpWebApp(appName: string): Record<string, string> {
 // --- GCP · Cloud Run ---------------------------------------------------------------
 
 function buildGcpCloudRun(appName: string): Record<string, string> {
-  const app = tfName(appName);
+  const { name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
@@ -1205,7 +1273,7 @@ function buildGcpCloudRun(appName: string): Record<string, string> {
       'google_artifact_registry_repository',
       'app',
       {
-        repository_id: lit(`${app.replace(/_/g, '-')}-images`),
+        repository_id: name('google_artifact_registry_repository', 'images'),
         format: lit('DOCKER'),
         location: ref('var.region'),
       },
@@ -1216,7 +1284,7 @@ function buildGcpCloudRun(appName: string): Record<string, string> {
       'google_cloud_run_v2_service',
       'app',
       {
-        name: lit(`${app.replace(/_/g, '-')}-svc`),
+        name: name('google_cloud_run_v2_service', 'svc'),
         location: ref('var.region'),
         ingress: lit('INGRESS_TRAFFIC_ALL'),
         template: block({
@@ -1242,8 +1310,7 @@ function buildGcpCloudRun(appName: string): Record<string, string> {
 // --- Multi-cloud · DR storage ---------------------------------------------------------
 
 function buildMultiCloudDr(appName: string): Record<string, string> {
-  const app = tfName(appName);
-  const azName = app.replace(/[^a-z0-9]/g, '').slice(0, 14) || 'app';
+  const { name } = namer(appName);
   const ir: IR = emptyIR();
 
   ir.variables.push(
@@ -1262,7 +1329,7 @@ function buildMultiCloudDr(appName: string): Record<string, string> {
     res(
       'aws_s3_bucket',
       'primary',
-      { bucket: lit(`${app}-primary`), force_destroy: lit(true) },
+      { bucket: name('aws_s3_bucket', 'primary'), force_destroy: lit(true) },
       { x: 40, y: 120 },
       ['# Primary copy — AWS', '# Replication to the other clouds runs out-of-band (rclone / storage transfer).'],
     ),
@@ -1290,7 +1357,7 @@ function buildMultiCloudDr(appName: string): Record<string, string> {
       'google_storage_bucket',
       'replica',
       {
-        name: lit(`${app}-replica`),
+        name: name('google_storage_bucket', 'replica'),
         location: lit('US'),
         storage_class: lit('STANDARD'),
         uniform_bucket_level_access: lit(true),
@@ -1302,7 +1369,7 @@ function buildMultiCloudDr(appName: string): Record<string, string> {
     res(
       'azurerm_resource_group',
       'dr',
-      { name: lit(`${app}-dr-rg`), location: lit('eastus') },
+      { name: name('azurerm_resource_group', 'dr-rg'), location: lit('eastus') },
       { x: 940, y: 60, w: 380, h: 260 },
       ['# Cold archive — Azure'],
     ),
@@ -1310,7 +1377,7 @@ function buildMultiCloudDr(appName: string): Record<string, string> {
       'azurerm_storage_account',
       'archive',
       {
-        name: lit(`${azName}archive`),
+        name: name('azurerm_storage_account', 'archive'),
         resource_group_name: ref('azurerm_resource_group.dr.name'),
         location: ref('azurerm_resource_group.dr.location'),
         account_tier: lit('Standard'),
@@ -1356,10 +1423,10 @@ export const TEMPLATES: TemplateDef[] = [
   {
     slug: 'aws-web-app',
     name: 'Web App on AWS',
-    description: 'VPC with two public subnets, an EC2 web server, RDS PostgreSQL and security groups.',
+    description: 'VPC with two public subnets behind an internet gateway, an EC2 web server, RDS PostgreSQL and security groups.',
     providers: ['aws'],
     tags: ['Web Apps'],
-    resourceCount: 7,
+    resourceCount: 11,
     build: buildAwsWebApp,
   },
   {
@@ -1377,7 +1444,7 @@ export const TEMPLATES: TemplateDef[] = [
     description: 'ECS Fargate service behind an ALB, with ECR registry and full VPC networking.',
     providers: ['aws'],
     tags: ['Containers', 'Web Apps'],
-    resourceCount: 11,
+    resourceCount: 15,
     build: buildAwsContainerStack,
   },
   {
@@ -1413,7 +1480,7 @@ export const TEMPLATES: TemplateDef[] = [
     description: 'Blob storage static website served through Azure CDN.',
     providers: ['azure'],
     tags: ['Static Sites'],
-    resourceCount: 4,
+    resourceCount: 5,
     build: buildAzureStaticSite,
   },
   {

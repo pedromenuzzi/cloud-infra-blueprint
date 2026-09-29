@@ -1,7 +1,11 @@
 name: Deploy to GitHub Pages
 
+# Ships only what passed CI: runs after the "CI" workflow (typecheck, unit,
+# build, e2e) succeeds on a push to main, and builds that exact commit.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -10,15 +14,22 @@ permissions:
   pages: write
   id-token: write
 
+# Same as GitHub's Pages starter: let an in-flight deploy finish; queue the next.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # the commit CI verified (not whatever main points to now)
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       # Best-effort auto-enable; harmless when Pages is already configured
       # (Settings → Pages → Source: GitHub Actions).
       - uses: actions/configure-pages@v5
@@ -31,8 +42,11 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test
+      # manual runs skip the CI gate, so at least run the fast checks
+      - if: github.event_name == 'workflow_dispatch'
+        run: pnpm typecheck && pnpm test
       - name: Build with Pages base path
+        # Pages has no rewrites: 404.html serves deep links (the app renders, but the HTTP status is 404)
         run: |
           VITE_BASE="/${GITHUB_REPOSITORY#*/}/" pnpm build
           cp dist/index.html dist/404.html

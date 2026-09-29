@@ -12,8 +12,9 @@ import {
   type Node,
   type NodeProps,
 } from '@xyflow/react';
-import { AlertTriangle, Globe, Lock, Shield, ShieldEllipsis, ShieldOff } from 'lucide-react';
+import { AlertTriangle, Globe, Lock, Shield, ShieldEllipsis, ShieldOff, ShieldQuestion } from 'lucide-react';
 import type { CSSProperties } from 'react';
+import type { Op } from '@/ir/ops';
 import type { Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS, ProviderChip, ResourceIcon } from '@/resources/icons';
@@ -22,7 +23,7 @@ import { useEditor } from './store';
 
 /** security-lens decorations (undefined when the lens is off) */
 export interface NodeSecurity {
-  exposure?: { level: 'internet' | 'restricted' | 'isolated'; ports: string[] };
+  exposure?: { level: 'internet' | 'unknown' | 'restricted' | 'isolated'; ports: string[] };
   /** SG / NACL / NSG / firewall rule summary */
   rules?: string;
   /** worst finding touching this node */
@@ -48,6 +49,10 @@ function SecurityChip({ security }: { security: NodeSecurity }) {
     tone = risky ? RISK_COLOR[security.risk!] : '#0ea5e9';
     icon = <Globe className="h-2.5 w-2.5" />;
     label = `Public :${security.exposure.ports.slice(0, 3).join(', :')}${security.exposure.ports.length > 3 ? '…' : ''}`;
+  } else if (security.exposure?.level === 'unknown') {
+    tone = '#f59e0b';
+    icon = <ShieldQuestion className="h-2.5 w-2.5" />;
+    label = 'Unverified';
   } else if (security.exposure?.level === 'restricted') {
     label = 'Private';
   } else if (security.exposure?.level === 'isolated') {
@@ -117,7 +122,8 @@ export function InternetNodeView() {
 /** CSS custom properties carrying the category color (light + dark variants). */
 function catVars(category: Category): CSSProperties {
   const c = CATEGORY_COLORS[category];
-  return { '--cat': c.solid, '--cat-light': c.from } as CSSProperties;
+  // --cat-text: an AA-contrast shade of the category color for labels
+  return { '--cat': c.solid, '--cat-light': c.from, '--cat-text': `var(--cat-text-${category})` } as CSSProperties;
 }
 
 function WarnBadge() {
@@ -146,7 +152,7 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
       <ResourceIcon category={data.category} type={data.resourceType} size={40} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-1">
-          <span className="truncate text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat) dark:text-(--cat-light)">
+          <span className="truncate text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
             {data.typeLabel}
           </span>
           {data.provider !== 'other' ? <ProviderChip provider={data.provider} /> : null}
@@ -178,24 +184,34 @@ export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlo
         handleClassName="!h-2.5 !w-2.5 !rounded-[3px] !border-(--cat) !bg-surface-1"
         onResizeEnd={(_e, params) => {
           // params.x/y are relative to the parent — the same space the IR stores
-          applyCanvasOps([
-            {
-              kind: 'move_node',
-              nodeId: id,
-              position: {
-                x: params.x,
-                y: params.y,
-                w: Math.round(params.width),
-                h: Math.round(params.height),
-              },
-            },
-          ]);
+          const x = Math.round(params.x);
+          const y = Math.round(params.y);
+          const ops: Op[] = [
+            { kind: 'move_node', nodeId: id, position: { x, y, w: Math.round(params.width), h: Math.round(params.height) } },
+          ];
+          // resizing from the top or left moves the origin; children are stored
+          // relative to it, so shift them back to stay where they were drawn
+          const { resources } = useEditor.getState().ir;
+          const self = resources.find((r) => r.id === id);
+          const dx = x - (self?.position?.x ?? x);
+          const dy = y - (self?.position?.y ?? y);
+          if (dx !== 0 || dy !== 0) {
+            for (const child of resources) {
+              if (child.parentId !== id || !child.position) continue;
+              ops.push({
+                kind: 'move_node',
+                nodeId: child.id,
+                position: { ...child.position, x: child.position.x - dx, y: child.position.y - dy },
+              });
+            }
+          }
+          applyCanvasOps(ops);
         }}
       />
       <div className="flex items-center gap-2 px-3 pt-2.5">
         <ResourceIcon category={data.category} type={data.resourceType} size={24} />
         <span className="truncate text-[12.5px] font-semibold text-foreground">{data.title}</span>
-        <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat) dark:text-(--cat-light)">
+        <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
           {data.typeLabel}
         </span>
         {data.subtitle ? (

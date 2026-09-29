@@ -60,72 +60,94 @@ export function autoLayout(ir: IR, isContainerType: (type: string) => boolean): 
       return;
     }
     const innerMax = Math.max(MAX_ROW_W / 2, NODE_W * 2 + GAP);
-    let x = PAD;
-    let y = TITLE_H;
-    let rowH = 0;
-    let maxW = 0;
+    // siblings the user already placed keep their spot; new ones flow around them
+    const occupied: Box[] = [];
     for (const c of s.children) {
-      if (x > PAD && x + c.w > innerMax) {
-        x = PAD;
-        y += rowH + GAP;
-        rowH = 0;
-      }
-      const persisted = c.node?.position;
-      if (persisted) {
-        // keep persisted relative position, still grow the container to fit
-        maxW = Math.max(maxW, persisted.x + c.w);
-        y = Math.max(y, persisted.y);
-        rowH = Math.max(rowH, c.h + (persisted.y - y));
-      } else if (c.node) {
-        c.node.position = { x, y };
-        if (c.isContainer) {
-          c.node.position.w = c.w;
-          c.node.position.h = c.h;
-        }
-        maxW = Math.max(maxW, x + c.w);
-        rowH = Math.max(rowH, c.h);
-        x += c.w + GAP;
+      const p = c.node?.position;
+      if (p) occupied.push({ x: p.x, y: p.y, w: c.w, h: c.h });
+    }
+    const flow = rowFlow(occupied, PAD, TITLE_H, innerMax);
+    for (const c of s.children) {
+      if (!c.node || c.node.position) continue;
+      c.node.position = flow(c.w, c.h);
+      if (c.isContainer) {
+        c.node.position.w = c.w;
+        c.node.position.h = c.h;
       }
     }
+    const right = Math.max(0, ...occupied.map((b) => b.x + b.w));
+    const bottom = Math.max(TITLE_H, ...occupied.map((b) => b.y + b.h));
     const persistedSelf = s.node?.position;
-    s.w = Math.max(CONTAINER_MIN_W, persistedSelf?.w ?? 0, maxW + PAD);
-    s.h = Math.max(CONTAINER_MIN_H, persistedSelf?.h ?? 0, y + rowH + PAD);
+    s.w = Math.max(CONTAINER_MIN_W, persistedSelf?.w ?? 0, right + PAD);
+    s.h = Math.max(CONTAINER_MIN_H, persistedSelf?.h ?? 0, bottom + PAD);
+    // nested containers grow to fit too (top-level ones are sized below)
+    if (persistedSelf && s.node?.parentId) {
+      persistedSelf.w = s.w;
+      persistedSelf.h = s.h;
+    }
   };
 
   for (const s of sized) measure(s);
 
-  // place top-level nodes, flowing rows left→right
-  let cursorX = 40;
-  let cursorY = 40;
-  let rowH = 0;
-  // account for already-positioned top-level nodes so new ones don't overlap
+  // place new top-level nodes in rows below everything already on the canvas
+  const placed: Box[] = [];
   for (const s of sized) {
     const p = s.node?.position;
-    if (p) {
-      cursorY = Math.max(cursorY, p.y);
+    if (!p) continue;
+    // ensure containers always carry a size
+    if (s.isContainer) {
+      p.w = Math.max(p.w ?? 0, s.w);
+      p.h = Math.max(p.h ?? 0, s.h);
     }
+    placed.push({ x: p.x, y: p.y, w: s.isContainer ? (p.w ?? s.w) : s.w, h: s.isContainer ? (p.h ?? s.h) : s.h });
   }
+  const top = placed.length > 0 ? Math.max(...placed.map((b) => b.y + b.h)) + GAP + 8 : 40;
+  const flow = rowFlow(placed, 40, top, MAX_ROW_W);
   for (const s of sized) {
-    if (!s.node) continue;
-    if (s.node.position) {
-      // ensure containers always carry a size
-      if (s.isContainer) {
-        s.node.position.w = Math.max(s.node.position.w ?? 0, s.w);
-        s.node.position.h = Math.max(s.node.position.h ?? 0, s.h);
-      }
-      continue;
-    }
-    if (cursorX > 40 && cursorX + s.w > MAX_ROW_W) {
-      cursorX = 40;
-      cursorY += rowH + GAP + 8;
-      rowH = 0;
-    }
-    s.node.position = { x: cursorX, y: cursorY };
+    if (!s.node || s.node.position) continue;
+    s.node.position = flow(s.w, s.h);
     if (s.isContainer) {
       s.node.position.w = s.w;
       s.node.position.h = s.h;
     }
-    cursorX += s.w + GAP + 8;
-    rowH = Math.max(rowH, s.h);
+  }
+}
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+const overlaps = (a: Box, b: Box) =>
+  a.x < b.x + b.w + GAP / 2 && b.x < a.x + a.w + GAP / 2 && a.y < b.y + b.h + GAP / 2 && b.y < a.y + a.h + GAP / 2;
+
+/**
+ * Row-by-row placement from (left, top) that skips boxes already taken.
+ * Every placed box is added to `occupied`.
+ */
+function rowFlow(occupied: Box[], left: number, top: number, maxRight: number) {
+  let x = left;
+  let y = top;
+  let rowH = 0;
+  return (w: number, h: number): { x: number; y: number } => {
+    for (;;) {
+      if (x > left && x + w > maxRight) {
+        x = left;
+        y += Math.max(rowH, NODE_H) + GAP;
+        rowH = 0;
+      }
+      const box = { x, y, w, h };
+      const hit = occupied.find((o) => overlaps(o, box));
+      if (hit) {
+        x = hit.x + hit.w + GAP;
+        continue;
+      }
+      occupied.push(box);
+      rowH = Math.max(rowH, h);
+      x += w + GAP;
+      return { x: box.x, y: box.y };
+    }
   }
 }

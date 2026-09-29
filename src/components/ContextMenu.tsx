@@ -2,7 +2,7 @@ import { Check, type LucideIcon } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
-import { Kbd } from './ui';
+import { focusIsLost, Kbd, restoreFocus, useLayer } from './ui';
 
 export interface MenuItem {
   id: string;
@@ -11,6 +11,8 @@ export interface MenuItem {
   shortcut?: string;
   /** radio-style menus (e.g. theme) */
   checked?: boolean;
+  /** with `checked`: an on/off toggle (menuitemcheckbox) rather than a radio */
+  toggle?: boolean;
   danger?: boolean;
   disabled?: boolean;
   onSelect(): void;
@@ -46,36 +48,61 @@ export function ContextMenu({
     });
   }, [x, y]);
 
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  // Esc through the layer stack: only the top-most menu / dialog closes
+  useLayer(true, onClose, { kind: 'popup', node: ref });
+
+  // focus the first item; on close, give focus back to what opened the menu
+  // (unless the chosen action already moved it somewhere on purpose)
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const trigger = document.activeElement;
+    el?.querySelector<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')?.focus();
+    return () => {
+      if (focusIsLost(el)) restoreFocus(trigger);
+    };
+  }, []);
+
   useEffect(() => {
     const el = ref.current;
-    el?.querySelector<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')?.focus();
+    const close = () => closeRef.current();
     const onPointer = (e: PointerEvent) => {
-      if (!el?.contains(e.target as Node)) onClose();
+      if (!el?.contains(e.target as Node)) close();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
+      if (!el?.contains(document.activeElement)) return;
+      // menus aren't in the Tab order: Tab closes and moves on from the trigger
+      if (e.key === 'Tab') {
+        close();
         return;
       }
-      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
       e.preventDefault();
-      const items = [...(el?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)') ?? [])];
+      e.stopPropagation();
+      const items = [...el.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')];
       const i = items.indexOf(document.activeElement as HTMLButtonElement);
-      const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+      const next =
+        e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? items.length - 1
+            : e.key === 'ArrowDown'
+              ? (i + 1) % items.length
+              : (i - 1 + items.length) % items.length;
       items[next]?.focus();
     };
     window.addEventListener('pointerdown', onPointer, true);
     window.addEventListener('keydown', onKey, true);
-    window.addEventListener('blur', onClose);
-    window.addEventListener('wheel', onClose, { passive: true });
+    window.addEventListener('blur', close);
+    window.addEventListener('wheel', close, { passive: true });
     return () => {
       window.removeEventListener('pointerdown', onPointer, true);
       window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('blur', onClose);
-      window.removeEventListener('wheel', onClose);
+      window.removeEventListener('blur', close);
+      window.removeEventListener('wheel', close);
     };
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <div
@@ -93,7 +120,9 @@ export function ContextMenu({
           <button
             key={entry.id}
             type="button"
-            role={entry.checked === undefined ? 'menuitem' : 'menuitemradio'}
+            role={
+              entry.checked === undefined ? 'menuitem' : entry.toggle ? 'menuitemcheckbox' : 'menuitemradio'
+            }
             aria-checked={entry.checked}
             disabled={entry.disabled}
             onClick={() => {

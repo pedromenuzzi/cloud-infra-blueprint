@@ -71,7 +71,9 @@ describe('duplicateNode', () => {
     expect(first.node.id).toBe('aws_security_group.web_copy');
     expect(first.node.args.vpc_id).toEqual(web.args.vpc_id);
     expect(first.node.args.name).toEqual({ kind: 'literal', value: `${(web.args.name as { value: string }).value}-copy` });
-    expect(first.node.position).toMatchObject({ x: web.position!.x + 32, y: web.position!.y + 32 });
+    // next to the original, not on top of it
+    const moved = first.node.position!;
+    expect(Math.abs(moved.x - web.position!.x) >= NODE_W || Math.abs(moved.y - web.position!.y) >= NODE_H).toBe(true);
 
     const second = duplicateNode({ ...ir, resources: [...ir.resources, first.node] }, first.node);
     expect(second.node.id).toBe('aws_security_group.web_copy_2');
@@ -83,5 +85,23 @@ describe('duplicateNode', () => {
     const before = structuredClone(node.args);
     duplicateNode({ ...ir, resources: [node] }, node, getDef(node.type));
     expect(node.args).toEqual(before);
+  });
+});
+
+describe('tidy nesting', () => {
+  it('packs unconnected siblings into a block instead of one tall column', async () => {
+    const instances = Array.from(
+      { length: 30 },
+      (_, i) => `resource "aws_instance" "app_${i}" {\n  ami           = "ami-1"\n  instance_type = "t3.micro"\n  subnet_id     = aws_subnet.app.id\n}\n`,
+    ).join('');
+    const { ir } = parseProject({
+      'main.tf': `resource "aws_vpc" "main" {\n  cidr_block = "10.0.0.0/16"\n}\nresource "aws_subnet" "app" {\n  vpc_id     = aws_vpc.main.id\n  cidr_block = "10.0.1.0/24"\n}\n${instances}`,
+    });
+    const edges = deriveStructure(ir, getDef);
+    const ops = await computeTidyOps(ir, edges, isContainerType);
+    const subnet = ops.find((op) => op.kind === 'move_node' && op.nodeId === 'aws_subnet.app');
+    if (subnet?.kind !== 'move_node') throw new Error('subnet not laid out');
+    const { w = 0, h = 0 } = subnet.position;
+    expect(h / w, `subnet is ${w}×${h}`).toBeLessThan(1.5);
   });
 });

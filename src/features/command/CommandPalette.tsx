@@ -43,24 +43,24 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
-import { Kbd } from '@/components/ui';
+import { focusIsLost, Kbd, restoreFocus, useLayer } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { useLayout } from '@/features/editor/layoutStore';
-import { getAudit, useSecurityUi } from '@/features/security/securityStore';
-import { applyOps, type Op } from '@/ir/ops';
+import { fixAllFindings, getAudit, useSecurityUi } from '@/features/security/securityStore';
 import { ResourceGroups, wordFilter } from '@/features/editor/ResourcePicker';
 import { orderedFiles, useEditor } from '@/features/editor/store';
 import { copyText, exportZip } from '@/lib/download';
-import { shareUrl } from '@/lib/share';
-import { pickTerraformFiles, readTerraformFiles } from '@/lib/importTf';
-import { createProject, detectProviders, listProjects } from '@/lib/storage';
+import { REPO_URL } from '@/lib/links';
+import { shareLinkInfo } from '@/lib/share';
+import { importNote, pickTerraformFiles, readTerraformFiles } from '@/lib/importTf';
+import { createProject, detectProviders, listProjects, uniqueProjectName, type Project } from '@/lib/storage';
 import { cn, slugify, timeAgo } from '@/lib/utils';
 import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
 import { useTheme } from '@/theme/useTheme';
-import { MOD, usePalette } from './paletteStore';
+import { MOD, takePaletteReturnFocus, usePalette } from './paletteStore';
 
 function Item({
   value,
@@ -104,6 +104,15 @@ function Item({
   );
 }
 
+/** Store a new project; null when storage is full (the storage notice already says so). */
+function tryCreate(input: Parameters<typeof createProject>[0]): Project | null {
+  try {
+    return createProject(input);
+  } catch {
+    return null;
+  }
+}
+
 export function CommandPalette() {
   const { open, setOpen, setShortcuts } = usePalette();
   const navigate = useNavigate();
@@ -130,11 +139,20 @@ export function CommandPalette() {
   );
   const preferred = useMemo(() => (editorReady ? detectProviders(files) : []), [editorReady, files]);
 
+  // in the layer stack so page shortcuts stand down; cmdk (Radix) closes itself on Esc
+  useLayer(open);
+
   useEffect(() => {
-    if (!open) {
-      setSearch('');
-      setPage('root');
-    }
+    if (open) return;
+    setSearch('');
+    setPage('root');
+    // cmdk's dialog has no trigger to refocus, so focus would drop to <body>:
+    // give it back to what had it (after Radix's own unmount-focus, a 0 ms timer)
+    const target = takePaletteReturnFocus();
+    const timer = setTimeout(() => {
+      if (focusIsLost()) restoreFocus(target);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [open]);
 
   const run = (fn: () => unknown) => {
@@ -245,19 +263,7 @@ export function CommandPalette() {
                         icon={Wrench}
                         label={`Fix ${fixable} security issue${fixable === 1 ? '' : 's'}`}
                         keywords={['harden', 'remediate', 'auto fix']}
-                        onSelect={() =>
-                          run(() => {
-                            let scratch = editor().ir;
-                            const ops: Op[] = [];
-                            for (const f of getAudit(scratch).findings.filter((x) => x.fix)) {
-                              const next = f.fix!.ops(scratch);
-                              ops.push(...next);
-                              scratch = applyOps(scratch, next).ir;
-                            }
-                            if (ops.length) editor().applyCanvasOps(ops);
-                            showToast(`Applied ${fixable} security fixes — Ctrl Z to undo`, 'success');
-                          })
-                        }
+                        onSelect={() => run(fixAllFindings)}
                       />
                     ) : null}
                   </Command.Group>
@@ -285,12 +291,17 @@ export function CommandPalette() {
                       icon={Share2}
                       label="Copy share link"
                       onSelect={() =>
-                        run(() =>
-                          void copyText(shareUrl({ name: editor().projectName, files: editor().files })).then(
-                            () => showToast('Share link copied', 'success'),
+                        run(() => {
+                          const link = shareLinkInfo({ name: editor().projectName, files: editor().files });
+                          if (link.tooLarge) {
+                            showToast(link.warning!, 'error');
+                            return;
+                          }
+                          void copyText(link.url).then(
+                            () => showToast(link.warning ?? 'Share link copied', link.warning ? 'info' : 'success'),
                             () => showToast('Could not copy the link', 'error'),
-                          ),
-                        )
+                          );
+                        })
                       }
                     />
                   </Command.Group>
@@ -328,7 +339,13 @@ export function CommandPalette() {
 
                   <Command.Group heading="Files">
                     {orderedFiles(files).map((f) => (
-                      <Item key={f} value={`file ${f}`} icon={FileCode2} label={f} keywords={['open', 'tab']} onSelect={() => run(() => editor().setActiveFile(f))} />
+                      <Item key={f} value={`file ${f}`} icon={FileCode2} label={f} keywords={['open', 'tab']} onSelect={() =>
+                          run(() => {
+                            editor().setActiveFile(f);
+                            // a file picked while the code pane is hidden should show up
+                            if (!useLayout.getState().isOpen('code')) togglePanel('code');
+                          })
+                        } />
                     ))}
                   </Command.Group>
 
@@ -368,12 +385,13 @@ export function CommandPalette() {
                         showToast('No .tf files found in that selection', 'error');
                         return;
                       }
-                      const project = createProject({
+                      const project = tryCreate({
                         name: imported.name,
                         files: imported.files,
                         description: `Imported from ${Object.keys(imported.files).length} Terraform file(s).`,
                       });
-                      showToast(`Imported “${imported.name}”`, 'success');
+                      if (!project) return;
+                      showToast(importNote(imported) ?? `Imported “${imported.name}”`, 'success');
                       navigate(`/editor/${project.id}`);
                     })
                   }
@@ -391,13 +409,14 @@ export function CommandPalette() {
                     keywords={[t.description, ...t.tags, 'new', 'create']}
                     onSelect={() =>
                       run(() => {
-                        const project = createProject({
-                          name: t.name,
-                          files: t.build(slugify(t.name)),
+                        const name = uniqueProjectName(t.name);
+                        const project = tryCreate({
+                          name,
+                          files: t.build(slugify(name)),
                           templateSlug: t.slug,
                           description: t.description,
                         });
-                        navigate(`/editor/${project.id}`);
+                        if (project) navigate(`/editor/${project.id}`);
                       })
                     }
                   />
@@ -412,7 +431,7 @@ export function CommandPalette() {
                   value="nav-github"
                   icon={Github}
                   label="Source on GitHub"
-                  onSelect={() => run(() => window.open('https://github.com/pedromenuzzi/cloud-infra-blueprint', '_blank', 'noopener'))}
+                  onSelect={() => run(() => window.open(REPO_URL, '_blank', 'noopener'))}
                 />
               </Command.Group>
 

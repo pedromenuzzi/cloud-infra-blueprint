@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { usePalette } from './paletteStore';
+import { hasOpenLayer } from '@/components/ui';
+import { isPaletteShortcut, usePalette } from './paletteStore';
 
 const CommandPalette = lazy(() =>
   import('./CommandPalette').then((m) => ({ default: m.CommandPalette })),
@@ -9,8 +10,9 @@ const ShortcutsDialog = lazy(() =>
 );
 
 /**
- * Global ⌘K / "?" listener. The palette itself (cmdk, the catalog, editor
- * actions) loads on first use so it costs nothing on the landing page.
+ * Global palette / "?" listener (see isPaletteShortcut for which keys). The
+ * palette itself (cmdk, the catalog, editor actions) loads on first use so it
+ * costs nothing on the landing page.
  */
 export function CommandHost() {
   const open = usePalette((s) => s.open);
@@ -25,16 +27,18 @@ export function CommandHost() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if (isPaletteShortcut(e)) {
+        const { open: isOpen, setOpen } = usePalette.getState();
+        // not over a dialog: the palette would stack a second modal on top
+        if (!isOpen && hasOpenLayer(['modal'])) return;
         e.preventDefault();
         e.stopPropagation();
-        const { open: isOpen, setOpen } = usePalette.getState();
         setOpen(!isOpen);
         return;
       }
       const target = e.target as HTMLElement;
       const typing = target.closest('input, textarea, select, [contenteditable], .monaco-editor');
-      if (!typing && e.key === '?' && !e.metaKey && !e.ctrlKey) {
+      if (!typing && e.key === '?' && !e.metaKey && !e.ctrlKey && !hasOpenLayer()) {
         e.preventDefault();
         usePalette.getState().setShortcuts(true);
       }

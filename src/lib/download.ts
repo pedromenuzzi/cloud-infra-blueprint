@@ -1,10 +1,11 @@
 import { strToU8, zipSync } from 'fflate';
+import { REPO_URL } from './links';
 import { slugify } from './utils';
 
 function terraformReadme(name: string, files: string[]): string {
   return `# ${name}
 
-Terraform project exported from [Cloud Blueprint](https://github.com/cloud-blueprint) —
+Terraform project exported from [Cloud Blueprint](${REPO_URL}) —
 the free, in-browser visual editor for cloud architecture.
 
 ## Files

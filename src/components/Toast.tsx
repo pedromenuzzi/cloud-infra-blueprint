@@ -1,4 +1,5 @@
 import { AlertTriangle, Check, Info } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { create } from 'zustand';
 import { cn } from '@/lib/utils';
 
@@ -40,12 +41,17 @@ const ICONS: Record<ToastKind, typeof Check> = {
   info: Info,
 };
 
+/**
+ * Portaled to <body> and marked `data-bp-live`, so a modal dialog (which makes
+ * the rest of the page inert) doesn't silence it.
+ */
 export function ToastViewport() {
   const toasts = useToasts((s) => s.toasts);
-  return (
+  return createPortal(
     <div
       aria-live="polite"
-      className="pointer-events-none fixed bottom-4 left-1/2 z-[80] flex -translate-x-1/2 flex-col items-center gap-2"
+      data-bp-live=""
+      className="pointer-events-none fixed bottom-4 left-1/2 z-[80] flex max-w-[calc(100vw-24px)] -translate-x-1/2 flex-col items-center gap-2"
     >
       {toasts.map((t) => {
         const Icon = ICONS[t.kind];
@@ -64,6 +70,7 @@ export function ToastViewport() {
           </div>
         );
       })}
-    </div>
+    </div>,
+    document.body,
   );
 }

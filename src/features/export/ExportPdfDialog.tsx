@@ -3,8 +3,8 @@
  * browser — the diagram plus a readable summary. The PDF code (archDoc.ts +
  * lib/pdf) is loaded only when the user actually generates one.
  */
-import { Code2, Download, FileText, ListTree, Loader2, ShieldCheck, Waypoints, type LucideIcon } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
+import { AlertTriangle, Code2, Download, FileText, ListTree, Loader2, ShieldCheck, Waypoints, type LucideIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
 import { Button, Field, Input, Modal, Textarea } from '@/components/ui';
@@ -12,8 +12,10 @@ import { canvasApi } from '@/features/editor/canvasApi';
 import { orderedFiles, useEditor } from '@/features/editor/store';
 import { getAudit } from '@/features/security/securityStore';
 import { downloadBlob } from '@/lib/download';
+import { unsupportedChars } from '@/lib/pdf/metrics';
 import { cn, slugify } from '@/lib/utils';
-import type { DiagramImage, DocSections, Paper } from './archDoc';
+import type { DocSections, Paper } from './archDoc';
+import type { DiagramVector } from './diagramVector';
 
 const PREFS_KEY = 'cb-pdf-export';
 
@@ -100,6 +102,10 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
   const [prefs, setPrefs] = useState(readPrefs);
   const [stage, setStage] = useState<string | null>(null);
   const busy = stage !== null;
+  const running = useRef<AbortController | null>(null);
+  // closing the dialog (or leaving the editor) stops an export in progress
+  useEffect(() => () => running.current?.abort(), []);
+  const unsupported = useMemo(() => unsupportedChars(`${title}\n${notes}`), [title, notes]);
 
   const updatePrefs = (next: Prefs) => {
     setPrefs(next);
@@ -116,45 +122,69 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
     e.preventDefault();
     const docTitle = title.trim() || projectName;
     if (busy) return;
-    setStage('Rendering diagram…');
-    let diagram: DiagramImage | null = null;
+    const controller = new AbortController();
+    running.current = controller;
+    const { signal } = controller;
+    setStage('Reading the diagram…');
+    let diagram: DiagramVector | null = null;
     let diagramError = 'the canvas is not open';
     try {
-      diagram = (await canvasApi()?.captureDiagram()) ?? null;
-    } catch (err) {
+      diagram = (await canvasApi()?.captureDiagram({ signal })) ?? null;
+      if (signal.aborted) return;
       // the document is still built, with a placeholder where the diagram goes
+      if (!diagram) diagramError = 'the canvas is empty';
+    } catch (err) {
+      if (signal.aborted) return;
       diagramError = (err as Error).message;
     }
     setStage('Writing PDF…');
     try {
-      const { buildArchitecturePdf } = await import('./archDoc');
+      const { buildArchitecturePdfAsync } = await import('./archDoc');
+      if (signal.aborted) return;
       const state = useEditor.getState();
-      const bytes = buildArchitecturePdf({
-        title: docTitle,
-        notes,
-        ir: state.ir,
-        edges: state.edges,
-        files: orderedFiles(state.files).map((f) => [f, state.files[f]]),
-        audit: getAudit(state.ir),
-        diagram,
-        sections: prefs.sections,
-        paper: prefs.paper,
-        generatedAt: new Date(),
-      });
+      const bytes = await buildArchitecturePdfAsync(
+        {
+          title: docTitle,
+          notes,
+          ir: state.ir,
+          edges: state.edges,
+          files: orderedFiles(state.files).map((f) => [f, state.files[f]]),
+          audit: getAudit(state.ir),
+          diagram,
+          sections: prefs.sections,
+          paper: prefs.paper,
+          generatedAt: new Date(),
+        },
+        { signal, onStage: (label) => !signal.aborted && setStage(label) },
+      );
+      if (signal.aborted) return;
       downloadBlob(new Blob([bytes.slice().buffer], { type: 'application/pdf' }), fileName(docTitle));
       if (diagram) showToast('PDF downloaded — ready to share', 'success');
       else showToast(`PDF downloaded, but the diagram could not be rendered (${diagramError})`, 'info');
       onClose();
     } catch (err) {
+      if (signal.aborted) return;
       showToast(`Couldn't create the PDF: ${(err as Error).message}`, 'error');
       setStage(null);
+    } finally {
+      if (running.current === controller) running.current = null;
     }
+  };
+
+  /** Cancel, Esc and a click outside all close the dialog, stopping an export in progress */
+  const close = () => {
+    if (running.current) {
+      running.current.abort();
+      running.current = null;
+      showToast('PDF export cancelled', 'info');
+    }
+    onClose();
   };
 
   return (
     <Modal
       open
-      onClose={busy ? () => {} : onClose}
+      onClose={close}
       label="Export PDF document"
       title={
         <span className="flex items-center gap-2 text-[15px] font-semibold">
@@ -193,6 +223,16 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
             }}
           />
         </Field>
+        {unsupported.length > 0 ? (
+          <p role="status" className="-mt-2 flex items-start gap-1.5 text-[11.5px] leading-snug text-warning">
+            <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>
+              The PDF's fonts can't show {unsupported.slice(0, 6).join(' ')}
+              {unsupported.length > 6 ? ' …' : ''} — they will print as “?”. Western European text (accents included)
+              is fine.
+            </span>
+          </p>
+        ) : null}
 
         <fieldset disabled={busy}>
           <legend className="mb-1 block text-xs font-medium text-muted">Include</legend>
@@ -243,7 +283,7 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
         </div>
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="outline" onClick={onClose} disabled={busy}>
+          <Button variant="outline" onClick={close}>
             Cancel
           </Button>
           <Button type="submit" disabled={busy || !title.trim()}>

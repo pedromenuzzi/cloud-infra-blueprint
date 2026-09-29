@@ -3,7 +3,7 @@ import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
 import { getDef } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
-import { deleteResourcesOps, removeReferencesOps } from './connections';
+import { deleteResourcesOps, looksLikeTraversal, removeReferencesOps } from './connections';
 import { useEditor } from './store';
 
 function webApp() {
@@ -28,7 +28,15 @@ describe('deleteResourcesOps', () => {
     const { ir, edges } = webApp();
     const { removed } = deleteResourcesOps(ir, edges, ['aws_vpc.main']);
     expect(removed.sort()).toEqual(
-      ['aws_instance.web', 'aws_security_group.web', 'aws_subnet.public_a', 'aws_subnet.public_b', 'aws_vpc.main'].sort(),
+      [
+        'aws_instance.web',
+        'aws_internet_gateway.igw',
+        'aws_route_table.public',
+        'aws_security_group.web',
+        'aws_subnet.public_a',
+        'aws_subnet.public_b',
+        'aws_vpc.main',
+      ].sort(),
     );
   });
 
@@ -68,5 +76,55 @@ describe('editor store: delete then undo', () => {
     useEditor.getState().undo();
     expect(useEditor.getState().files).toEqual(files);
     expect(useEditor.getState().edges.length).toBe(edgesBefore);
+  });
+});
+
+describe('looksLikeTraversal', () => {
+  const { ir } = parseProject({
+    'main.tf': 'resource "aws_subnet" "public_a" {\n  cidr_block = "10.0.1.0/24"\n}\n',
+  });
+
+  it('turns references to existing resources and variables into refs', () => {
+    expect(looksLikeTraversal('aws_subnet.public_a.id', ir)).toBe(true);
+    expect(looksLikeTraversal('aws_subnet.public_a[0].id', ir)).toBe(true);
+    expect(looksLikeTraversal('var.region', ir)).toBe(true);
+    expect(looksLikeTraversal('data.aws_ami.ubuntu.id', ir)).toBe(true);
+  });
+
+  it('keeps look-alike strings as strings', () => {
+    expect(looksLikeTraversal('lambda_function.lambda_handler', ir)).toBe(false);
+    expect(looksLikeTraversal('lambda_function.zip', ir)).toBe(false);
+    expect(looksLikeTraversal('aws_subnet.missing.id', ir)).toBe(false);
+    expect(looksLikeTraversal('my value', ir)).toBe(false);
+  });
+});
+
+describe('removeReferencesOps in nested blocks', () => {
+  it('drops a subnet from an EKS vpc_config without touching the rest', () => {
+    const { ir } = parseProject({
+      'main.tf': `resource "aws_subnet" "a" {
+  cidr_block = "10.0.1.0/24"
+}
+resource "aws_subnet" "b" {
+  cidr_block = "10.0.2.0/24"
+}
+resource "aws_eks_cluster" "k" {
+  name     = "k"
+  role_arn = "arn"
+  vpc_config {
+    subnet_ids = [aws_subnet.a.id, aws_subnet.b.id]
+  }
+}
+`,
+    });
+    const ops = removeReferencesOps(ir, [{ source: 'aws_eks_cluster.k', target: 'aws_subnet.a', field: 'vpc_config' }]);
+    expect(ops).toEqual([
+      {
+        kind: 'set_arg',
+        nodeId: 'aws_eks_cluster.k',
+        field: 'vpc_config',
+        value: { kind: 'block', body: { subnet_ids: { kind: 'list', items: [{ kind: 'ref', path: 'aws_subnet.b.id' }] } } },
+      },
+    ]);
   });
 });

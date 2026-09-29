@@ -5,15 +5,26 @@
   "type": "module",
   "packageManager": "pnpm@10.26.1",
   "description": "Design cloud infrastructure visually. Ship Terraform instantly. Free, open source, runs entirely in your browser.",
+  "license": "MIT",
+  "homepage": "https://pedromenuzzi.github.io/cloud-infra-blueprint/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pedromenuzzi/cloud-infra-blueprint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/pedromenuzzi/cloud-infra-blueprint/issues"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "templates:emit": "vite-node scripts/emit-templates.ts"
+    "templates:emit": "vite-node scripts/emit-templates.ts",
+    "catalog:emit": "vite-node scripts/emit-catalog.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.1.0",
@@ -27,7 +38,7 @@
     "monaco-editor": "^0.52.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.0",
+    "react-router-dom": "^6.30.6",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
@@ -37,8 +48,12 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.4.1",
+    "axe-core": "4.11.4",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "tailwindcss": "^4.1.8",
     "typescript": "~5.8.3",
+    "typescript-eslint": "^8.71.0",
     "vite": "^6.3.5",
     "vite-node": "3.2.4",
     "vitest": "^3.1.4"

@@ -1,7 +1,10 @@
 /** Security UI state + a shared, memoized audit of the current IR. */
 import { create } from 'zustand';
+import { showToast } from '@/components/Toast';
+import { MOD } from '@/features/command/paletteStore';
+import { useEditor } from '@/features/editor/store';
 import type { IR } from '@/ir/types';
-import { auditSecurity, type AuditResult } from '@/security/audit';
+import { auditSecurity, planFixAll, type AuditResult } from '@/security/audit';
 
 const LENS_KEY = 'cb-security-lens';
 
@@ -54,6 +57,14 @@ let cache: { ir: IR; result: AuditResult } | null = null;
 export function getAudit(ir: IR): AuditResult {
   if (cache?.ir !== ir) cache = { ir, result: auditSecurity(ir) };
   return cache.result;
+}
+
+/** Apply every one-click fix as one undo step; the toast counts the findings that actually went away. */
+export function fixAllFindings() {
+  const { ops, fixed } = planFixAll(useEditor.getState().ir);
+  if (ops.length) useEditor.getState().applyCanvasOps(ops);
+  if (fixed > 0) showToast(`Fixed ${fixed} issue${fixed === 1 ? '' : 's'} — ${MOD} Z to undo`, 'success');
+  else showToast('Nothing could be fixed automatically', 'info');
 }
 
 export const GRADE_COLORS: Record<string, string> = {

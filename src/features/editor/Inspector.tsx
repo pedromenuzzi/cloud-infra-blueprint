@@ -9,22 +9,23 @@ import {
   Lock,
   Plus,
   ShieldCheck,
+  ShieldQuestion,
   Trash2,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { getAudit, useSecurityUi } from '@/features/security/securityStore';
-import { ruleRisk } from '@/security/audit';
 import { OWNER_TYPES, peerLabel, portLabel, serviceName } from '@/security/model';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
 import { emitResource } from '@/hcl/emitter';
 import { exprPreview, lit, literalString, ref } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
-import type { Expression, ResourceNode } from '@/ir/types';
+import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
 import { cn, tfName } from '@/lib/utils';
 import { PROVIDER_LABELS, ResourceIcon } from '@/resources/icons';
+import { withinBounds } from '@/resources/fieldRules';
 import { docsUrl, getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
 import { canvasApi } from './canvasApi';
@@ -40,15 +41,26 @@ function useOps() {
   return useEditor((s) => s.applyCanvasOps);
 }
 
-function commitTextOp(node: ResourceNode, field: string, text: string): Op | null {
+function commitTextOp(ir: IR, node: ResourceNode, field: string, text: string): Op | null {
   const trimmed = text.trim();
   const current = node.args[field];
   if (trimmed === '') {
     return current ? { kind: 'unset_arg', nodeId: node.id, field } : null;
   }
-  const value: Expression = looksLikeTraversal(trimmed) ? ref(trimmed) : lit(trimmed);
+  const value: Expression = looksLikeTraversal(trimmed, ir) ? ref(trimmed) : lit(trimmed);
   if (current && exprPreview(current) === exprPreview(value)) return null;
   return { kind: 'set_arg', nodeId: node.id, field, value };
+}
+
+/** Enter commits (by blurring), Escape puts the original value back first so the blur commits nothing. */
+function editKeys(original: string) {
+  return (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') e.currentTarget.blur();
+    else if (e.key === 'Escape') {
+      e.currentTarget.value = original;
+      e.currentTarget.blur();
+    }
+  };
 }
 
 function RawValueNote({ expr }: { expr: Expression }) {
@@ -116,12 +128,10 @@ function StringOrRefField({ node, field }: { node: ResourceNode; field: FieldDef
       defaultValue={currentText}
       placeholder={field.placeholder}
       onBlur={(e) => {
-        const op = commitTextOp(node, field.name, e.target.value);
+        const op = commitTextOp(ir, node, field.name, e.target.value);
         if (op) applyOps([op]);
       }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-      }}
+      onKeyDown={editKeys(currentText)}
     />
   );
 }
@@ -137,11 +147,17 @@ function SelectField({ node, field }: { node: ResourceNode; field: FieldDef }) {
       value={current}
       onChange={(e) => {
         const v = e.target.value;
-        applyOps([
+        const ops: Op[] = [
           v === ''
             ? { kind: 'unset_arg', nodeId: node.id, field: field.name }
             : { kind: 'set_arg', nodeId: node.id, field: field.name, value: lit(v) },
-        ]);
+        ];
+        // another engine's version (postgres 15.4 on mysql) would fail at apply
+        if (field.name === 'engine' && node.args.engine_version) {
+          ops.push({ kind: 'unset_arg', nodeId: node.id, field: 'engine_version' });
+          showToast('Cleared engine_version — set one that exists for the new engine', 'info');
+        }
+        applyOps(ops);
       }}
     >
       <option value="">— none —</option>
@@ -188,19 +204,26 @@ function NumberField({ node, field }: { node: ResourceNode; field: FieldDef }) {
     <Input
       key={`${node.id}:${field.name}:${current}`}
       type="number"
+      min={field.min}
+      max={field.max}
       defaultValue={current}
       onBlur={(e) => {
         const v = e.target.value.trim();
         if (v === current) return;
+        if (v !== '' && (!Number.isFinite(Number(v)) || !withinBounds(field, Number(v)))) {
+          if (v !== '' && Number.isFinite(Number(v))) {
+            showToast(`${field.name} must be ${field.min ?? '…'}–${field.max ?? '…'}`, 'error');
+          }
+          e.target.value = current;
+          return;
+        }
         applyOps([
           v === ''
             ? { kind: 'unset_arg', nodeId: node.id, field: field.name }
             : { kind: 'set_arg', nodeId: node.id, field: field.name, value: lit(Number(v)) },
         ]);
       }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-      }}
+      onKeyDown={editKeys(current)}
     />
   );
 }
@@ -277,7 +300,7 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
               if (e.key === 'Enter' && draft.trim()) {
                 commit([
                   ...items,
-                  looksLikeTraversal(draft.trim()) ? ref(draft.trim()) : lit(draft.trim()),
+                  looksLikeTraversal(draft.trim(), ir) ? ref(draft.trim()) : lit(draft.trim()),
                 ]);
                 setDraft('');
               }
@@ -292,7 +315,7 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
               if (!draft.trim()) return;
               commit([
                 ...items,
-                looksLikeTraversal(draft.trim()) ? ref(draft.trim()) : lit(draft.trim()),
+                looksLikeTraversal(draft.trim(), ir) ? ref(draft.trim()) : lit(draft.trim()),
               ]);
               setDraft('');
             }}
@@ -307,11 +330,12 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
 
 function TagsField({ node, field }: { node: ResourceNode; field: FieldDef }) {
   const applyOps = useOps();
-  const expr = node.args[field.name];
-  if (expr && expr.kind !== 'object') return <RawValueNote expr={expr} />;
-  const entries = expr?.kind === 'object' ? Object.entries(expr.fields) : [];
   const [k, setK] = useState('');
   const [v, setV] = useState('');
+  const expr = node.args[field.name];
+  // e.g. `tags = var.common_tags` — hooks above stay unconditional
+  if (expr && expr.kind !== 'object') return <RawValueNote expr={expr} />;
+  const entries = expr?.kind === 'object' ? Object.entries(expr.fields) : [];
 
   const commit = (fields: Record<string, Expression>) => {
     applyOps([
@@ -345,8 +369,12 @@ function TagsField({ node, field }: { node: ResourceNode; field: FieldDef }) {
         </span>
       ))}
       <div className="flex gap-1.5">
-        <Input className="h-7.5 w-2/5" placeholder="key" value={k} onChange={(e) => setK(e.target.value)} />
-        <Input className="h-7.5 flex-1" placeholder="value" value={v} onChange={(e) => setV(e.target.value)} />
+        <span className="w-2/5 shrink-0">
+          <Input className="h-7.5" placeholder="key" aria-label="Tag key" value={k} onChange={(e) => setK(e.target.value)} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <Input className="h-7.5" placeholder="value" aria-label="Tag value" value={v} onChange={(e) => setV(e.target.value)} />
+        </span>
         <Button
           variant="outline"
           size="icon"
@@ -408,6 +436,8 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
 /* ------------------------------------------------------------ inspector */
 
 const RISK_TONE = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#64748b' } as const;
+const EXPOSURE_TONE = { internet: '#0ea5e9', unknown: '#f59e0b', restricted: '#10b981', isolated: '#64748b' } as const;
+const portList = (ports: string[]) => ports.map((p) => (/^\d/.test(p) ? `:${p}` : p)).join(', ');
 
 /** Security summary for a workload: exposure, protecting groups, findings. */
 function ExposureCard({ node }: { node: ResourceNode }) {
@@ -417,26 +447,34 @@ function ExposureCard({ node }: { node: ResourceNode }) {
   const findings = audit.findings.filter((f) => f.resource === node.id);
   if (!exposure && findings.length === 0) return null;
   const inbound = audit.topology.flows.filter((f) => f.to === node.id);
-  const tone =
-    exposure?.level === 'internet' ? '#0ea5e9' : exposure?.level === 'restricted' ? '#10b981' : '#64748b';
+  const tone = EXPOSURE_TONE[exposure?.level ?? 'isolated'];
   return (
     <div className="rounded-[10px] border p-2.5" style={{ borderColor: `color-mix(in srgb, ${tone} 35%, transparent)` }}>
       {exposure ? (
         <div className="flex items-center gap-1.5 text-[12px] font-semibold" style={{ color: tone }}>
-          {exposure.level === 'internet' ? <Globe className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+          {exposure.level === 'internet' ? (
+            <Globe className="h-3.5 w-3.5" />
+          ) : exposure.level === 'unknown' ? (
+            <ShieldQuestion className="h-3.5 w-3.5" />
+          ) : (
+            <Lock className="h-3.5 w-3.5" />
+          )}
           {exposure.level === 'internet'
-            ? `Internet-facing on :${exposure.ports.join(', :')}`
-            : exposure.level === 'restricted'
-              ? 'Private — reachable only as allowed below'
-              : 'No inbound traffic allowed'}
+            ? `Internet-facing on ${portList(exposure.ports)}`
+            : exposure.level === 'unknown'
+              ? "Exposure can't be verified"
+              : exposure.level === 'restricted'
+                ? 'Private — reachable only as allowed below'
+                : 'No inbound traffic allowed'}
         </div>
       ) : null}
+      {exposure?.reason ? <p className="mt-1 text-[11px] leading-snug text-muted">{exposure.reason}</p> : null}
       {inbound.length > 0 ? (
         <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted">
           {inbound.map((f) => (
             <li key={f.id} className="flex justify-between gap-2">
               <span className="truncate">from {f.from === 'internet' ? 'Internet' : f.from.split('.').slice(1).join('.')}</span>
-              <span className="shrink-0 font-mono">:{f.ports.join(', :')}</span>
+              <span className="shrink-0 font-mono">{portList(f.ports)}</span>
             </li>
           ))}
         </ul>
@@ -487,6 +525,7 @@ function RulesTab({ node }: { node: ResourceNode }) {
   const protects = audit.topology.protects.get(node.id) ?? [];
   const nacledSubnets = [...audit.topology.subnetNacls].filter(([, n]) => n.includes(node.id)).map(([s]) => s);
   const findings = audit.findings.filter((f) => f.resource === node.id);
+  const hidden = audit.topology.hidden.get(node.id) ?? [];
   const open = () => useSecurityUi.getState().openRules(node.id);
   const name = (id: string) => id.split('.').slice(1).join('.');
   return (
@@ -516,19 +555,27 @@ function RulesTab({ node }: { node: ResourceNode }) {
       ) : null}
       {(['inbound', 'outbound'] as const).map((direction) => {
         const list = rules.filter((r) => r.direction === direction);
-        if (node.type === 'google_compute_firewall' && list.length === 0) return null;
+        const unreadable = hidden.filter((h) => h.directions.includes(direction));
+        if (node.type === 'google_compute_firewall' && list.length === 0 && unreadable.length === 0) return null;
         return (
           <div key={direction}>
             <h4 className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
               {direction === 'inbound' ? <ArrowDownToLine className="h-3 w-3" /> : <ArrowUpFromLine className="h-3 w-3" />}
               {direction} <span className="font-medium normal-case tracking-normal">({list.length})</span>
             </h4>
+            {unreadable.length > 0 ? (
+              <p className="mb-1 text-[11.5px] text-warning">
+                Rules built with {unreadable.map((h) => h.reason).join(', ')} can't be shown — check them in code.
+              </p>
+            ) : null}
             {list.length === 0 ? (
-              <p className="text-[11.5px] text-faint">{direction === 'inbound' ? 'Nothing can connect in.' : 'No outbound traffic.'}</p>
+              unreadable.length === 0 ? (
+                <p className="text-[11.5px] text-faint">{direction === 'inbound' ? 'Nothing can connect in.' : 'No outbound traffic.'}</p>
+              ) : null
             ) : (
               <ul className="space-y-1">
                 {list.map((r) => {
-                  const risk = ruleRisk(r);
+                  const risk = audit.risks.get(r.id);
                   return (
                     <li key={r.id}>
                       <button
@@ -622,9 +669,7 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
             }
             applyOps([{ kind: 'rename_resource', nodeId: node.id, newName: next }], `${node.type}.${next}`);
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
+          onKeyDown={editKeys(node.name)}
         />
       </Field>
 
@@ -766,9 +811,7 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
               renameProject(e.target.value);
             }
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-          }}
+          onKeyDown={editKeys(projectName)}
         />
       </Field>
 
@@ -835,6 +878,7 @@ export function ProjectOverview({ onNavigate }: { onNavigate?(): void }) {
 export function Inspector() {
   const selection = useEditor((s) => s.selection);
   const ir = useEditor((s) => s.ir);
+  const codeErrored = useEditor((s) => s.codeErrored);
   const [tabChoice, setTab] = useState<Tab>('properties');
   const node = selection ? ir.resources.find((r) => r.id === selection) : undefined;
   const isOwner = node ? OWNER_TYPES[node.type] !== undefined : false;
@@ -916,17 +960,23 @@ export function Inspector() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          {codeErrored ? (
+            <p role="status" className="border-b bg-warning/10 px-3.5 py-2 text-[11.5px] font-medium text-warning">
+              Read-only until the code parses — fix the errors in the code pane.
+            </p>
+          ) : null}
+          <fieldset disabled={codeErrored} className="min-h-0 flex-1 overflow-y-auto">
             {tab === 'rules' ? <RulesTab node={node} /> : null}
             {tab === 'properties' ? <PropertiesTab node={node} /> : null}
             {tab === 'connections' ? <ConnectionsTab node={node} /> : null}
             {tab === 'code' ? <CodeTab node={node} /> : null}
-          </div>
+          </fieldset>
 
           <div className="border-t p-3">
             <Button
               variant="outline"
               size="sm"
+              disabled={codeErrored}
               className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
               onClick={() => useEditor.getState().deleteResources([node.id])}
             >
