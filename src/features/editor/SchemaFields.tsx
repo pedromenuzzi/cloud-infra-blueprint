@@ -22,14 +22,12 @@ import { loadSchema, requestSchemasFor, schemaProviderOf, useResourceSchema } fr
 import type { SchemaBlock } from '@/schema/types';
 import { pinMismatch, schemaIssues } from '@/schema/validate';
 import { useLayout } from './layoutStore';
-import { installLocaleBridge } from './localeBridge';
 import { schemaFieldsMessages } from './SchemaFields.messages';
 import { buildArgGroups, matchesQuery, type ArgRow } from './schemaFieldsModel';
 import { installSchemaBridge } from './schemaBridge';
 import { useEditor } from './store';
 
 installSchemaBridge();
-installLocaleBridge();
 
 /** optional arguments are listed inline up to this many; past it they fold behind a toggle */
 const FOLD_AFTER = 6;

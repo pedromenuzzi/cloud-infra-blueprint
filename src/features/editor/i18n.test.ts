@@ -5,8 +5,7 @@ import { createProject } from '@/lib/storage';
 import { alignBlocker } from './align';
 import { ALIGN_ACTIONS } from './alignActions';
 import { addSubnetOps, networkPlan, splitAcrossZonesOps } from './cidrPlan';
-import { relocalizeEditorMessages } from './localeBridge';
-import { useEditor } from './store';
+import { relocalizeEditorMessages, useEditor } from './store';
 
 const MAIN = `resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
