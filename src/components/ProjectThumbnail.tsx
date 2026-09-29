@@ -1,12 +1,15 @@
 import { Plus } from 'lucide-react';
 import { memo, useId, useMemo } from 'react';
 import { parseProject } from '@/hcl/parser';
+import { useMessages } from '@/i18n/messages';
 import { deriveStructure } from '@/ir/graph';
 import { autoLayout, CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { IR, ResourceNode } from '@/ir/types';
+import { resourceName, resourceShortName } from '@/resources/i18n';
 import { CATEGORY_COLORS, CategoryGlyph } from '@/resources/icons';
 import type { Category } from '@/resources/types';
 import { getDef, isContainerType } from '@/resources/registry';
+import { shellMessages } from './messages';
 
 export interface AbsRect {
   x: number;
@@ -90,6 +93,8 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
     }
   }, [files]);
   const uid = useId().replace(/:/g, '');
+  // resource names (detailed renders) and labels follow a language switch
+  const m = useMessages(shellMessages);
 
   if (!data) {
     return (
@@ -98,7 +103,7 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
           <span className="flex h-9 w-9 items-center justify-center rounded-[10px] border-[1.5px] border-dashed border-border-strong">
             <Plus className="h-4 w-4" />
           </span>
-          <span className="text-[11px] font-medium">Empty canvas</span>
+          <span className="text-[11px] font-medium">{m.emptyCanvas}</span>
         </div>
       </div>
     );
@@ -125,7 +130,7 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
       className={className}
       preserveAspectRatio="xMidYMid meet"
       role="img"
-      aria-label={interactiveTitle ?? 'Architecture preview'}
+      aria-label={interactiveTitle ?? m.architecturePreview}
     >
       <defs>
         {categories.map((c) => (
@@ -159,7 +164,7 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
                 <text x={r.x + 48} y={r.y + 29} fontSize={14} fontWeight={600} fill="currentColor">
                   {r.node.name}
                   <tspan dx={8} fontSize={10.5} fontWeight={700} fill={c} letterSpacing={0.6}>
-                    {(getDef(r.node.type)?.shortName ?? '').toUpperCase()}
+                    {(getDef(r.node.type) ? resourceShortName(r.node.type) : '').toUpperCase()}
                   </tspan>
                 </text>
               ) : (
@@ -213,13 +218,13 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
               {detailed ? (
                 <>
                   <text x={tx + tile + 12} y={r.y + 27} fontSize={10.5} fontWeight={700} letterSpacing={0.6} fill={CATEGORY_COLORS[category].solid}>
-                    {(getDef(r.node.type)?.shortName ?? r.node.type).toUpperCase()}
+                    {resourceShortName(r.node.type).toUpperCase()}
                   </text>
                   <text x={tx + tile + 12} y={r.y + 46} fontSize={15} fontWeight={600} fill="currentColor">
                     {r.node.name.length > 16 ? `${r.node.name.slice(0, 15)}…` : r.node.name}
                   </text>
                   <text x={tx + tile + 12} y={r.y + 63} fontSize={11.5} fill="currentColor" fillOpacity={0.55}>
-                    {(getDef(r.node.type)?.displayName ?? '').slice(0, 22)}
+                    {(getDef(r.node.type) ? resourceName(r.node.type) : '').slice(0, 22)}
                   </text>
                 </>
               ) : (

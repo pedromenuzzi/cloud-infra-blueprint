@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
+import { useMessages } from '@/i18n/messages';
 import { cn } from '@/lib/utils';
+import { shellMessages } from './messages';
 
 /** Tiny static HCL highlighter (comments / strings / keywords). */
 export function hlLine(line: string, key: number): ReactNode {
@@ -59,6 +61,7 @@ export function HclSnippet({
   className?: string;
 }) {
   const lines = code.replace(/\n$/, '').split('\n');
+  const m = useMessages(shellMessages);
   return (
     <pre
       className={cn(
@@ -82,7 +85,7 @@ export function HclSnippet({
           <span className="min-w-0 flex-1">{hlLine(line, i)}</span>
           {addedLines?.has(i + 1) ? (
             <span className="ml-2 select-none self-center rounded-[3px] bg-success/20 px-1 text-[8.5px] font-bold uppercase text-success">
-              new
+              {m.newLine}
             </span>
           ) : null}
         </div>

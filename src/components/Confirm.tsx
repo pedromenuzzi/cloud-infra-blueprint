@@ -5,6 +5,8 @@
 import { AlertTriangle } from 'lucide-react';
 import { useId } from 'react';
 import { create } from 'zustand';
+import { useMessages } from '@/i18n/messages';
+import { shellMessages } from './messages';
 import { Button, Modal } from './ui';
 
 interface ConfirmRequest {
@@ -24,6 +26,7 @@ export function confirmAction(options: Omit<ConfirmRequest, 'resolve'>): Promise
 export function ConfirmHost() {
   const request = useConfirm((s) => s.request);
   const bodyId = useId();
+  const m = useMessages(shellMessages);
   if (!request) return null;
   const close = (ok: boolean) => {
     request.resolve(ok);
@@ -55,10 +58,10 @@ export function ConfirmHost() {
         </div>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={() => close(false)}>
-            Cancel
+            {m.cancel}
           </Button>
           <Button data-autofocus variant={request.danger ? 'danger' : 'primary'} onClick={() => close(true)}>
-            {request.confirmLabel ?? 'Confirm'}
+            {request.confirmLabel ?? m.confirm}
           </Button>
         </div>
       </div>

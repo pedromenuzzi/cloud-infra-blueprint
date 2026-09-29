@@ -1,7 +1,9 @@
 import { AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { shellMessages } from '@/components/messages';
 import { Button, Modal } from '@/components/ui';
 import { useEditor } from '@/features/editor/store';
+import { useMessages } from '@/i18n/messages';
 
 /**
  * The open project changed or was deleted in another tab while this one had
@@ -13,6 +15,7 @@ export default function ProjectConflictHost() {
   const conflict = useEditor((s) => s.conflict);
   const name = useEditor((s) => s.projectName);
   const resolve = useEditor((s) => s.resolveConflict);
+  const m = useMessages(shellMessages);
   if (!conflict) return null;
 
   const pick = (choice: Parameters<typeof resolve>[0]) => {
@@ -23,7 +26,7 @@ export default function ProjectConflictHost() {
   };
 
   const deleted = conflict === 'deleted';
-  const title = deleted ? `“${name}” was deleted in another tab` : `“${name}” was changed in another tab`;
+  const title = deleted ? m.deletedElsewhere(name) : m.changedElsewhere(name);
   return (
     // choosing is required: closing would leave edits that can't be saved
     <Modal open onClose={() => undefined} label={title}>
@@ -35,9 +38,7 @@ export default function ProjectConflictHost() {
           <div className="min-w-0">
             <h2 className="break-words text-[15px] font-semibold">{title}</h2>
             <p className="mt-1 text-[13px] leading-relaxed text-muted">
-              {deleted
-                ? 'This tab still has your latest changes. Put the project back, keep them as a new project, or let it go.'
-                : 'This tab has changes that aren’t saved yet. Load the other tab’s version (your recent changes here are dropped) or keep yours (the other tab’s changes are overwritten).'}
+              {deleted ? m.deletedBody : m.changedBody}
             </p>
           </div>
         </div>
@@ -45,19 +46,19 @@ export default function ProjectConflictHost() {
           {deleted ? (
             <>
               <Button variant="outline" onClick={() => pick('discard')}>
-                Discard
+                {m.discard}
               </Button>
               <Button variant="outline" onClick={() => pick('fork')}>
-                Keep as new project
+                {m.keepAsNew}
               </Button>
-              <Button onClick={() => pick('restore')}>Restore project</Button>
+              <Button onClick={() => pick('restore')}>{m.restoreProject}</Button>
             </>
           ) : (
             <>
               <Button variant="outline" onClick={() => pick('reload')}>
-                Load other version
+                {m.loadOther}
               </Button>
-              <Button onClick={() => pick('overwrite')}>Keep mine</Button>
+              <Button onClick={() => pick('overwrite')}>{m.keepMine}</Button>
             </>
           )}
         </div>
