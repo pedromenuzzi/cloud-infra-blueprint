@@ -110,7 +110,7 @@ export const landingMessages = defineMessages(
     clickResource: 'Clique em um recurso',
     liveSync: 'Sincronia bidirecional',
     subtitleOnDemand: 'sob demanda',
-    subtitleRole: 'role do IAM',
+    subtitleRole: 'perfil do IAM',
     subtitleQueue: 'fila',
     statServices: 'serviços de nuvem',
     statTemplates: 'templates prontos para produção',
@@ -129,7 +129,7 @@ export const landingMessages = defineMessages(
       },
       keyboard: {
         title: 'Feito para o teclado',
-        body: 'Pressione ⌘K para adicionar recursos, ir a qualquer lugar ou executar qualquer ação. Dê um duplo clique no canvas para soltar um serviço exatamente onde quiser.',
+        body: 'Pressione ⌘K para adicionar recursos, ir a qualquer lugar ou executar qualquer ação. Clique duas vezes no canvas para soltar um serviço exatamente onde quiser.',
       },
       layout: {
         title: 'Layout organizado em um clique',

@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { lineColOf } from '@/hcl/parser';
+import { useLocale } from '@/i18n/locale';
+import { useMessages } from '@/i18n/messages';
 import { prefersReducedMotion } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import { codeMessages } from './CodePane.messages';
 import { ensureMonacoSetup, monaco, setCompletionSource } from './monaco/setup';
-import { orderedFiles, READ_ONLY_HINT, useEditor } from './store';
+import { orderedFiles, readOnlyHint, useEditor } from './store';
 
 ensureMonacoSetup();
 
@@ -32,6 +35,8 @@ function applyMinimalEdit(model: monaco.editor.ITextModel, newText: string) {
 
 /** `controls`: layout buttons for the header (grip, expand, hide) — the editor passes them, the viewer doesn't. */
 export function CodePane({ controls }: { controls?: ReactNode } = {}) {
+  const m = useMessages(codeMessages);
+  const locale = useLocale((s) => s.locale);
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelsRef = useRef(new Map<string, monaco.editor.ITextModel>());
@@ -110,7 +115,7 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
       fixedOverflowWidgets: true,
       readOnly: useEditor.getState().readOnly,
       domReadOnly: useEditor.getState().readOnly,
-      readOnlyMessage: { value: READ_ONLY_HINT },
+      readOnlyMessage: { value: readOnlyHint() },
     });
     // code → canvas: explicit caret moves (click, arrows) select the enclosing resource
     let syncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -161,7 +166,7 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
       observer.disconnect();
       editor.dispose();
       host.remove();
-      for (const m of models.values()) m.dispose();
+      for (const model of models.values()) model.dispose();
       models.clear();
       editorRef.current = null;
     };
@@ -171,6 +176,15 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
   useEffect(() => {
     editorRef.current?.updateOptions({ readOnly, domReadOnly: readOnly });
   }, [readOnly]);
+
+  // a language switch re-words the read-only tooltip in place (the editor, its models and undo stay);
+  // the editor was created in the language in effect, so nothing to do until it changes
+  const wordedIn = useRef(locale);
+  useEffect(() => {
+    if (wordedIn.current === locale) return;
+    wordedIn.current = locale;
+    editorRef.current?.updateOptions({ readOnlyMessage: { value: readOnlyHint() } });
+  }, [locale]);
 
   // dispose stale models when switching projects
   useEffect(() => {
@@ -311,9 +325,9 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
     parseDiagnostics.some((d) => d.file === file && d.severity === 'error');
 
   return (
-    <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label="Terraform code">
+    <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label={m.terraformCode}>
       <div className="flex items-center border-b">
-        <div ref={tabsRef} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 pt-1" role="tablist" aria-label="Files">
+        <div ref={tabsRef} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 pt-1" role="tablist" aria-label={m.files}>
           {fileList.map((f) => (
             <button
               key={f}
@@ -349,9 +363,7 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
           <span>HCL</span>
           <span>UTF-8</span>
         </span>
-        <span>
-          Ln {cursor.line}, Col {cursor.col}
-        </span>
+        <span>{m.position(cursor.line, cursor.col)}</span>
       </div>
     </section>
   );

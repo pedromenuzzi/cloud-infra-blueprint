@@ -90,7 +90,7 @@ export const importMessages = defineMessages(
       '`owner/repo`, um link de pasta (`…/tree/‹branch›/‹pasta›`), um link de arquivo `.tf` ou um gist. Um único módulo raiz é importado — nunca o state nem o lock file.',
     useToken: 'Repositório privado ou limite atingido? Use um token',
     cancel: 'Cancelar',
-    findTerraform: 'Procurar Terraform',
+    findTerraform: 'Buscar Terraform',
     looking: (label: string) => `Procurando Terraform em ${label}…`,
     findingBranch: 'Descobrindo o branch padrão',
     listingFiles: 'Listando os arquivos',

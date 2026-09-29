@@ -19,7 +19,7 @@ import type { ResourceDef } from '@/resources/types';
 import { dropMessages } from './drop.messages';
 import { fixLabel, fixOps } from './dropFixes';
 import { draggedPaletteType, useDropHint, type DropHint } from './dropHint';
-import { dropVerdict, nounOf, type DropFix, type DropVerdict } from './dropRules';
+import { dropVerdict, nounOf, verdictOver, type DropFix, type DropVerdict } from './dropRules';
 import { placeNewNode } from './newNode';
 import { boxOf, makeRoomOps, sizeFor, slotIn } from './placement';
 import { useEditor } from './store';
@@ -240,7 +240,7 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
               { kind: 'unset_arg', nodeId: node.id, field: rule.arg },
               { kind: 'move_node', nodeId: node.id, position: { x: Math.round(box.x), y: Math.round(box.y), ...keepSize(irNode) } },
             ]);
-            showToast(`Removed ${rule.arg} from ${node.id} — it's no longer in ${parent.id} (${MOD} Z to undo)`, 'info');
+            showToast(m.detached(rule.arg, node.id, parent.id, MOD), 'info');
             return;
           }
           const ops = plainMove(node);
@@ -251,13 +251,17 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
     [applyCanvasOps, liveBox, rectsOf, refuseNotice, snapBack],
   );
 
-  /** add a catalog resource at a canvas point, following the drop rules */
-  const placeResource = useCallback(
-    (def: ResourceDef, at: { x: number; y: number }) => {
+  /**
+   * Add a catalog resource the way `verdict` says (one undo step): into the
+   * container that takes it — at `at` when that spot is free, else its next
+   * free cell — or, refused, beside the container tree with the reason and a
+   * fix. Returns the new resource's id.
+   */
+  const placeByVerdict = useCallback(
+    (def: ResourceDef, verdict: DropVerdict, at: { x: number; y: number } | null): string => {
       const { ir } = useEditor.getState();
       const rects = rectsOf(ir);
       const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
-      const verdict = dropVerdict(ir, rects, { type: def.type }, at);
       let placed: ReturnType<typeof placeNewNode>;
       if (verdict.kind === 'nest' || verdict.kind === 'redirect') {
         const pr = rects.get(verdict.parent.id)!;
@@ -267,40 +271,48 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
         let root = verdict.over;
         for (let guard = 0; root.parentId && byId.get(root.parentId) && guard < 16; guard++) root = byId.get(root.parentId)!;
         const r = rects.get(root.id)!;
-        placed = placeNewNode(ir, def, { x: r.x + r.w + 48 + sizeFor(def.type).w / 2, y: at.y });
+        const size = sizeFor(def.type);
+        placed = placeNewNode(ir, def, { x: r.x + r.w + 48 + size.w / 2, y: at?.y ?? r.y + size.h / 2 });
       } else {
-        placed = placeNewNode(ir, def, at);
+        placed = placeNewNode(ir, def, at ?? { x: 40, y: 40 });
       }
       const before = useEditor.getState().filesRevision;
       applyCanvasOps(placed.ops, placed.node.id);
-      if (useEditor.getState().filesRevision === before) return;
+      if (useEditor.getState().filesRevision === before) return placed.node.id;
       const m = messagesFor(dropMessages);
       if (verdict.kind === 'redirect') {
         showToast(m.placedIn(nounOf(verdict.parent.type), verdict.parent.name), 'info', { hint: verdict.reason, duration: 6000 });
       } else if (verdict.kind === 'refuse') {
         refuseNotice(verdict, placed.node.id);
       }
+      return placed.node.id;
     },
     [applyCanvasOps, rectsOf, refuseNotice],
   );
 
+  /** add a catalog resource at a canvas point, following the drop rules */
+  const placeResource = useCallback(
+    (def: ResourceDef, at: { x: number; y: number }) => {
+      const { ir } = useEditor.getState();
+      placeByVerdict(def, dropVerdict(ir, rectsOf(ir), { type: def.type }, at), at);
+    },
+    [placeByVerdict, rectsOf],
+  );
+
   /**
-   * ⌘K "Add resource" with a container selected that can hold it: into its
-   * next free cell. Returns the new resource's id, or null when it doesn't apply.
+   * With a container selected (the palette clicked, ⌘K "Add resource"): the
+   * same as dropping the resource on it — into its next free cell, into the
+   * ancestor that takes it, or beside it with the reason. Returns the new
+   * resource's id, or null when no container is selected.
    */
   const addToSelection = useCallback(
     (def: ResourceDef): string | null => {
       const { ir, selection } = useEditor.getState();
       const container = selection ? ir.resources.find((r) => r.id === selection) : undefined;
       if (!container || !isContainerType(container.type)) return null;
-      const accepts = def.containment?.some((c) => !c.via && c.parentTypes.includes(container.type));
-      if (!accepts) return null;
-      const r = rectsOf(ir).get(container.id)!;
-      const placed = placeNewNode(ir, def, null, { node: container, x: r.x, y: r.y });
-      applyCanvasOps(placed.ops, placed.node.id);
-      return placed.node.id;
+      return placeByVerdict(def, verdictOver(ir, { type: def.type }, container), null);
     },
-    [applyCanvasOps, rectsOf],
+    [placeByVerdict],
   );
 
   /** a resource dragged from the palette over the canvas: the same hint as a node drag */

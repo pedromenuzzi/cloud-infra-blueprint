@@ -33,7 +33,7 @@ export const NOUNS: Record<string, Noun> = {
   aws_instance: n('EC2 instance', 'instância EC2', { an: true, f: true }),
   aws_db_instance: n('RDS database', 'banco RDS', { an: true }),
   aws_s3_bucket: n('S3 bucket', 'bucket S3', { an: true }),
-  aws_iam_role: n('IAM role', 'função do IAM', { an: true, f: true }),
+  aws_iam_role: n('IAM role', 'perfil do IAM', { an: true }),
   aws_lb: n('load balancer', 'balanceador de carga'),
   aws_lb_target_group: n('target group', 'grupo de destino'),
   aws_lb_listener: n('listener', 'listener'),
@@ -53,7 +53,7 @@ export const NOUNS: Record<string, Noun> = {
   aws_apigatewayv2_route: n('API route', 'rota da API', { an: true, f: true }),
   aws_apigatewayv2_stage: n('API stage', 'estágio da API', { an: true }),
   aws_lambda_permission: n('Lambda permission', 'permissão da Lambda', { f: true }),
-  aws_iam_role_policy: n('role policy', 'política da função', { f: true }),
+  aws_iam_role_policy: n('role policy', 'política do perfil', { f: true }),
   aws_sqs_queue: n('SQS queue', 'fila SQS', { an: true, f: true }),
   aws_sns_topic: n('SNS topic', 'tópico SNS', { an: true }),
   aws_sns_topic_subscription: n('SNS subscription', 'assinatura SNS', { an: true, f: true }),
@@ -325,7 +325,7 @@ export const reasonMessages = defineMessages(
     lambda: () =>
       'Uma função Lambda roda fora da sua VPC por padrão — para acessar recursos privados, defina sub-redes em vpc_config (no código)',
     serverless: (r: Noun) =>
-      `${Um(r)} é serverless e roda fora da sua rede VPC — acesse recursos privados por um conector de Acesso VPC sem servidor (no código)`,
+      `${Um(r)} é sem servidor e roda fora da sua rede VPC — acesse recursos privados por um conector de Acesso VPC sem servidor (no código)`,
     spans: (r: Noun, inSubnet: boolean) =>
       inSubnet
         ? `${Um(r)} cobre várias sub-redes — ${ele(r)} é conectad${lo(r)} a cada uma em vez de ficar dentro`

@@ -15,6 +15,8 @@ import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
 import { applyOpsWithPatches } from '@/hcl/patch';
 import { parseProject } from '@/hcl/parser';
+import { useLocale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { deriveStructure } from '@/ir/graph';
 import { autoLayout } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
@@ -33,6 +35,7 @@ import {
 } from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
 import { deleteResourcesOps } from './connections';
+import { storeMessages } from './store.messages';
 
 const FILE_ORDER = ['main.tf', 'variables.tf', 'outputs.tf', 'providers.tf', 'versions.tf'];
 
@@ -132,7 +135,8 @@ let codeBurstBase: Record<string, string> | null = null;
 
 const hasErrors = (diagnostics: Diagnostic[]) => diagnostics.some((d) => d.severity === 'error');
 
-export const READ_ONLY_HINT = 'This is a read-only view — make a copy to edit it';
+/** what a read-only view says to an edit (a toast, Monaco's read-only tooltip), in the language in effect */
+export const readOnlyHint = () => messagesFor(storeMessages).readOnlyHint;
 
 /* persistence bookkeeping for the open project */
 /** the stored project as this tab last loaded or wrote it — its `rev` guards against stale writes */
@@ -343,26 +347,23 @@ export const useEditor = create<EditorState>((set, get) => {
     applyCanvasOps(ops, select) {
       if (ops.length === 0) return;
       if (get().readOnly) {
-        showToast(READ_ONLY_HINT, 'info');
+        showToast(readOnlyHint(), 'info');
         return;
       }
       // the IR only matches the text once the typed code has been parsed
       if ((parseTimer !== undefined || codeBurstBase) && !commitCode()) {
-        showToast('Fix the errors in the code first — the canvas is read-only until it parses', 'error');
+        showToast(messagesFor(storeMessages).fixCodeFirst, 'error');
         return;
       }
       if (get().codeErrored) {
-        showToast('Fix the errors in the code first — the canvas is read-only until it parses', 'error');
+        showToast(messagesFor(storeMessages).fixCodeFirst, 'error');
         return;
       }
       const { files, ir } = get();
       const outcome = applyOpsWithPatches(files, ir, ops);
       // never trade the user's text for a broken (or wrongly spliced) one
       if (outcome.refused || hasErrors(outcome.diagnostics)) {
-        showToast(
-          outcome.refused?.message ?? "That change couldn't be applied without breaking the code — make it in the code pane",
-          'error',
-        );
+        showToast(outcome.refused?.message ?? messagesFor(storeMessages).cantApply, 'error');
         return;
       }
       pushHistory({ ...files });
@@ -419,7 +420,7 @@ export const useEditor = create<EditorState>((set, get) => {
     renameProject(name) {
       const { projectId, readOnly } = get();
       if (readOnly) return;
-      const clean = name.trim() || 'Untitled';
+      const clean = name.trim() || messagesFor(storeMessages).untitled;
       set({ projectName: clean });
       if (!projectId) return;
       dirty = true;
@@ -429,7 +430,7 @@ export const useEditor = create<EditorState>((set, get) => {
     deleteResources(ids) {
       const { ir, edges, readOnly } = get();
       if (readOnly) {
-        showToast(READ_ONLY_HINT, 'info');
+        showToast(readOnlyHint(), 'info');
         return 0;
       }
       const { ops, removed } = deleteResourcesOps(ir, edges, ids);
@@ -514,6 +515,26 @@ useEditor.subscribe((state, prev) => {
   if (state.selection === null) ids = [];
   else if (!ids.includes(state.selection)) ids = [state.selection];
   if (!sameIds(ids, state.selectedIds)) useEditor.setState({ selectedIds: ids });
+});
+
+/**
+ * Validation warnings and parse errors are text produced when the code is
+ * checked, in the language in effect then. On a language switch they're
+ * produced again from the same IR and files, so the canvas badges, the
+ * overview and the code pane's markers change language in place. Nothing
+ * else is touched: no new IR, no undo step, no save.
+ */
+export function relocalizeEditorMessages() {
+  const { ir, files, parseDiagnostics } = useEditor.getState();
+  useEditor.setState({
+    warnings: validateProject(ir, getDef),
+    // nothing to translate when the code parsed cleanly
+    ...(parseDiagnostics.length > 0 ? { parseDiagnostics: parseProject(files).diagnostics } : {}),
+  });
+}
+
+useLocale.subscribe((state, prev) => {
+  if (state.locale !== prev.locale) relocalizeEditorMessages();
 });
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {

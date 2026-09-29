@@ -11,7 +11,7 @@ import { allDefs, getDef, isContainerType } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
 import { messagesFor } from '@/i18n/messages';
 import { chooseSubnets, fixLabel, fixOps } from './dropFixes';
-import { dropVerdict, nounOf, refusalReason } from './dropRules';
+import { dropVerdict, nounOf, refusalReason, verdictOver } from './dropRules';
 import { boxOf } from './placement';
 
 function project(slug = 'aws-web-app', extra = ''): IR {
@@ -50,6 +50,24 @@ const vpcOnly = (ir: IR) => {
 };
 
 const containers = allDefs().filter((d) => d.container);
+
+describe('a drop on a known container (the palette clicked with a container selected)', () => {
+  it('gives the same verdict as a drop at a free spot inside it', () => {
+    const ir = project();
+    const subnet = node(ir, 'aws_subnet.public_b');
+    expect(verdictOver(ir, { type: 'aws_instance' }, subnet, 'en')).toMatchObject({ kind: 'nest', parent: { id: 'aws_subnet.public_b' } });
+    // a security group goes to the subnet's VPC, and says why
+    const sg = verdictOver(ir, { type: 'aws_security_group' }, subnet, 'en');
+    expect(sg).toMatchObject({ kind: 'redirect', parent: { id: 'aws_vpc.main' } });
+    expect(sg).toEqual(verdictAt(ir, { type: 'aws_security_group' }, center(ir, 'aws_subnet.public_b')));
+    // a database can't go in a subnet: refused, with the DB subnet group fix
+    const db = verdictOver(ir, { type: 'aws_db_instance' }, subnet, 'en');
+    expect(db).toMatchObject({ kind: 'refuse', over: { id: 'aws_subnet.public_b' } });
+    expect(db.kind === 'refuse' && db.fix?.kind).toBe('create-group');
+    // an S3 bucket can't go in a VPC at all
+    expect(verdictOver(ir, { type: 'aws_s3_bucket' }, node(ir, 'aws_vpc.main'), 'en').kind).toBe('refuse');
+  });
+});
 
 describe('refusal reasons', () => {
   it('names every catalog resource in both languages', () => {

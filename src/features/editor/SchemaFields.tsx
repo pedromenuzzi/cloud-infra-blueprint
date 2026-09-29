@@ -22,14 +22,12 @@ import { loadSchema, requestSchemasFor, schemaProviderOf, useResourceSchema } fr
 import type { SchemaBlock } from '@/schema/types';
 import { pinMismatch, schemaIssues } from '@/schema/validate';
 import { useLayout } from './layoutStore';
-import { installLocaleBridge } from './localeBridge';
 import { schemaFieldsMessages } from './SchemaFields.messages';
 import { buildArgGroups, matchesQuery, type ArgRow } from './schemaFieldsModel';
 import { installSchemaBridge } from './schemaBridge';
 import { useEditor } from './store';
 
 installSchemaBridge();
-installLocaleBridge();
 
 /** optional arguments are listed inline up to this many; past it they fold behind a toggle */
 const FOLD_AFTER = 6;
@@ -233,7 +231,7 @@ function RowLabel({ row, missing }: { row: ArgRow; missing: boolean }) {
   const attr = row.entry?.kind === 'attribute' ? row.entry : undefined;
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      <span className="min-w-0 truncate font-mono" title={row.name}>
+      <span className="min-w-0 truncate font-mono" title={row.name} translate="no">
         {row.name}
       </span>
       {row.blockCount > 1 ? <span className="shrink-0 font-mono text-[10px] text-faint">×{row.blockCount}</span> : null}
@@ -249,6 +247,7 @@ function RowLabel({ row, missing }: { row: ArgRow; missing: boolean }) {
           className="ml-auto shrink-0 truncate pl-0.5 font-mono text-[10px] font-normal text-faint"
           style={{ maxWidth: '45%' }}
           title={entryDetail(row.entry)}
+          translate={row.entry.kind === 'attribute' ? 'no' : undefined}
         >
           {row.entry.kind === 'attribute' ? row.entry.type : row.entry.nesting === 'single' || row.entry.maxItems === 1 ? sm.block : sm.blockNesting(row.entry.nesting, 0)}
         </span>
@@ -264,7 +263,12 @@ function RowHint({ row }: { row: ArgRow }) {
   if (!entry?.description && !row.deprecated && issues.length === 0) return null;
   return (
     <span className="mt-1 block space-y-0.5 text-[11px] leading-snug text-faint">
-      {entry?.description ? <span className="block">{entry.description}</span> : null}
+      {/* the provider's own documentation: English whatever the UI language (screen readers read it as English) */}
+      {entry?.description ? (
+        <span className="block" lang="en">
+          {entry.description}
+        </span>
+      ) : null}
       {row.deprecated ? (
         <span className="block text-warning">{m.deprecated(entry?.deprecation)}</span>
       ) : null}

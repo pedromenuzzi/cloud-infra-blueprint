@@ -15,6 +15,7 @@ import { useMessages } from '@/i18n/messages';
 import { motionMs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { arrangeMessages } from './arrange.messages';
+import { canvasMessages } from './CanvasPane.messages';
 
 function ToolButton({
   label,
@@ -111,6 +112,7 @@ export function CanvasToolbar({
   /** some resources overlap — Auto-arrange gets a dot */
   overlapping?: boolean;
 }) {
+  const m = useMessages(canvasMessages);
   const rf = useReactFlow();
   const zoom = useStore((s) => s.transform[2]);
   const lens = useSecurityUi((s) => s.lens);
@@ -120,7 +122,7 @@ export function CanvasToolbar({
       <div
         className="flex items-center gap-0.5 rounded-[11px] border bg-surface-1/90 p-1 shadow-md backdrop-blur-md"
         role="toolbar"
-        aria-label="Canvas controls"
+        aria-label={m.controls}
       >
         {onTidy ? (
           <>
@@ -128,36 +130,36 @@ export function CanvasToolbar({
             <Divider />
           </>
         ) : null}
-        <ToolButton label="Zoom out" onClick={() => void rf.zoomOut({ duration: motionMs(200) })}>
+        <ToolButton label={m.zoomOut} onClick={() => void rf.zoomOut({ duration: motionMs(200) })}>
           <Minus className="h-3.5 w-3.5" />
         </ToolButton>
         <button
           type="button"
-          data-tip="Reset to 100%"
-          aria-label="Reset zoom"
+          data-tip={m.resetZoomTip}
+          aria-label={m.resetZoom}
           onClick={() => void rf.zoomTo(1, { duration: motionMs(250) })}
           className="bp-tip h-7 w-11 rounded-[7px] text-center text-[11.5px] font-medium tabular-nums text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
         >
           {Math.round(zoom * 100)}%
         </button>
-        <ToolButton label="Zoom in" onClick={() => void rf.zoomIn({ duration: motionMs(200) })}>
+        <ToolButton label={m.zoomIn} onClick={() => void rf.zoomIn({ duration: motionMs(200) })}>
           <Plus className="h-3.5 w-3.5" />
         </ToolButton>
         <Divider />
         <ToolButton
-          label="Fit view  ⇧1"
+          label={m.fitViewTip}
           onClick={() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) })}
         >
           <Maximize className="h-3.5 w-3.5" />
         </ToolButton>
         <Divider />
-        <ToolButton label={lens ? 'Hide security lens' : 'Security lens'} pressed={lens} onClick={toggleLens}>
+        <ToolButton label={lens ? m.hideLens : m.lens} pressed={lens} onClick={toggleLens}>
           <ScanEye className="h-3.5 w-3.5" />
         </ToolButton>
-        <ToolButton label={minimap ? 'Hide minimap' : 'Show minimap'} pressed={minimap} onClick={onToggleMinimap}>
+        <ToolButton label={minimap ? m.hideMinimap : m.showMinimap} pressed={minimap} onClick={onToggleMinimap}>
           <MapIcon className="h-3.5 w-3.5" />
         </ToolButton>
-        <ToolButton label="Export image" onClick={onExport}>
+        <ToolButton label={m.exportImage} onClick={onExport}>
           <ImageDown className="h-3.5 w-3.5" />
         </ToolButton>
       </div>

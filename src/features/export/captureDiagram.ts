@@ -13,6 +13,7 @@ import type { ContainerNodeData, NodeSecurity, ResourceNodeData, SecFlowData } f
 import type { Provider } from '@/ir/types';
 import { parseSvgPath, shapePathData, type PathSeg } from '@/lib/pdf/svgPath';
 import type { Category } from '@/resources/types';
+import { portText } from '@/security/model';
 import { LIGHT_PALETTE, type DiagramEdge, type DiagramGlyph, type DiagramNode, type DiagramPalette, type DiagramVector } from './diagramVector';
 
 /** the parts of the React Flow instance the capture reads */
@@ -215,7 +216,8 @@ export async function captureDiagram(
         kind: 'traffic',
         path,
         color: TONE[data?.tone ?? 'internal'],
-        label: (data?.ports ?? []).map((p) => (p === 'all' ? 'all' : `:${p}`)).join(' '),
+        // the canvas label (nodes.tsx SecFlowEdge), in the document's language — the one in effect now
+        label: (data?.ports ?? []).map((p) => (p === 'all' ? portText(p) : `:${portText(p)}`)).join(' '),
       });
     } else {
       const data = edge.data as { kind?: string; dimmed?: boolean } | undefined;

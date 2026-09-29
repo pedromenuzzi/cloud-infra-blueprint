@@ -41,6 +41,15 @@ async function inPortuguese(page: Page, theme: 'light' | 'dark' = 'light') {
 async function audit(page: Page) {
   if (!(await page.evaluate(() => 'axe' in window))) await page.addScriptTag({ content: AXE });
   await page.waitForTimeout(400); // entry animations: axe measures the colors actually painted
+  // …and on a busy machine they can still be running then: wait for the ones that end
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().endTime !== Infinity)
+        .map((a) => a.finished.catch(() => undefined)),
+    ),
+  );
   return page.evaluate(async () => {
     type Violation = { id: string; impact: string; nodes: Array<{ target: string[] }> };
     const axe = (window as unknown as { axe: { run(ctx: Document, o: object): Promise<{ violations: Violation[] }> } }).axe;
@@ -112,7 +121,7 @@ test('the landing page switches from its header picker', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Bidirecional de verdade' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Três passos. Sem enrolação.' })).toBeVisible();
   // template cards in the UI language
-  await expect(page.getByRole('heading', { name: 'API serverless na AWS' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'API sem servidor na AWS' })).toBeVisible();
   await expect(page).toHaveTitle('Cloud Blueprint — Desenhe sua nuvem. Gere o Terraform na hora.');
   await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
 });
@@ -128,7 +137,7 @@ test('dashboard dialogs in Portuguese: templates, restore, GitHub import', async
   await expect(templates.getByRole('heading', { name: 'Site estático no Azure' })).toBeVisible();
   // English words still find templates
   await templates.getByPlaceholder('Buscar templates…').fill('serverless');
-  await expect(templates.getByRole('heading', { name: 'API serverless na AWS' })).toBeVisible();
+  await expect(templates.getByRole('heading', { name: 'API sem servidor na AWS' })).toBeVisible();
   await templates.getByRole('button', { name: 'Fechar' }).click();
 
   await page.getByTestId('restore-input').setInputFiles({ name: 'backup.zip', mimeType: 'application/zip', buffer: backupZip() });
@@ -145,7 +154,7 @@ test('dashboard dialogs in Portuguese: templates, restore, GitHub import', async
   await page.getByRole('button', { name: 'Importar do GitHub…' }).click();
   const github = page.getByRole('dialog', { name: /Importar do GitHub/ });
   await github.getByLabel('Link do GitHub ou owner/repo').fill('https://gitlab.com/acme/infra');
-  await github.getByRole('button', { name: 'Procurar Terraform' }).click();
+  await github.getByRole('button', { name: 'Buscar Terraform' }).click();
   await expect(github.getByRole('alert')).toContainText('Por enquanto só o GitHub é suportado');
   await expect(github.getByText('60 requisições por hora')).toBeVisible();
 });

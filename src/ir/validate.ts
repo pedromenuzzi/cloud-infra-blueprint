@@ -2,7 +2,7 @@
  * Semantic validation layered above the parser: missing required fields,
  * dangling references, cross-cloud references. Messages are in the UI
  * language in effect when it runs — whoever keeps the result re-runs it on a
- * language switch (src/features/editor/localeBridge.ts).
+ * language switch (relocalizeEditorMessages in src/features/editor/store.ts).
  */
 import { messagesFor } from '@/i18n/messages';
 import { fieldBoundsDiagnostics } from '@/resources/fieldRules';

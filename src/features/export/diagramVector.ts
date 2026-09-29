@@ -327,8 +327,9 @@ class Painter {
       this.text(label, end + 16, mid + 3.3, 9.5, color, { font: 'bold' });
     };
     if (n.security?.nacls) badge('NACL', '#ef4444', '#ef4444', 0.1);
-    if (n.security?.subnet === 'public') badge('PUBLIC', '#0284c7', '#0ea5e9', 0.14);
-    if (n.security?.subnet === 'private') badge('PRIVATE', '#059669', '#10b981', 0.14);
+    const words = messagesFor(docMessages, this.locale).subnetBadge;
+    if (n.security?.subnet === 'public') badge(words.public.toUpperCase(), '#0284c7', '#0ea5e9', 0.14);
+    if (n.security?.subnet === 'private') badge(words.private.toUpperCase(), '#059669', '#10b981', 0.14);
 
     let x = n.x + 44;
     const typeLabel = n.typeLabel?.toUpperCase() ?? '';

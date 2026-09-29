@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNod
 import { useNavigate, useParams } from 'react-router-dom';
 import { hasOpenLayer } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
+import { codeMessages } from '@/features/editor/CodePane.messages';
 import { useCanvasDrag, useCanvasDragTracking } from '@/features/editor/canvasDrag';
 import { CanvasPane, focusRenameInput } from '@/features/editor/CanvasPane';
 import { dockedInspector, floatingInspectorSlot, INSPECTOR_WIDTH, securityPanelSlot } from '@/features/editor/inspectorPlacement';
@@ -31,6 +32,7 @@ import { loadProjectIntoEditor, useEditor } from '@/features/editor/store';
 import { useMessages } from '@/i18n/messages';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn } from '@/lib/utils';
+import { editorPageMessages } from './EditorPage.messages';
 
 // Monaco is ~2 MB: split it out so the canvas paints while the code pane loads
 const CodePane = lazy(() =>
@@ -38,14 +40,15 @@ const CodePane = lazy(() =>
 );
 
 function CodePaneFallback() {
+  const m = useMessages(codeMessages);
   return (
     <section
       className="flex h-full flex-col items-center justify-center gap-3 bg-surface-1 text-[12px] text-faint"
-      aria-label="Terraform code"
+      aria-label={m.terraformCode}
       aria-busy="true"
     >
       <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
-      Loading code editor…
+      {m.loading}
     </section>
   );
 }
@@ -67,6 +70,7 @@ function focusWhenReady(find: () => HTMLElement | null, fallback: () => HTMLElem
 
 /** First Tab stops on the page: jump past the topbar and palette. */
 function SkipLinks() {
+  const m = useMessages(editorPageMessages);
   const toCanvas = (e: React.MouseEvent) => {
     e.preventDefault();
     const layout = useLayout.getState();
@@ -87,10 +91,10 @@ function SkipLinks() {
   return (
     <>
       <a href={`#${CANVAS_TARGET}`} onClick={toCanvas} className={cls}>
-        Skip to canvas
+        {m.skipToCanvas}
       </a>
       <a href={`#${CODE_TARGET}`} onClick={toCode} className={cls}>
-        Skip to code
+        {m.skipToCode}
       </a>
     </>
   );
@@ -109,6 +113,7 @@ function DockedEmpty() {
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const m = useMessages(editorPageMessages);
   const [ready, setReady] = useState(false);
   const splitRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -317,7 +322,7 @@ export default function EditorPage() {
           key="separator"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize code panel"
+          aria-label={m.resizeCode}
           className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60 active:bg-primary"
           onPointerDown={startDrag}
           onDoubleClick={() => useLayout.getState().setSplit(SPLIT_DEFAULT)}
@@ -348,8 +353,8 @@ export default function EditorPage() {
   const mainChildren = codeSide === 'left' ? [...codeSlot, ...canvasColumn] : [...canvasColumn, ...codeSlot];
 
   const main = (
-    <main key="main" ref={splitRef} className="relative isolate flex min-w-0 flex-1" aria-label="Blueprint">
-      <h1 className="sr-only">Cloud Blueprint editor</h1>
+    <main key="main" ref={splitRef} className="relative isolate flex min-w-0 flex-1" aria-label={m.main}>
+      <h1 className="sr-only">{m.heading}</h1>
       {mainChildren}
       {canvasShown ? null : securityEl}
       {compact && drawer === 'palette' ? (

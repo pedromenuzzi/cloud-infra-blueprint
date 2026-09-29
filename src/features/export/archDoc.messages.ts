@@ -58,6 +58,8 @@ export const docMessages = defineMessages(
     chipNoInbound: 'No inbound',
     chipReview: 'Review',
     chipAtRisk: 'At risk',
+    /** a subnet's badge in the security lens (printed in capitals) */
+    subnetBadge: { public: 'Public', private: 'Private' },
     // overview
     overview: 'Overview',
     generated: (date: string) => `Generated ${date} with Cloud Blueprint.`,
@@ -198,6 +200,7 @@ export const docMessages = defineMessages(
     chipNoInbound: 'Sem entrada',
     chipReview: 'Revisar',
     chipAtRisk: 'Em risco',
+    subnetBadge: { public: 'Pública', private: 'Privada' },
     overview: 'Visão geral',
     generated: (date: string) => `Gerado em ${date} com o Cloud Blueprint.`,
     notes: 'NOTAS',

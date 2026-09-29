@@ -30,6 +30,9 @@ export const dropMessages = defineMessages(
     connected: (name: string, target: string) => `Connected ${name} to ${target}`,
     undoHint: (mod: string) => `${mod} Z to undo`,
     fixGone: 'That changed in the meantime — drag it again',
+    /** dragged out of the container its argument pointed at */
+    detached: (arg: string, id: string, parent: string, mod: string) =>
+      `Removed ${arg} from ${id} — it's no longer in ${parent} (${mod} Z to undo)`,
   },
   {
     into: (c: Noun, name: string) => `Para ${o(c)} ${name}`,
@@ -50,5 +53,7 @@ export const dropMessages = defineMessages(
     connected: (name: string, target: string) => `${name} conectado a ${target}`,
     undoHint: (mod: string) => `${mod} Z para desfazer`,
     fixGone: 'Isso mudou nesse meio-tempo — arraste de novo',
+    detached: (arg: string, id: string, parent: string, mod: string) =>
+      `${arg} removido de ${id} — ele não está mais em ${parent} (${mod} Z para desfazer)`,
   },
 );

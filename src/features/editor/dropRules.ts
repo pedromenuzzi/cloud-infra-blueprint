@@ -192,14 +192,32 @@ export function dropVerdict(
     }
     return { kind: 'free' };
   }
-  const over = overRect.node;
+  return verdictOver(ir, subject, overRect.node, locale);
+}
+
+/**
+ * The verdict for dropping `subject` on the container `over` itself — a drop
+ * whose container is already known (the palette clicked with a container
+ * selected): nest, redirect to the ancestor that takes it, or refuse.
+ */
+export function verdictOver(
+  ir: IR,
+  subject: DropSubject,
+  over: ResourceNode,
+  locale?: Locale,
+): Extract<DropVerdict, { kind: 'nest' | 'redirect' | 'refuse' }> {
+  const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
+  const rules = getDef(subject.type)?.containment ?? [];
+  const direct = rules.filter((rule) => !rule.via);
+  const derived = rules.some((rule) => rule.via);
+  const current = subject.parentId ? byId.get(subject.parentId) : undefined;
   if (derived && direct.length === 0) {
     if (current && over.id === current.id) return { kind: 'nest', parent: current, current: true };
     return { kind: 'refuse', over, reason: refusalReason(subject.type, over, locale), fix: dropFix(ir, subject, over) };
   }
   for (let cur: ResourceNode | undefined = over, guard = 0; cur && guard < 16; guard++) {
     if (direct.some((rule) => rule.parentTypes.includes(cur!.type))) {
-      if (cur === over) return { kind: 'nest', parent: over, current: over.id === subject.parentId };
+      if (cur.id === over.id) return { kind: 'nest', parent: over, current: over.id === subject.parentId };
       return { kind: 'redirect', parent: cur, over, reason: refusalReason(subject.type, over, locale) };
     }
     cur = cur.parentId ? byId.get(cur.parentId) : undefined;

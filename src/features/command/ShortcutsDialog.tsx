@@ -1,66 +1,75 @@
 import { Keyboard } from 'lucide-react';
 import { Kbd, Modal } from '@/components/ui';
+import { useMessages } from '@/i18n/messages';
+import { commandMessages } from './messages';
 import { MOD, usePalette } from './paletteStore';
 
-const SECTIONS: Array<{ title: string; items: Array<[string, string[]]> }> = [
-  {
-    title: 'Anywhere',
-    items: [
-      // inside the code editor MOD K belongs to Monaco's chords — use MOD ⇧ P there
-      ['Command palette', [MOD, 'K']],
-      ['Command palette (also in code)', [MOD, '⇧', 'P']],
-      ['Keyboard shortcuts', ['?']],
-      ['Close dialog, menu or panel', ['Esc']],
-    ],
-  },
-  {
-    title: 'Canvas',
-    items: [
-      ['Add a resource at the cursor', ['Double-click']],
-      ['Resource / canvas actions', ['Right-click']],
-      ['Duplicate selected', [MOD, 'D']],
-      ['Rename selected', ['F2']],
-      ['Delete selected', ['Del']],
-      ['Fit view', ['⇧', '1']],
-      ['Pan', ['Drag empty canvas']],
-      ['Pan over resources', ['Space', 'Drag']],
-      ['Zoom', ['Scroll']],
-      ['Box-select', ['⇧', 'Drag']],
-      ['Add to selection', [MOD, 'Click']],
-    ],
-  },
-  {
-    title: 'Resource palette',
-    items: [
-      ['Move between resources', ['↑', '↓']],
-      ['Collapse / expand a category', ['←', '→']],
-      ['Add the focused resource', ['Enter']],
-    ],
-  },
-  {
-    title: 'Editing',
-    items: [
-      ['Undo', [MOD, 'Z']],
-      ['Redo', [MOD, '⇧', 'Z']],
-      ['Toggle resource palette', [MOD, 'B']],
-      ['Toggle code editor', [MOD, 'J']],
-      ['Toggle inspector', [MOD, 'I']],
-    ],
-  },
-  {
-    title: 'Code editor',
-    items: [
-      ['Autocomplete', ['Ctrl', 'Space']],
-      ['Toggle comment', [MOD, '/']],
-      ['Find', [MOD, 'F']],
-      ['Next problem', ['F8']],
-    ],
-  },
-];
+type Words = (typeof commandMessages)['en'];
+
+function sections(m: Words): Array<{ title: string; items: Array<[string, string[]]> }> {
+  const a = m.actions;
+  const k = m.keys;
+  return [
+    {
+      title: m.sections.anywhere,
+      items: [
+        // inside the code editor MOD K belongs to Monaco's chords — use MOD ⇧ P there
+        [a.palette, [MOD, 'K']],
+        [a.paletteInCode, [MOD, '⇧', 'P']],
+        [a.shortcuts, ['?']],
+        [a.closeLayer, ['Esc']],
+      ],
+    },
+    {
+      title: m.sections.canvas,
+      items: [
+        [a.addAtCursor, [k.doubleClick]],
+        [a.contextMenu, [k.rightClick]],
+        [a.duplicate, [MOD, 'D']],
+        [a.rename, ['F2']],
+        [a.delete, ['Del']],
+        [a.fitView, ['⇧', '1']],
+        [a.pan, [k.dragEmpty]],
+        [a.panOver, [k.space, k.drag]],
+        [a.zoom, [k.scroll]],
+        [a.boxSelect, ['⇧', k.drag]],
+        [a.addToSelection, [MOD, k.click]],
+      ],
+    },
+    {
+      title: m.sections.palette,
+      items: [
+        [a.moveBetween, ['↑', '↓']],
+        [a.collapse, ['←', '→']],
+        [a.addFocused, ['Enter']],
+      ],
+    },
+    {
+      title: m.sections.editing,
+      items: [
+        [a.undo, [MOD, 'Z']],
+        [a.redo, [MOD, '⇧', 'Z']],
+        [a.togglePalette, [MOD, 'B']],
+        [a.toggleCode, [MOD, 'J']],
+        [a.toggleInspector, [MOD, 'I']],
+      ],
+    },
+    {
+      title: m.sections.code,
+      items: [
+        [a.autocomplete, ['Ctrl', k.space]],
+        [a.comment, [MOD, '/']],
+        [a.find, [MOD, 'F']],
+        [a.nextProblem, ['F8']],
+      ],
+    },
+  ];
+}
 
 export function ShortcutsDialog() {
   const open = usePalette((s) => s.shortcuts);
   const setOpen = usePalette((s) => s.setShortcuts);
+  const m = useMessages(commandMessages);
   return (
     <Modal
       open={open}
@@ -68,12 +77,12 @@ export function ShortcutsDialog() {
       wide
       title={
         <h2 className="flex items-center gap-2 text-[15px] font-semibold">
-          <Keyboard className="h-4 w-4 text-muted" aria-hidden="true" /> Keyboard shortcuts
+          <Keyboard className="h-4 w-4 text-muted" aria-hidden="true" /> {m.shortcutsTitle}
         </h2>
       }
     >
       <div className="grid gap-x-8 gap-y-5 p-5 sm:grid-cols-2">
-        {SECTIONS.map((section) => (
+        {sections(m).map((section) => (
           <section key={section.title}>
             <h3 className="mb-2 text-[10.5px] font-bold uppercase tracking-wider text-faint">
               {section.title}
@@ -81,10 +90,10 @@ export function ShortcutsDialog() {
             <ul className="space-y-1.5">
               {section.items.map(([label, keys]) => (
                 <li key={label} className="flex items-center justify-between gap-3 text-[13px]">
-                  <span className="text-muted">{label}</span>
+                  <span className="min-w-0 text-muted">{label}</span>
                   <span className="flex shrink-0 items-center gap-1">
-                    {keys.map((k) => (
-                      <Kbd key={k}>{k}</Kbd>
+                    {keys.map((key) => (
+                      <Kbd key={key}>{key}</Kbd>
                     ))}
                   </span>
                 </li>
