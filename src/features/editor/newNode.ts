@@ -11,8 +11,9 @@ import { resourceAddress } from '@/ir/types';
 import { nextFreeCidr } from '@/resources/cidr';
 import { findConnectionRule } from '@/resources/connect';
 import { copyName, nameForLabel } from '@/resources/naming';
-import { getDef } from '@/resources/registry';
+import { getDef, isContainerType } from '@/resources/registry';
 import type { ResourceDef } from '@/resources/types';
+import { freeSpotAround, makeRoomOps, sizeFor, slotIn } from './placement';
 
 /** terraform-style default name: last word of the type, made unique */
 export function uniqueResourceName(ir: IR, def: ResourceDef): string {
@@ -83,8 +84,9 @@ export function buildNewNode(
   def: ResourceDef,
   position: { x: number; y: number; w?: number; h?: number },
   parent?: ResourceNode,
+  options: { name?: string } = {},
 ): { node: ResourceNode; ops: Op[] } {
-  const name = uniqueResourceName(ir, def);
+  const name = options.name ?? uniqueResourceName(ir, def);
   const values: Record<string, Expression> = structuredClone(def.defaults ?? {});
   // name-ish fields get a helpful default, valid as a cloud-side name (`lb_2` → "lb-2")
   const nameArg = def.nameArg ?? 'name';
@@ -129,6 +131,32 @@ export function buildNewNode(
     trivia: { leadingComments: [] },
   };
   return { node, ops: [{ kind: 'add_resource', node }] };
+}
+
+/**
+ * A catalog resource dropped at `at` (canvas coordinates). Into `container`
+ * (with its canvas top-left) when given: the drop spot if it's free, else the
+ * container's next free cell — the container grows to fit and pushes its
+ * neighbours aside, all in the same ops (one undo step). Otherwise on the top
+ * level, nudged off anything it would cover.
+ */
+export function placeNewNode(
+  ir: IR,
+  def: ResourceDef,
+  at: { x: number; y: number },
+  container?: { node: ResourceNode; x: number; y: number },
+): { node: ResourceNode; ops: Op[] } {
+  const size = sizeFor(def.type);
+  const keep = isContainerType(def.type) ? size : {};
+  const centered = { x: at.x - size.w / 2, y: at.y - size.h / 2 };
+  if (!container) {
+    return buildNewNode(ir, def, { ...freeSpotAround(ir, undefined, size, centered), ...keep });
+  }
+  const spot = slotIn(ir, container.node, size, {
+    preferred: { x: centered.x - container.x, y: centered.y - container.y },
+  });
+  const { node, ops } = buildNewNode(ir, def, { ...spot, ...keep }, container.node);
+  return { node, ops: [...ops, ...makeRoomOps(ir, container.node.id, { ...spot, ...size })] };
 }
 
 const DUPLICATE_GAP = 32;
