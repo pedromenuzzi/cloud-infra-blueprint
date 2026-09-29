@@ -4,9 +4,12 @@
  * and, for traffic a rule means to let in, the control that stops it.
  *
  * topology.ts builds these from the same first-match evaluation that decides
- * the exposure (so the two can never disagree); this file holds the shapes and
- * the wording.
+ * the exposure (so the two can never disagree); this file holds the shapes,
+ * and access.messages.ts the wording (in the language asked for).
  */
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
+import { accessMessages, type AtKind } from './access.messages';
 import { internetSources, peerLabel, serviceName, type IpFamily, type OwnerKind, type SecurityRule } from './model';
 import { trafficParts, trafficUnion, type Traffic } from './traffic';
 
@@ -26,6 +29,8 @@ export interface PathStep {
   kind: StepKind;
   title: string;
   detail?: string;
+  /** a security group rule: which one of the group's ("ingress #2", "rule web_https") */
+  ref?: string;
   /** resource to select on the canvas */
   resource?: string;
   /** rule to open in the rules editor: its owner, and the row unless it is a default rule */
@@ -43,7 +48,7 @@ export interface AccessPath {
 }
 
 export interface PortAccess {
-  /** "443", "8000-8080", "all TCP", "53/udp", "icmp", "all", or a port expression */
+  /** "443", "8000-8080", "all TCP", "53/udp", "icmp", "all", or a port expression (a key: see portText) */
   ports: string;
   /** null when the ports are an expression the audit can't evaluate */
   traffic: Traffic | null;
@@ -52,6 +57,7 @@ export interface PortAccess {
 }
 
 export interface BlockedPort {
+  /** a port label: "22", "all", "other ports"… (a key: see portText) */
   ports: string;
   traffic: Traffic | null;
   families: IpFamily[];
@@ -70,92 +76,90 @@ export interface AccessExplanation {
 
 export const shortName = (id: string) => id.split('.').slice(1).join('.') || id;
 
-export function familiesLabel(families: readonly IpFamily[]): string {
-  if (families.length > 1) return 'IPv4 and IPv6';
+export function familiesLabel(families: readonly IpFamily[], locale: Locale = currentLocale()): string {
+  if (families.length > 1) return messagesFor(accessMessages, locale).ipv4AndIpv6;
   return families[0] === 'ipv6' ? 'IPv6' : 'IPv4';
 }
 
-export function internetStep(families: readonly IpFamily[]): PathStep {
+export function internetStep(families: readonly IpFamily[], locale: Locale = currentLocale()): PathStep {
+  const m = messagesFor(accessMessages, locale);
   return {
     kind: 'internet',
     title: 'Internet',
-    detail:
-      families.length > 1 ? 'any address, IPv4 and IPv6' : families[0] === 'ipv6' ? 'any IPv6 address (::/0)' : 'any IPv4 address (0.0.0.0/0)',
+    detail: families.length > 1 ? m.anyAddress : families[0] === 'ipv6' ? m.anyIpv6 : m.anyIpv4,
   };
 }
 
-function sourcesOf(rule: SecurityRule): string {
+function sourcesOf(rule: SecurityRule, locale: Locale): string {
   const wide = internetSources(rule);
-  return wide.length ? wide.join(', ') : rule.peers.map((p) => peerLabel(p, shortName)).join(', ') || 'anywhere';
+  if (wide.length) return wide.join(', ');
+  return rule.peers.map((p) => peerLabel(p, shortName, locale)).join(', ') || messagesFor(accessMessages, locale).anywhere;
 }
 
 export interface StepContext {
   /** the subnet (NACL, subnet NSG) or NIC the owner is applied at */
-  at?: { kind: 'subnet' | 'NIC'; id: string };
+  at?: { kind: AtKind; id: string };
   /** GCP: which instances the firewall applies to */
   targets?: string;
 }
 
+const atText = (ctx: StepContext, locale: Locale) =>
+  ctx.at ? messagesFor(accessMessages, locale).at(ctx.at.kind, shortName(ctx.at.id)) : '';
+
 /** One rule as a step of a path. */
-export function ruleStep(rule: SecurityRule, ctx: StepContext = {}): PathStep {
+export function ruleStep(rule: SecurityRule, ctx: StepContext = {}, locale: Locale = currentLocale()): PathStep {
+  const m = messagesFor(accessMessages, locale);
   const owner = shortName(rule.owner);
-  const what = `${rule.action === 'deny' ? 'denies' : 'allows'} ${serviceName(rule)} from ${sourcesOf(rule)}`;
-  const at = ctx.at ? ` · on the ${ctx.at.kind} ${shortName(ctx.at.id)}` : '';
+  const what = m.ruleDoes(rule.action === 'deny', serviceName(rule, locale), sourcesOf(rule, locale));
+  const at = atText(ctx, locale);
+  const priority = String(rule.priority ?? '?');
   const base = { rule: { owner: rule.owner, id: rule.id }, verdict: rule.action } as const;
   switch (rule.ownerKind) {
     case 'sg': {
-      const ref = rule.origin.kind === 'inline' ? `${rule.origin.field} #${rule.origin.index + 1}` : `rule ${shortName(rule.origin.id)}`;
-      return { ...base, kind: 'sg', title: `Security group ${owner}`, detail: `${ref} ${what}` };
+      const ref =
+        rule.origin.kind === 'inline' ? `${rule.origin.field} #${rule.origin.index + 1}` : m.sgRuleRef(shortName(rule.origin.id));
+      return { ...base, kind: 'sg', title: m.sgTitle(owner), detail: `${ref} ${what}`, ref };
     }
     case 'nacl':
-      return { ...base, kind: 'nacl', title: `Network ACL ${owner} · rule #${rule.priority ?? '?'}`, detail: `${what}${at}` };
+      return { ...base, kind: 'nacl', title: m.naclTitle(owner, priority), detail: `${what}${at}` };
     case 'nsg':
-      return {
-        ...base,
-        kind: 'nsg',
-        title: `NSG ${owner} · ${rule.description ?? 'rule'}`,
-        detail: `priority ${rule.priority ?? '?'} · ${what}${at}`,
-      };
+      return { ...base, kind: 'nsg', title: m.nsgTitle(owner, rule.description), detail: m.priority(priority, `${what}${at}`) };
     case 'firewall':
       return {
         ...base,
         kind: 'firewall',
-        title: `Firewall ${owner}`,
-        detail: `priority ${rule.priority ?? '?'} · ${what}${ctx.targets ? ` · targets ${ctx.targets}` : ''}`,
+        title: m.firewallTitle(owner),
+        detail: m.priority(priority, `${what}${ctx.targets ? m.targets(ctx.targets) : ''}`),
       };
   }
 }
 
 /** The implicit last rule of an ordered owner: deny whatever nothing matched. */
-export function defaultStep(kind: OwnerKind, owner: string, ctx: StepContext = {}): PathStep {
-  const at = ctx.at ? ` · on the ${ctx.at.kind} ${shortName(ctx.at.id)}` : '';
+export function defaultStep(kind: OwnerKind, owner: string, ctx: StepContext = {}, locale: Locale = currentLocale()): PathStep {
+  const m = messagesFor(accessMessages, locale);
+  const at = atText(ctx, locale);
   const base = { kind, rule: { owner }, verdict: 'deny' } as const;
-  if (kind === 'nacl') {
-    return { ...base, title: `Network ACL ${shortName(owner)} · rule *`, detail: `default rule — denies what no numbered rule allows${at}` };
-  }
-  if (kind === 'nsg') {
-    return { ...base, title: `NSG ${shortName(owner)} · DenyAllInBound`, detail: `default rule (priority 65500) — denies what no rule allows${at}` };
-  }
-  return { ...base, title: `Firewall ${shortName(owner)} · implied deny`, detail: 'denies ingress no rule allows' };
+  if (kind === 'nacl') return { ...base, title: m.naclDefaultTitle(shortName(owner)), detail: m.naclDefault(at) };
+  if (kind === 'nsg') return { ...base, title: m.nsgDefaultTitle(shortName(owner)), detail: m.nsgDefault(at) };
+  return { ...base, title: m.firewallDefaultTitle(shortName(owner)), detail: m.firewallDefault };
 }
 
 /** One line for what stops the traffic. */
-export function blockReason(blocker: SecurityRule | { kind: OwnerKind; owner: string }): string {
-  if ('id' in blocker) {
-    const n = shortName(blocker.owner);
-    if (blocker.ownerKind === 'nacl') return `blocked by NACL ${n} #${blocker.priority ?? '?'} (deny)`;
-    if (blocker.ownerKind === 'nsg') {
-      return `blocked by NSG ${n} rule ${blocker.description ?? ''} (priority ${blocker.priority ?? '?'}, deny)`.replace('rule  (', 'rule (');
-    }
-    return `blocked by firewall ${n} (priority ${blocker.priority ?? '?'}, deny)`;
-  }
+export function blockReason(blocker: SecurityRule | { kind: OwnerKind; owner: string }, locale: Locale = currentLocale()): string {
+  const m = messagesFor(accessMessages, locale);
   const n = shortName(blocker.owner);
-  if (blocker.kind === 'nacl') return `blocked by NACL ${n}: no rule allows it (rule *)`;
-  if (blocker.kind === 'nsg') return `blocked by NSG ${n}: no rule allows it (DenyAllInBound)`;
-  return `blocked by firewall ${n}: no rule allows it`;
+  if ('id' in blocker) {
+    const priority = String(blocker.priority ?? '?');
+    if (blocker.ownerKind === 'nacl') return m.blockedByNacl(n, priority);
+    if (blocker.ownerKind === 'nsg') return m.blockedByNsg(n, blocker.description ?? '', priority);
+    return m.blockedByFirewall(n, priority);
+  }
+  if (blocker.kind === 'nacl') return m.blockedByNaclDefault(n);
+  if (blocker.kind === 'nsg') return m.blockedByNsgDefault(n);
+  return m.blockedByFirewallDefault(n);
 }
 
-/** "22", "22, 80" — or "other ports" once a remainder is too fragmented to list */
+/** "22", "22, 80" — or "other ports" (a key: see portText) once a remainder is too fragmented to list */
 export function portsLabel(t: Traffic): string {
   const parts = trafficParts(t);
   return parts.length <= 3 ? parts.map((p) => p.label).join(', ') : 'other ports';
@@ -189,6 +193,7 @@ const stepsKey = (steps: PathStep[]) => steps.map((s) => `${s.kind}|${s.title}|$
  */
 export function groupByPort(
   chains: Array<{ traffic: Traffic | null; label?: string; family: IpFamily; steps: PathStep[] }>,
+  locale: Locale = currentLocale(),
 ): PortAccess[] {
   const byLabel = new Map<string, PortAccess>();
   for (const chain of chains) {
@@ -207,6 +212,6 @@ export function groupByPort(
     }
   }
   return [...byLabel.values()]
-    .map((e) => ({ ...e, paths: e.paths.map((p) => ({ ...p, steps: [internetStep(p.families), ...p.steps] })) }))
+    .map((e) => ({ ...e, paths: e.paths.map((p) => ({ ...p, steps: [internetStep(p.families, locale), ...p.steps] })) }))
     .sort(byPorts);
 }

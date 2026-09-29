@@ -6,11 +6,14 @@
  * are rewritten, so expressions, unknown keys and argument order survive.
  * Rows the model can't represent (`rule.unmodeled`) are never rewritten.
  */
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { lit, ref } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { resourceAddress } from '@/ir/types';
 import { cidrFamily, coversFamily, parseCidr } from './cidr';
+import { editMessages, type PresetId } from './edit.messages';
 import {
   blocksOf,
   extractRules,
@@ -36,7 +39,8 @@ export interface RuleDraft {
 }
 
 export interface RulePreset {
-  id: string;
+  id: PresetId;
+  /** English, written into the code as the rule's description; menus show presetLabel() */
   label: string;
   protocol: RuleDraft['protocol'];
   fromPort: number | null;
@@ -58,6 +62,9 @@ export const PRESETS: RulePreset[] = [
   { id: 'icmp', label: 'ICMP (ping)', protocol: 'icmp', fromPort: null, toPort: null },
   { id: 'all', label: 'All traffic', protocol: 'all', fromPort: null, toPort: null },
 ];
+
+/** a preset's name in the UI language */
+export const presetLabel = (p: RulePreset, locale: Locale = currentLocale()): string => messagesFor(editMessages, locale).presets[p.id];
 
 /** the only presets that may start open to the whole internet */
 export const PUBLIC_PRESETS = new Set(['https', 'http']);
@@ -138,13 +145,13 @@ export type RuleStyle =
  * standalone resources, new ones are too (the providers say inline + standalone
  * fight). An owner that manages the direction inline (`ingress { }`, `= []`) keeps it.
  */
-export function ruleStyle(ir: IR, owner: ResourceNode, direction: Direction): RuleStyle {
+export function ruleStyle(ir: IR, owner: ResourceNode, direction: Direction, locale: Locale = currentLocale()): RuleStyle {
   const kind = OWNER_TYPES[owner.type];
   if (kind === 'firewall') return { mode: 'inline', field: owner.args.deny ? 'deny' : 'allow' };
   const field = inlineField(kind, direction);
   const e = owner.args[field];
   if (e && e.kind !== 'block' && e.kind !== 'blocks' && !(e.kind === 'list' && e.items.length === 0)) {
-    return { mode: 'blocked', reason: `${field} is written as ${e.kind === 'list' ? 'a list of objects' : 'an expression'} — add rules in code` };
+    return { mode: 'blocked', reason: messagesFor(editMessages, locale).writtenAs(field, e.kind === 'list') };
   }
   // the argument is there (blocks, or `= []`): the owner itself manages these rules
   if (e) return { mode: 'inline', field };
@@ -693,7 +700,7 @@ const PEER_FIELDS = /cidr|prefix|security_group|self|source_ranges|address/;
  * source is removed). null when the private range is unknown or the result
  * would still be open.
  */
-export function restrictRuleOps(ir: IR, rule: SecurityRule): { label: string; ops: Op[] } | null {
+export function restrictRuleOps(ir: IR, rule: SecurityRule, locale: Locale = currentLocale()): { label: string; ops: Op[] } | null {
   const owner = ownerOf(ir, rule);
   if (!owner || isObjectSyntax(rule) || rule.unmodeled?.some((f) => PEER_FIELDS.test(f))) return null;
   const families = internetFamilies(rule);
@@ -719,13 +726,15 @@ export function restrictRuleOps(ir: IR, rule: SecurityRule): { label: string; op
       ? range.map((value) => (value === 'VirtualNetwork' ? { kind: 'other', value } : { kind: 'cidr', value }))
       : [];
   const peers = [...keep, ...added.filter((a) => !keep.some((k) => 'value' in k && 'value' in a && k.value === a.value))];
+  const m = messagesFor(editMessages, locale);
   const label = added.length
     ? range![0] === 'VirtualNetwork'
-      ? 'Restrict to the virtual network'
-      : `Restrict to ${range!.join(', ')}`
+      ? m.restrictToVnet
+      : m.restrictTo(range!.join(', '))
     : peers.length
-      ? `Remove ${families.includes('ipv6') && !families.includes('ipv4') ? '::/0' : 'internet'} access`
-      : 'Remove the rule';
+      ? m.removeAccess(families.includes('ipv6') && !families.includes('ipv4'))
+      : m.removeRule;
+
 
   if (rule.ownerKind === 'firewall') {
     if (peers.length === 0) return null;
