@@ -53,6 +53,13 @@ between them.
 - 📥 **Import** existing Terraform: drop `.tf` files, a folder or a `.zip` on the dashboard.
   The root module is imported; `modules/` directories are skipped for now (modules aren't
   supported yet), and so are `.terraform/`, state files and the lock file.
+- 🐙 **Import from GitHub**: paste `owner/repo`, a repository, folder (`…/tree/<ref>/<path>`),
+  `.tf` file or gist link and pick one of the root modules found. It talks to GitHub's public
+  API straight from your browser — no token needed for public repos; an optional token (kept in
+  memory only, never stored or put in a link) opens private repos and raises the 60 requests/hour limit.
+- 👁️ **Read-only view links**: *Copy view link* shares a project that opens in a viewer —
+  pan, zoom, inspect, read the code, export PDF/PNG — without editing or saving anything;
+  *Make a copy to edit* imports it. Add `&embed=1` for an iframe.
 - 🖼️ **Export** the diagram as PNG or SVG, alongside the Terraform zip.
 - 🎨 **A real icon system**: every service has its own glyph on a category-colored tile;
   floating edges attach to the nearest side and animate the data flow of the selection.
@@ -74,6 +81,28 @@ keystrokes ──▶ debounced parse ──▶ new IR (positions carried over) �
   file itself is the complete source of truth — git-diff friendly.
 - **Anything the parser can't model** (complex expressions, `dynamic` blocks, `locals`,
   `data` sources) is preserved verbatim and shown as-is.
+
+## Open in Cloud Blueprint & embed
+
+Put a badge in your Terraform repo's README — it opens the GitHub import prefilled with your
+repo (`#gh=owner/repo[/path][@ref]`; nothing is fetched until the visitor confirms):
+
+```md
+[![Open in Cloud Blueprint](https://img.shields.io/badge/Open_in-Cloud_Blueprint-2563eb)](https://pedromenuzzi.github.io/cloud-infra-blueprint/#gh=OWNER/REPO/infra/prod@main)
+```
+
+Embed a live, read-only diagram in docs or a wiki: in the editor, *Copy view link*, then in
+the viewer *Share → Copy embed code* (or add `&embed=1` to a view link yourself). The embed
+shows only the diagram — pan, zoom, select — with an "Open" link; it never takes focus or
+opens a dialog on load, and never writes to the visitor's storage.
+
+```html
+<iframe src="https://pedromenuzzi.github.io/cloud-infra-blueprint/#view=<payload>&embed=1"
+        title="My architecture — Cloud Blueprint" width="100%" height="480"
+        style="border:0;border-radius:12px" loading="lazy"></iframe>
+```
+
+The whole project travels in the URL fragment, which browsers never send to a server.
 
 ## Quick start
 
@@ -146,9 +175,9 @@ src/
 ├── tutorials/   # step-by-step lessons (diagram + code, diff-highlighted)
 ├── security/    # security model, topology analysis, audit findings + fixes, rule editing
 ├── features/    # editor (canvas, code, palette, inspector, topbar), security panel, PDF export, templates modal
-├── routes/      # landing, dashboard, editor, tutorials, 404
+├── routes/      # landing, dashboard, editor, read-only viewer, tutorials, 404
 ├── components/  # design-system UI kit, thumbnails, theme toggle, toasts, app shell (errors, share links, storage notices)
-└── lib/         # localStorage projects, Terraform import, zip export, share links, PDF writer, utils
+└── lib/         # localStorage projects, Terraform + GitHub import, zip export, share/view links, PDF writer, utils
 e2e/             # Playwright specs (editor, navigation, share links, import, persistence, PDF, regressions)
 ```
 
