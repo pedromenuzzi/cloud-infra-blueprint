@@ -1,3 +1,5 @@
+import { messagesFor } from '@/i18n/messages';
+import { costMessages } from '../messages';
 import { AWS_FREE_PREFIXES, AWS_RULES } from './aws';
 import { AZURE_FREE_PREFIXES, AZURE_RULES } from './azure';
 import { free, unknown, type Rule } from './common';
@@ -12,9 +14,10 @@ const FREE_PREFIXES = [...AWS_FREE_PREFIXES, ...AZURE_FREE_PREFIXES, ...GCP_FREE
 export function ruleFor(type: string): Rule {
   const rule = RULES[type];
   if (rule) return rule;
-  if (LOCAL.test(type)) return () => free('Runs inside Terraform — nothing is billed');
+  if (LOCAL.test(type)) return (ctx) => free(messagesFor(costMessages, ctx.locale).insideTerraform);
   if (FREE_PREFIXES.some((p) => p.test(type))) return () => free();
-  return () => unknown("This resource type isn't in the price table yet");
+  return (ctx) => unknown(messagesFor(costMessages, ctx.locale).typeNotInTable);
+
 }
 
 /** whether the type is priced (or known to be free) on purpose, rather than falling through to "unknown" */
