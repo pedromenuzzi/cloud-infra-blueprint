@@ -385,7 +385,7 @@ export default function DashboardPage() {
                 Your cloud architecture designs — saved in this browser, exportable as Terraform.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 whitespace-nowrap">
               <button
                 type="button"
                 onClick={() => openPalette(true)}

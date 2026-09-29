@@ -14,6 +14,13 @@ import { VitePWA } from 'vite-plugin-pwa';
  * so the editor works offline after one online visit.
  */
 const LAZY_HEAVY = ['CodePane-', 'codicon-', 'editor.worker-', 'elk.bundled-'];
+/**
+ * The provider schemas (src/schema/data/*.json, ~3.7 MB together) are kept out
+ * of the precache too: a project only needs its own provider's, which is
+ * runtime-cached when first loaded. Offline without it the editor falls back
+ * to the catalog (src/schema/store.ts).
+ */
+const SCHEMA_CHUNKS = ['aws-', 'azurerm-', 'google-'];
 /** Font subsets for scripts other than Latin: cached when a page first needs them. */
 const RARE_FONT_SUBSETS = ['cyrillic', 'greek', 'vietnamese'];
 
@@ -30,6 +37,12 @@ function lazyAssetsManifest(): Plugin {
       for (const prefix of ['CodePane-', 'editor.worker-', 'elk.bundled-']) {
         if (!files.some((file) => file.startsWith(`assets/${prefix}`))) {
           this.error(`no build file starts with assets/${prefix} — update LAZY_HEAVY in vite.config.ts`);
+        }
+      }
+      // …nor silently put a provider schema back into every visitor's precache
+      for (const prefix of SCHEMA_CHUNKS) {
+        if (!Object.keys(bundle).some((file) => file.startsWith(`assets/${prefix}`) && file.endsWith('.js'))) {
+          this.error(`no build file starts with assets/${prefix} — update SCHEMA_CHUNKS in vite.config.ts`);
         }
       }
       this.emitFile({ type: 'asset', fileName: 'lazy-assets.json', source: `${JSON.stringify(files)}\n` });
@@ -51,10 +64,11 @@ export default defineConfig({
       // public/manifest.webmanifest is the manifest (index.html links it)
       manifest: false,
       workbox: {
-        // the app shell: every page, style and script except the heavy lazy ones
+        // the app shell: every page, style and script except the heavy lazy ones and the schemas
         globPatterns: ['**/*.{html,js,css,svg,png,woff2,webmanifest}'],
         globIgnores: [
           ...LAZY_HEAVY.map((prefix) => `assets/${prefix}*`),
+          ...SCHEMA_CHUNKS.map((prefix) => `assets/${prefix}*.js`),
           ...RARE_FONT_SUBSETS.map((subset) => `assets/*-${subset}-*.woff2`),
           'og-image.png',
           '404.html',
