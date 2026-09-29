@@ -6,9 +6,11 @@
  * — `dynamic` blocks, verbatim sub-blocks, expressions — is given the benefit
  * of the doubt: a warning is raised only when Terraform would certainly fail.
  */
+import { messagesFor } from '@/i18n/messages';
 import type { BodySpans, Diagnostic, Expression, IR, ResourceNode } from '@/ir/types';
 import type { ResourceDef } from '@/resources/types';
 import { acceptsBlockSyntax, closestName, entryOf, isSettable, parseType, type TypeNode } from './lookup';
+import { schemaMessages, type Got, type SchemaText, type Wanted } from './messages';
 import { getProviderSchema, schemaFor, schemaProviderOf } from './store';
 import type { SchemaBlock, SchemaProvider } from './types';
 import { constraintAllows, providerConstraints } from './versions';
@@ -57,27 +59,29 @@ export function bodyKeyName(key: string): { name: string; via: 'plain' | 'dynami
 
 const NUMERIC = /^\s*[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?\s*$/;
 
-function describeValue(expr: Expression): string {
+function describeValue(expr: Expression): Got {
   switch (expr.kind) {
     case 'literal':
-      return typeof expr.value === 'string' ? JSON.stringify(expr.value) : String(expr.value);
+      return { kind: 'literal', text: typeof expr.value === 'string' ? JSON.stringify(expr.value) : String(expr.value) };
     case 'list':
-      return 'a list';
+      return { kind: 'list' };
     case 'object':
-      return 'an object';
+      return { kind: 'object' };
     default:
-      return 'this value';
+      return { kind: 'value' };
   }
 }
 
 const typeName = (t: TypeNode): string =>
   t.kind === 'list' || t.kind === 'set' || t.kind === 'map' ? `${t.kind}(${typeName(t.elem)})` : t.kind;
 
-/**
- * Why a value can't convert to `type`, or undefined when it can (or might —
- * references, functions and templates are never judged).
- */
-export function literalTypeProblem(expr: Expression, type: TypeNode): string | undefined {
+/** why a value can't convert: a plain mismatch, or one inside a collection item / map entry */
+type Mismatch =
+  | { wanted: Wanted; got: Got }
+  | { collection: string; item: true; inner: Mismatch }
+  | { collection: string; key: string; inner: Mismatch };
+
+function mismatch(expr: Expression, type: TypeNode): Mismatch | undefined {
   if (type.kind === 'any') return undefined;
   switch (expr.kind) {
     case 'literal': {
@@ -88,41 +92,58 @@ export function literalTypeProblem(expr: Expression, type: TypeNode): string | u
           return undefined; // numbers and bools convert
         case 'bool':
           return typeof v === 'number' || (typeof v === 'string' && !['true', 'false', '1', '0'].includes(v))
-            ? `expects a bool, got ${describeValue(expr)}`
+            ? { wanted: { kind: 'bool' }, got: describeValue(expr) }
             : undefined;
         case 'number':
           return typeof v === 'boolean' || (typeof v === 'string' && !NUMERIC.test(v))
-            ? `expects a number, got ${describeValue(expr)}`
+            ? { wanted: { kind: 'number' }, got: describeValue(expr) }
             : undefined;
         default:
-          return `expects ${typeName(type)}, got ${describeValue(expr)}`;
+          return { wanted: { kind: 'type', name: typeName(type) }, got: describeValue(expr) };
       }
     }
     case 'list': {
       if (type.kind === 'list' || type.kind === 'set') {
         for (const item of expr.items) {
-          const problem = literalTypeProblem(item, type.elem);
-          if (problem) return `expects ${typeName(type)}: an item ${problem.replace(/^expects /, 'should be ')}`;
+          const inner = mismatch(item, type.elem);
+          if (inner) return { collection: typeName(type), item: true, inner };
         }
         return undefined;
       }
       if (type.kind === 'tuple') return undefined;
-      return `expects ${typeName(type)}, got a list`;
+      return { wanted: { kind: 'type', name: typeName(type) }, got: { kind: 'list' } };
     }
     case 'object': {
       if (type.kind === 'map') {
         for (const [k, v] of Object.entries(expr.fields)) {
-          const problem = literalTypeProblem(v, type.elem);
-          if (problem) return `expects ${typeName(type)}: "${k}" ${problem.replace(/^expects /, 'should be ')}`;
+          const inner = mismatch(v, type.elem);
+          if (inner) return { collection: typeName(type), key: k, inner };
         }
         return undefined;
       }
       if (type.kind === 'object') return undefined;
-      return `expects ${typeName(type)}, got an object`;
+      return { wanted: { kind: 'type', name: typeName(type) }, got: { kind: 'object' } };
     }
     default:
       return undefined;
   }
+}
+
+/** `expects a number, got "x"`; nested ones read on: `expects list(number): an item should be a number, got "x"` */
+function describeMismatch(m: SchemaText, problem: Mismatch, lead = m.expects): string {
+  if ('wanted' in problem) return m.mismatch(lead, m.wanted(problem.wanted), m.got(problem.got));
+  const inner = describeMismatch(m, problem.inner, m.shouldBe);
+  return 'key' in problem ? m.entryMismatch(lead, problem.collection, problem.key, inner) : m.itemMismatch(lead, problem.collection, inner);
+}
+
+/**
+ * Why a value can't convert to `type` (in the UI language in effect), or
+ * undefined when it can (or might — references, functions and templates are
+ * never judged).
+ */
+export function literalTypeProblem(expr: Expression, type: TypeNode): string | undefined {
+  const problem = mismatch(expr, type);
+  return problem ? describeMismatch(messagesFor(schemaMessages), problem) : undefined;
 }
 
 /* ------------------------------------------------------------------- walk */
@@ -131,26 +152,39 @@ interface Walk {
   issues: SchemaIssue[];
   /** top-level arguments the catalog already reports as missing */
   catalogRequired: Set<string>;
+  /** the messages in effect when the walk started */
+  m: SchemaText;
 }
 
-const where = (path: Array<string | number>) => {
+/** ` in ingress.cidr_blocks`, or nothing at the top level */
+function where(w: Walk, path: Array<string | number>): string {
   const names = path.filter((p): p is string => typeof p === 'string');
-  return names.length ? ` in ${names.join('.')}` : '';
-};
+  return names.length ? w.m.where(names.join('.')) : '';
+}
+
+/** ` — <provider's deprecation note>`, when there is one */
+const note = (w: Walk, text: string | undefined) => (text ? w.m.note(text) : '');
 
 function blockCandidates(schema: SchemaBlock): string[] {
   return [...Object.values(schema.attributes).filter(isSettable).map((a) => a.name), ...Object.keys(schema.blocks)];
 }
 
 /** `name` as written; `key` is its body key (they differ for `dynamic "name"` blocks) */
-function unknown(w: Walk, path: Array<string | number>, name: string, what: string, candidates: string[], key = name) {
+function unknown(
+  w: Walk,
+  path: Array<string | number>,
+  name: string,
+  what: 'argument' | 'block' | 'block type',
+  candidates: string[],
+  key = name,
+) {
   const suggestion = closestName(name, candidates);
   w.issues.push({
     kind: 'unknown',
     path,
     key,
     suggestion,
-    message: `unknown ${what} "${name}"${where(path)}${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
+    message: w.m.unknown(what, name, where(w, path), suggestion ? w.m.didYouMean(suggestion) : ''),
   });
 }
 
@@ -166,8 +200,8 @@ function checkObjectBlock(w: Walk, body: Record<string, Expression>, type: TypeN
       unknown(w, path, key, 'argument', fields);
       continue;
     }
-    const problem = literalTypeProblem(expr, field);
-    if (problem) w.issues.push({ kind: 'type', path, key, message: `"${key}"${where(path)} ${problem}` });
+    const problem = mismatch(expr, field);
+    if (problem) w.issues.push({ kind: 'type', path, key, message: w.m.typeProblem(key, where(w, path), describeMismatch(w.m, problem)) });
   }
 }
 
@@ -193,7 +227,7 @@ function checkBody(w: Walk, body: Record<string, Expression>, schema: SchemaBloc
         present.add(name);
         if (via === 'dynamic') dynamic.add(name);
         if (entry.deprecated) {
-          w.issues.push({ kind: 'deprecated', path, key, message: `block "${name}"${where(path)} is deprecated${entry.deprecation ? ` — ${entry.deprecation}` : ''}` });
+          w.issues.push({ kind: 'deprecated', path, key, message: w.m.blockDeprecated(name, where(w, path), note(w, entry.deprecation)) });
         }
       } else if (!entry) {
         unknown(w, path, name, 'block type', Object.keys(schema.blocks), key);
@@ -211,11 +245,11 @@ function checkBody(w: Walk, body: Record<string, Expression>, schema: SchemaBloc
 
     if (entry.kind === 'attribute') {
       if (!entry.required && !entry.optional) {
-        w.issues.push({ kind: 'read-only', path, key, message: `"${key}"${where(path)} is read-only — the provider computes it` });
+        w.issues.push({ kind: 'read-only', path, key, message: w.m.readOnly(key, where(w, path)) });
         continue;
       }
       if (entry.deprecated) {
-        w.issues.push({ kind: 'deprecated', path, key, message: `"${key}"${where(path)} is deprecated${entry.deprecation ? ` — ${entry.deprecation}` : ''}` });
+        w.issues.push({ kind: 'deprecated', path, key, message: w.m.deprecated(key, where(w, path), note(w, entry.deprecation)) });
       }
       const type = parseType(entry.type);
       if (expr.kind === 'block' || expr.kind === 'blocks') {
@@ -223,21 +257,21 @@ function checkBody(w: Walk, body: Record<string, Expression>, schema: SchemaBloc
           const items = expr.kind === 'block' ? [expr.body] : expr.items;
           items.forEach((item, i) => checkObjectBlock(w, item, type.elem, [...path, key, i]));
         } else if (type.kind === 'string' || type.kind === 'number' || type.kind === 'bool') {
-          w.issues.push({ kind: 'syntax', path, key, message: `"${key}"${where(path)} is an argument — write ${key} = …, not a block` });
+          w.issues.push({ kind: 'syntax', path, key, message: w.m.notABlock(key, where(w, path)) });
         }
         continue;
       }
-      const problem = literalTypeProblem(expr, type);
-      if (problem) w.issues.push({ kind: 'type', path, key, message: `"${key}"${where(path)} ${problem}` });
+      const problem = mismatch(expr, type);
+      if (problem) w.issues.push({ kind: 'type', path, key, message: w.m.typeProblem(key, where(w, path), describeMismatch(w.m, problem)) });
       continue;
     }
 
     // nested block type
     if (entry.deprecated) {
-      w.issues.push({ kind: 'deprecated', path, key, message: `block "${key}"${where(path)} is deprecated${entry.deprecation ? ` — ${entry.deprecation}` : ''}` });
+      w.issues.push({ kind: 'deprecated', path, key, message: w.m.blockDeprecated(key, where(w, path), note(w, entry.deprecation)) });
     }
     if (expr.kind !== 'block' && expr.kind !== 'blocks') {
-      w.issues.push({ kind: 'syntax', path, key, message: `"${key}"${where(path)} is a block — write ${key} { … }, not ${key} = …` });
+      w.issues.push({ kind: 'syntax', path, key, message: w.m.notAnArgument(key, where(w, path)) });
       continue;
     }
     const items = expr.kind === 'block' ? [expr.body] : expr.items;
@@ -249,7 +283,7 @@ function checkBody(w: Walk, body: Record<string, Expression>, schema: SchemaBloc
       const expr = body[name];
       const count = expr?.kind === 'blocks' ? expr.items.length : 0;
       if (count > entry.maxItems) {
-        w.issues.push({ kind: 'too-many', path, key: name, message: `block "${name}"${where(path)} may appear at most ${entry.maxItems === 1 ? 'once' : `${entry.maxItems} times`}, found ${count}` });
+        w.issues.push({ kind: 'too-many', path, key: name, message: w.m.tooMany(name, where(w, path), entry.maxItems, count) });
       }
     }
   }
@@ -257,19 +291,23 @@ function checkBody(w: Walk, body: Record<string, Expression>, schema: SchemaBloc
   for (const attr of Object.values(schema.attributes)) {
     if (!attr.required || present.has(attr.name)) continue;
     if (top && w.catalogRequired.has(attr.name)) continue;
-    w.issues.push({ kind: 'missing', path, message: `required argument "${attr.name}"${where(path)} is missing`, suggestion: attr.name });
+    w.issues.push({ kind: 'missing', path, message: w.m.missingArgument(attr.name, where(w, path)), suggestion: attr.name });
   }
   for (const entry of Object.values(schema.blocks)) {
     if (entry.minItems === 0 || present.has(entry.name)) continue;
     if (top && w.catalogRequired.has(entry.name)) continue;
-    w.issues.push({ kind: 'missing', path, message: `required block "${entry.name}"${where(path)} is missing`, suggestion: entry.name });
+    w.issues.push({ kind: 'missing', path, message: w.m.missingBlock(entry.name, where(w, path)), suggestion: entry.name });
   }
 }
 
-/** schema findings for one resource; empty while its provider's schema isn't loaded */
+/**
+ * schema findings for one resource, in the UI language in effect; empty while
+ * its provider's schema isn't loaded
+ */
 export function schemaIssues(node: ResourceNode, def?: ResourceDef): SchemaIssue[] {
   const provider = schemaProviderOf(node.type);
   if (!provider) return [];
+  const m = messagesFor(schemaMessages);
   const schema = schemaFor(node.type);
   if (!schema) {
     const providerSchema = getProviderSchema(provider);
@@ -280,17 +318,18 @@ export function schemaIssues(node: ResourceNode, def?: ResourceDef): SchemaIssue
         kind: 'unknown-type',
         path: [],
         suggestion,
-        message: `resource type "${node.type}" is not in the ${provider} provider ${providerSchema.version}${suggestion ? ` — did you mean "${suggestion}"?` : ''}`,
+        message: m.unknownType(node.type, provider, providerSchema.version, suggestion ? m.didYouMean(suggestion) : ''),
       },
     ];
   }
   const w: Walk = {
     issues: [],
     catalogRequired: new Set(def?.fields.filter((f) => f.required).map((f) => f.name) ?? []),
+    m,
   };
   const deprecation = schema.resourceDeprecation(node.type);
   if (deprecation !== undefined) {
-    w.issues.push({ kind: 'deprecated-type', path: [], message: `resource type "${node.type}" is deprecated${deprecation ? ` — ${deprecation}` : ''}` });
+    w.issues.push({ kind: 'deprecated-type', path: [], message: m.typeDeprecated(node.type, note(w, deprecation)) });
   }
   checkBody(w, node.args, schema.resource(node.type)!, []);
   return w.issues;

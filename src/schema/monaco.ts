@@ -3,11 +3,15 @@
  * src/features/editor/monaco/setup.ts. Every function returns undefined when
  * no schema applies (not loaded yet, unknown type), and the caller falls back
  * to its catalog-only behavior — so nothing changes until a schema arrives.
+ * Our labels are built when Monaco asks, in the UI language in effect; the
+ * schema's own descriptions are the provider's English.
  */
 import type * as Monaco from 'monaco-editor/esm/vs/editor/editor.api';
+import { messagesFor } from '@/i18n/messages';
 import { bodyCompletions, entryDetail, exportCompletions, type SchemaCompletion } from './completion';
 import { cursorContext, referenceBefore } from './context';
 import { blockAt, entryOf } from './lookup';
+import { schemaMessages } from './messages';
 import { getProviderSchema, requestSchemasFor, schemaFor, schemaProviderOf } from './store';
 import type { SchemaEntry } from './types';
 
@@ -110,7 +114,7 @@ export function schemaHoverContents(entry: SchemaEntry, curatedDoc?: string): Mo
   const contents: Monaco.IMarkdownString[] = [{ value: `**${entry.name}** · \`${entryDetail(entry)}\`` }];
   const help = curatedDoc ?? entry.description;
   if (help) contents.push({ value: help });
-  if (entry.deprecated) contents.push({ value: `**Deprecated**${entry.deprecation ? ` — ${entry.deprecation}` : ''}` });
+  if (entry.deprecated) contents.push({ value: messagesFor(schemaMessages).deprecatedHeading(entry.deprecation) });
   return contents;
 }
 
@@ -123,11 +127,12 @@ export function schemaTypeHover(word: string): Monaco.IMarkdownString[] | undefi
   const block = schema?.resource(word);
   if (!provider || !schema || !block) return undefined;
   const args = Object.values(block.attributes).filter((a) => a.required || a.optional).length + Object.keys(block.blocks).length;
+  const m = messagesFor(schemaMessages);
   const contents: Monaco.IMarkdownString[] = [
-    { value: `**${word}** · ${PROVIDER_NAMES[provider]} provider ${schema.version}` },
-    { value: `${args} arguments and blocks — type inside the block to see them` },
+    { value: `**${word}** · ${m.providerVersion(PROVIDER_NAMES[provider], schema.version)}` },
+    { value: m.argumentCount(args) },
   ];
   const deprecation = schema.resourceDeprecation(word);
-  if (deprecation !== undefined) contents.push({ value: `**Deprecated**${deprecation ? ` — ${deprecation}` : ''}` });
+  if (deprecation !== undefined) contents.push({ value: m.deprecatedHeading(deprecation) });
   return contents;
 }
