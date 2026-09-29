@@ -4,6 +4,14 @@
  * and a lazy import fails. One reload picks up the new build; a sessionStorage
  * stamp makes sure we never loop — the second failure shows the recovery
  * screen instead.
+ *
+ * With the service worker (src/features/data/pwa.ts) a plain reload isn't
+ * enough: the worker would serve the same old build from its cache. So the
+ * worker registers an "update activator" here, and a recovery reload asks it
+ * first — it activates the waiting (or freshly fetched) new version and
+ * reloads once that version controls the page. The loop guard applies to
+ * both paths, and an update the user accepted from the "Update available"
+ * prompt marks itself as a recovery reload so the two never reload twice.
  */
 import { lazy, type ComponentType } from 'react';
 
@@ -12,6 +20,18 @@ const STAMP_KEY = 'cb-chunk-reload-at';
 const LOOP_WINDOW_MS = 30_000;
 
 let reloading = false;
+/** set by the service worker: takes over a recovery reload (true) or declines (false) */
+let activateUpdate: (() => boolean) | null = null;
+
+/** The service worker's hook: activate a new version instead of a plain reload. */
+export function setUpdateActivator(fn: (() => boolean) | null) {
+  activateUpdate = fn;
+}
+
+/** An update reload is under way (e.g. the user accepted it): chunk errors until then are expected. */
+export function markRecoveryReload() {
+  reloading = true;
+}
 
 export function isChunkLoadError(error: unknown): boolean {
   const text =
@@ -47,7 +67,8 @@ export function recoveryReload(): boolean {
     return false;
   }
   reloading = true;
-  location.reload();
+  // a service worker would serve the same stale build: let it switch versions first
+  if (!activateUpdate?.()) location.reload();
   return true;
 }
 

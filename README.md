@@ -39,6 +39,12 @@ between them.
   diagram and the code side by side with the new lines highlighted — any step opens in
   the editor.
 
+### Your data, anywhere
+
+- ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor —
+  Monaco, auto-layout, fonts — open without a connection; a new version shows an
+  "Update available — Reload" prompt instead of breaking the open tab.
+
 ### Built for speed
 
 - ⌘ **Command palette** (`⌘K` / `Ctrl+K`): add any of the 92 services, jump to a resource or
@@ -100,6 +106,8 @@ bash scripts/terraform-validate.sh .tf-catalog
 ```
 
 First E2E run on a new machine: `pnpm exec playwright install --with-deps chromium`.
+The service worker is blocked in every E2E spec (it would serve cached files past `page.route()`
+mocks) except `e2e/pwa.spec.ts`, which opts in to test the offline app and the update prompt.
 
 That's it — there is no database, no API keys, no backend to configure.
 
@@ -133,6 +141,7 @@ The app is a fully static SPA. Any free static host works:
 | Export / share | fflate (zip download + import, deflated share-links in the URL fragment), html-to-image (PNG/SVG) |
 | Command palette | [cmdk](https://cmdk.paco.me), loaded on first use |
 | Auto-layout | [ELK](https://eclipse.dev/elk/) (`elkjs`), loaded on first use |
+| Offline | [vite-plugin-pwa](https://vite-pwa-org.netlify.app) (Workbox) generates the service worker at build time; no runtime dependency |
 | Icons | [Lucide](https://lucide.dev) glyphs on category-colored tiles (`src/resources/icons.tsx`) |
 
 ### Repo map
@@ -172,7 +181,7 @@ e2e/             # Playwright specs (editor, navigation, share links, import, pe
 - [ ] **F5** — GitHub/GitLab push, org template libraries
 - [x] **F3.5** — Premium UX: command palette, quick add, tidy layout, selection sync,
   import/export, per-service icons, first-run tips
-- [ ] **F6** — PWA offline install, guided onboarding tour, community template gallery
+- [ ] **F6** — ~~PWA offline install~~ (done), guided onboarding tour, community template gallery
 
 The client-only architecture is deliberate: parsing/emitting runs in the browser, so a
 future backend only needs to store snapshots and relay WebSockets — exactly as specified
