@@ -5,8 +5,10 @@
 import { CheckCircle2, HardDrive } from 'lucide-react';
 import { useId, useMemo, useState } from 'react';
 import { Button, Modal } from '@/components/ui';
+import { useMessages } from '@/i18n/messages';
 import { deleteProject, listProjects, projectSize } from '@/lib/storage';
 import { cn, timeAgo } from '@/lib/utils';
+import { dataMessages } from './messages';
 import { formatBytes } from './meter';
 
 export default function FreeSpaceDialog({
@@ -20,6 +22,7 @@ export default function FreeSpaceDialog({
   onDeleted(count: number): void;
 }) {
   const listId = useId();
+  const m = useMessages(dataMessages);
   const projects = useMemo(
     () =>
       listProjects()
@@ -46,7 +49,7 @@ export default function FreeSpaceDialog({
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
             <HardDrive className="h-4 w-4" />
           </span>
-          <h2 className="text-[15px] font-semibold">Free up browser storage</h2>
+          <h2 className="text-[15px] font-semibold">{m.freeUpTitle}</h2>
         </div>
       }
     >
@@ -54,16 +57,17 @@ export default function FreeSpaceDialog({
         <p className="flex items-start gap-2 rounded-md border border-success/30 bg-success/8 px-3 py-2.5 text-[12.5px]">
           <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
           <span>
-            <span className="font-semibold text-success">Backup downloaded</span>{' '}
+            <span className="font-semibold text-success">{m.backupDone}</span>{' '}
             <span className="text-muted">
-              — <span className="break-all font-mono text-[11.5px]">{backupName}</span> holds every project. Restore any
-              of them later from the dashboard.
+              {m.backupHoldsBefore}
+              <span className="break-all font-mono text-[11.5px]">{backupName}</span>
+              {m.backupHoldsAfter}
             </span>
           </span>
         </p>
         <div>
           <h3 id={listId} className="mb-1.5 text-[12.5px] font-medium text-muted">
-            Select the projects to delete from this browser (largest first)
+            {m.selectToDelete}
           </h3>
           <ul aria-labelledby={listId} className="max-h-[min(340px,45vh)] divide-y overflow-y-auto rounded-md border">
             {projects.map(({ project, size }) => (
@@ -84,7 +88,7 @@ export default function FreeSpaceDialog({
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-semibold">{project.name}</span>
-                    <span className="block text-[12px] text-muted">Updated {timeAgo(project.updatedAt)}</span>
+                    <span className="block text-[12px] text-muted">{m.updated(timeAgo(project.updatedAt))}</span>
                   </span>
                   <span className="shrink-0 font-mono text-[12px] text-muted">{formatBytes(size)}</span>
                 </label>
@@ -95,13 +99,13 @@ export default function FreeSpaceDialog({
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2 border-t px-5 py-3.5 max-sm:px-4">
         <p className={cn('mr-auto text-[12px]', selected.size > 0 ? 'text-foreground' : 'text-muted')}>
-          {selected.size > 0 ? `Frees about ${formatBytes(freed)}` : 'Nothing selected'}
+          {selected.size > 0 ? m.frees(formatBytes(freed)) : m.nothingSelected}
         </p>
         <Button variant="outline" onClick={onClose}>
-          Done
+          {m.done}
         </Button>
         <Button variant="danger" disabled={selected.size === 0} onClick={remove}>
-          Delete {selected.size || ''} project{selected.size === 1 ? '' : 's'}
+          {m.deleteProjects(selected.size)}
         </Button>
       </div>
     </Modal>

@@ -17,9 +17,11 @@ import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
 import { Button } from '@/components/ui';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import type { Project } from '@/lib/storage';
 import { cn, timeAgo } from '@/lib/utils';
 import { downloadBackup, lastBackupAt } from './backupActions';
+import { dataMessages } from './messages';
 import { formatBytes, type Meter } from './meter';
 import { usePwa, warmOfflineCache } from './pwa';
 import { useOpenFolder } from './OpenFolderButton';
@@ -38,13 +40,13 @@ async function backUp(): Promise<string | null> {
   try {
     const done = await downloadBackup();
     if (!done) {
-      showToast('There are no projects to back up yet');
+      showToast(messagesFor(dataMessages).nothingToBackUp);
       return null;
     }
-    showToast(`Backup downloaded — ${done.count} project${done.count === 1 ? '' : 's'}`, 'success');
+    showToast(messagesFor(dataMessages).backupDownloaded(done.count), 'success');
     return done.fileName;
   } catch {
-    showToast('The backup could not be created', 'error');
+    showToast(messagesFor(dataMessages).backupFailed, 'error');
     return null;
   }
 }
@@ -62,6 +64,7 @@ const LEVEL_BAR: Record<Meter['level'], string> = {
 
 function StorageBar({ meter, label }: { meter: Meter; label: string }) {
   const { used, total } = meter.binding === 'origin' && meter.origin ? meter.origin : meter.local;
+  const m = useMessages(dataMessages);
   return (
     <div
       role="meter"
@@ -69,7 +72,7 @@ function StorageBar({ meter, label }: { meter: Meter; label: string }) {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={meter.percent}
-      aria-valuetext={`${meter.percent}% — ${formatBytes(used)} of ${formatBytes(total)}`}
+      aria-valuetext={m.meterValue(meter.percent, formatBytes(used), formatBytes(total))}
       className="h-2 w-full overflow-hidden rounded-full bg-surface-2"
     >
       <div
@@ -84,13 +87,14 @@ function StorageBar({ meter, label }: { meter: Meter; label: string }) {
 /** Opens the restore flow for a chosen file (a hidden file input lives in the panel). */
 function useRestorePicker() {
   const input = useRef<HTMLInputElement>(null);
+  const m = useMessages(dataMessages);
   const element = (
     <input
       ref={input}
       type="file"
       accept=".zip,application/zip"
       className="hidden"
-      aria-label="Restore from backup file"
+      aria-label={m.restoreInput}
       data-testid="restore-input"
       onChange={(e) => {
         const file = e.target.files?.[0];
@@ -112,6 +116,7 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
   const [lastBackup, setLastBackup] = useState(lastBackupAt);
   const picker = useRestorePicker();
   const folder = useOpenFolder();
+  const m = useMessages(dataMessages);
 
   // the editor (Monaco, ELK) works offline once cached: fetch it while idle
   useEffect(() => warmOfflineCache(), []);
@@ -120,39 +125,40 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
   return (
     <section className="mt-10" aria-labelledby={headingId}>
       <h2 id={headingId} className="mb-3 text-[11px] font-bold uppercase tracking-wider text-faint">
-        Your data
+        {m.yourData}
       </h2>
       <div className="grid overflow-hidden rounded-[14px] border bg-surface-1 shadow-xs md:grid-cols-2">
         {/* storage */}
         <div className="p-4 sm:p-5">
           <div className="flex items-center gap-2">
             <HardDrive className="h-4 w-4 text-muted" aria-hidden="true" />
-            <h3 className="text-[13.5px] font-semibold">Browser storage</h3>
+            <h3 className="text-[13.5px] font-semibold">{m.browserStorage}</h3>
             <span
               className={cn(
                 'ml-auto text-[12px] font-semibold tabular-nums',
                 meter.level === 'ok' ? 'text-muted' : meter.level === 'nudge' ? 'text-warning' : 'text-danger',
               )}
             >
-              {meter.percent}% used
+              {m.percentUsed(meter.percent)}
             </span>
           </div>
           <div className="mt-3">
-            <StorageBar meter={meter} label="Browser storage used" />
+            <StorageBar meter={meter} label={m.storageUsedLabel} />
           </div>
           <p className="mt-2 text-[12px] text-muted">
-            Projects: <span className="font-medium text-foreground">{formatBytes(local.used)}</span> of ~
-            {formatBytes(local.total)} this browser allows
+            {m.projectsUsageBefore}
+            <span className="font-medium text-foreground">{formatBytes(local.used)}</span>
+            {m.projectsUsageAfter(formatBytes(local.total))}
           </p>
           {meter.origin ? (
             <p className="mt-0.5 text-[12px] text-faint">
-              {meter.origin.used > 0 ? `Offline app & folder links: ${formatBytes(meter.origin.used)} · ` : ''}
-              {formatBytes(meter.origin.free)} free on this device
+              {meter.origin.used > 0 ? m.originUsed(formatBytes(meter.origin.used)) : ''}
+              {m.originFree(formatBytes(meter.origin.free))}
             </p>
           ) : null}
           {meter.level !== 'ok' ? (
             <Button variant="outline" size="sm" className="mt-3" onClick={() => void backUpAndFreeSpace()}>
-              <DatabaseBackup className="h-3.5 w-3.5" /> Back up and free space
+              <DatabaseBackup className="h-3.5 w-3.5" /> {m.backUpAndFree}
             </Button>
           ) : null}
           {canPersist ? (
@@ -161,8 +167,8 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
                 <p className="flex items-start gap-2 text-[12px] text-muted">
                   <ShieldCheck className="mt-px h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
                   <span>
-                    <span className="font-medium text-foreground">Protected storage.</span> The browser won’t clear your
-                    projects to free up disk space.
+                    <span className="font-medium text-foreground">{m.protectedTitle}</span>
+                    {m.protectedBody}
                   </span>
                 </p>
               ) : (
@@ -173,18 +179,14 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
                     onClick={async () => {
                       const granted = await requestPersist();
                       setAskedPersist(true);
-                      showToast(
-                        granted ? 'Storage protected — the browser won’t clear your projects' : 'The browser declined for now',
-                        granted ? 'success' : 'info',
-                      );
+                      const text = messagesFor(dataMessages);
+                      showToast(granted ? text.persistGranted : text.persistDeclined, granted ? 'success' : 'info');
                     }}
                   >
-                    <ShieldCheck className="h-3.5 w-3.5" /> Keep my data
+                    <ShieldCheck className="h-3.5 w-3.5" /> {m.keepMyData}
                   </Button>
                   <p className="min-w-0 flex-1 basis-56 text-[12px] leading-snug text-muted">
-                    {askedPersist
-                      ? 'Declined for now — browsers usually allow it for installed apps and sites you use often.'
-                      : 'Asks the browser never to clear your projects when the device runs low on space.'}
+                    {askedPersist ? m.persistDeclinedHint : m.persistHint}
                   </p>
                 </div>
               )}
@@ -196,15 +198,12 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
         <div className="border-t p-4 sm:p-5 md:border-l md:border-t-0">
           <div className="flex items-center gap-2">
             <DatabaseBackup className="h-4 w-4 text-muted" aria-hidden="true" />
-            <h3 className="text-[13.5px] font-semibold">Backup</h3>
+            <h3 className="text-[13.5px] font-semibold">{m.backup}</h3>
             <span className="ml-auto text-[12px] text-faint">
-              {lastBackup ? `Last backup ${timeAgo(lastBackup)}` : 'No backup yet'}
+              {lastBackup ? m.lastBackup(timeAgo(lastBackup)) : m.noBackupYet}
             </span>
           </div>
-          <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
-            Download every project as one .zip — a folder of Terraform files per project. Restore it here or in any
-            other browser; nothing is overwritten without asking.
-          </p>
+          <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{m.backupBody}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button
               size="sm"
@@ -213,21 +212,17 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
                 if (await backUp()) setLastBackup(lastBackupAt());
               }}
             >
-              <DatabaseBackup className="h-3.5 w-3.5" /> Back up all projects
+              <DatabaseBackup className="h-3.5 w-3.5" /> {m.backUpAll}
             </Button>
             <Button variant="outline" size="sm" onClick={picker.open}>
-              <ArchiveRestore className="h-3.5 w-3.5" /> Restore from backup…
+              <ArchiveRestore className="h-3.5 w-3.5" /> {m.restoreFromBackup}
             </Button>
             {picker.element}
           </div>
           <ul className="mt-4 space-y-1.5 border-t pt-3.5 text-[12px] text-muted">
             <li className="flex items-start gap-2">
               <CloudOff className="mt-px h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" />
-              <span>
-                {offlineReady
-                  ? 'Works offline: this browser keeps a copy of the app, so it opens without a connection.'
-                  : 'Works offline after the first visit — install it from the browser menu to open it like an app.'}
-              </span>
+              <span>{offlineReady ? m.offlineReady : m.offlineLater}</span>
             </li>
             <li className="flex items-start gap-2">
               <FolderSync className="mt-px h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" />
@@ -239,15 +234,12 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
                     disabled={folder.busy}
                     className="font-medium text-primary hover:text-primary-hover hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-60"
                   >
-                    Open folder…
-                  </button>{' '}
-                  links a project to Terraform files on your disk: saves go straight to the .tf files.
+                    {m.openFolder}
+                  </button>
+                  {m.openFolderAfter}
                 </span>
               ) : (
-                <span>
-                  Folder sync needs Chrome or Edge. Here, drop a folder on this page to import it, and use a backup or
-                  the Terraform .zip export to take files out.
-                </span>
+                <span>{m.folderUnsupported}</span>
               )}
             </li>
           </ul>
@@ -261,11 +253,7 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
             onClose={() => useDataDialogs.setState({ restore: null })}
             onRestored={({ added, replaced }) => {
               useDataDialogs.setState({ restore: null });
-              const count = added + replaced;
-              showToast(
-                `Restored ${count} project${count === 1 ? '' : 's'}${replaced > 0 ? ` (${replaced} replaced)` : ''}`,
-                'success',
-              );
+              showToast(messagesFor(dataMessages).restored(added + replaced, replaced), 'success');
               onChanged();
             }}
           />
@@ -278,7 +266,7 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
             onClose={() => useDataDialogs.setState({ freeSpace: null })}
             onDeleted={(count) => {
               useDataDialogs.setState({ freeSpace: null });
-              if (count > 0) showToast(`Deleted ${count} project${count === 1 ? '' : 's'} — they’re in your backup`, 'success');
+              if (count > 0) showToast(messagesFor(dataMessages).deletedToBackup(count), 'success');
               onChanged();
             }}
           />
@@ -305,6 +293,7 @@ function dismissedAt(): number {
 export function StorageNudge({ projects }: { projects: Project[] }) {
   const { meter } = useStorageMeter(projects);
   const [dismissed, setDismissed] = useState(dismissedAt);
+  const m = useMessages(dataMessages);
   if (meter.level === 'ok' || (dismissed > 0 && meter.percent < dismissed + 5)) return null;
   const full = meter.level === 'full';
   return (
@@ -317,21 +306,17 @@ export function StorageNudge({ projects }: { projects: Project[] }) {
     >
       <AlertTriangle className={cn('h-4 w-4 shrink-0', full ? 'text-danger' : 'text-warning')} aria-hidden="true" />
       <p className="min-w-0 flex-1 basis-64 text-[12.5px] leading-snug">
-        <span className="font-semibold">Browser storage is {meter.percent}% full.</span>{' '}
-        <span className="text-muted">
-          {full
-            ? 'New changes may stop saving — back up your projects, then delete the ones you don’t need.'
-            : 'Back up your projects, then delete the ones you don’t need to keep saving smoothly.'}
-        </span>
+        <span className="font-semibold">{m.nudgeTitle(meter.percent)}</span>{' '}
+        <span className="text-muted">{full ? m.nudgeFull : m.nudgeNear}</span>
       </p>
       <Button size="sm" variant={full ? 'danger' : 'primary'} onClick={() => void backUpAndFreeSpace()}>
-        <DatabaseBackup className="h-3.5 w-3.5" /> Back up and free space
+        <DatabaseBackup className="h-3.5 w-3.5" /> {m.backUpAndFree}
       </Button>
       <Button
         variant="ghost"
         size="icon"
         className="h-7 w-7"
-        aria-label="Dismiss storage warning"
+        aria-label={m.dismissNudge}
         onClick={() => {
           try {
             sessionStorage.setItem(NUDGE_DISMISSED_KEY, String(meter.percent));

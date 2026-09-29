@@ -11,8 +11,10 @@
  * - storage the browser blocks outright falls back to memory (`safeStorage`)
  *   and says so, instead of crashing.
  */
+import { messagesFor } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
 import { getTemplate } from '@/templates';
+import { libMessages } from './messages';
 import { uid } from './utils';
 
 export interface Project {
@@ -231,7 +233,7 @@ function normalizeProject(value: unknown): Normalized {
   const project: Project = {
     ...value, // keep fields a newer version may have added
     id: value.id,
-    name: str(value.name)?.trim() || 'Untitled project',
+    name: str(value.name)?.trim() || messagesFor(libMessages).untitledProject,
     description: str(value.description),
     files,
     providers,
@@ -417,7 +419,7 @@ export function blankProjectName(provider: Provider): string {
 
 export class StorageFullError extends Error {
   constructor() {
-    super('Storage is full — export or delete projects');
+    super(messagesFor(libMessages).storageFull);
     this.name = 'StorageFullError';
   }
 }
@@ -509,7 +511,7 @@ export function duplicateProject(id: string): Project | undefined {
   const source = getProject(id);
   if (!source) return undefined;
   return createProject({
-    name: uniqueProjectName(`${source.name} copy`),
+    name: uniqueProjectName(messagesFor(libMessages).copyOf(source.name)),
     files: { ...source.files },
     description: source.description,
     templateSlug: source.templateSlug,
@@ -530,14 +532,18 @@ export function subscribeProjects(fn: () => void): () => void {
 
 const DEMO_NAME = 'production-web';
 
-/** The seeded demo project, recreated if it was deleted. Throws StorageFullError. */
+/**
+ * The seeded demo project, recreated if it was deleted. Its description is
+ * written in the UI language of the moment (then it's the user's data).
+ * Throws StorageFullError.
+ */
 export function openDemoProject(): Project {
   const existing = readAll().find((p) => p.demo);
   if (existing) return existing;
   const template = getTemplate('aws-web-app')!;
   return createProject({
     name: uniqueProjectName(DEMO_NAME),
-    description: 'Demo project — a classic VPC + EC2 + RDS web stack. Safe to edit or delete.',
+    description: messagesFor(libMessages).demoDescription,
     files: template.build(DEMO_NAME),
     templateSlug: template.slug,
     demo: true,

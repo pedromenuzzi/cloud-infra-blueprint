@@ -23,8 +23,11 @@
  * click). Everything here works on the small `DirHandleLike` interface, so
  * tests run against an in-memory folder.
  */
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { idb } from './idb';
 import { isTerraformPath, pickRootDir } from './importTf';
+import { libMessages } from './messages';
 import { hashText } from './storage';
 
 /* -------------------------------------------- File System Access subset */
@@ -431,7 +434,37 @@ export type SyncResult =
   | { status: 'permission' }
   /** the folder is gone (moved, renamed, deleted) */
   | { status: 'missing' }
-  | { status: 'error'; message: string };
+  | { status: 'error'; problem: FolderProblem };
+
+/**
+ * Why a sync pass failed. Kept as a reason, not a sentence, so the editor's
+ * indicator can show it in whatever language is picked later
+ * (`folderProblemText`).
+ */
+export type FolderProblem =
+  | { kind: 'revoked' | 'disk-full' | 'locked' | 'unreadable' | 'not-saved' | 'missing' }
+  /** a browser error with its own (untranslated) message */
+  | { kind: 'other'; detail: string };
+
+export function folderProblemText(problem: FolderProblem, locale: Locale = currentLocale()): string {
+  const m = messagesFor(libMessages, locale);
+  switch (problem.kind) {
+    case 'revoked':
+      return m.folderRevoked;
+    case 'disk-full':
+      return m.diskFull;
+    case 'locked':
+      return m.fileLocked;
+    case 'unreadable':
+      return m.folderUnreadable;
+    case 'not-saved':
+      return m.projectNotSaved;
+    case 'missing':
+      return m.folderMissing;
+    case 'other':
+      return problem.detail;
+  }
+}
 
 export interface SyncOptions {
   /** settle the conflicts: keep the project's side, or the disk's */
@@ -454,11 +487,11 @@ async function writeText(dir: DirHandleLike, name: string, text: string, expecte
   await writable.close();
 }
 
-function message(err: unknown): string {
-  if (err instanceof DOMException && err.name === 'NotAllowedError') return 'Permission to the folder was revoked';
-  if (err instanceof DOMException && err.name === 'QuotaExceededError') return 'The disk is full';
-  if (err instanceof DOMException && err.name === 'InvalidModificationError') return 'A file is locked by another program';
-  return err instanceof Error && err.message ? err.message : 'The folder could not be read or written';
+export function problemOf(err: unknown): FolderProblem {
+  if (err instanceof DOMException && err.name === 'NotAllowedError') return { kind: 'revoked' };
+  if (err instanceof DOMException && err.name === 'QuotaExceededError') return { kind: 'disk-full' };
+  if (err instanceof DOMException && err.name === 'InvalidModificationError') return { kind: 'locked' };
+  return err instanceof Error && err.message ? { kind: 'other', detail: err.message } : { kind: 'unreadable' };
 }
 
 /**
@@ -471,7 +504,7 @@ export async function syncFolder(link: FolderLink, io: SyncIO, options: SyncOpti
   try {
     disk = (await readFolderFiles(link.dir)).files;
   } catch (err) {
-    return isNotFound(err) ? { status: 'missing' } : { status: 'error', message: message(err) };
+    return isNotFound(err) ? { status: 'missing' } : { status: 'error', problem: problemOf(err) };
   }
   const app = syncableFiles(io.appFiles());
   const plan = planSync(app, disk, link.synced, link.ignored);
@@ -502,7 +535,7 @@ export async function syncFolder(link: FolderLink, io: SyncIO, options: SyncOpti
     const next = { ...io.appFiles() };
     for (const name of plan.pull) next[name] = disk[name];
     for (const name of plan.drop) delete next[name];
-    if (!io.setAppFiles(next)) return { status: 'error', message: 'The project could not be saved in this browser' };
+    if (!io.setAppFiles(next)) return { status: 'error', problem: { kind: 'not-saved' } };
     for (const name of plan.pull) synced[name] = hashText(disk[name]);
   }
 
@@ -530,7 +563,7 @@ export async function syncFolder(link: FolderLink, io: SyncIO, options: SyncOpti
   } catch (err) {
     if (err instanceof RaceError && attempt < 2) return syncFolder(link, io, options, attempt + 1);
     await io.saveLink(link).catch(() => undefined);
-    return { status: 'error', message: message(err) };
+    return { status: 'error', problem: problemOf(err) };
   }
 
   link.synced = synced;

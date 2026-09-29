@@ -1,3 +1,6 @@
+import { formatNumber } from '@/i18n/format';
+import { currentLocale, type Locale } from '@/i18n/locale';
+
 /**
  * Storage meter math. Two limits apply to this app's data:
  *
@@ -67,8 +70,8 @@ export function computeMeter(snapshot: StorageSnapshot): Meter {
   };
 }
 
-/** 0 B, 812 B, 12 KB, 1.2 MB, 38 GB (binary units, one decimal under 10). */
-export function formatBytes(bytes: number): string {
+/** 0 B, 812 B, 12 KB, 1.2 MB, 38 GB (binary units, one decimal under 10; "1,2 MB" in Portuguese). */
+export function formatBytes(bytes: number, locale: Locale = currentLocale()): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let value = bytes;
@@ -81,5 +84,5 @@ export function formatBytes(bytes: number): string {
   const rounded = value < 10 ? Math.round(value * 10) / 10 : Math.round(value);
   // 1023.6 KB rounds to 1024 KB: say 1 MB instead
   if (rounded >= 1024 && unit < units.length - 1) return `1 ${units[unit + 1]}`;
-  return `${rounded} ${units[unit]}`;
+  return `${locale === 'en' ? rounded : formatNumber(rounded, { useGrouping: false }, locale)} ${units[unit]}`;
 }

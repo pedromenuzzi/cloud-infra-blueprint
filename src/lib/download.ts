@@ -1,27 +1,12 @@
 import { strToU8, zipSync } from 'fflate';
+import { messagesFor } from '@/i18n/messages';
 import { REPO_URL } from './links';
+import { libMessages } from './messages';
 import { slugify } from './utils';
 
+/** The zip's README, in the UI language of the moment. */
 function terraformReadme(name: string, files: string[]): string {
-  return `# ${name}
-
-Terraform project exported from [Cloud Blueprint](${REPO_URL}) —
-the free, in-browser visual editor for cloud architecture.
-
-## Files
-
-${files.map((f) => `- \`${f}\``).join('\n')}
-
-## Usage
-
-\`\`\`bash
-terraform init
-terraform plan
-terraform apply
-\`\`\`
-
-> Review variables (e.g. passwords marked \`sensitive\`) before applying.
-`;
+  return messagesFor(libMessages).exportReadme(name, REPO_URL, files.map((f) => `- \`${f}\``).join('\n'));
 }
 
 export function exportZip(name: string, files: Record<string, string>) {

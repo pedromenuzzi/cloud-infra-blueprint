@@ -17,7 +17,14 @@
  * `.terraform/` — at most 2 MB a file and 20 MB in all, checked against the
  * listing's sizes BEFORE anything is downloaded.
  */
+import { formatDate, formatNumber } from '@/i18n/format';
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
+import { githubMessages } from './githubImport.messages';
 import { importNote, isTerraformPath, readTerraformFiles, type ImportedProject } from './importTf';
+
+/** the messages in the UI language of the moment (errors are made when they happen) */
+const text = () => messagesFor(githubMessages);
 
 /* ---------------------------------------------------------------- parsing */
 
@@ -55,8 +62,6 @@ const RESERVED_OWNERS = new Set([
   'sponsors', 'topics', 'trending',
 ]);
 
-const SHAPES = 'owner/repo, a github.com link to a repository, folder or .tf file, or a gist link';
-
 function validRef(ref: string): boolean {
   return (
     ref.length > 0 &&
@@ -92,16 +97,15 @@ function repoTarget(
   repo: string,
   rest: { ref?: string | null; path?: string[]; file?: string | null; refPath?: string[] | null },
 ): ParseResult {
+  const m = text();
   const name = repo.replace(/\.git$/i, '');
-  if (!OWNER.test(owner) || RESERVED_OWNERS.has(owner.toLowerCase())) {
-    return { ok: false, error: `“${owner}” isn't a GitHub user or organization name.` };
-  }
-  if (!REPO.test(name)) return { ok: false, error: `“${repo}” isn't a valid repository name.` };
+  if (!OWNER.test(owner) || RESERVED_OWNERS.has(owner.toLowerCase())) return { ok: false, error: m.notOwner(owner) };
+  if (!REPO.test(name)) return { ok: false, error: m.notRepo(repo) };
   const path = rest.path ?? [];
   const segments = [...path, ...(rest.refPath ?? []), ...(rest.file ? [rest.file] : [])];
-  if (!segments.every(validSegment)) return { ok: false, error: 'That path has an invalid folder name in it.' };
+  if (!segments.every(validSegment)) return { ok: false, error: m.badFolder };
   const ref = rest.ref ?? null;
-  if (ref !== null && !validRef(ref)) return { ok: false, error: `“${ref}” isn't a valid branch, tag or commit.` };
+  if (ref !== null && !validRef(ref)) return { ok: false, error: m.badRef(ref) };
   return {
     ok: true,
     target: {
@@ -120,7 +124,7 @@ function repoTarget(
 function treeOrBlob(owner: string, repo: string, kind: 'tree' | 'blob', after: string[]): ParseResult {
   if (after.length === 0) return repoTarget(owner, repo, {});
   if (kind === 'blob' && after.length < 2) {
-    return { ok: false, error: 'That file link is incomplete — copy it again from GitHub.' };
+    return { ok: false, error: text().fileLinkIncomplete };
   }
   const segs = stripRefsPrefix(after);
   const [ref, ...rest] = segs;
@@ -134,17 +138,16 @@ function stripRefsPrefix(segs: string[]): string[] {
 }
 
 function parseUrl(url: URL): ParseResult {
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    return { ok: false, error: `Paste a web link (https://…) — or ${SHAPES}.` };
-  }
+  const m = text();
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return { ok: false, error: m.notWebLink };
   const host = url.hostname.toLowerCase();
   const segs = decodeSegments(url.pathname);
-  if (!segs) return { ok: false, error: 'That link has broken characters in it — copy it again.' };
+  if (!segs) return { ok: false, error: m.brokenCharacters };
 
   if (host === 'github.com' || host === 'www.github.com') {
     const [owner, repo, kind, ...after] = segs;
-    if (!owner) return { ok: false, error: `Add the repository: github.com/owner/repo.` };
-    if (!repo) return { ok: false, error: `Add the repository name after the owner: github.com/${owner}/repo.` };
+    if (!owner) return { ok: false, error: m.addRepository };
+    if (!repo) return { ok: false, error: m.addRepositoryName(owner) };
     if (kind === 'tree' || kind === 'blob') return treeOrBlob(owner, repo, kind, after);
     if (kind === 'commit' && after[0]) return repoTarget(owner, repo, { ref: after[0] });
     // any other page of the repository (issues, pulls, actions…): the repository itself
@@ -154,7 +157,7 @@ function parseUrl(url: URL): ParseResult {
   if (host === 'raw.githubusercontent.com') {
     const [owner, repo, ...after] = segs;
     if (!owner || !repo || after.length < 2) {
-      return { ok: false, error: 'That raw file link is incomplete — copy it again from GitHub.' };
+      return { ok: false, error: m.rawLinkIncomplete };
     }
     return treeOrBlob(owner, repo, 'blob', after);
   }
@@ -163,16 +166,16 @@ function parseUrl(url: URL): ParseResult {
     // gist.github.com/<user>/<id>[/<revision>], gist.github.com/<id>, …/<id>/raw/<revision>/<file>
     const at = GIST_ID.test(segs[0] ?? '') && !GIST_ID.test(segs[1] ?? '') ? 0 : 1;
     const id = segs[at];
-    if (!id || !GIST_ID.test(id)) return { ok: false, error: 'That gist link has no gist id — copy it again.' };
+    if (!id || !GIST_ID.test(id)) return { ok: false, error: m.noGistId };
     const after = segs.slice(at + 1).filter((s) => s !== 'raw');
     const revision = after[0] && REVISION.test(after[0]) ? after[0].toLowerCase() : null;
     return { ok: true, target: { kind: 'gist', id: id.toLowerCase(), revision } };
   }
 
   if (/(^|\.)(gitlab\.com|bitbucket\.org|codeberg\.org)$/.test(host)) {
-    return { ok: false, error: 'Only GitHub is supported for now — download the files and drop them on the dashboard.' };
+    return { ok: false, error: m.onlyGithub };
   }
-  return { ok: false, error: `That's not a GitHub link. Paste ${SHAPES}.` };
+  return { ok: false, error: m.notGithub };
 }
 
 /** `owner/repo[/path][@ref]` — also the shape of `#gh=` deep links. */
@@ -183,12 +186,10 @@ function parseShorthand(input: string): ParseResult {
   if (at !== -1) {
     body = input.slice(0, at);
     ref = input.slice(at + 1);
-    if (ref === '') return { ok: false, error: 'Add a branch, tag or commit after “@”.' };
+    if (ref === '') return { ok: false, error: text().addRef };
   }
   const segs = body.split('/').filter((s) => s !== '');
-  if (segs.length < 2) {
-    return { ok: false, error: `Use owner/repo (for example hashicorp/terraform-provider-aws) — or ${SHAPES}.` };
-  }
+  if (segs.length < 2) return { ok: false, error: text().useOwnerRepo };
   const [owner, repo, ...path] = segs;
   const file = path.length > 0 && /\.tf$/i.test(path[path.length - 1]!) ? path.pop()! : null;
   return repoTarget(owner!, repo!, { ref, path, file });
@@ -201,9 +202,10 @@ function parseShorthand(input: string): ParseResult {
  * clone URLs and gist links.
  */
 export function parseGithubInput(input: string): ParseResult {
+  const m = text();
   let s = input.trim();
-  if (!s) return { ok: false, error: `Paste ${SHAPES}.` };
-  if (s.length > 2048) return { ok: false, error: 'That link is too long.' };
+  if (!s) return { ok: false, error: m.paste };
+  if (s.length > 2048) return { ok: false, error: m.tooLong };
   s = s.replace(/^git\+/i, '');
   const ssh = /^(?:ssh:\/\/)?git@github\.com[:/](.+)$/i.exec(s);
   if (ssh) s = `https://github.com/${ssh[1]}`;
@@ -212,7 +214,7 @@ export function parseGithubInput(input: string): ParseResult {
     try {
       url = new URL(s);
     } catch {
-      return { ok: false, error: `That link doesn't look right. Paste ${SHAPES}.` };
+      return { ok: false, error: m.looksWrong };
     }
     return parseUrl(url);
   }
@@ -220,16 +222,16 @@ export function parseGithubInput(input: string): ParseResult {
     try {
       return parseUrl(new URL(`https://${s}`));
     } catch {
-      return { ok: false, error: `That link doesn't look right. Paste ${SHAPES}.` };
+      return { ok: false, error: m.looksWrong };
     }
   }
-  if (/\s/.test(s)) return { ok: false, error: `Paste one link — ${SHAPES}.` };
+  if (/\s/.test(s)) return { ok: false, error: m.oneLink };
   // a host without the scheme (`gitlab.com/…`): owners never contain dots
   if (/^[^/@]+\.[^/@]+\//.test(s)) {
     try {
       return parseUrl(new URL(`https://${s}`));
     } catch {
-      return { ok: false, error: `That's not a GitHub link. Paste ${SHAPES}.` };
+      return { ok: false, error: m.notGithub };
     }
   }
   return parseShorthand(s);
@@ -383,9 +385,9 @@ export type ImportProgress =
 const API = 'https://api.github.com';
 const RAW = 'https://raw.githubusercontent.com';
 
-/** "14:32" — when the rate limit resets. */
-export function resetTime(rate: RateLimit): string {
-  return new Date(rate.resetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+/** "02:32 PM" / "14:32" — when the rate limit resets, in the UI language. */
+export function resetTime(rate: RateLimit, locale: Locale = currentLocale()): string {
+  return formatDate(rate.resetAt, { hour: '2-digit', minute: '2-digit' }, locale);
 }
 
 function readRate(res: Response): RateLimit | null {
@@ -401,7 +403,7 @@ function readRate(res: Response): RateLimit | null {
 }
 
 function abortError(): GithubImportError {
-  return new GithubImportError('aborted', 'Import cancelled');
+  return new GithubImportError('aborted', text().cancelled);
 }
 
 function isAbort(err: unknown, signal?: AbortSignal): boolean {
@@ -416,12 +418,9 @@ async function request(url: string, init: RequestInit, opts: GithubOptions): Pro
   } catch (err) {
     if (isAbort(err, opts.signal)) throw abortError();
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      throw new GithubImportError('offline', "You're offline — reconnect and try again.");
+      throw new GithubImportError('offline', text().offline);
     }
-    throw new GithubImportError(
-      'network',
-      "Couldn't reach GitHub — check your connection (or a privacy/ad blocker) and try again.",
-    );
+    throw new GithubImportError('network', text().unreachable);
   }
 }
 
@@ -433,45 +432,22 @@ interface ApiError {
 
 /** Map a failed API response to what the user should read. `what` names the thing asked for. */
 function apiFailure(err: ApiError, what: string, token: boolean): GithubImportError {
+  const m = text();
   const { status, rate } = err;
   const limited =
     (status === 403 || status === 429) && (rate?.remaining === 0 || /rate limit/i.test(err.message));
   if (limited) {
-    const when = rate ? ` It resets at ${resetTime(rate)}` : ' Try again in a while';
-    return new GithubImportError(
-      'rate-limit',
-      token
-        ? `GitHub's rate limit for your token is used up.${when}.`
-        : `GitHub's limit of ${rate?.limit ?? 60} requests an hour without a token is used up.${when} — or add a token to keep going.`,
-      rate,
-    );
+    const when = rate ? m.resetsAt(resetTime(rate)) : m.tryLater;
+    return new GithubImportError('rate-limit', token ? m.tokenLimit(when) : m.anonymousLimit(rate?.limit ?? 60, when), rate);
   }
-  if (status === 401) {
-    return new GithubImportError('bad-token', 'GitHub rejected the token — check it, or remove it to continue without one.', rate);
-  }
-  if (status === 404) {
-    return new GithubImportError(
-      'not-found',
-      token
-        ? `Couldn't find ${what}, or your token can't see it.`
-        : `Couldn't find ${what}. Check the spelling — if it's private, add a token below.`,
-      rate,
-    );
-  }
+  if (status === 401) return new GithubImportError('bad-token', m.badToken, rate);
+  if (status === 404) return new GithubImportError('not-found', token ? m.notFoundWithToken(what) : m.notFound(what), rate);
   if (status === 403) {
-    return new GithubImportError(
-      'forbidden',
-      /sso|saml/i.test(err.message)
-        ? 'This organization requires single sign-on — authorize the token for it on GitHub, then try again.'
-        : `GitHub refused access to ${what} (HTTP 403).`,
-      rate,
-    );
+    return new GithubImportError('forbidden', /sso|saml/i.test(err.message) ? m.sso : m.forbidden(what), rate);
   }
-  if (status === 409) return new GithubImportError('empty', `${what} is empty — there's nothing to import yet.`, rate);
-  if (status >= 500) {
-    return new GithubImportError('server', `GitHub is having trouble right now (HTTP ${status}) — try again in a moment.`, rate);
-  }
-  return new GithubImportError('server', `GitHub answered HTTP ${status} for ${what}.`, rate);
+  if (status === 409) return new GithubImportError('empty', m.empty(what), rate);
+  if (status >= 500) return new GithubImportError('server', m.serverTrouble(status), rate);
+  return new GithubImportError('server', m.httpStatus(status, what), rate);
 }
 
 async function api<T>(path: string, what: string, opts: GithubOptions): Promise<T> {
@@ -493,7 +469,7 @@ async function api<T>(path: string, what: string, opts: GithubOptions): Promise<
     return (await res.json()) as T;
   } catch (err) {
     if (isAbort(err, opts.signal)) throw abortError();
-    throw new GithubImportError('server', `GitHub sent an unreadable answer for ${what}.`, rate);
+    throw new GithubImportError('server', text().unreadableAnswer(what), rate);
   }
 }
 
@@ -577,7 +553,7 @@ async function listTree(owner: string, repo: string, ref: string, basePath: stri
       const level = await apiOrFail<GitTree>(`/repos/${owner}/${repo}/git/trees/${sha}`, where, opts);
       entry = level.tree.find((e) => e.path === seg && e.type === 'tree');
     }
-    if (!entry) throw new GithubImportError('path-not-found', `There's no folder “${basePath}” in ${where} at ${ref}.`);
+    if (!entry) throw new GithubImportError('path-not-found', text().noFolder(basePath, where, ref));
     sha = entry.sha;
     prefix = want;
   }
@@ -624,7 +600,7 @@ async function listRepo(target: RepoTarget, opts: GithubOptions): Promise<RepoLi
       basePath = dirOf(basePath);
     }
     if (basePath && !entries.some((e) => e.path === basePath && e.type === 'tree') && !listed.truncated) {
-      throw new GithubImportError('path-not-found', `There's no folder “${basePath}” in ${where} at ${ref}.`);
+      throw new GithubImportError('path-not-found', text().noFolder(basePath, where, ref));
     }
     const files: TreeFile[] = entries
       .filter((e) => e.type === 'blob')
@@ -641,10 +617,10 @@ async function listRepo(target: RepoTarget, opts: GithubOptions): Promise<RepoLi
   }
   if (target.ref === null && !target.refPath) {
     // the default branch itself has no tree
-    throw new GithubImportError('empty', `${where} is empty — there's nothing to import yet.`, lastMiss?.rate);
+    throw new GithubImportError('empty', text().empty(where), lastMiss?.rate);
   }
   const shown = candidates[0]!.ref;
-  throw new GithubImportError('ref-not-found', `${where} has no branch, tag or commit named “${shown}”.`);
+  throw new GithubImportError('ref-not-found', text().noRef(where, shown));
 }
 
 interface GistResponse {
@@ -659,14 +635,13 @@ async function listGist(target: Extract<GithubTarget, { kind: 'gist' }>, opts: G
   opts.onProgress?.({ phase: 'tree' });
   const path = `/gists/${target.id}${target.revision ? `/${target.revision}` : ''}`;
   let gist: GistResponse;
+  const what = text().thatGist;
   try {
-    gist = await api<GistResponse>(path, 'that gist', opts);
+    gist = await api<GistResponse>(path, what, opts);
   } catch (err) {
     const failure = apiErrorOf(err);
-    if (failure?.status === 404) {
-      throw new GithubImportError('not-found', "Couldn't find that gist — check the link; it may have been deleted.", failure.rate);
-    }
-    if (failure) throw apiFailure(failure, 'that gist', Boolean(opts.token));
+    if (failure?.status === 404) throw new GithubImportError('not-found', text().gistNotFound, failure.rate);
+    if (failure) throw apiFailure(failure, what, Boolean(opts.token));
     throw err;
   }
   const files: TreeFile[] = Object.values(gist.files ?? {})
@@ -759,21 +734,19 @@ async function fetchText(listing: Listing, file: TreeFile, opts: GithubOptions):
       ? `${RAW}/${listing.owner}/${listing.repo}/${enc(listing.ref)}/${enc(file.path)}`
       : file.rawUrl;
   if (!url || !/^https:\/\/(raw|gist)\.githubusercontent\.com\//.test(url)) {
-    throw new GithubImportError('server', `GitHub didn't say where ${what} is.`);
+    throw new GithubImportError('server', text().noLocation(what));
   }
   const res = await request(url, {}, opts);
   if (!res.ok) {
-    if (res.status === 404) {
-      throw new GithubImportError('not-found', `${what} disappeared while importing — the branch may have moved. Try again.`);
-    }
-    if (res.status === 429) throw new GithubImportError('rate-limit', 'GitHub is limiting downloads right now — try again in a minute.');
-    throw new GithubImportError('server', `GitHub answered HTTP ${res.status} for ${what}.`);
+    if (res.status === 404) throw new GithubImportError('not-found', text().disappeared(what));
+    if (res.status === 429) throw new GithubImportError('rate-limit', text().downloadsLimited);
+    throw new GithubImportError('server', text().httpStatus(res.status, what));
   }
   try {
     return await res.text();
   } catch (err) {
     if (isAbort(err, opts.signal)) throw abortError();
-    throw new GithubImportError('network', `The download of ${what} was interrupted — try again.`);
+    throw new GithubImportError('network', text().interrupted(what));
   }
 }
 
@@ -821,7 +794,7 @@ export async function fetchRootModule(
   const overCount = Math.max(0, wanted.length - MAX_FILES);
   const picked = wanted.slice(0, MAX_FILES);
   if (picked.length === 0) {
-    throw new GithubImportError('no-terraform', 'Every .tf file there is over the 2 MB size limit — nothing could be imported.');
+    throw new GithubImportError('no-terraform', text().allOversized);
   }
 
   const texts = new Map<string, string>();
@@ -842,7 +815,7 @@ export async function fetchRootModule(
   const asFiles = picked.map((f) => new File([texts.get(f.path) ?? ''], f.path.split('/').pop()!, { type: 'text/plain' }));
   const read = await readTerraformFiles(asFiles);
   if (!read || Object.keys(read.files).length === 0) {
-    throw new GithubImportError('no-terraform', 'Those files could not be read as Terraform.');
+    throw new GithubImportError('no-terraform', text().notTerraform);
   }
   const name = projectName(listing, module.dir);
   const imported: ImportedProject = {
@@ -852,33 +825,36 @@ export async function fetchRootModule(
     skipped: childModuleFiles,
     oversized: read.oversized + oversized,
   };
+  const m = text();
   const extra: string[] = [];
-  if (overCount > 0) extra.push(`Only the first ${MAX_FILES} files were imported (${overCount} more left out)`);
-  if (listing.truncated) extra.push('The repository is too large to list completely — link to a folder to see all of it');
+  if (overCount > 0) extra.push(m.firstFilesOnly(MAX_FILES, overCount));
+  if (listing.truncated) extra.push(m.repoTruncated);
   const base = importNote(imported);
   const note = [base?.replace(/\.$/, ''), ...extra].filter(Boolean).join('. ');
   const where =
     listing.kind === 'gist'
-      ? `gist ${listing.id.slice(0, 7)}${listing.owner ? ` by ${listing.owner}` : ''}`
+      ? m.gistLabel(listing.id.slice(0, 7), listing.owner)
       : `${listing.owner}/${listing.repo}${module.dir ? `/${module.dir}` : ''} @ ${listing.ref}`;
   return {
     imported,
     origin: githubOrigin(listing, module.dir),
-    description: `Imported from GitHub — ${where}.`,
+    description: m.importedFrom(where),
     note: note ? `${note}.` : null,
   };
 }
 
 /** A short, human label for what a listing covers: `owner/repo · main` or `gist 1a2b3c4`. */
-export function listingLabel(listing: Listing): string {
+export function listingLabel(listing: Listing, locale: Locale = currentLocale()): string {
   return listing.kind === 'gist'
-    ? `gist ${listing.id.slice(0, 7)}${listing.owner ? ` by ${listing.owner}` : ''}`
+    ? messagesFor(githubMessages, locale).gistLabel(listing.id.slice(0, 7), listing.owner)
     : `${listing.owner}/${listing.repo}`;
 }
 
-/** Bytes, the way the dialog shows them: `940 B`, `12 KB`, `1.4 MB`. */
-export function formatBytes(n: number): string {
+/** Bytes, the way the dialog shows them: `940 B`, `12 KB`, `1.4 MB` (`1,4 MB` in Portuguese). */
+export function formatBytes(n: number, locale: Locale = currentLocale()): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  const mb = n / (1024 * 1024);
+  if (locale === 'en') return `${mb.toFixed(1)} MB`;
+  return `${formatNumber(mb, { minimumFractionDigits: 1, maximumFractionDigits: 1, useGrouping: false }, locale)} MB`;
 }
