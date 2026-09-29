@@ -3,7 +3,9 @@
  * region its provider deploys to, and a GCP instance (or GKE cluster) must
  * live in its subnetwork's region.
  */
+import { messagesFor } from '@/i18n/messages';
 import type { IR, ResourceNode } from '../types';
+import { checkMessages } from './messages';
 import { providerFor, providerLabel, refTarget, resolveString, type Resolved } from './resolve';
 import type { CheckContext } from './types';
 
@@ -25,7 +27,8 @@ export function gcpRegionOf(location: string): string | undefined {
   return GCP_ZONE.exec(location)?.[1];
 }
 
-const via = (r: Resolved) => (r.via ? ` (from ${r.via})` : '');
+const t = () => messagesFor(checkMessages);
+const via = (r: Resolved) => (r.via ? t().from(r.via) : '');
 
 function awsZoneChecks(ctx: CheckContext) {
   for (const node of ctx.ir.resources) {
@@ -38,7 +41,7 @@ function awsZoneChecks(ctx: CheckContext) {
     ctx.warn(
       node,
       'availability_zone',
-      `availability_zone "${zone.value}"${via(zone)} is in ${zoneRegion}, but ${providerLabel(node, 'AWS')} deploys to ${region.value}${via(region)}`,
+      t().awsZoneRegion(zone.value, via(zone), zoneRegion, providerLabel(node, 'AWS'), region.value, via(region)),
     );
   }
 }
@@ -64,19 +67,18 @@ function gcpZoneChecks(ctx: CheckContext) {
     const location = resolveString(ctx.ir, node.args[field]);
     if (!location) continue;
     if (field === 'zone' && GCP_REGION.test(location.value)) {
-      ctx.warn(node, field, `zone "${location.value}"${via(location)} is a region — instances need a zone such as ${location.value}-a`);
+      ctx.warn(node, field, t().gcpZoneIsRegion(location.value, via(location)));
       continue;
     }
     const region = gcpRegionOf(location.value);
     const subnetwork = subnetworkOf(ctx.ir, node);
     const subnetRegion = subnetwork && subnetworkRegion(ctx.ir, subnetwork);
     if (!region || !subnetRegion || !GCP_REGION.test(subnetRegion.value) || subnetRegion.value === region) continue;
-    const what = node.type === 'google_compute_instance' ? 'an instance' : 'a cluster';
+    const kind = node.type === 'google_compute_instance' ? 'instance' : 'cluster';
     ctx.warn(
       node,
       field,
-      `${field} "${location.value}"${via(location)} is in ${region}, ` +
-        `but ${subnetwork.id} is in ${subnetRegion.value}${via(subnetRegion)} — ${what} must be in its subnetwork's region`,
+      t().gcpRegionMismatch(field, location.value, via(location), region, subnetwork.id, subnetRegion.value, via(subnetRegion), kind),
     );
   }
 }
