@@ -8,6 +8,9 @@ import { defineMessages } from '@/i18n/messages';
 
 const s = (n: number) => (n === 1 ? '' : 's');
 
+/** React Flow's arrow-key move announcement */
+const DIRECTION_PT: Record<string, string> = { up: 'cima', down: 'baixo', left: 'a esquerda', right: 'a direita' };
+
 export const canvasMessages = defineMessages(
   {
     /* nodes */
@@ -27,6 +30,26 @@ export const canvasMessages = defineMessages(
     lensRules: (inbound: number, outbound: number) => `${inbound} in · ${outbound} out`,
     internetReaches: (target: string, ports: string) => `Anyone on the internet can reach ${target} on ${ports}`,
     allowedOn: (from: string, to: string, ports: string) => `${from} → ${to} allowed on ${ports}`,
+    /** what assistive tech hears on the canvas (React Flow's own words, in English its defaults) */
+    nodeRole: 'node',
+    edgeRole: 'edge',
+    edgeLabel: (source: string, target: string) => `Edge from ${source} to ${target}`,
+    flowAria: {
+      'node.a11yDescription.default': 'Press enter or space to select a node. Press delete to remove it and escape to cancel.',
+      'node.a11yDescription.keyboardDisabled':
+        'Press enter or space to select a node. You can then use the arrow keys to move the node around. Press delete to remove it and escape to cancel.',
+      'node.a11yDescription.ariaLiveMessage': ({ direction, x, y }: { direction: string; x: number; y: number }) =>
+        `Moved selected node ${direction}. New position, x: ${x}, y: ${y}`,
+      'edge.a11yDescription.default':
+        'Press enter or space to select an edge. You can then press delete to remove it or escape to cancel.',
+      'controls.ariaLabel': 'Control Panel',
+      'controls.zoomIn.ariaLabel': 'Zoom In',
+      'controls.zoomOut.ariaLabel': 'Zoom Out',
+      'controls.fitView.ariaLabel': 'Fit View',
+      'controls.interactive.ariaLabel': 'Toggle Interactivity',
+      'minimap.ariaLabel': 'Mini Map',
+      'handle.ariaLabel': 'Handle',
+    },
 
     /* connecting */
     crossCloud: 'Cross-cloud connections are not allowed',
@@ -119,6 +142,26 @@ export const canvasMessages = defineMessages(
     lensRules: (inbound: number, outbound: number) => `${inbound} de entrada · ${outbound} de saída`,
     internetReaches: (target: string, ports: string) => `Qualquer pessoa na internet alcança ${target} em ${ports}`,
     allowedOn: (from: string, to: string, ports: string) => `${from} → ${to} permitido em ${ports}`,
+    nodeRole: 'nó',
+    edgeRole: 'conexão',
+    edgeLabel: (source: string, target: string) => `Conexão de ${source} para ${target}`,
+    flowAria: {
+      'node.a11yDescription.default':
+        'Pressione Enter ou Espaço para selecionar um nó. Pressione Delete para excluí-lo e Esc para cancelar.',
+      'node.a11yDescription.keyboardDisabled':
+        'Pressione Enter ou Espaço para selecionar um nó. Depois, use as setas para movê-lo. Pressione Delete para excluí-lo e Esc para cancelar.',
+      'node.a11yDescription.ariaLiveMessage': ({ direction, x, y }: { direction: string; x: number; y: number }) =>
+        `Nó selecionado movido para ${DIRECTION_PT[direction] ?? direction}. Nova posição: x ${x}, y ${y}`,
+      'edge.a11yDescription.default':
+        'Pressione Enter ou Espaço para selecionar uma conexão. Depois, pressione Delete para removê-la ou Esc para cancelar.',
+      'controls.ariaLabel': 'Painel de controle',
+      'controls.zoomIn.ariaLabel': 'Aproximar',
+      'controls.zoomOut.ariaLabel': 'Afastar',
+      'controls.fitView.ariaLabel': 'Ajustar à tela',
+      'controls.interactive.ariaLabel': 'Ativar ou desativar a interatividade',
+      'minimap.ariaLabel': 'Minimapa',
+      'handle.ariaLabel': 'Alça de conexão',
+    },
 
     crossCloud: 'Não é possível conectar recursos de nuvens diferentes',
     expressionArg: 'Esse argumento é uma expressão — conecte-os no código',

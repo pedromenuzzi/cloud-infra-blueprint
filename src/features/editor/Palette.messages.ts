@@ -20,6 +20,7 @@ export const paletteMessages = defineMessages(
     /* the picker */
     pickerLabel: 'Add a resource',
     pickerPlaceholder: 'Add a resource…',
+    results: 'Suggestions',
   },
   {
     title: 'Paleta de recursos',
@@ -38,5 +39,6 @@ export const paletteMessages = defineMessages(
     ],
     pickerLabel: 'Adicionar um recurso',
     pickerPlaceholder: 'Adicionar um recurso…',
+    results: 'Sugestões',
   },
 );

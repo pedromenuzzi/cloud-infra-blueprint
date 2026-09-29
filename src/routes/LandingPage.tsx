@@ -212,7 +212,9 @@ function HeroDemo() {
                       <span className="block truncate text-[9px] font-bold uppercase tracking-[0.07em]" style={{ color: `var(--cat-text-${def.category})` }}>
                         {resourceShortName(def.type)}
                       </span>
-                      <span className="block truncate text-[12.5px] font-semibold leading-tight text-foreground">{n.id}</span>
+                      <span className="block truncate text-[12.5px] font-semibold leading-tight text-foreground" translate="no">
+                        {n.id}
+                      </span>
                       <span className="block truncate text-[10.5px] text-muted">{n.subtitle(m)}</span>
                     </span>
                   </button>
@@ -224,7 +226,7 @@ function HeroDemo() {
             </span>
           </div>
           <div className="relative">
-          <div ref={codeRef} className="h-[308px] overflow-hidden bg-surface-1 py-3 font-mono text-[11.5px] leading-[18px]">
+          <div ref={codeRef} translate="no" className="h-[308px] overflow-hidden bg-surface-1 py-3 font-mono text-[11.5px] leading-[18px]">
             {HERO_CODE.map((line, i) => (
               <div
                 key={i}
@@ -429,7 +431,9 @@ export default function LandingPage() {
             <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.featuresEyebrow}</p>
             <h2 className="mt-3 text-balance text-[36px] font-bold leading-tight tracking-[-0.03em]">
               {m.featuresTitleBefore}
-              <span className="font-mono text-[0.9em]">terraform apply</span>
+              <span className="font-mono text-[0.9em]" translate="no">
+                terraform apply
+              </span>
             </h2>
           </div>
           <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

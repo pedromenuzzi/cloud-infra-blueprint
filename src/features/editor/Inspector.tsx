@@ -436,7 +436,9 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
   const missing = field.required && !node.args[field.name];
   const label = (
     <span className="flex items-center gap-1.5">
-      <span className="font-mono">{field.name}</span>
+      <span className="font-mono" translate="no">
+        {field.name}
+      </span>
       {field.required ? (
         <span className={cn('text-[9px] font-bold uppercase', missing ? 'text-warning' : 'text-faint')}>
           {m.required}

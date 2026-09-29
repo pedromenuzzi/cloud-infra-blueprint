@@ -126,7 +126,7 @@ export function ResourcePicker({
       }}
     >
       <Command.Input autoFocus placeholder={m.pickerPlaceholder} className="bp-cmd-input" />
-      <Command.List className="bp-cmd-list">
+      <Command.List className="bp-cmd-list" label={m.results}>
         <Command.Empty className="px-3 py-6 text-center text-[12.5px] text-faint">{m.noMatch}</Command.Empty>
         <ResourceGroups onPick={onPick} preferred={preferred} />
       </Command.List>

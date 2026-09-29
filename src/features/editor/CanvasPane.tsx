@@ -193,6 +193,7 @@ function buildFlow(
       id: r.id,
       position: { x: r.position?.x ?? 0, y: r.position?.y ?? 0 },
       parentId: r.parentId,
+      domAttributes: { 'aria-roledescription': m.nodeRole },
       ariaLabel: m.nodeLabel(
         name,
         r.name,
@@ -244,6 +245,8 @@ function buildFlow(
     id: e.id,
     source: e.source,
     target: e.target,
+    ariaLabel: m.edgeLabel(e.source, e.target),
+    domAttributes: { 'aria-roledescription': m.edgeRole },
     type: 'flow',
     markerEnd: {
       type: MarkerType.ArrowClosed,
@@ -276,6 +279,8 @@ function buildFlow(
       id: `sec:${f.id}`,
       source: f.from === 'internet' ? INTERNET_NODE : f.from,
       target: f.to,
+      ariaLabel: m.edgeLabel(name(f.from), name(f.to)),
+      domAttributes: { 'aria-roledescription': m.edgeRole },
       type: 'secflow',
       zIndex: 5,
       selectable: false,
@@ -300,6 +305,8 @@ function buildFlow(
     nodes.push({
       id: INTERNET_NODE,
       type: 'internet',
+      ariaLabel: 'Internet',
+      domAttributes: { 'aria-roledescription': m.nodeRole },
       position: { x: minX - 300, y: Math.round(centerY - NODE_H / 2) },
       width: 184,
       height: NODE_H,
@@ -974,6 +981,7 @@ function CanvasInner() {
         minZoom={0.05}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
+        ariaLabelConfig={m.flowAria}
         className="!bg-canvas"
       >
         <Background
