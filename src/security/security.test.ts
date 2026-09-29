@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatList } from '@/i18n/format';
 import { applyOpsWithPatches } from '@/hcl/patch';
 import { parseProject } from '@/hcl/parser';
 import type { Op } from '@/ir/ops';
@@ -2154,3 +2155,127 @@ resource "aws_db_instance" "db2" {
     expect(securityDelta(before, after)?.message).toMatch(/SSH \(22\) is now open to the internet on aws_instance\.web$/);
   });
 });
+
+describe('in Portuguese', () => {
+  const pt = (src: string) => {
+    const { ir } = load(src);
+    return auditSecurity(ir, analyzeSecurity(ir, 'pt-BR'));
+  };
+  const en = (src: string) => {
+    const { ir } = load(src);
+    return auditSecurity(ir, analyzeSecurity(ir, 'en'));
+  };
+
+  it('AWS: findings, explanations, fixes and control titles', () => {
+    const audit = pt(AWS);
+    expect(audit.locale).toBe('pt-BR');
+    const ssh = audit.findings.find((f) => f.id === 'rule:aws_security_group.app:ingress:1')!;
+    expect(ssh.title).toBe('SSH (porta 22) aberto para a internet');
+    expect(ssh.key).toBe('SSH (port 22) is open to the internet');
+    expect(ssh.detail).toBe(
+      'app permite SSH de qualquer lugar (0.0.0.0/0). Nada público usa esta regra ainda — mas o próximo recurso que usar ficará exposto.',
+    );
+    expect(ssh.fix?.label).toBe('Restringir a 10.0.0.0/16');
+    expect(ssh.controls?.find((c) => c.id === '5.2')?.title).toBe(
+      'Garantir que nenhum grupo de segurança permita entrada de 0.0.0.0/0 nas portas de administração remota de servidores',
+    );
+    const db = audit.findings.find((f) => f.id === 'rds-public:aws_db_instance.db')!;
+    expect(db).toMatchObject({ title: 'Banco de dados com acesso público', fix: { label: 'Tornar privado' } });
+    expect(db.detail).toBe('db recebe um endpoint público. Mantenha os bancos de dados privados e acesse-os de dentro da VPC.');
+    const imds = audit.findings.find((f) => f.id === 'imdsv2:aws_instance.app')!;
+    expect(imds.title).toBe('Metadados da instância aceitam IMDSv1');
+    expect(imds.fix?.label).toBe('Exigir IMDSv2');
+    // same findings, same order, same scores: only the words differ
+    const english = en(AWS);
+    expect(audit.findings.map((f) => [f.id, f.severity, f.key])).toEqual(english.findings.map((f) => [f.id, f.severity, f.title]));
+    expect([audit.score, audit.grade]).toEqual([english.score, english.grade]);
+  });
+
+  it('Azure and GCP: the rule, where it is open, and what restricting it does', () => {
+    const azure = pt(AZURE_BASE + nsg('vm', nsgRule('name = "rdp"\n    priority = 100\n    direction = "Inbound"\n    access = "Allow"\n    protocol = "Tcp"\n    destination_port_range = "3389"\n    source_address_prefix = "*"')));
+    expect(azure.findings[0]).toMatchObject({ severity: 'critical', title: 'RDP (porta 3389) aberto para a internet' });
+    expect(azure.findings[0].detail).toBe('vm permite RDP de qualquer lugar (*). Acessível agora em vm.');
+    expect(azure.findings[0].fix?.label).toBe('Restringir à rede virtual');
+    expect(azure.findings[0].controls?.map((c) => c.title)).toContain('Garantir que o acesso RDP pela internet seja avaliado e restrito');
+
+    const gcp = pt(`${GCP_BASE}
+resource "google_compute_firewall" "ssh" {
+  name    = "allow-ssh"
+  network = google_compute_network.vpc.id
+  allow {
+    protocol = "tcp"
+    ports    = ["22", "3389"]
+  }
+}`);
+    expect(gcp.findings[0].title).toBe('SSH (22) e RDP (3389) abertos para a internet');
+    expect(gcp.findings[0].detail).toContain('ssh permite SSH, RDP de qualquer lugar (sem intervalos de origem, então 0.0.0.0/0).');
+    expect(gcp.findings[0].alert).toBe('SSH (22) e RDP (3389) agora estão abertos para a internet');
+  });
+
+  it('a wider risk, a gendered service, IPv6 only and ports written as expressions', () => {
+    const wide = pt(VPC + sshSg('web', 'cidr_blocks = ["0.0.0.0/0"]').replace('from_port   = 22', 'from_port   = 0').replace('to_port     = 22', 'to_port     = 65535'));
+    expect(wide.findings[0].title).toBe('Todas as portas TCP abertas para a internet');
+    const docker = pt(VPC + sshSg('web').replace(/= 22/g, '= 2375'));
+    expect(docker.findings[0].title).toBe('API do Docker (porta 2375) aberta para a internet');
+    expect(docker.findings[0].alert).toBe('API do Docker (2375) agora está aberta para a internet');
+    const v6 = pt(VPC + sshSg('web', 'ipv6_cidr_blocks = ["::/0"]'));
+    expect(v6.findings[0].title).toBe('SSH (porta 22) aberto para a internet via IPv6');
+    const expr = pt(VPC + sshSg('web').replace(/= 22/g, '= var.port'));
+    expect(expr.findings[0].title).toBe('Porta não verificável (var.port) — aberta para a internet');
+  });
+
+  it('access paths: every step of the way in, and what stops the rest', () => {
+    const { ir } = load(VPC + httpsSg('web') + instance('web', 'web'));
+    const a = analyzeSecurity(ir, 'pt-BR').access.get('aws_instance.web')!;
+    const [path] = a.open.find((p) => p.ports === '443')!.paths;
+    expect(path.steps.map((s) => [s.title, s.detail])).toEqual([
+      ['Internet', 'qualquer endereço IPv4 (0.0.0.0/0)'],
+      ['Internet gateway igw', undefined],
+      ['Rota 0.0.0.0/0 → igw', 'tabela de rotas public, associada à sub-rede public'],
+      ['Sub-rede public', 'pública · atribui IPs públicos na inicialização'],
+      ['Grupo de segurança web', 'ingress #1 permite HTTPS de 0.0.0.0/0'],
+      ['aws_instance.web', 'endereço público: map_public_ip_on_launch = true na sub-rede public'],
+    ]);
+    expect(path.steps[4].ref).toBe('ingress #1');
+
+    const blocked = analyzeSecurity(load(AWS).ir, 'pt-BR').access.get('aws_instance.app')!.blocked.find((b) => b.ports === '22')!;
+    expect(blocked.reason).toBe('sem endereço IP público e sem rota para um internet gateway');
+    expect(blocked.steps.find((s) => s.kind === 'route')!.detail).toBe(
+      'a sub-rede private não está associada a uma tabela de rotas, e a tabela de rotas principal da VPC não tem essa rota',
+    );
+  });
+
+  it('the words behind the rules editor and the inspector', () => {
+    expect(serviceName({ protocol: 'all', fromPort: null, toPort: null }, 'pt-BR')).toBe('Todo o tráfego');
+    expect(serviceName({ protocol: 'tcp', fromPort: null, toPort: null }, 'pt-BR')).toBe('Todas as portas TCP');
+    expect(serviceName({ protocol: 'tcp', fromPort: 8080, toPort: 8080 }, 'pt-BR')).toBe('HTTP alternativo');
+    expect(peerLabel({ kind: 'self' }, undefined, 'pt-BR')).toBe('o próprio grupo');
+    expect(peerLabel({ kind: 'any', value: '0.0.0.0/0', implicit: true }, undefined, 'pt-BR')).toBe('Internet (padrão 0.0.0.0/0)');
+    expect(formatList(['a', 'b'], 'conjunction', 'pt-BR')).toBe('a e b');
+    const hidden = extractSecurity(
+      load(`resource "aws_security_group" "web" {\n  dynamic "ingress" {\n    for_each = var.rules\n    content {}\n  }\n}\n`).ir,
+      'pt-BR',
+    ).hidden.get('aws_security_group.web');
+    expect(hidden).toEqual([{ directions: ['inbound'], reason: 'blocos dynamic "ingress"' }]);
+  });
+
+  it('switching the language is not a security change', () => {
+    for (const src of [AWS, VPC + httpsSg('web', sshIngress) + instance('web', 'web'), AZURE_BASE + nsg('vm', nsgRule('name = "rdp"\n    priority = 100\n    direction = "Inbound"\n    access = "Allow"\n    protocol = "Tcp"\n    destination_port_range = "3389"\n    source_address_prefix = "*"'))]) {
+      expect(securityDelta(en(src), pt(src))).toBeNull();
+      expect(securityDelta(pt(src), en(src))).toBeNull();
+    }
+    // a real change still shows, worded in the later audit's language
+    const delta = securityDelta(en(VPC + httpsSg('web') + instance('web', 'web')), pt(VPC + httpsSg('web', sshIngress) + instance('web', 'web')))!;
+    expect(delta.message).toBe('Nota de segurança A → C: SSH (22) agora está aberto para a internet em aws_instance.web');
+    const high = securityDelta(pt(AWS), pt(`${AWS}
+resource "aws_db_instance" "db2" {
+  engine                 = "postgres"
+  instance_class         = "db.t3.micro"
+  publicly_accessible    = true
+  storage_encrypted      = true
+  vpc_security_group_ids = [aws_security_group.db.id]
+}`))!;
+    expect(high.message).toBe('Novo risco de segurança alto: Banco de dados com acesso público — aws_db_instance.db2');
+  });
+});
+

@@ -1,11 +1,19 @@
 /**
  * Security audit: findings with severity, plain-language explanations and
  * one-click fixes (ops computed against the IR at click time), plus a score.
+ *
+ * The words are in the language of the topology the audit is built on (the
+ * UI language unless analyzeSecurity was given another); `Finding.key` keeps
+ * what a finding says in English, so comparing audits never depends on the
+ * language they were written in.
  */
+import type { Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { block, collectRefs, lit, ref, refTargetAddress } from '@/ir/expr';
 import { applyOps, type Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { resourceAddress } from '@/ir/types';
+import { auditMessages, type AuditMessages, type RiskWhat, type RuleTail } from './audit.messages';
 import { controlsFor, type Control, type FindingFacts } from './compliance';
 import { removeElementsOps, restrictRuleOps } from './edit';
 import {
@@ -32,6 +40,8 @@ import {
   type Traffic,
 } from './traffic';
 
+export type { RiskWhat } from './audit.messages';
+
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 
 export const SEVERITY_ORDER: Severity[] = ['critical', 'high', 'medium', 'low'];
@@ -39,11 +49,18 @@ const WEIGHT: Record<Severity, number> = { critical: 30, high: 15, medium: 3, lo
 /** each further finding of the same kind counts this much less than the previous one */
 const REPEAT_FACTOR = 0.4;
 
+const EN = messagesFor(auditMessages, 'en');
+
 export interface Finding {
   id: string;
   severity: Severity;
+  /** in the audit's language (AuditResult.locale) */
   title: string;
   detail: string;
+  /** the title in English: what the finding says, whatever the UI language (security delta) */
+  key: string;
+  /** rule findings: the title as news, in the audit's language — "SSH (22) is now open to the internet" */
+  alert?: string;
   /** resource to select when the user clicks "Show" */
   resource: string;
   /** other resources involved (e.g. workloads reachable through an open rule) */
@@ -51,12 +68,14 @@ export interface Finding {
   ruleId?: string;
   /** something the audit couldn't evaluate — an A can't be claimed */
   unverified?: boolean;
-  /** benchmark controls it fails (compliance.ts) */
+  /** benchmark controls it fails (compliance.ts), titles in the audit's language */
   controls?: Control[];
   fix?: { label: string; ops(ir: IR): Op[] };
 }
 
 export interface AuditResult {
+  /** the language of every text in it */
+  locale: Locale;
   findings: Finding[];
   counts: Record<Severity, number>;
   /** 0–100, null when there is nothing to audit */
@@ -94,35 +113,36 @@ const DATA_PORTS: Array<[number, string]> = [
 
 export interface RuleRisk {
   severity: Severity;
+  /** in the language asked for */
   title: string;
+  /** what the rule lets in, whatever the language */
+  what: RiskWhat;
   unverified?: boolean;
 }
 
 const worst = (a: Severity, b: Severity) => (SEVERITY_ORDER.indexOf(a) <= SEVERITY_ORDER.indexOf(b) ? a : b);
 
-function joinNames(names: string[]): string {
-  const shown = names.length > 3 ? [...names.slice(0, 3), `${names.length - 3} more`] : names;
-  return shown.length === 1 ? shown[0] : `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}`;
-}
+const riskOf = (severity: Severity, what: RiskWhat, locale: Locale | undefined, unverified?: boolean): RuleRisk => ({
+  severity,
+  title: messagesFor(auditMessages, locale).risk(what),
+  what,
+  ...(unverified ? { unverified } : {}),
+});
 
 /** How bad it is to let this internet traffic in. */
-export function trafficRisk(t: Traffic): RuleRisk | null {
-  if (trafficAll(t)) return { severity: 'critical', title: 'Every port is open to the internet' };
-  if (portsFull(t.tcp)) return { severity: 'critical', title: 'All TCP ports are open to the internet' };
-  if (portsFull(t.udp)) return { severity: 'critical', title: 'All UDP ports are open to the internet' };
+export function trafficRisk(t: Traffic, locale?: Locale): RuleRisk | null {
+  if (trafficAll(t)) return riskOf('critical', { kind: 'every-port' }, locale);
+  if (portsFull(t.tcp)) return riskOf('critical', { kind: 'all-tcp' }, locale);
+  if (portsFull(t.udp)) return riskOf('critical', { kind: 'all-udp' }, locale);
   const hits: Array<[number, string, Severity]> = [
     ...ADMIN_PORTS.filter(([port]) => portsHas(t.tcp, port)),
     ...DATA_PORTS.filter(([port]) => portsHas(t.tcp, port)).map(([p, n]): [number, string, Severity] => [p, n, 'critical']),
   ];
-  if (hits.length === 1) return { severity: hits[0][2], title: `${hits[0][1]} (port ${hits[0][0]}) is open to the internet` };
-  if (hits.length > 1) {
-    return {
-      severity: hits.map((h) => h[2]).reduce(worst),
-      title: `${joinNames(hits.map(([p, n]) => `${n} (${p})`))} are open to the internet`,
-    };
+  if (hits.length) {
+    return riskOf(hits.map((h) => h[2]).reduce(worst), { kind: 'ports', hits: hits.map(([p, n]) => [p, n]) }, locale);
   }
   const wide = [...t.tcp, ...t.udp].find(([a, b]) => b - a >= 99);
-  if (wide) return { severity: 'medium', title: `Wide port range ${wide[0]}–${wide[1]} is open to the internet` };
+  if (wide) return riskOf('medium', { kind: 'wide', from: wide[0], to: wide[1] }, locale);
   return null;
 }
 
@@ -131,11 +151,11 @@ export function trafficRisk(t: Traffic): RuleRisk | null {
  * how return traffic gets back in, and "allow all" is the AWS default. Only
  * explicit SSH / RDP ranges are worth flagging (Security Hub EC2.21, medium).
  */
-function naclRisk(rule: SecurityRule, t: Traffic): RuleRisk | null {
+function naclRisk(rule: SecurityRule, t: Traffic, locale: Locale | undefined): RuleRisk | null {
   if (rule.fromPort === null || rule.toPort === null || rule.toPort - rule.fromPort >= 1024) return null;
   const hits = ([[22, 'SSH'], [3389, 'RDP']] as const).filter(([port]) => portsHas(t.tcp, port));
   if (hits.length === 0) return null;
-  return { severity: 'medium', title: `Network ACL allows ${joinNames(hits.map(([p, n]) => `${n} (port ${p})`))} from the internet` };
+  return riskOf('medium', { kind: 'nacl', hits: hits.map(([p, n]) => [p, n]) }, locale);
 }
 
 /**
@@ -143,15 +163,13 @@ function naclRisk(rule: SecurityRule, t: Traffic): RuleRisk | null {
  * `effective` is what it actually admits after higher-priority rules
  * (topology.effective); by default, everything it declares.
  */
-export function ruleRisk(rule: SecurityRule, effective?: Traffic): RuleRisk | null {
+export function ruleRisk(rule: SecurityRule, effective?: Traffic, locale?: Locale): RuleRisk | null {
   if (rule.direction !== 'inbound' || rule.action !== 'allow' || rule.disabled || !fromInternet(rule)) return null;
   const declared = ruleTraffic(rule);
-  if (!declared) {
-    return { severity: 'medium', title: `Port can't be verified (${rule.portsExpr}) — open to the internet`, unverified: true };
-  }
+  if (!declared) return riskOf('medium', { kind: 'unverified', expr: rule.portsExpr }, locale, true);
   const t = effective ?? declared;
   if (trafficEmpty(t)) return null;
-  return rule.ownerKind === 'nacl' ? naclRisk(rule, t) : trafficRisk(t);
+  return rule.ownerKind === 'nacl' ? naclRisk(rule, t, locale) : trafficRisk(t, locale);
 }
 
 // ------------------------------------------------------------ helpers
@@ -168,14 +186,14 @@ function findRule(ir: IR, id: string): SecurityRule | undefined {
 }
 
 /** a one-click fix, offered only when it actually produces ops for this IR */
-function ruleFix(ir: IR, rule: SecurityRule): Finding['fix'] {
-  const now = restrictRuleOps(ir, rule);
+function ruleFix(ir: IR, rule: SecurityRule, locale: Locale): Finding['fix'] {
+  const now = restrictRuleOps(ir, rule, locale);
   if (!now || now.ops.length === 0) return undefined;
   return {
     label: now.label,
     ops: (current) => {
       const r = findRule(current, rule.id);
-      return r ? (restrictRuleOps(current, r)?.ops ?? []) : [];
+      return r ? (restrictRuleOps(current, r, locale)?.ops ?? []) : [];
     },
   };
 }
@@ -184,11 +202,12 @@ function ruleFix(ir: IR, rule: SecurityRule): Finding['fix'] {
  * Only some ports of a shared list are risky (GCP `ports = ["22", "80"]`): restricting
  * the sources would close the safe ones too, so drop just the risky ports.
  */
-function elementFix(ir: IR, risky: SecurityRule[]): Finding['fix'] {
+function elementFix(ir: IR, risky: SecurityRule[], locale: Locale): Finding['fix'] {
   const indices = risky.map((r) => r.origin.element!.index);
   if (!removeElementsOps(ir, risky[0], indices)?.length) return undefined;
+  const m = messagesFor(auditMessages, locale);
   return {
-    label: `Remove ${joinNames([...new Set(risky.map((r) => serviceName(r)))])} from this rule`,
+    label: m.removeFromRule(m.join([...new Set(risky.map((r) => serviceName(r, locale)))])),
     ops: (current) => {
       const r = findRule(current, risky[0].id);
       return r ? (removeElementsOps(current, r, indices) ?? []) : [];
@@ -211,7 +230,7 @@ function mentionedOutsideResources(ir: IR): Set<string> {
   return out;
 }
 
-function imdsFinding(r: ResourceNode, what: string): Finding | null {
+function imdsFinding(r: ResourceNode, what: 'instance' | 'template', m: AuditMessages): Finding | null {
   const opts = blocksOf(r.args.metadata_options)[0];
   const tokens = opts?.http_tokens;
   const endpoint = opts?.http_endpoint;
@@ -222,12 +241,13 @@ function imdsFinding(r: ResourceNode, what: string): Finding | null {
   return {
     id: `imdsv2:${r.id}`,
     severity: 'medium',
-    title: `${what} allows IMDSv1`,
-    detail: `${name} accepts token-less metadata requests, the classic SSRF path to stealing instance credentials. Require IMDSv2.`,
+    title: m.imdsTitle(what),
+    key: EN.imdsTitle(what),
+    detail: m.imdsDetail(name),
     resource: r.id,
     related: [],
     fix: {
-      label: 'Require IMDSv2',
+      label: m.imdsFix,
       ops: (current) => {
         const node = current.resources.find((x) => x.id === r.id);
         const existing = blocksOf(node?.args.metadata_options)[0] ?? {};
@@ -261,7 +281,12 @@ function scoreOf(findings: Finding[]): number {
 
 // ------------------------------------------------------------ audit
 
+/** The audit, worded in the topology's language (`topology.locale`). */
 export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecurity(ir)): AuditResult {
+  const { locale } = topology;
+  const m = messagesFor(auditMessages, locale);
+  /** a title in the audit's language, and in English as the finding's key */
+  const say = (title: (x: AuditMessages) => string) => ({ title: title(m), key: title(EN) });
   const findings: Finding[] = [];
   const risks = new Map<string, RuleRisk>();
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
@@ -274,7 +299,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
   for (const [owner, rules] of topology.rules) {
     const blocks = new Map<string, SecurityRule[]>();
     for (const rule of rules) {
-      const risk = ruleRisk(rule, topology.effective.get(rule.id) ?? NO_TRAFFIC);
+      const risk = ruleRisk(rule, topology.effective.get(rule.id) ?? NO_TRAFFIC, locale);
       if (!risk) continue;
       risks.set(rule.id, risk);
       const key = ruleBlockKey(rule);
@@ -285,21 +310,17 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
       const safe = rules.filter((r) => ruleBlockKey(r) === key && !risks.has(r.id));
       const merged =
         known.length > 1 && rows[0].ownerKind !== 'nacl'
-          ? trafficRisk(known.map((r) => topology.effective.get(r.id) ?? NO_TRAFFIC).reduce(trafficUnion, NO_TRAFFIC))
+          ? trafficRisk(known.map((r) => topology.effective.get(r.id) ?? NO_TRAFFIC).reduce(trafficUnion, NO_TRAFFIC), locale)
           : null;
       const risk = merged ?? risks.get((known[0] ?? rows[0]).id)!;
       const shown = known.length ? known : rows;
       const first = shown[0];
       const via = first.origin.kind === 'resource' ? ` (${first.origin.id})` : '';
       const reachable = [...new Set(internetFlows.filter((f) => rows.some((r) => f.rules.includes(r.id))).map((f) => f.to))];
-      const sources = first.peers.some((p) => p.kind === 'any' && p.implicit)
-        ? 'no source ranges, so 0.0.0.0/0'
-        : internetSources(first).join(', ');
-      const what = risk.unverified
-        ? `ports set by an expression (${first.portsExpr}) — the audit can't tell which are open —`
-        : shown.map(serviceName).join(', ');
+      const sources = first.peers.some((p) => p.kind === 'any' && p.implicit) ? m.implicitSources : internetSources(first).join(', ');
+      const what = risk.unverified ? m.unverifiedWhat(first.portsExpr) : shown.map((r) => serviceName(r, locale)).join(', ');
       // an IPv6 twin of an IPv4 rule must not read as the same finding twice
-      const v6only = internetFamilies(first).every((f) => f === 'ipv6');
+      const v6only = !risk.unverified && internetFamilies(first).every((f) => f === 'ipv6');
       if (!risk.unverified) {
         ruleFacts.set(`rule:${key}`, {
           owner: first.ownerKind,
@@ -307,22 +328,23 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
           families: [...new Set(known.flatMap(internetFamilies))],
         });
       }
+      const tail: RuleTail =
+        first.ownerKind === 'nacl'
+          ? { kind: 'nacl' }
+          : reachable.length
+            ? { kind: 'reachable', names: reachable.map(name).join(', ') }
+            : { kind: 'unused' };
       findings.push({
         id: `rule:${key}`,
         severity: risk.severity,
-        title: v6only && !risk.unverified ? `${risk.title} over IPv6` : risk.title,
-        detail:
-          `${name(owner)}${via} allows ${what} from anywhere (${sources}).` +
-          (first.ownerKind === 'nacl'
-            ? ' Security groups still apply, but the network ACL adds no protection for these ports.'
-            : reachable.length
-              ? ` Reachable right now on ${reachable.map(name).join(', ')}.`
-              : ' Nothing public uses it yet — but the next resource that does will be exposed.'),
+        ...say((x) => x.ruleTitle(risk.what, v6only)),
+        alert: m.ruleAlert(risk.what, v6only),
+        detail: m.ruleDetail(`${name(owner)}${via}`, what, sources, tail),
         resource: owner,
         related: reachable,
         ruleId: first.id,
         ...(risk.unverified ? { unverified: true } : {}),
-        fix: safe.length > 0 && known.length > 0 && first.origin.element ? elementFix(ir, known) : ruleFix(ir, first),
+        fix: safe.length > 0 && known.length > 0 && first.origin.element ? elementFix(ir, known, locale) : ruleFix(ir, first, locale),
       });
     }
 
@@ -337,8 +359,8 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
         findings.push({
           id: `nacl-open:${owner}`,
           severity: 'low',
-          title: 'Network ACL allows all inbound traffic',
-          detail: `${name(owner)} lets every protocol in from anywhere — it adds no protection beyond the security groups.`,
+          ...say((x) => x.naclOpenTitle),
+          detail: m.naclOpenDetail(name(owner)),
           resource: owner,
           related: [],
         });
@@ -351,8 +373,8 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
       findings.push({
         id: `unverified:${owner}`,
         severity: 'low',
-        title: "Some inbound rules can't be verified",
-        detail: `${name(owner)} defines inbound rules with ${hidden.map((h) => h.reason).join(', ')} — the audit can't evaluate them. Check what they open in code.`,
+        ...say((x) => x.unverifiedTitle),
+        detail: m.unverifiedDetail(name(owner), hidden.map((h) => h.reason).join(', ')),
         resource: owner,
         related: [],
         unverified: true,
@@ -375,11 +397,11 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
       findings.push({
         id: `rds-public:${r.id}`,
         severity: 'high',
-        title: 'Database is publicly accessible',
-        detail: `${name(r.id)} gets a public endpoint. Keep databases private and reach them from inside the VPC.`,
+        ...say((x) => x.rdsPublicTitle),
+        detail: m.rdsPublicDetail(name(r.id)),
         resource: r.id,
         related: [],
-        fix: { label: 'Make it private', ops: () => setArg(r.id, 'publicly_accessible', lit(false)) },
+        fix: { label: m.rdsPublicFix, ops: () => setArg(r.id, 'publicly_accessible', lit(false)) },
       });
     }
     if ((r.type === 'aws_db_instance' || r.type === 'aws_rds_cluster') && !isExpr(r.args.storage_encrypted)) {
@@ -387,21 +409,21 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
         findings.push({
           id: `rds-encryption:${r.id}`,
           severity: 'medium',
-          title: 'Database storage is not encrypted',
-          detail: `${name(r.id)} doesn't set storage_encrypted = true. Encryption at rest is free and can't be enabled later without a restore.`,
+          ...say((x) => x.rdsEncryptionTitle),
+          detail: m.rdsEncryptionDetail(name(r.id)),
           resource: r.id,
           related: [],
-          fix: { label: 'Encrypt storage', ops: () => setArg(r.id, 'storage_encrypted', lit(true)) },
+          fix: { label: m.rdsEncryptionFix, ops: () => setArg(r.id, 'storage_encrypted', lit(true)) },
         });
       }
     }
     // instances launched from a template get their metadata options from it (checked below)
     if (r.type === 'aws_instance' && !(r.args.launch_template && !r.args.metadata_options)) {
-      const f = imdsFinding(r, 'Instance metadata');
+      const f = imdsFinding(r, 'instance', m);
       if (f) findings.push(f);
     }
     if (r.type === 'aws_launch_template') {
-      const f = imdsFinding(r, 'Launch template');
+      const f = imdsFinding(r, 'template', m);
       if (f) findings.push(f);
     }
     if (r.type === 'aws_lb' && lit_(r, 'internal') !== true) {
@@ -413,8 +435,8 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
         findings.push({
           id: `lb-http:${r.id}`,
           severity: 'low',
-          title: 'Load balancer only serves plain HTTP',
-          detail: `${name(r.id)} has no HTTPS listener — traffic from users travels unencrypted. Add an HTTPS listener with an ACM certificate.`,
+          ...say((x) => x.lbHttpTitle),
+          detail: m.lbHttpDetail(name(r.id)),
           resource: r.id,
           related: listeners.map((l) => l.id),
         });
@@ -426,12 +448,12 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
     findings.push({
       id: `s3-public:${b.id}`,
       severity: 'medium',
-      title: 'Bucket has no public access block',
-      detail: `${name(b.id)} relies on account defaults. A public access block makes "never public" explicit and prevents accidental exposure.`,
+      ...say((x) => x.s3PublicTitle),
+      detail: m.s3PublicDetail(name(b.id)),
       resource: b.id,
       related: [],
       fix: {
-        label: 'Block public access',
+        label: m.s3PublicFix,
         ops: (current) => {
           const taken = new Set(current.resources.map((x) => x.id));
           let n = `${b.name}`;
@@ -470,8 +492,8 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
     findings.push({
       id: `default-sg:${r.id}`,
       severity: 'low',
-      title: 'Default security group allows traffic',
-      detail: `${name(r.id)} keeps ${count} rule${count === 1 ? '' : 's'}. Leave the VPC's default group empty (no ingress or egress blocks) and give each workload a group of its own.`,
+      ...say((x) => x.defaultSgTitle),
+      detail: m.defaultSgDetail(name(r.id), count),
       resource: r.id,
       related: [],
     });
@@ -488,8 +510,8 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
     findings.push({
       id: `unused:${r.id}`,
       severity: 'low',
-      title: 'Security group is not attached to anything',
-      detail: `${name(r.id)} protects no resource. Attach it (connect it to an instance, load balancer or database) or remove it.`,
+      ...say((x) => x.unusedTitle),
+      detail: m.unusedDetail(name(r.id)),
       resource: r.id,
       related: [],
     });
@@ -497,7 +519,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
 
   for (const f of findings) {
     const kind = f.id.split(':')[0];
-    const controls = controlsFor({ kind, type: byId.get(f.resource)?.type ?? '', ...ruleFacts.get(f.id) });
+    const controls = controlsFor({ kind, type: byId.get(f.resource)?.type ?? '', ...ruleFacts.get(f.id) }, locale);
     if (controls.length) f.controls = controls;
   }
 
@@ -513,10 +535,10 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
         r.type,
       ),
   );
-  if (!auditable) return { findings, counts, score: null, grade: null, topology, risks };
+  if (!auditable) return { locale, findings, counts, score: null, grade: null, topology, risks };
   const score = scoreOf(findings);
   const grade = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
-  return { findings, counts, score, grade, topology, risks };
+  return { locale, findings, counts, score, grade, topology, risks };
 }
 
 export interface FixAllResult {
@@ -531,14 +553,15 @@ export interface FixAllResult {
  * others), so the ops apply as one undo step.
  */
 export function planFixAll(ir: IR): FixAllResult {
-  const before = auditSecurity(ir).findings.length;
+  const audit = (x: IR) => auditSecurity(x, analyzeSecurity(x, 'en'));
+  const before = audit(ir).findings.length;
   let scratch = ir;
   const ops: Op[] = [];
   // rule ids are positional — once a fix removes a block the next one takes its id, so key on what it says
   const key = (f: Finding) => `${f.id}|${f.title}|${f.detail}`;
   const tried = new Set<string>();
   for (let guard = 0; guard < 200; guard++) {
-    const next = auditSecurity(scratch).findings.find((f) => f.fix && !tried.has(key(f)));
+    const next = audit(scratch).findings.find((f) => f.fix && !tried.has(key(f)));
     if (!next) break;
     tried.add(key(next));
     const step = next.fix!.ops(scratch);
@@ -546,6 +569,6 @@ export function planFixAll(ir: IR): FixAllResult {
     ops.push(...step);
     scratch = applyOps(scratch, step).ir;
   }
-  const after = auditSecurity(scratch).findings.length;
+  const after = audit(scratch).findings.length;
   return { ops, fixed: Math.max(0, before - after) };
 }

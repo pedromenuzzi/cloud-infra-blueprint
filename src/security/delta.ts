@@ -4,9 +4,14 @@
  *
  * Findings are compared by what they say, not by id: rule ids are positional
  * (removing a safe rule shifts the risky one's index) and a rename changes
- * every address, and neither makes anything worse.
+ * every address, and neither makes anything worse. What they say is read in
+ * English (`Finding.key`), so audits written in two languages — a switch in
+ * the middle of an edit — compare equal.
  */
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import type { AuditResult, Finding } from './audit';
+import { deltaMessages } from './delta.messages';
 
 const GRADES = ['A', 'B', 'C', 'D', 'F'];
 
@@ -20,19 +25,20 @@ export interface SecurityDelta {
   lead?: Finding;
   /** what to show: the workload the new risk reaches, else the resource it is about */
   target?: string;
-  /** "Security grade B → D: SSH (22) is now open to the internet on aws_instance.web" */
+  /** "Security grade B → D: SSH (22) is now open to the internet on aws_instance.web", in the later audit's language */
   message: string;
 }
 
-/** kind + severity + wording + whether something is exposed through it */
+/** kind + severity + wording (in English) + whether something is exposed through it */
 export const findingSignature = (f: Finding) =>
-  `${f.id.split(':')[0]}|${f.severity}|${f.title}|${f.related.length > 0 ? 'reachable' : ''}`;
+  `${f.id.split(':')[0]}|${f.severity}|${f.key}|${f.related.length > 0 ? 'reachable' : ''}`;
 
-/** "SSH (port 22) is open to the internet" → "SSH (22) is now open to the internet on aws_instance.web" */
-export function describeFinding(f: Finding): string {
+/** "SSH (port 22) is open to the internet" → "SSH (22) is now open to the internet on aws_instance.web" (in the finding's language) */
+export function describeFinding(f: Finding, locale: Locale = currentLocale()): string {
+  const m = messagesFor(deltaMessages, locale);
   if (f.id.startsWith('rule:')) {
-    const text = f.title.replace(/\(port (\d+)\)/g, '($1)').replace(/ (is|are) open to the internet/, ' $1 now open to the internet');
-    return f.related.length > 0 ? `${text} on ${f.related[0]}${f.related.length > 1 ? ` and ${f.related.length - 1} more` : ''}` : `${text} in ${f.resource}`;
+    const alert = f.alert ?? f.title;
+    return f.related.length > 0 ? m.onTargets(alert, f.related[0], f.related.length - 1) : m.inOwner(alert, f.resource);
   }
   return `${f.title} — ${f.resource}`;
 }
@@ -53,9 +59,8 @@ export function securityDelta(before: AuditResult, after: AuditResult): Security
 
   // findings come worst first
   const lead = added[0] ?? fresh[0];
-  const head = gradeDropped
-    ? `Security grade ${before.grade} → ${after.grade}`
-    : `New ${lead!.severity} security risk`;
+  const m = messagesFor(deltaMessages, after.locale);
+  const head = gradeDropped ? m.gradeDropped(before.grade, after.grade) : m.newRisk(lead!.severity);
   return {
     before: before.grade,
     after: after.grade,
@@ -63,6 +68,6 @@ export function securityDelta(before: AuditResult, after: AuditResult): Security
     added,
     lead,
     target: lead ? (lead.related[0] ?? lead.resource) : undefined,
-    message: lead ? `${head}: ${describeFinding(lead)}` : head,
+    message: m.message(head, lead ? describeFinding(lead, after.locale) : undefined),
   };
 }

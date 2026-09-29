@@ -1,40 +1,29 @@
-/** AWS pricing rules, one per resource type (rates: book.aws, us-east-1). */
-import { rate } from '../format';
+/** AWS pricing rules, one per resource type (rates: book.aws, us-east-1). Words: ./messages.ts. */
 import { blockBodies, blockBody, referenced, referencing, resolveBool, resolveNumber, resolveString } from '../resolve';
 import type { CostLine } from '../types';
-import {
-  fixed,
-  free,
-  hourly,
-  monthlyFee,
-  perGbMonth,
-  plural,
-  unknown,
-  unpriced,
-  usage,
-  type Rule,
-  type RuleContext,
-} from './common';
+import { fixed, free, unknown, usage, type Rule, type RuleContext } from './common';
+import type { ServiceMessages } from './messages';
 
 const ENGINE_LABEL: Record<string, string> = { postgres: 'PostgreSQL', mysql: 'MySQL', mariadb: 'MariaDB' };
 
 function ebsLine(ctx: RuleContext, gb: number, type: string): CostLine | undefined {
   const perGb = ctx.book.aws.ebs[type];
-  return perGb === undefined ? undefined : perGbMonth(`${gb} GB ${type}`, gb, ctx.at(perGb));
+  return perGb === undefined ? undefined : ctx.perGbMonth(ctx.m.gb(gb, type), gb, ctx.at(perGb));
 }
 
 const instance: Rule = (ctx) => {
   const { aws } = ctx.book;
+  const { m } = ctx;
   const type = ctx.str('instance_type');
-  if (!type && ctx.r.args.launch_template) return unknown('The instance type comes from its launch template');
+  if (!type && ctx.r.args.launch_template) return unknown(m.aws.fromLaunchTemplate);
   const hourRate = type ? aws.ec2[type] : undefined;
-  if (!type || hourRate === undefined) return unpriced('instance_type', type);
+  if (!type || hourRate === undefined) return ctx.unpriced('instance_type', type);
   const tenancy = ctx.str('tenancy');
-  if (tenancy && tenancy !== 'default') return unknown(`${tenancy} tenancy isn't in the price table`);
-  if (ctx.r.args.instance_market_options) return unknown('Spot instances: the price changes with demand');
+  if (tenancy && tenancy !== 'default') return unknown(m.aws.tenancy(tenancy));
+  if (ctx.r.args.instance_market_options) return unknown(m.priceChanges('spot-instances'));
 
-  const lines = [hourly(type, ctx.at(hourRate))];
-  const assumptions = ['Linux, shared tenancy (a Windows or licensed AMI costs more)'];
+  const lines = [ctx.hourly(type, ctx.at(hourRate))];
+  const assumptions = [m.aws.linuxShared];
 
   const root = ctx.block('root_block_device');
   const size = root ? ctx.num('volume_size', root) : undefined;
@@ -42,15 +31,15 @@ const instance: Rule = (ctx) => {
   const gb = size ?? 8;
   const rootLine = ebsLine(ctx, gb, volume);
   if (rootLine) lines.push(rootLine);
-  else assumptions.push(`Root volume type ${volume} isn't in the price table — not included`);
-  if (size === undefined) assumptions.push(`Root volume: ${gb} GB ${volume}, a typical AMI default (set root_block_device to change it)`);
+  else assumptions.push(m.notIncludedType(m.aws.rootVolumeType, volume));
+  if (size === undefined) assumptions.push(m.aws.rootVolumeDefault(gb, volume));
 
   for (const disk of blockBodies(ctx.r.args.ebs_block_device)) {
     const diskGb = resolveNumber(disk.volume_size, ctx.ir);
     const diskType = resolveString(disk.volume_type, ctx.ir) ?? 'gp3';
     const line = diskGb === undefined ? undefined : ebsLine(ctx, diskGb, diskType);
     if (line) lines.push(line);
-    else assumptions.push('An extra EBS volume without a literal size or a listed type is not included');
+    else assumptions.push(m.aws.extraVolume);
   }
 
   // an instance with a public IPv4 pays for it by the hour — unless it's an Elastic IP, priced there
@@ -59,14 +48,10 @@ const instance: Rule = (ctx) => {
   const fromSubnet = subnet ? resolveBool(subnet.args.map_public_ip_on_launch, ctx.ir) === true : false;
   if (associate ?? fromSubnet) {
     if (referencing(ctx.r, 'aws_eip', 'instance', ctx.ir).length) {
-      assumptions.push('Its public IP is an Elastic IP, priced on the aws_eip');
+      assumptions.push(m.aws.eipPriced);
     } else {
-      lines.push(hourly('Public IPv4', ctx.at(aws.publicIpv4Hour)));
-      assumptions.push(
-        associate
-          ? 'associate_public_ip_address gives it a public IPv4'
-          : `Subnet ${subnet!.name} gives it a public IPv4 (map_public_ip_on_launch)`,
-      );
+      lines.push(ctx.hourly(m.aws.publicIpv4, ctx.at(aws.publicIpv4Hour)));
+      assumptions.push(associate ? m.aws.associatePublicIp : m.aws.subnetPublicIp(subnet!.name));
     }
   }
   return fixed(lines, assumptions);
@@ -74,55 +59,57 @@ const instance: Rule = (ctx) => {
 
 const dbInstance: Rule = (ctx) => {
   const { rds } = ctx.book.aws;
+  const { m } = ctx;
   const cls = ctx.str('instance_class');
   const engine = ctx.str('engine');
   const rates = cls ? rds.instance[cls] : undefined;
-  if (!cls || !rates) return unpriced('instance_class', cls);
-  if (!engine) return unknown("engine isn't set to a literal value");
-  if (engine.startsWith('aurora')) return unknown('Aurora is billed per cluster instance and I/O — not in the price table');
+  if (!cls || !rates) return ctx.unpriced('instance_class', cls);
+  if (!engine) return ctx.unpriced('engine', undefined);
+  if (engine.startsWith('aurora')) return unknown(m.aws.aurora);
   const deploy = rates[engine];
-  if (!deploy) return unpriced('engine', engine);
+  if (!deploy) return ctx.unpriced('engine', engine);
   const multi = ctx.bool('multi_az') === true;
-  const lines = [hourly(cls, ctx.at(multi ? deploy.multi : deploy.single))];
-  const assumptions = [`${ENGINE_LABEL[engine] ?? engine}, ${multi ? 'Multi-AZ (a standby in a second zone)' : 'Single-AZ'}`];
+  const lines = [ctx.hourly(cls, ctx.at(multi ? deploy.multi : deploy.single))];
+  const assumptions = [m.aws.deployment(ENGINE_LABEL[engine] ?? engine, multi)];
 
   const gb = ctx.num('allocated_storage');
   const storageType = ctx.str('storage_type') ?? (ctx.r.args.iops ? 'io1' : 'gp2');
   const storage = rds.storage[storageType];
-  if (gb === undefined) assumptions.push('No literal allocated_storage — storage not included');
-  else if (!storage) assumptions.push(`Storage type ${storageType} isn't in the price table — not included`);
-  else lines.push(perGbMonth(`${gb} GB ${storageType}`, gb, ctx.at(multi ? storage.multi : storage.single)));
-  if (!ctx.r.args.storage_type) assumptions.push(`storage_type not set: ${storageType}, the AWS default`);
-  if (storageType === 'io1' || storageType === 'io2') assumptions.push('Provisioned IOPS are billed on top');
-  assumptions.push('Backups beyond the free allowance and snapshots are extra');
+  if (gb === undefined) assumptions.push(m.aws.noStorage);
+  else if (!storage) assumptions.push(m.notIncludedType(m.aws.storageType, storageType));
+  else lines.push(ctx.perGbMonth(m.gb(gb, storageType), gb, ctx.at(multi ? storage.multi : storage.single)));
+  if (!ctx.r.args.storage_type) assumptions.push(m.aws.storageDefault(storageType));
+  if (storageType === 'io1' || storageType === 'io2') assumptions.push(m.aws.iops);
+  assumptions.push(m.aws.backups);
   return fixed(lines, assumptions);
 };
 
 const cacheCluster: Rule = (ctx) => {
-  if (ctx.r.args.replication_group_id) return free('Its nodes are billed through the replication group');
+  if (ctx.r.args.replication_group_id) return free(ctx.m.aws.replicationGroup);
   const node = ctx.str('node_type');
   const engine = ctx.str('engine') ?? 'redis';
   const rates = node ? ctx.book.aws.elasticache[node] : undefined;
-  if (!node || !rates) return unpriced('node_type', node);
+  if (!node || !rates) return ctx.unpriced('node_type', node);
   const hourRate = rates[engine];
-  if (hourRate === undefined) return unpriced('engine', engine);
+  if (hourRate === undefined) return ctx.unpriced('engine', engine);
   const nodes = ctx.num('num_cache_nodes') ?? 1;
-  return fixed([hourly(node, ctx.at(hourRate), nodes)], [`${plural(nodes, 'node')}, ${engine === 'redis' ? 'Redis OSS' : engine}`]);
+  return fixed([ctx.hourly(node, ctx.at(hourRate), nodes)], [ctx.m.aws.cacheNodes(nodes, engine === 'redis' ? 'Redis OSS' : engine)]);
 };
 
 const ecsService: Rule = (ctx) => {
   const { fargate } = ctx.book.aws;
+  const { m } = ctx;
   const providers = blockBodies(ctx.r.args.capacity_provider_strategy).map((b) => resolveString(b.capacity_provider, ctx.ir) ?? '');
   const launch = ctx.str('launch_type') ?? (providers.some((p) => p.startsWith('FARGATE')) ? 'FARGATE' : providers.length ? 'CAPACITY' : 'EC2');
-  if (providers.includes('FARGATE_SPOT')) return unknown('Fargate Spot: the price changes with demand');
-  if (launch === 'EC2' || launch === 'CAPACITY') return free("Runs on the cluster's EC2 instances — those are billed, not the service");
-  if (launch !== 'FARGATE') return unpriced('launch_type', launch);
+  if (providers.includes('FARGATE_SPOT')) return unknown(m.priceChanges('fargate-spot'));
+  if (launch === 'EC2' || launch === 'CAPACITY') return free(m.aws.clusterEc2);
+  if (launch !== 'FARGATE') return ctx.unpriced('launch_type', launch);
 
   const task = referenced(ctx.r, 'task_definition', ctx.ir);
-  if (!task) return unknown("The task definition isn't in this project, so its CPU and memory are unknown");
+  if (!task) return unknown(m.aws.noTaskDefinition);
   const cpu = resolveNumber(task.args.cpu, ctx.ir);
   const memory = resolveNumber(task.args.memory, ctx.ir);
-  if (!cpu || !memory) return unknown(`Task definition ${task.name} has no literal cpu and memory`);
+  if (!cpu || !memory) return unknown(m.aws.taskNoCpu(task.name));
   const arm = resolveString(blockBody(task.args.runtime_platform)?.cpu_architecture, ctx.ir) === 'ARM64';
   const vcpu = cpu / 1024;
   const gb = memory / 1024;
@@ -131,128 +118,120 @@ const ecsService: Rule = (ctx) => {
   const tasks = ctx.num('desired_count');
   const n = tasks ?? 0;
   return fixed(
-    [hourly(`${plural(n, 'task')} (${vcpu} vCPU, ${gb} GB)`, vcpu * vcpuRate + gb * gbRate, n)],
-    [
-      `Fargate ${arm ? 'ARM' : 'Linux/x86'}: ${vcpu} vCPU × ${rate(vcpuRate)} + ${gb} GB × ${rate(gbRate)} per task-hour`,
-      tasks === undefined ? 'desired_count not set: Terraform starts 0 tasks' : `${plural(n, 'task')} running all month (autoscaling changes this)`,
-    ],
+    [ctx.hourly(m.aws.tasks(n, vcpu, gb), vcpu * vcpuRate + gb * gbRate, n)],
+    [m.aws.fargateRate(arm, vcpu, ctx.rate(vcpuRate), gb, ctx.rate(gbRate)), tasks === undefined ? m.aws.noDesiredCount : m.aws.tasksAllMonth(n)],
   );
 };
 
 const nodeGroup: Rule = (ctx) => {
   const { aws } = ctx.book;
+  const { m } = ctx;
   const types = ctx.r.args.instance_types;
   const listed = types?.kind === 'list' && types.items[0] ? resolveString(types.items[0], ctx.ir) : undefined;
-  if (types && !listed) return unpriced('instance_types', undefined);
+  if (types && !listed) return ctx.unpriced('instance_types', undefined);
   const type = listed ?? 't3.medium';
-  if (ctx.str('capacity_type') === 'SPOT') return unknown('Spot capacity: the price changes with demand');
+  if (ctx.str('capacity_type') === 'SPOT') return unknown(m.priceChanges('spot-capacity'));
   const scaling = ctx.block('scaling_config');
   const nodes = scaling ? ctx.num('desired_size', scaling) : undefined;
-  if (nodes === undefined) return unknown("scaling_config.desired_size isn't a literal number");
+  if (nodes === undefined) return unknown(m.aws.desiredSize);
   const hourRate = aws.ec2[type];
-  if (hourRate === undefined) return unpriced('instance_types', type);
+  if (hourRate === undefined) return ctx.unpriced('instance_types', type);
   const disk = ctx.num('disk_size') ?? 20;
-  const lines = [hourly(type, ctx.at(hourRate), nodes)];
+  const lines = [ctx.hourly(type, ctx.at(hourRate), nodes)];
   const gp2 = aws.ebs.gp2;
-  if (gp2 !== undefined) lines.push(perGbMonth(`${nodes} × ${disk} GB gp2`, nodes * disk, ctx.at(gp2)));
-  return fixed(lines, [
-    `${plural(nodes, 'node')} (desired_size; autoscaling changes this)${listed ? '' : ', t3.medium — the default instance type'}`,
-    `${disk} GB gp2 root disk per node (the EKS default)`,
-  ]);
+  if (gp2 !== undefined) lines.push(ctx.perGbMonth(m.nodesGb(nodes, disk, 'gp2'), nodes * disk, ctx.at(gp2)));
+  return fixed(lines, [m.aws.nodeGroupNodes(nodes, !listed), m.aws.nodeGroupDisk(disk)]);
 };
 
 const loadBalancer: Rule = (ctx) => {
   const { elb } = ctx.book.aws;
   const type = ctx.str('load_balancer_type') ?? 'application';
   if (type === 'application') {
-    return fixed([hourly('Application Load Balancer', ctx.at(elb.albHour))], [`Plus ${rate(ctx.at(elb.albLcuHour))} per LCU-hour, by usage (connections, traffic, rule evaluations)`]);
+    return fixed([ctx.hourly('Application Load Balancer', ctx.at(elb.albHour))], [ctx.m.aws.albLcu(ctx.rate(ctx.at(elb.albLcuHour)))]);
   }
   if (type === 'network') {
-    return fixed([hourly('Network Load Balancer', ctx.at(elb.nlbHour))], [`Plus ${rate(ctx.at(elb.nlbLcuHour))} per NLCU-hour, by usage`]);
+    return fixed([ctx.hourly('Network Load Balancer', ctx.at(elb.nlbHour))], [ctx.m.aws.nlbLcu(ctx.rate(ctx.at(elb.nlbLcuHour)))]);
   }
-  return unpriced('load_balancer_type', type);
+  return ctx.unpriced('load_balancer_type', type);
 };
 
 const natGateway: Rule = (ctx) => {
   const { nat } = ctx.book.aws;
-  return fixed([hourly('NAT gateway', ctx.at(nat.hour))], [`Plus ${rate(ctx.at(nat.gb))} per GB processed`]);
+  return fixed([ctx.hourly(ctx.m.aws.natGateway, ctx.at(nat.hour))], [ctx.m.aws.perGbProcessed(ctx.rate(ctx.at(nat.gb)))]);
 };
 
-const eip: Rule = (ctx) =>
-  fixed([hourly('Public IPv4', ctx.at(ctx.book.aws.publicIpv4Hour))], ['Public IPv4 addresses are billed whether attached or not']);
+const eip: Rule = (ctx) => fixed([ctx.hourly(ctx.m.aws.publicIpv4, ctx.at(ctx.book.aws.publicIpv4Hour))], [ctx.m.aws.eipBilled]);
 
 // Route 53 is a global service: no regional multiplier
 const hostedZone: Rule = (ctx) => {
   const { route53 } = ctx.book.aws;
-  return fixed([monthlyFee('Hosted zone', route53.zoneMonth)], [`Plus ${rate(route53.queriesPerMillion)} per million standard queries`]);
+  return fixed([ctx.monthlyFee(ctx.m.aws.hostedZone, route53.zoneMonth)], [ctx.m.aws.queries(ctx.rate(route53.queriesPerMillion))]);
 };
 
 const kmsKey: Rule = (ctx) => {
   const { kms } = ctx.book.aws;
-  return fixed([monthlyFee('Customer managed key', ctx.at(kms.keyMonth))], [`Plus ${rate(ctx.at(kms.requestsPer10k))} per 10,000 requests`]);
+  return fixed([ctx.monthlyFee(ctx.m.aws.kmsKey, ctx.at(kms.keyMonth))], [ctx.m.aws.kmsRequests(ctx.rate(ctx.at(kms.requestsPer10k)))]);
 };
 
 const secret: Rule = (ctx) => {
   const { secretsManager } = ctx.book.aws;
-  return fixed([monthlyFee('Secret', ctx.at(secretsManager.secretMonth))], [`Plus ${rate(ctx.at(secretsManager.apiPer10k))} per 10,000 API calls`]);
+  return fixed(
+    [ctx.monthlyFee(ctx.m.aws.secret, ctx.at(secretsManager.secretMonth))],
+    [ctx.m.aws.secretCalls(ctx.rate(ctx.at(secretsManager.apiPer10k)))],
+  );
 };
 
 const eksCluster: Rule = (ctx) =>
-  fixed(
-    [hourly('EKS control plane', ctx.at(ctx.book.aws.eks.clusterHour))],
-    ['Standard Kubernetes version support (extended support costs more)', 'Worker nodes are priced on their node groups'],
-  );
+  fixed([ctx.hourly(ctx.m.aws.eksControlPlane, ctx.at(ctx.book.aws.eks.clusterHour))], [ctx.m.aws.eksSupport, ctx.m.aws.eksNodes]);
 
 const ebsVolume: Rule = (ctx) => {
   const gb = ctx.num('size');
   const type = ctx.str('type') ?? 'gp3';
-  if (gb === undefined) return unknown("size isn't a literal number (a volume from a snapshot takes the snapshot's size)");
+  if (gb === undefined) return unknown(ctx.m.aws.ebsSize);
   const line = ebsLine(ctx, gb, type);
-  return line ? fixed([line], ctx.r.args.type ? [] : ['type not set: gp3']) : unpriced('type', type);
+  return line ? fixed([line], ctx.r.args.type ? [] : [ctx.m.aws.ebsType]) : ctx.unpriced('type', type);
 };
 
-const s3: Rule = (ctx) =>
-  usage(`Billed by use: ${rate(ctx.at(ctx.book.aws.usage.s3StandardGbMonth))} per GB-month in S3 Standard, plus requests and data transfer out.`);
+const s3: Rule = (ctx) => usage(ctx.m.aws.s3(ctx.rate(ctx.at(ctx.book.aws.usage.s3StandardGbMonth))));
 
 const lambda: Rule = (ctx) => {
   const u = ctx.book.aws.usage;
-  return usage(
-    `Billed per request (${rate(ctx.at(u.lambdaRequestsPerMillion))} per million) and compute time (${rate(ctx.at(u.lambdaGbSecond))} per GB-second). Free tier: 1 million requests and 400,000 GB-seconds a month.`,
-  );
+  return usage(ctx.m.aws.lambda(ctx.rate(ctx.at(u.lambdaRequestsPerMillion)), ctx.rate(ctx.at(u.lambdaGbSecond))));
 };
 
 const cloudfront: Rule = (ctx) => {
   const u = ctx.book.aws.usage;
-  return usage(
-    `Pay-as-you-go: from ${rate(u.cloudfrontGb)} per GB served and ${rate(u.cloudfrontHttpsPer10k)} per 10,000 HTTPS requests. Flat-rate plans, including a free one, are an alternative.`,
-  );
+  return usage(ctx.m.aws.cloudfront(ctx.rate(u.cloudfrontGb), ctx.rate(u.cloudfrontHttpsPer10k)));
 };
 
 const dynamodb: Rule = (ctx) => {
   const mode = ctx.str('billing_mode') ?? 'PROVISIONED';
-  if (mode !== 'PAY_PER_REQUEST') return unknown('Provisioned capacity (the Terraform default billing_mode) isn\'t in the price table');
+  if (mode !== 'PAY_PER_REQUEST') return unknown(ctx.m.aws.dynamoProvisioned);
   const u = ctx.book.aws.usage;
   return usage(
-    `On-demand: ${rate(ctx.at(u.dynamodbWritePerMillion))} per million writes, ${rate(ctx.at(u.dynamodbReadPerMillion))} per million reads and ${rate(ctx.at(u.dynamodbGbMonth))} per GB-month stored.`,
+    ctx.m.aws.dynamoOnDemand(
+      ctx.rate(ctx.at(u.dynamodbWritePerMillion)),
+      ctx.rate(ctx.at(u.dynamodbReadPerMillion)),
+      ctx.rate(ctx.at(u.dynamodbGbMonth)),
+    ),
   );
 };
 
-const sqs: Rule = (ctx) =>
-  usage(`${rate(ctx.at(ctx.book.aws.usage.sqsPerMillion))} per million requests. Free tier: the first 1 million requests each month.`);
+const sqs: Rule = (ctx) => usage(ctx.m.aws.sqs(ctx.rate(ctx.at(ctx.book.aws.usage.sqsPerMillion))));
 
-const sns: Rule = (ctx) =>
-  usage(`${rate(ctx.at(ctx.book.aws.usage.snsPerMillion))} per million publishes, plus deliveries (priced per protocol).`);
+const sns: Rule = (ctx) => usage(ctx.m.aws.sns(ctx.rate(ctx.at(ctx.book.aws.usage.snsPerMillion))));
 
 const httpApi: Rule = (ctx) =>
   (ctx.str('protocol_type') ?? 'HTTP') === 'WEBSOCKET'
-    ? usage('WebSocket APIs are billed per message and per connection-minute.')
-    : usage(`${rate(ctx.at(ctx.book.aws.usage.apiGatewayHttpPerMillion))} per million HTTP API requests.`);
+    ? usage(ctx.m.aws.websocket)
+    : usage(ctx.m.aws.httpApi(ctx.rate(ctx.at(ctx.book.aws.usage.apiGatewayHttpPerMillion))));
 
-const ecr: Rule = (ctx) => usage(`${rate(ctx.at(ctx.book.aws.usage.ecrGbMonth))} per GB-month of stored images, plus data transfer out.`);
+const ecr: Rule = (ctx) => usage(ctx.m.aws.ecr(ctx.rate(ctx.at(ctx.book.aws.usage.ecrGbMonth))));
 
-const logGroup: Rule = () => usage('Billed per GB ingested and stored.');
+const logGroup: Rule = (ctx) => usage(ctx.m.aws.logs);
 
-const FREE: Record<string, string | undefined> = {
+/** free types, and what to say about them (in the rule's language) */
+const FREE: Record<string, ((m: ServiceMessages) => string) | undefined> = {
   aws_vpc: undefined,
   aws_subnet: undefined,
   aws_security_group: undefined,
@@ -262,20 +241,20 @@ const FREE: Record<string, string | undefined> = {
   aws_network_acl: undefined,
   aws_route_table: undefined,
   aws_route_table_association: undefined,
-  aws_internet_gateway: 'Data transfer through it is billed separately',
+  aws_internet_gateway: (m) => m.aws.free.igw,
   aws_db_subnet_group: undefined,
-  aws_lb_target_group: 'Billed through its load balancer',
-  aws_lb_listener: 'Billed through its load balancer',
-  aws_ecs_cluster: 'What runs in it is billed',
-  aws_ecs_task_definition: 'Billed through the ECS service that runs it',
-  aws_route53_record: 'Included in the hosted zone; queries are billed there',
-  aws_apigatewayv2_integration: 'Billed through the API',
-  aws_apigatewayv2_route: 'Billed through the API',
-  aws_apigatewayv2_stage: 'Billed through the API',
+  aws_lb_target_group: (m) => m.aws.free.viaLoadBalancer,
+  aws_lb_listener: (m) => m.aws.free.viaLoadBalancer,
+  aws_ecs_cluster: (m) => m.aws.free.cluster,
+  aws_ecs_task_definition: (m) => m.aws.free.taskDefinition,
+  aws_route53_record: (m) => m.aws.free.record,
+  aws_apigatewayv2_integration: (m) => m.aws.free.viaApi,
+  aws_apigatewayv2_route: (m) => m.aws.free.viaApi,
+  aws_apigatewayv2_stage: (m) => m.aws.free.viaApi,
   aws_lambda_permission: undefined,
-  aws_sns_topic_subscription: 'Deliveries are billed on the topic',
+  aws_sns_topic_subscription: (m) => m.aws.free.subscription,
   aws_s3_bucket_public_access_block: undefined,
-  aws_launch_template: 'The instances launched from it are billed',
+  aws_launch_template: (m) => m.aws.free.launchTemplate,
 };
 
 export const AWS_RULES: Record<string, Rule> = {
@@ -301,7 +280,7 @@ export const AWS_RULES: Record<string, Rule> = {
   aws_apigatewayv2_api: httpApi,
   aws_ecr_repository: ecr,
   aws_cloudwatch_log_group: logGroup,
-  ...Object.fromEntries(Object.entries(FREE).map(([type, note]) => [type, () => free(note)])),
+  ...Object.fromEntries(Object.entries(FREE).map(([type, note]): [string, Rule] => [type, (ctx) => free(note?.(ctx.m))])),
 };
 
 /** IAM and S3 bucket settings (policies, versioning, encryption…) cost nothing themselves */

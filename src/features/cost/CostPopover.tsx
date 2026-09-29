@@ -6,38 +6,46 @@
 import { ChevronRight } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { restoreFocus, useLayer } from '@/components/ui';
-import { PROVIDER_NAME } from '@/cost/estimate';
+import { providerName } from '@/cost/estimate';
 import { approx, describeLines, usd } from '@/cost/format';
 import type { CostKind, ProjectCost, ResourceCost } from '@/cost/types';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useEditor } from '@/features/editor/store';
+import { useLocale, type Locale } from '@/i18n/locale';
+import { messagesFor, useMessages } from '@/i18n/messages';
+
 import { cn } from '@/lib/utils';
+import { categoryLabel as catalogCategory, resourceShortName } from '@/resources/i18n';
 import { CATEGORY_COLORS } from '@/resources/icons';
-import { getDef } from '@/resources/registry';
-import { CATEGORY_LABELS, type Category } from '@/resources/types';
+import type { Category } from '@/resources/types';
+import { costUiMessages } from './messages';
 
 type SortKey = 'cost' | 'name' | 'category';
 
 const KIND_ORDER: Record<CostKind, number> = { fixed: 0, usage: 1, unknown: 2, free: 3 };
-const SORTS: Array<{ key: SortKey; label: string }> = [
-  { key: 'cost', label: 'Cost' },
-  { key: 'name', label: 'Name' },
-  { key: 'category', label: 'Category' },
+const SORTS: Array<{ key: SortKey; label: (m: (typeof costUiMessages)['en']) => string }> = [
+  { key: 'cost', label: (m) => m.sortCost },
+  { key: 'name', label: (m) => m.sortName },
+  { key: 'category', label: (m) => m.sortCategory },
 ];
 
-const categoryLabel = (c: Category | 'other') => (c === 'other' ? 'Other' : CATEGORY_LABELS[c]);
+/** a category in the UI language */
+const categoryLabel = (c: Category | 'other', locale?: Locale) =>
+  c === 'other' ? messagesFor(costUiMessages, locale).other : catalogCategory(c, locale);
 const categoryColor = (c: Category | 'other') => (c === 'other' ? '#64748b' : CATEGORY_COLORS[c].solid);
 
-function sortItems(items: ResourceCost[], key: SortKey): ResourceCost[] {
+function sortItems(items: ResourceCost[], key: SortKey, locale: Locale): ResourceCost[] {
   const byName = (a: ResourceCost, b: ResourceCost) => a.name.localeCompare(b.name) || a.type.localeCompare(b.type);
   const out = [...items];
   if (key === 'name') return out.sort(byName);
-  if (key === 'category') return out.sort((a, b) => categoryLabel(a.category).localeCompare(categoryLabel(b.category)) || (b.monthly ?? -1) - (a.monthly ?? -1) || byName(a, b));
+  const label = (c: Category | 'other') => categoryLabel(c, locale);
+  if (key === 'category') return out.sort((a, b) => label(a.category).localeCompare(label(b.category)) || (b.monthly ?? -1) - (a.monthly ?? -1) || byName(a, b));
   return out.sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || (b.monthly ?? 0) - (a.monthly ?? 0) || byName(a, b));
 }
 
 /** "usage-based" / "not estimated" instead of a number */
 export function KindBadge({ kind }: { kind: Exclude<CostKind, 'fixed'> }) {
+  const m = useMessages(costUiMessages);
   return (
     <span
       className={cn(
@@ -47,13 +55,13 @@ export function KindBadge({ kind }: { kind: Exclude<CostKind, 'fixed'> }) {
         kind === 'free' && 'border-border text-faint',
       )}
     >
-      {kind === 'usage' ? 'usage-based' : kind === 'unknown' ? 'not estimated' : 'no charge'}
+      {kind === 'usage' ? m.kindUsage : kind === 'unknown' ? m.kindUnknown : m.kindFree}
     </span>
   );
 }
 
 function Row({ item, onPick }: { item: ResourceCost; onPick(id: string): void }) {
-  const def = getDef(item.type);
+  useMessages(costUiMessages); // re-render on a language switch
   const detail = item.kind === 'fixed' ? describeLines(item.breakdown) : item.note;
   return (
     <li>
@@ -67,7 +75,7 @@ function Row({ item, onPick }: { item: ResourceCost; onPick(id: string): void })
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-1.5">
             <span className="truncate text-[12px] font-semibold text-foreground">{item.name}</span>
-            <span className="shrink-0 text-[10.5px] text-faint">{def?.shortName ?? item.type}</span>
+            <span className="shrink-0 text-[10.5px] text-faint">{resourceShortName(item.type)}</span>
           </span>
           {detail ? <span className="block truncate text-[10.5px] leading-snug text-faint">{detail}</span> : null}
         </span>
@@ -112,6 +120,7 @@ function Bars({ title, groups }: { title: string; groups: Array<{ key: string; l
 }
 
 export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anchor: RefObject<HTMLElement | null>; onClose(): void }) {
+  const m = useMessages(costUiMessages);
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [sort, setSort] = useState<SortKey>('cost');
@@ -164,7 +173,9 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
     onClose();
   };
 
-  const rows = useMemo(() => sortItems(cost.items, sort), [cost.items, sort]);
+  // the category sort follows the language the labels are in
+  const locale = useLocale((s) => s.locale);
+  const rows = useMemo(() => sortItems(cost.items, sort, locale), [cost.items, sort, locale]);
   const charged = rows.filter((i) => i.kind !== 'free');
   const freeRows = rows.filter((i) => i.kind === 'free');
   const categories = cost.byCategory
@@ -172,7 +183,7 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
     .map((g) => ({ key: g.key, label: categoryLabel(g.key), color: categoryColor(g.key), monthly: g.monthly }));
   const clouds = cost.byProvider.filter((g) => g.key !== 'other');
   const { counts } = cost;
-  const extras = [counts.usage ? `${counts.usage} usage-based` : '', counts.unknown ? `${counts.unknown} not estimated` : ''].filter(Boolean);
+  const extras = [counts.usage ? m.usageBased(counts.usage) : '', counts.unknown ? m.notEstimated(counts.unknown) : ''].filter(Boolean);
 
   return (
     <div
@@ -191,46 +202,46 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
     >
       <header className="border-b px-4 pb-3 pt-3.5">
         <h2 id={titleId} className="text-[10.5px] font-bold uppercase tracking-wider text-faint">
-          Estimated monthly cost
+          {m.title}
         </h2>
         <p className="mt-1 flex items-baseline gap-1.5">
           <span className="text-[22px] font-bold leading-none tracking-tight tabular-nums text-foreground">
-            {counts.fixed ? approx(cost.total) : '$0'}
+            {approx(counts.fixed ? cost.total : 0)}
           </span>
-          <span className="text-[12px] text-muted">/ month</span>
+          <span className="text-[12px] text-muted">{m.perMonth}</span>
         </p>
         <p className="mt-1 text-[11.5px] leading-snug text-muted">
-          {counts.fixed ? `${usd(cost.total)} for ${counts.fixed} priced resource${counts.fixed === 1 ? '' : 's'}` : 'Nothing here has a fixed monthly price'}
-          {extras.length ? `, plus ${extras.join(' and ')}` : ''}.
+          {counts.fixed ? m.pricedFor(usd(cost.total), counts.fixed) : m.nothingFixed}
+          {m.plus(extras)}.
         </p>
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">
         {categories.length ? (
           <div className="px-1">
-            <Bars title="By category" groups={categories} />
+            <Bars title={m.byCategory} groups={categories} />
           </div>
         ) : null}
         {clouds.length > 1 ? (
           <div className="px-1">
             <Bars
-              title="By cloud"
+              title={m.byCloud}
               groups={clouds.map((g) => ({
                 key: g.key,
-                label: PROVIDER_NAME[g.key],
+                label: providerName(g.key),
                 note: g.region,
                 color: g.key === 'aws' ? '#ff9900' : g.key === 'azure' ? '#0078d4' : '#4285f4',
                 monthly: g.monthly,
-                text: g.priced ? undefined : 'no fixed price',
+                text: g.priced ? undefined : m.noFixedPrice,
               }))}
             />
           </div>
         ) : null}
 
-        <section aria-label="Resources">
+        <section aria-label={m.resources}>
           <div className="mb-1 flex items-center justify-between gap-2 px-1">
-            <h3 className="text-[10.5px] font-bold uppercase tracking-wider text-faint">Resources</h3>
-            <div className="flex rounded-md border bg-surface-2 p-0.5" role="group" aria-label="Sort resources by">
+            <h3 className="text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.resources}</h3>
+            <div className="flex rounded-md border bg-surface-2 p-0.5" role="group" aria-label={m.sortBy}>
               {SORTS.map((s, i) => (
                 <button
                   key={s.key}
@@ -243,7 +254,7 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
                     sort === s.key ? 'bg-surface-1 text-foreground shadow-xs' : 'text-muted hover:text-foreground',
                   )}
                 >
-                  {s.label}
+                  {s.label(m)}
                 </button>
               ))}
             </div>
@@ -262,8 +273,8 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
                 className="mt-1 flex w-full items-center gap-1.5 rounded-[8px] px-2 py-1.5 text-left text-[11.5px] text-muted transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
               >
                 <ChevronRight className={cn('h-3 w-3 shrink-0 transition-transform', showFree && 'rotate-90')} aria-hidden="true" />
-                <span className="shrink-0">{freeRows.length} with no charge of their own</span>
-                <span className="min-w-0 truncate text-faint">{[...new Set(freeRows.map((i) => getDef(i.type)?.shortName ?? i.type))].join(', ')}</span>
+                <span className="shrink-0">{m.noChargeOfTheirOwn(freeRows.length)}</span>
+                <span className="min-w-0 truncate text-faint">{[...new Set(freeRows.map((i) => resourceShortName(i.type)))].join(', ')}</span>
               </button>
               {showFree ? (
                 <ul className="space-y-px">
@@ -282,7 +293,8 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
           {cost.assumptions.map((a) => (
             <li key={a}>{a}</li>
           ))}
-          <li className="font-medium text-muted">An estimate, not a quote — check the provider's pricing calculator before you commit.</li>
+          <li className="font-medium text-muted">{m.disclaimer}</li>
+
         </ul>
       </footer>
     </div>

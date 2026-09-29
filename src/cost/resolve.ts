@@ -9,7 +9,10 @@
  * prices.test.ts checks both read the same AWS and Azure regions from every
  * template (for Google Cloud the estimate also reads `location` and `zone`).
  */
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import type { Expression, IR, ProviderBlock, ResourceNode } from '@/ir/types';
+import { costMessages } from './messages';
 
 export type Scalar = string | number | boolean;
 
@@ -89,15 +92,17 @@ export function referencing(target: ResourceNode, type: string, field: string, i
 
 export type Multiplicity = { n: number } | { unknown: string };
 
-/** how many instances the resource stands for: a literal `count`, else 1; `for_each` / expressions are unknown */
-export function multiplicity(r: ResourceNode, ir: IR): Multiplicity {
-  if (r.args.for_each) return { unknown: 'for_each: how many instances depends on the collection' };
+/** how many instances the resource stands for: a literal `count`, else 1; `for_each` / expressions are unknown (why, in `locale`) */
+export function multiplicity(r: ResourceNode, ir: IR, locale: Locale = currentLocale()): Multiplicity {
+  const m = messagesFor(costMessages, locale);
+  if (r.args.for_each) return { unknown: m.forEach };
   const count = r.args.count;
   if (!count) return { n: 1 };
   const n = resolveNumber(count, ir);
-  if (n === undefined || !Number.isInteger(n) || n < 0) return { unknown: 'count is an expression: how many instances is decided at plan time' };
+  if (n === undefined || !Number.isInteger(n) || n < 0) return { unknown: m.countExpr };
   return { n };
 }
+
 
 // ------------------------------------------------------------------ regions
 
