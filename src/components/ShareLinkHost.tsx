@@ -24,6 +24,16 @@ interface Pending {
   existing?: Project;
 }
 
+let offer: ((payload: SharePayload) => void) | null = null;
+
+/**
+ * Ask to import `payload` as a local copy — the same confirmation and dedupe
+ * as opening its share link (the read-only viewer's "Make a copy to edit").
+ */
+export function offerShareImport(payload: SharePayload) {
+  offer?.(payload);
+}
+
 /**
  * `#share=<deflated project>` links: on load and on every fragment change
  * (pasting a link into a tab that's already open), ask before importing and
@@ -35,6 +45,10 @@ export function ShareLinkHost() {
   const primaryRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
+    const ask = (payload: SharePayload) => {
+      const origin = `share:${shareHash(payload)}`;
+      setPending({ payload, origin, existing: findProjectByOrigin(origin) });
+    };
     const check = () => {
       const result = readShareFromLocation();
       if (!result) return;
@@ -43,12 +57,15 @@ export function ShareLinkHost() {
         showToast(ERRORS[result.error], 'error');
         return;
       }
-      const origin = `share:${shareHash(result.payload)}`;
-      setPending({ payload: result.payload, origin, existing: findProjectByOrigin(origin) });
+      ask(result.payload);
     };
+    offer = ask;
     check();
     window.addEventListener('hashchange', check);
-    return () => window.removeEventListener('hashchange', check);
+    return () => {
+      offer = null;
+      window.removeEventListener('hashchange', check);
+    };
   }, []);
 
   useEffect(() => {

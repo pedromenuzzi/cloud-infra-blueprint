@@ -171,13 +171,14 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
 
 export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlowNode>) {
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
+  const readOnly = useEditor((s) => s.readOnly);
   return (
     <div
       style={catVars(data.category)}
       className={cn('bp-container h-full w-full rounded-[16px]', selected && 'bp-container-selected', data.security?.dim && 'bp-dim')}
     >
       <NodeResizer
-        isVisible={selected}
+        isVisible={selected && !readOnly}
         minWidth={240}
         minHeight={140}
         lineClassName="!border-(--cat)/60"

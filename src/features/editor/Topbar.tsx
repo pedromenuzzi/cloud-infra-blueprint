@@ -4,6 +4,7 @@ import {
   ChevronDown,
   Code2,
   Download,
+  Eye,
   FileArchive,
   FileImage,
   FileText,
@@ -29,7 +30,7 @@ import { showToast } from '@/components/Toast';
 import { Button, Kbd, LogoMark } from '@/components/ui';
 import { IS_MAC, MOD, usePalette } from '@/features/command/paletteStore';
 import { copyText, exportZip } from '@/lib/download';
-import { shareLinkInfo } from '@/lib/share';
+import { shareLinkInfo, viewLinkInfo } from '@/lib/share';
 import { cn } from '@/lib/utils';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { GRADE_COLORS, getAudit, useSecurityUi } from '@/features/security/securityStore';
@@ -132,6 +133,19 @@ export function Topbar() {
     showToast('Terraform zip downloaded', 'success');
   };
 
+  const doViewLink = () => {
+    const { projectName: name, files } = useEditor.getState();
+    const link = viewLinkInfo({ name, files });
+    if (link.tooLarge) {
+      showToast(link.warning!, 'error');
+      return;
+    }
+    void copyText(link.url).then(
+      () => showToast(link.warning ?? 'View link copied — anyone can look, nobody can edit', link.warning ? 'info' : 'success'),
+      () => showToast('Could not copy the link', 'error'),
+    );
+  };
+
   const doShare = () => {
     const { projectName: name, files } = useEditor.getState();
     const link = shareLinkInfo({ name, files });
@@ -168,6 +182,7 @@ export function Topbar() {
     ...(small
       ? [
           { id: 'share', label: 'Copy share link', icon: Share2, onSelect: doShare },
+          { id: 'view-link', label: 'Copy view link (read-only)', icon: Eye, onSelect: doViewLink },
           {
             id: 'inspector',
             label: 'Inspector',
@@ -295,6 +310,16 @@ export function Topbar() {
       <span className="hidden sm:contents">
         <Button variant="outline" size="sm" onClick={doShare} aria-label="Share" className="shrink-0">
           <Share2 className="h-3.5 w-3.5" /> <span className="hidden lg:inline">Share</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={doViewLink}
+          aria-label="Copy view link"
+          title="Copy a read-only view link"
+          className="h-7 w-7 shrink-0"
+        >
+          <Eye className="h-3.5 w-3.5" />
         </Button>
       </span>
       <Button

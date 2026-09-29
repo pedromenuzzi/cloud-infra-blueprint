@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { createBrowserRouter, Outlet, useMatch } from 'react-router-dom';
+import { createBrowserRouter, Outlet, useLocation, useMatch } from 'react-router-dom';
 import { AppErrorScreen } from '@/components/AppErrorScreen';
 import { ToastViewport } from '@/components/Toast';
 import { ConfirmHost } from '@/components/Confirm';
@@ -7,8 +7,10 @@ import { ShareLinkHost } from '@/components/ShareLinkHost';
 import { StorageNotices } from '@/components/StorageNotices';
 import { CommandHost } from '@/features/command/CommandHost';
 import { lazyWithReload } from '@/lib/chunkReload';
+import { isEmbedHash, isViewHash } from '@/lib/share';
 
 const LandingPage = lazyWithReload(() => import('./routes/LandingPage'));
+const ViewPage = lazyWithReload(() => import('./routes/ViewPage'));
 const DashboardPage = lazyWithReload(() => import('./routes/DashboardPage'));
 const EditorPage = lazyWithReload(() => import('./routes/EditorPage'));
 const TutorialsPage = lazyWithReload(() => import('./routes/TutorialsPage'));
@@ -25,16 +27,31 @@ function RouteFallback() {
   );
 }
 
+/**
+ * `/#view=<project>` is a read-only viewer link: served from the site root
+ * (HTTP 200 on every static host, GitHub Pages included) and kept in the
+ * fragment, so the server never sees the project.
+ */
+function IndexRoute() {
+  return isViewHash(useLocation().hash) ? <ViewPage /> : <LandingPage />;
+}
+
 function Root() {
   const inEditor = useMatch('/editor/:id') !== null;
+  // an embedded view (iframe): the diagram only — no palette, no storage banners
+  const embed = isEmbedHash(useLocation().hash);
   return (
     <>
       <Suspense fallback={<RouteFallback />}>
         <Outlet />
       </Suspense>
       <ToastViewport />
-      <StorageNotices />
-      <CommandHost />
+      {embed ? null : (
+        <>
+          <StorageNotices />
+          <CommandHost />
+        </>
+      )}
       <ConfirmHost />
       <ShareLinkHost />
       {inEditor ? (
@@ -58,7 +75,7 @@ export const router = createBrowserRouter(
           // a crash in any page (or a chunk gone after a deploy) keeps the shell
           errorElement: <AppErrorScreen />,
           children: [
-            { index: true, element: <LandingPage /> },
+            { index: true, element: <IndexRoute /> },
             { path: 'dashboard', element: <DashboardPage /> },
             { path: 'editor/:id', element: <EditorPage /> },
             { path: 'tutorials', element: <TutorialsPage /> },

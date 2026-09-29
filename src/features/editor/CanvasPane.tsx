@@ -316,6 +316,9 @@ function CanvasInner() {
   const warnings = useEditor((s) => s.warnings);
   const selection = useEditor((s) => s.selection);
   const codeErrored = useEditor((s) => s.codeErrored);
+  const readOnly = useEditor((s) => s.readOnly);
+  /** nothing on the canvas can change: code that doesn't parse, or a read-only view */
+  const locked = codeErrored || readOnly;
   const selectionOrigin = useEditor((s) => s.selectionOrigin);
   const setSelection = useEditor((s) => s.setSelection);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
@@ -979,7 +982,7 @@ function CanvasInner() {
         const onPane = target.closest('.react-flow__pane') && !target.closest('.react-flow__node');
         // containers are nodes too: double-clicking inside one adds a resource into it
         const inContainer = target.closest('.react-flow__node-container') && !target.closest('.react-flow__resize-control');
-        if ((onPane || inContainer) && !codeErrored) setQuickAdd({ x: e.clientX, y: e.clientY });
+        if ((onPane || inContainer) && !locked) setQuickAdd({ x: e.clientX, y: e.clientY });
       }}
       onKeyDown={(e) => {
         if (e.key.startsWith('Arrow')) lastArrowKey.current = Date.now();
@@ -1023,15 +1026,15 @@ function CanvasInner() {
         onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        nodesDraggable={!codeErrored && !spaceHeld}
-        nodesConnectable={!codeErrored}
+        nodesDraggable={!locked && !spaceHeld}
+        nodesConnectable={!locked}
         onDelete={onDelete}
         onDrop={onDrop}
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
         }}
-        deleteKeyCode={codeErrored ? null : ['Delete', 'Backspace']}
+        deleteKeyCode={locked ? null : ['Delete', 'Backspace']}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
         minZoom={0.05}
@@ -1049,7 +1052,7 @@ function CanvasInner() {
           minimap={minimap}
           tidying={tidying}
           onToggleMinimap={toggleMinimap}
-          onTidy={() => void tidy()}
+          onTidy={readOnly ? undefined : () => void tidy()}
           onExport={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setMenu({ x: r.left, y: r.top - 112, nodeId: null, exportOnly: true });
@@ -1111,16 +1114,16 @@ function CanvasInner() {
               Code has errors — fix them to edit the canvas again
             </span>
           ) : null}
-          {!overview ? <EditorTips /> : null}
+          {!overview && !readOnly ? <EditorTips /> : null}
         </Panel>
-        {ir.resources.length === 0 && !codeErrored ? <EmptyCanvas /> : null}
+        {ir.resources.length === 0 && !locked ? <EmptyCanvas /> : null}
       </ReactFlow>
 
       {menu ? (
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          entries={menuEntries}
+          entries={readOnly ? viewOnlyEntries(menuEntries) : menuEntries}
           label={menu.nodeId ? 'Resource actions' : menu.exportOnly ? 'Export' : 'Canvas actions'}
           onClose={() => setMenu(null)}
         />
@@ -1146,6 +1149,22 @@ export function sizeOf(internal: { measured: { width?: number; height?: number }
     w: internal.measured.width ?? internal.width ?? NODE_W,
     h: internal.measured.height ?? internal.height ?? NODE_H,
   };
+}
+
+/** Menu entries that change the project — left out of a read-only view's menus. */
+const EDIT_ENTRIES = new Set(['add', 'rename', 'duplicate', 'delete', 'tidy']);
+
+function viewOnlyEntries(entries: MenuEntry[]): MenuEntry[] {
+  const out: MenuEntry[] = [];
+  for (const e of entries) {
+    if (e !== 'separator' && EDIT_ENTRIES.has(e.id)) continue;
+    // no leading or doubled separators once entries are gone…
+    if (e === 'separator' && (out.length === 0 || out[out.length - 1] === 'separator')) continue;
+    out.push(e);
+  }
+  // …and no trailing one
+  while (out[out.length - 1] === 'separator') out.pop();
+  return out;
 }
 
 const MINIMAP_KEY = 'cb-minimap';
