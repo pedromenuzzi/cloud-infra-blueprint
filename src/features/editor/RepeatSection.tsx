@@ -226,7 +226,7 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
   const modeName = useId();
   const titleId = useId();
   const readOnly = useEditor((s) => s.readOnly);
-  const modesRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
   const spec = specOf(draft, m);
   const pending = isSpec(spec) && (spec === null ? current !== null : !current || current.kind !== spec.kind || exprText(current.expr) !== exprText(spec.expr));
@@ -256,8 +256,8 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
 
   const change = pending && isSpec(spec) ? repeatChange(ir, node, spec, { keepState: keep, isHistory: isHistoryMove, key: key || undefined }) : null;
 
-  /** the Apply / Cancel row goes away: keep the keyboard in the section, on the chosen mode */
-  const refocus = () => requestAnimationFrame(() => modesRef.current?.querySelector<HTMLInputElement>('input:checked')?.focus());
+  /** the Apply / Cancel row goes away: keep the keyboard in the section (on its heading, so Ctrl+Z still undoes) */
+  const refocus = () => requestAnimationFrame(() => headingRef.current?.focus());
   const apply = () => {
     if (!change || change.ops.length === 0) return;
     useEditor.getState().applyCanvasOps(change.ops);
@@ -290,13 +290,13 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
   return (
     <section aria-labelledby={titleId} className="rounded-[10px] border bg-surface-2/50 p-2.5" data-testid="repeat-section">
       <div className="mb-2 flex items-center gap-2">
-        <h4 id={titleId} className="flex-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">
+        <h4 ref={headingRef} id={titleId} tabIndex={-1} className="flex-1 outline-none text-[10.5px] font-bold uppercase tracking-wider text-faint">
           {m.title}
         </h4>
         {current ? <RepeatBadge repeat={repeatLabel(current)} inline plain /> : null}
       </div>
 
-      <div ref={modesRef} role="radiogroup" aria-label={m.mode} className="flex rounded-md border bg-surface-1 p-0.5">
+      <div role="radiogroup" aria-label={m.mode} className="flex rounded-md border bg-surface-1 p-0.5">
         {(['single', 'count', 'for_each'] as const).map((mode) => (
           <label
             key={mode}
