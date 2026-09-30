@@ -399,6 +399,32 @@ folderTest.describe('folder-linked projects on the dashboard', () => {
     await expect.poll(() => linkedIds(page)).toEqual([]);
   });
 
+  folderTest('a change on disk shows up while the tab stays in front (FileSystemObserver)', async ({ page }) => {
+    await mockPicker(page);
+    await page.goto('/dashboard');
+    folderTest.skip(!(await page.evaluate(() => 'FileSystemObserver' in window)), 'this Chromium has no FileSystemObserver');
+    await putFiles(page, { 'infra/main.tf': MAIN_TF });
+    await page.getByRole('button', { name: 'Open folder…' }).first().click();
+    await expect(page).toHaveURL(/\/editor\//);
+    await expect(canvasStats(page)).toHaveText(/^1 resource/);
+    await expect(page.getByRole('button', { name: 'Synced to folder infra' })).toBeVisible();
+
+    // no focus or visibility event: the observer alone brings the change in
+    let focusEvents = 0;
+    await page.exposeFunction('__onFocus', () => void (focusEvents += 1));
+    await page.evaluate(() => window.addEventListener('focus', () => (window as unknown as { __onFocus(): void }).__onFocus()));
+    await putFiles(page, { 'infra/main.tf': `${MAIN_TF}\nresource "aws_sqs_queue" "jobs" {\n  name = "jobs"\n}\n` });
+    await expect(canvasStats(page)).toHaveText(/^2 resources/);
+    await expect.poll(async () => (await storedProject(page, 'infra'))?.files['main.tf']).toContain('aws_sqs_queue');
+    expect(focusEvents).toBe(0);
+    await expect(page.getByRole('alertdialog')).toHaveCount(0);
+
+    // a file the sync doesn't touch changes nothing
+    await putFiles(page, { 'infra/README.md': '# notes\n' });
+    await page.waitForTimeout(1200);
+    expect(Object.keys((await storedProject(page, 'infra'))!.files).sort()).toEqual(['main.tf']);
+  });
+
   for (const theme of ['light', 'dark']) {
     folderTest(`pt-BR, ${theme}: the card says "Sincronizado com a pasta", and passes axe`, async ({ page }) => {
       await mockPicker(page, { locale: 'pt-BR', theme });
