@@ -214,6 +214,15 @@ describe('architecture document', () => {
     expect(text).toContain('Page 2 of 2');
   });
 
+  it('lists a repeated resource once, saying how many instances it stands for', () => {
+    const main = `resource "aws_instance" "app" {\n  count         = 3\n  instance_type = "t3.micro"\n}\n\nresource "aws_instance" "bastion" {\n  count = var.on ? 1 : 0\n}\n\nresource "aws_s3_bucket" "logs" {\n  for_each = toset(["raw", "clean"])\n}\n\nresource "aws_sqs_queue" "jobs" {\n  for_each = var.queues\n}\n`;
+    const bytes = buildArchitecturePdf(inputFor({ 'main.tf': main }));
+    expectWellFormed(bytes);
+    const text = pdfText(bytes);
+    for (const name of ['app ×3', 'bastion ×0–1', 'logs ×2', 'jobs for_each: var.queues']) expect(text).toContain(name);
+    expect(text.match(/app ×3/g)).toHaveLength(1);
+  });
+
   it('renders without a diagram and with notes from the author', () => {
     const input = inputFor(TEMPLATES[0].build('demo'), { diagram: null, notes: 'Proposta para revisão — versão 2.' });
     const bytes = buildArchitecturePdf(input);

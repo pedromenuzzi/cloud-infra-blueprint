@@ -7,7 +7,7 @@
  * (see repeatOps.ts). `KeepStateToggle` is the same choice for renames.
  */
 import { Plus, X } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Button, Input, Select } from '@/components/ui';
 import { movedBlocks } from '@/hcl/moved';
 import { parseExpressionText } from '@/hcl/parser';
@@ -226,6 +226,7 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
   const modeName = useId();
   const titleId = useId();
   const readOnly = useEditor((s) => s.readOnly);
+  const modesRef = useRef<HTMLDivElement>(null);
 
   const spec = specOf(draft, m);
   const pending = isSpec(spec) && (spec === null ? current !== null : !current || current.kind !== spec.kind || exprText(current.expr) !== exprText(spec.expr));
@@ -255,11 +256,17 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
 
   const change = pending && isSpec(spec) ? repeatChange(ir, node, spec, { keepState: keep, isHistory: isHistoryMove, key: key || undefined }) : null;
 
+  /** the Apply / Cancel row goes away: keep the keyboard in the section, on the chosen mode */
+  const refocus = () => requestAnimationFrame(() => modesRef.current?.querySelector<HTMLInputElement>('input:checked')?.focus());
   const apply = () => {
     if (!change || change.ops.length === 0) return;
     useEditor.getState().applyCanvasOps(change.ops);
+    refocus();
   };
-  const cancel = () => setState({ at, draft: draftOf(current) });
+  const cancel = () => {
+    setState({ at, draft: draftOf(current) });
+    refocus();
+  };
   const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -289,7 +296,7 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
         {current ? <RepeatBadge repeat={repeatLabel(current)} inline plain /> : null}
       </div>
 
-      <div role="radiogroup" aria-label={m.mode} className="flex rounded-md border bg-surface-1 p-0.5">
+      <div ref={modesRef} role="radiogroup" aria-label={m.mode} className="flex rounded-md border bg-surface-1 p-0.5">
         {(['single', 'count', 'for_each'] as const).map((mode) => (
           <label
             key={mode}

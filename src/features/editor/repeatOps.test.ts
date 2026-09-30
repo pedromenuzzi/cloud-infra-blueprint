@@ -129,6 +129,19 @@ output "ip" {
     expect(state().files['main.tf']).toContain('instance = aws_instance.web[0].id');
   });
 
+  it('deleting the resource drops the moved blocks this session wrote for it, not history', () => {
+    const files = { 'main.tf': `${MAIN}\nmoved {\n  from = aws_instance.old\n  to   = aws_instance.web\n}\n` };
+    state().load(createProject({ name: 'delete', files }));
+    state().applyCanvasOps(change({ kind: 'count', expr: lit(2) }).ops);
+    expect(state().files['main.tf'].match(/moved \{/g)).toHaveLength(2);
+    state().deleteResources(['aws_instance.web']);
+    const text = state().files['main.tf'];
+    expect(text.match(/moved \{/g)).toHaveLength(1);
+    expect(text).toContain('from = aws_instance.old');
+    state().undo();
+    expect(state().files['main.tf'].match(/moved \{/g)).toHaveLength(2);
+  });
+
   it('an expression count', () => {
     state().applyCanvasOps(change({ kind: 'count', expr: raw('var.enabled ? 1 : 0') }).ops);
     expect(state().files['main.tf']).toContain('  count = var.enabled ? 1 : 0\n');

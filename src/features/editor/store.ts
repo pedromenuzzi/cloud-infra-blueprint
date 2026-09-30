@@ -13,6 +13,7 @@
  */
 import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
+import { dropMovesTo } from '@/hcl/moved';
 import { applyOpsWithPatches } from '@/hcl/patch';
 import { parseProject } from '@/hcl/parser';
 import { useLocale } from '@/i18n/locale';
@@ -35,7 +36,7 @@ import {
 } from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
 import { deleteResourcesOps } from './connections';
-import { startMovedSession } from './movedSession';
+import { isHistoryMove, startMovedSession } from './movedSession';
 import { storeMessages } from './store.messages';
 
 const FILE_ORDER = ['main.tf', 'variables.tf', 'outputs.tf', 'providers.tf', 'versions.tf'];
@@ -436,7 +437,8 @@ export const useEditor = create<EditorState>((set, get) => {
         return 0;
       }
       const { ops, removed } = deleteResourcesOps(ir, edges, ids);
-      if (ops.length > 0) get().applyCanvasOps(ops, null);
+      // moved blocks this session wrote towards them go too (hcl/moved.ts)
+      if (ops.length > 0) get().applyCanvasOps([...ops, ...dropMovesTo(ir, removed, isHistoryMove)], null);
       return removed.length;
     },
 

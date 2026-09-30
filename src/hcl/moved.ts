@@ -202,6 +202,18 @@ export function moveOps(ir: IR, moves: MovedStatement[], options: MoveOptions = 
 }
 
 /**
+ * Ops that drop the moved blocks this session wrote towards resources that
+ * are being deleted: Terraform destroys the object either way, so they
+ * would only be clutter. History is left as it is.
+ */
+export function dropMovesTo(ir: IR, addresses: string[], isHistory: (m: MovedStatement) => boolean = () => false): Op[] {
+  const gone = new Set(addresses);
+  return movedBlocks(ir)
+    .filter((b) => !isHistory(b) && gone.has(baseOf(b.to)))
+    .map((b): Op => ({ kind: 'remove_extra', blockId: b.id }));
+}
+
+/**
  * Does the project look deployed (so renames should keep the state by
  * default)? A remote backend or Terraform Cloud, or state-aware blocks
  * (`moved`, `import`, `removed`) say someone runs `terraform apply` on it.
