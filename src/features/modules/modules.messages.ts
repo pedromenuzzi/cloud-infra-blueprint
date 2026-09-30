@@ -22,6 +22,7 @@ export const modulesMessages = defineMessages(
     nodeLabel: (name: string, source: string, warn: boolean) => `Module ${name}, ${source}${warn ? ', has warnings' : ''}`,
     notAnalysed: 'Not analysed',
     openHint: 'Double-click to open',
+    hasWarnings: 'Has warnings — see the inspector',
 
     /* its menu */
     open: 'Open module',
@@ -37,7 +38,7 @@ export const modulesMessages = defineMessages(
 
     /* the stats pill */
     stats: (resources: number, modules: number, connections: number) =>
-      `${resources} resource${s(resources)}, ${modules} module${s(modules)}, ${connections} connection${s(connections)}`,
+      `${resources} resource${s(resources)}, ${connections} connection${s(connections)}, ${modules} module${s(modules)}`,
   },
   {
     typeLabel: 'Módulo',
@@ -47,6 +48,7 @@ export const modulesMessages = defineMessages(
     nodeLabel: (name, source, warn) => `Módulo ${name}, ${source}${warn ? ', tem avisos' : ''}`,
     notAnalysed: 'Não analisado',
     openHint: 'Clique duas vezes para abrir',
+    hasWarnings: 'Tem avisos — veja o inspetor',
 
     open: 'Abrir módulo',
     registryPage: 'Página no Registry',
@@ -59,6 +61,6 @@ export const modulesMessages = defineMessages(
     deleteConfirm: 'Excluir',
 
     stats: (resources, modules, connections) =>
-      `${resources} recurso${s(resources)}, ${modules} módulo${s(modules)}, ${connections} ${connections === 1 ? 'conexão' : 'conexões'}`,
+      `${resources} recurso${s(resources)}, ${connections} ${connections === 1 ? 'conexão' : 'conexões'}, ${modules} módulo${s(modules)}`,
   },
 );

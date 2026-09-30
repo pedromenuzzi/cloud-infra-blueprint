@@ -41,6 +41,8 @@ import { layoutMessages } from './layout.messages';
 import { MultiSelectPanel } from './MultiSelectPanel';
 import { useLayout } from './layoutStore';
 import { SchemaFields } from './SchemaFields';
+import { isModuleId } from '@/ir/modules';
+import { ModuleInspector } from '@/features/modules/ModuleInspector';
 import { orderedFiles, useEditor } from './store';
 
 type Tab = 'rules' | 'properties' | 'connections';
@@ -927,7 +929,8 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
       <MultiSelectPanel ids={selectedIds} />
     );
   }
-  if (!node) return null;
+  // a module call has an inspector of its own
+  if (!node) return selection && isModuleId(selection) ? <ModuleInspector docked={docked} onMinimize={onMinimize} /> : null;
   return (
     <aside
       className={cn(

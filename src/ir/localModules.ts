@@ -77,6 +77,11 @@ export function readLocalModule(files: Record<string, string>, dir: string): Loc
   return value;
 }
 
+/** Parse errors of one child-module file (the code pane's markers: those files aren't in the root parse). */
+export function childFileDiagnostics(files: Record<string, string>, file: string): Diagnostic[] {
+  return readLocalModule(files, dirOfPath(file))?.diagnostics.filter((d) => d.file === file) ?? [];
+}
+
 export type ModuleTarget =
   /** a folder of this project; `module` null when the project doesn't hold it */
   | { kind: 'local'; dir: string; info: ModuleSourceInfo; module: LocalModule | null }
