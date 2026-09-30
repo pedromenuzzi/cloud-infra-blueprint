@@ -6,10 +6,11 @@
  * - connect to the container instead of going inside it.
  * Computed from the editor state at the time the fix is used.
  */
-import { list, ref } from '@/ir/expr';
+import { list } from '@/ir/expr';
 import { ARRANGE, CONTAINER_MIN_H, CONTAINER_MIN_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
-import type { IR, ResourceNode } from '@/ir/types';
+import { appendReference, instanceRef } from '@/ir/repeat';
+import type { Expression, IR, ResourceNode } from '@/ir/types';
 import type { Locale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
 import { connectionOp, findConnectionRule } from '@/resources/connect';
@@ -84,8 +85,11 @@ export function fixOps(ir: IR, nodeId: string, fix: DropFix, locale?: Locale): F
     const size = { w: CONTAINER_MIN_W, h: CONTAINER_MIN_H };
     const spot = slotIn(ir, vpc, size);
     const { node: group } = buildNewNode(ir, groupDef, { ...spot, ...size }, undefined, { name });
-    group.args.subnet_ids = list(subnets.map((s) => ref(`${s.id}.id`)));
-    const link = connectionOp(node, group, rule);
+    // every instance of a repeated subnet: `aws_subnet.private[*].id`
+    group.args.subnet_ids =
+      subnets.reduce<Expression | undefined>((acc, s) => appendReference(acc, instanceRef(s, 'id', { ir, all: true })) ?? acc, undefined) ??
+      list([]);
+    const link = connectionOp(node, group, rule, ir);
     if (!link) return null;
     const zones = new Set(subnets.map(subnetZone).filter((z): z is string => z !== undefined));
     const known = subnets.every((s) => subnetZone(s) !== undefined);
@@ -103,7 +107,7 @@ export function fixOps(ir: IR, nodeId: string, fix: DropFix, locale?: Locale): F
 
   const target = byId.get(fix.kind === 'use-group' ? fix.group.id : fix.target.id);
   const rule = target && (fix.kind === 'connect' ? fix.rule : findConnectionRule(def, target.type));
-  const op = target && rule ? connectionOp(node, target, rule) : null;
+  const op = target && rule ? connectionOp(node, target, rule, ir) : null;
   if (!target || !op) return null;
   return {
     ops: settleOps(ir, [op], nodeId),

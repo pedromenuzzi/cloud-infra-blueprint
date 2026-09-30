@@ -35,6 +35,7 @@ import {
 } from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
 import { deleteResourcesOps } from './connections';
+import { startMovedSession } from './movedSession';
 import { storeMessages } from './store.messages';
 
 const FILE_ORDER = ['main.tf', 'variables.tf', 'outputs.tf', 'providers.tf', 'versions.tf'];
@@ -256,6 +257,7 @@ export const useEditor = create<EditorState>((set, get) => {
       const { ir, diagnostics } = parseProject(project.files);
       const errored = diagnostics.some((d) => d.severity === 'error');
       const derived = derive(ir);
+      startMovedSession(ir);
       const fileList = orderedFiles(project.files);
       const { selection, activeFile } = get();
       set({

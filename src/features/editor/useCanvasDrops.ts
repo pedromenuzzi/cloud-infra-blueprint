@@ -205,7 +205,7 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
             position = slotIn(ir, parent, size, { preferred: { x: box.x - pr.x, y: box.y - pr.y }, except: irNode.id });
             if (!staying) {
               const rule = findConnectionRule(def, parent.type);
-              const link = rule && rule.mode === 'set' ? connectionOp(irNode, parent, rule) : null;
+              const link = rule && rule.mode === 'set' ? connectionOp(irNode, parent, rule, ir) : null;
               if (!link) {
                 snapBack(node.id);
                 return;

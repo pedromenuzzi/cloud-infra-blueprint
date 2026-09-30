@@ -3,7 +3,7 @@
  * a setting every selected resource shares, a tag, or a connection (attach
  * one security group to five instances).
  */
-import { lit } from '@/ir/expr';
+import { lit, pathTargets } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { connectionOp, findConnectionRule } from '@/resources/connect';
@@ -110,7 +110,7 @@ export function bulkConnectOps(nodes: ResourceNode[], target: ResourceNode): { o
     const op = connectionOp(n, target, rule);
     // a `set` rule re-points; count it as done when it already points at the target
     const current = 'block' in rule ? undefined : n.args[rule.arg];
-    if (!op || (current?.kind === 'ref' && current.path.startsWith(`${target.id}.`))) already++;
+    if (!op || (current?.kind === 'ref' && pathTargets(current.path, target.id))) already++;
     else ops.push(op);
   }
   return { ops, already };

@@ -2,8 +2,9 @@
  * Builds the IR node for a resource dropped from the palette — pure, so the
  * catalog tests can exercise exactly what users get on the canvas.
  */
-import { block, lit, list, literalString, ref, refTargetAddress } from '@/ir/expr';
+import { block, lit, list, literalString, refTargetAddress } from '@/ir/expr';
 import { deriveStructure } from '@/ir/graph';
+import { instanceRef } from '@/ir/repeat';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
 import type { CanvasPosition, Expression, IR, ResourceNode } from '@/ir/types';
@@ -94,7 +95,8 @@ export function buildNewNode(
   if (parent) {
     const rule = findConnectionRule(def, parent.type);
     if (rule && rule.mode === 'set') {
-      const link = ref(`${parent.id}.${rule.attr}`);
+      // a repeated container (subnets per AZ): its first instance, `aws_subnet.private[0].id`
+      const link = instanceRef(parent, rule.attr, { ir });
       if ('block' in rule) {
         // e.g. a GCP instance dropped in a subnetwork: network_interface { subnetwork = … }
         const current = values[rule.block];
@@ -106,7 +108,7 @@ export function buildNewNode(
     // the container hands down what it shares with its children (Azure location / resource group)
     for (const arg of def.inherit ?? []) {
       if (arg === rule?.arg || !def.fields.some((f) => f.name === arg) || !parent.args[arg]) continue;
-      values[arg] = ref(`${parent.id}.${arg}`);
+      values[arg] = instanceRef(parent, arg, { ir });
     }
     if (def.subnetCidr) {
       const cidr = freeSubnetCidr(ir, def, parent, values[def.subnetCidr.arg]);
