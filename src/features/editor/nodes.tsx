@@ -155,7 +155,7 @@ function WarnBadge() {
 /** a repeated resource (`count` / `for_each`) is one card with the others stacked behind it */
 export function ResourceNodeView(props: NodeProps<ResourceFlowNode>) {
   const { data } = props;
-  if (!data.repeat) return <ResourceCard {...props} />;
+  if (!data.repeat?.stack) return <ResourceCard {...props} />;
   return (
     <>
       <RepeatStack dim={data.security?.dim} vars={catVars(data.category)} />
@@ -200,7 +200,7 @@ function ResourceCard({ data, selected }: NodeProps<ResourceFlowNode>) {
 /** a repeated container (subnets per AZ): its other instances peek out behind it */
 export function ContainerNodeView(props: NodeProps<ContainerFlowNode>) {
   const { data } = props;
-  if (!data.repeat) return <ContainerCard {...props} />;
+  if (!data.repeat?.stack) return <ContainerCard {...props} />;
   return (
     <>
       <RepeatStack container dim={data.security?.dim} vars={catVars(data.category)} />

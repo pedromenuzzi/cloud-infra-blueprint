@@ -7,17 +7,22 @@ import type { CSSProperties } from 'react';
 import { cn } from '@/lib/utils';
 import type { RepeatLabel } from './repeatLabel';
 
-/** the badge; `inline` sits in a container's header row, else it rides the node's top edge */
-export function RepeatBadge({ repeat, inline = false }: { repeat: RepeatLabel; inline?: boolean }) {
+/**
+ * The badge; `inline` sits in a row (a container's header), else it rides
+ * the node's top edge. `plain`: outside a node (the inspector), in the
+ * foreground color instead of the category's.
+ */
+export function RepeatBadge({ repeat, inline = false, plain = false }: { repeat: RepeatLabel; inline?: boolean; plain?: boolean }) {
   return (
     <span
       title={repeat.title}
       data-testid="repeat-badge"
       className={cn(
-        'inline-flex max-w-[150px] shrink-0 items-center gap-1 rounded-full border bg-node px-1.5 py-px font-mono text-[10px] font-bold leading-tight text-(--cat-text) shadow-xs',
+        'inline-flex max-w-[150px] shrink-0 items-center gap-1 rounded-full border px-1.5 py-px font-mono text-[10px] font-bold leading-tight shadow-xs',
+        plain ? 'bg-surface-1 text-foreground' : 'bg-node text-(--cat-text)',
         !inline && 'absolute -top-2.5 left-3',
       )}
-      style={{ borderColor: 'color-mix(in srgb, var(--cat) 45%, transparent)' }}
+      style={plain ? undefined : { borderColor: 'color-mix(in srgb, var(--cat) 45%, transparent)' }}
     >
       <Layers className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
       <span className="truncate" translate="no">

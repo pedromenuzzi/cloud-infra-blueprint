@@ -111,6 +111,9 @@ tokens above — add a word here before adding it to the sweep's allowlist.
 | task definition | definição de tarefa |
 | launch template / launch configuration | launch template / launch configuration |
 | outputs | outputs |
+| repeat (a resource's `count` / `for_each`) / repeated | repetição / repetido |
+| instance (of a repeated resource) / key (of `for_each`) | instância / chave |
+| keep the state / moved block | manter o estado / bloco moved (`moved {}` is code) |
 | availability zone | zona de disponibilidade |
 | region | região |
 | tenancy | locação |

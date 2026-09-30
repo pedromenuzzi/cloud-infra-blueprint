@@ -14,6 +14,8 @@ export interface RepeatLabel {
   title: string;
   /** appended to the node's accessible name */
   aria: string;
+  /** draw the other instances behind the node — not for 0–1 or a single one */
+  stack: boolean;
 }
 
 const short = (text: string, max = 22) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
@@ -23,13 +25,19 @@ export function repeatLabel(rep: Repeat, locale: Locale = currentLocale()): Repe
   const source = `${rep.kind} = ${exprText(rep.expr).replace(/\s+/g, ' ')}`;
   if (rep.size !== undefined) {
     const keys = rep.kind === 'for_each' && rep.keys?.length ? ` · ${m.badgeKeys(rep.keys.slice(0, 6).join(', '))}${rep.keys.length > 6 ? '…' : ''}` : '';
-    return { text: `×${rep.size}`, title: `${short(source, 60)} — ${m.badgeInstances(rep.size)}${keys}`, aria: m.ariaInstances(rep.size) };
+    return {
+      text: `×${rep.size}`,
+      title: `${short(source, 60)} — ${m.badgeInstances(rep.size)}${keys}`,
+      aria: m.ariaInstances(rep.size),
+      stack: rep.size > 1,
+    };
   }
-  if (rep.optional) return { text: '×0–1', title: `${short(source, 60)} — ${m.badgeOptional}`, aria: m.ariaOptional };
-  if (rep.kind === 'count') return { text: '×?', title: `${short(source, 60)} — ${m.badgeUnknownCount}`, aria: m.ariaRepeated };
+  if (rep.optional) return { text: '×0–1', title: `${short(source, 60)} — ${m.badgeOptional}`, aria: m.ariaOptional, stack: false };
+  if (rep.kind === 'count') return { text: '×?', title: `${short(source, 60)} — ${m.badgeUnknownCount}`, aria: m.ariaRepeated, stack: true };
   return {
     text: `for_each: ${short(exprText(rep.expr).replace(/\s+/g, ' '))}`,
     title: `${short(source, 60)} — ${m.badgeUnknownEach}`,
     aria: m.ariaRepeated,
+    stack: true,
   };
 }

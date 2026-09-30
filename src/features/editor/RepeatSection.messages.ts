@@ -47,8 +47,9 @@ export const repeatMessages = defineMessages(
 
     /* keeping the state */
     keepState: 'Keep the state (write a moved block)',
-    keepStateHint: 'Terraform then moves what it already created instead of destroying and recreating it.',
+    keepStateHint: 'Renames and count / for_each changes then tell Terraform to move what it created instead of recreating it.',
     moves: (n: number) => `Writes ${n === 1 ? 'a moved block' : `${n} moved blocks`}:`,
+    stateNotKept: 'No moved block: Terraform will destroy and recreate it (see "Keep the state" above).',
     noMove: 'Nothing to move: Terraform will create and destroy instances.',
   },
   {
@@ -86,8 +87,9 @@ export const repeatMessages = defineMessages(
     referencesFollow: 'As referências acompanham:',
 
     keepState: 'Manter o estado (escrever um bloco moved)',
-    keepStateHint: 'Assim o Terraform move o que já criou em vez de destruir e recriar.',
+    keepStateHint: 'Renomear e mudar count / for_each passam a dizer ao Terraform para mover o que já criou em vez de recriar.',
     moves: (n: number) => `Escreve ${n === 1 ? 'um bloco moved' : `${n} blocos moved`}:`,
+    stateNotKept: 'Sem bloco moved: o Terraform vai destruir e recriar o recurso (veja "Manter o estado" acima).',
     noMove: 'Nada a mover: o Terraform vai criar e destruir instâncias.',
   },
 );

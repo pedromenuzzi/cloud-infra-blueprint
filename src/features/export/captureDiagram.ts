@@ -178,6 +178,7 @@ export async function captureDiagram(
       warn: data.warn,
       security: data.security as NodeSecurity | undefined,
       repeat: data.repeat?.text,
+      repeatStack: data.repeat?.stack,
     };
     nodes.push(entry);
     byId.set(node.id, entry);

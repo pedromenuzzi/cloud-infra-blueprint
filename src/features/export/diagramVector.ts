@@ -64,8 +64,9 @@ export interface DiagramNode {
   glyph?: string;
   warn?: boolean;
   security?: NodeSecurity;
-  /** `count` / `for_each` badge ("×3"): drawn as a stack, like the canvas */
+  /** `count` / `for_each` badge ("×3"), and whether the other instances are drawn stacked behind, like the canvas */
   repeat?: string;
+  repeatStack?: boolean;
 }
 
 export interface DiagramEdge {
@@ -230,7 +231,7 @@ class Painter {
       this.page.save();
       this.page.setOpacity(0.38);
     }
-    if (n.repeat) {
+    if (n.repeat && n.repeatStack) {
       // the other instances, stacked behind (RepeatStack on the canvas)
       for (const [offset, opacity] of [[10, 0.55], [5, 0.85]] as const) {
         this.page.rect(this.X(n.x + offset), this.Y(n.y + offset), this.S(n.w), this.S(n.h), {

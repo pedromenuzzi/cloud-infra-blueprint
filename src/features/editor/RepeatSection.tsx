@@ -9,6 +9,7 @@
 import { Plus, X } from 'lucide-react';
 import { useId, useState } from 'react';
 import { Button, Input, Select } from '@/components/ui';
+import { movedBlocks } from '@/hcl/moved';
 import { parseExpressionText } from '@/hcl/parser';
 import { useMessages } from '@/i18n/messages';
 import { exprMentions, lit } from '@/ir/expr';
@@ -68,6 +69,20 @@ function specOf(draft: Draft, m: (typeof repeatMessages)['en']): RepeatSpec | nu
 }
 
 const isSpec = (s: RepeatSpec | null | { error: string }): s is RepeatSpec | null => s === null || !('error' in s);
+
+/** the instance a `moved { from = web  to = web["green"] }` block sent the existing object to */
+function movedInstanceKey(ir: IR, address: string): string | undefined {
+  for (const m of movedBlocks(ir)) {
+    if (m.from !== address || !m.to.startsWith(`${address}[`) || !m.to.endsWith(']')) continue;
+    const key = m.to.slice(address.length + 1, -1).trim();
+    try {
+      return key.startsWith('"') ? String(JSON.parse(key)) : key;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
 
 /** does anything else in the project point at `id`? */
 function referenced(ir: IR, id: string): boolean {
@@ -226,7 +241,16 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
         : undefined
       : current.keys
     : undefined;
-  const defaultKey = adding ? (spec.kind === 'count' ? '0' : (addKeys?.[0] ?? '')) : removing ? (removeChoices?.[0] ?? (current.kind === 'count' ? '0' : '')) : '';
+  // removing: keep the instance a moved block says the existing object went to
+  const movedTo = removing ? movedInstanceKey(ir, node.id) : undefined;
+  const keptKey = movedTo !== undefined && (!removeChoices || removeChoices.includes(movedTo)) ? movedTo : undefined;
+  const defaultKey = adding
+    ? spec.kind === 'count'
+      ? '0'
+      : (addKeys?.[0] ?? '')
+    : removing
+      ? (keptKey ?? removeChoices?.[0] ?? (current.kind === 'count' ? '0' : ''))
+      : '';
   const key = draft.key !== '' && (!removeChoices || removeChoices.includes(draft.key)) && (!addKeys || addKeys.includes(draft.key)) ? draft.key : defaultKey;
 
   const change = pending && isSpec(spec) ? repeatChange(ir, node, spec, { keepState: keep, isHistory: isHistoryMove, key: key || undefined }) : null;
@@ -262,11 +286,7 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
         <h4 id={titleId} className="flex-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">
           {m.title}
         </h4>
-        {current ? (
-          <span className="relative" style={{ '--cat-text': 'var(--primary)', '--cat': 'var(--primary)' } as React.CSSProperties}>
-            <RepeatBadge repeat={repeatLabel(current)} inline />
-          </span>
-        ) : null}
+        {current ? <RepeatBadge repeat={repeatLabel(current)} inline plain /> : null}
       </div>
 
       <div role="radiogroup" aria-label={m.mode} className="flex rounded-md border bg-surface-1 p-0.5">
@@ -351,30 +371,31 @@ export function RepeatSection({ node }: { node: ResourceNode }) {
           {removing ? (
             <InstanceKeyField label={m.keepInstance} kind={current!.kind} choices={removeChoices} value={key} onChange={(v) => update({ key: v })} />
           ) : null}
-          {change.moves.length > 0 || adding || removing ? (
-            <>
-              <KeepStateToggle />
-              {keep && change.moves.length > 0 ? (
-                <div data-testid="moved-preview">
-                  <span className="block text-[10.5px] text-faint">{m.moves(change.moves.length)}</span>
-                  <code className="mt-0.5 block space-y-0.5 rounded-sm border bg-surface-1 px-2 py-1 font-mono text-[10.5px] leading-snug text-muted">
-                    {change.moves.slice(0, 4).map((mv) => (
-                      <span key={`${mv.from}>${mv.to}`} className="block truncate" title={`${mv.from} → ${mv.to}`}>
-                        {mv.from} → {mv.to}
-                      </span>
-                    ))}
-                    {change.moves.length > 4 ? <span className="block">…</span> : null}
-                  </code>
-                </div>
-              ) : null}
-            </>
+          {keep && change.moves.length > 0 ? (
+            <div data-testid="moved-preview">
+              <span className="block text-[10.5px] text-faint">{m.moves(change.moves.length)}</span>
+              <code className="mt-0.5 block space-y-1 rounded-sm border bg-surface-1 px-2 py-1 font-mono text-[10.5px] leading-snug text-muted [overflow-wrap:anywhere]">
+                {change.moves.slice(0, 3).map((mv) => (
+                  <span key={`${mv.from}>${mv.to}`} className="block">
+                    <span className="block">from = {mv.from}</span>
+                    <span className="block">to&nbsp;&nbsp; = {mv.to}</span>
+                  </span>
+                ))}
+                {change.moves.length > 3 ? <span className="block">…</span> : null}
+              </code>
+            </div>
+          ) : change.moves.length > 0 ? (
+            <p className="text-[10.5px] leading-snug text-faint" data-testid="no-moved">
+              {m.stateNotKept}
+            </p>
           ) : current && spec && current.kind !== spec.kind ? (
-            <p className="text-[11px] text-faint">{m.noMove}</p>
+            <p className="text-[10.5px] leading-snug text-faint">{m.noMove}</p>
           ) : null}
           {example ? (
-            <p className="text-[10.5px] leading-snug text-faint">
-              {m.referencesFollow} <code className="break-all font-mono">{example}</code>
-            </p>
+            <div className="text-[10.5px] leading-snug text-faint">
+              {m.referencesFollow}
+              <code className="block font-mono [overflow-wrap:anywhere]">{example}</code>
+            </div>
           ) : null}
           <div className="flex justify-end gap-1.5">
             <Button variant="outline" size="sm" onClick={cancel}>
