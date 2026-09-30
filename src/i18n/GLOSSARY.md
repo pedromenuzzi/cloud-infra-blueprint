@@ -86,6 +86,15 @@ tokens above — add a word here before adding it to the sweep's allowlist.
 | cloud provider (AWS, Azure, GCP) | provedor de nuvem ("recursos AWS") |
 | Terraform provider / provider schema | provider / schema |
 | root / child module | módulo raiz / filho |
+| module / module call | módulo / chamada de módulo ("2 chamadas de módulo" when counting `module` blocks) |
+| local module / Registry module | módulo local / módulo do Registry (the source-kind chips Local, Registry and Git read the same in both languages) |
+| Terraform Registry / Registry page | Terraform Registry / página no Registry (product name) |
+| source (of a module) / version | origem / versão (`source` and `version` stay code) |
+| input / output (of a module) | entrada / output ("entrada obrigatória", "outputs lidos em outros blocos") |
+| meta-arguments | meta-argumentos |
+| open module / read-only module view | abrir módulo / visualização somente leitura |
+| root (breadcrumb) | raiz |
+| not analysed / not estimated | não analisado / sem estimativa |
 | subnet | sub-rede (in prose too — `subnet_id` stays code) |
 | public / private subnet | sub-rede pública / privada |
 | security group | grupo de segurança |
