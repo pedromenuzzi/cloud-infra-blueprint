@@ -702,7 +702,7 @@ export function RulesEditor() {
           </Notice>
         ) : null}
         {firewall ? <FirewallSettings node={node} apply={apply} /> : null}
-        <div className="flex items-center gap-2 px-5 pt-3">
+        <div className="flex flex-wrap items-center gap-2 px-5 pt-3 max-sm:px-4">
           {!firewall ? (
             <div className="flex rounded-[8px] border bg-surface-2 p-0.5" role="tablist" aria-label={m.direction}>
               {(['inbound', 'outbound'] as const).map((d) => (

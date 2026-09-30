@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { hasOpenLayer } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
@@ -100,6 +100,24 @@ function SkipLinks() {
   );
 }
 
+/** the security panel (340 px) and the floating inspector side by side, with their margins */
+const BOTH_PANELS = 340 + INSPECTOR_WIDTH + 3 * 12;
+
+/** Is the canvas too narrow for the security panel and the inspector at once (a phone)? */
+function useOnePanelAtATime(canvas: RefObject<HTMLElement | null>, ready: boolean): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const el = canvas.current;
+    if (!el) return;
+    const check = () => setNarrow(el.clientWidth < BOTH_PANELS);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [canvas, ready]);
+  return narrow;
+}
+
 /** The docked inspector's column when nothing is selected. */
 function DockedEmpty() {
   const m = useMessages(layoutMessages);
@@ -129,6 +147,19 @@ export default function EditorPage() {
   const selection = useEditor((s) => s.selection);
   const securityPanel = useSecurityUi((s) => s.panelOpen);
   const dragging = useCanvasDrag((s) => s.kind !== null);
+  const onePanel = useOnePanelAtATime(canvasRef, ready);
+  // one panel at a time on a narrow canvas: the security panel covers the inspector while it's
+  // open (it opens with the resource a toast's "Show" is about), and a resource picked while it's
+  // already open — from the panel itself — closes it for the inspector
+  const seen = useRef({ selection, securityPanel });
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = { selection, securityPanel };
+    if (onePanel && securityPanel && before.securityPanel && selection !== null && selection !== before.selection) {
+      useSecurityUi.getState().setPanel(false);
+    }
+  }, [onePanel, selection, securityPanel]);
+  const inspectorYields = onePanel && securityPanel;
   useDocumentTitle(useEditor((s) => s.projectName));
   useSecurityDelta();
   useCanvasDragTracking(canvasRef, ready);
@@ -285,7 +316,7 @@ export default function EditorPage() {
       <div className="relative min-w-0 flex-1">
         <CanvasPane />
         {wide && canvasShown ? <CanvasLayoutControls /> : null}
-        {floatingSlot && selection ? (
+        {floatingSlot && selection && !inspectorYields ? (
           <div
             className={cn('absolute bottom-3 right-3 top-3 z-20 flex transition-opacity', FLOAT_CHROME)}
             style={{ width: `min(${INSPECTOR_WIDTH}px, calc(100% - 24px))` }}

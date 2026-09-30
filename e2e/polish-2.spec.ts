@@ -513,6 +513,10 @@ async function rulesReadable(page: Page) {
     const box = dialog.getBoundingClientRect();
     const ctx = document.createElement('canvas').getContext('2d')!;
     const problems: string[] = [];
+    for (const button of dialog.querySelectorAll('button')) {
+      const r = button.getBoundingClientRect();
+      if (r.width > 0 && (r.left < box.left - 0.5 || r.right > box.right + 0.5)) problems.push(`${button.textContent?.trim() || button.getAttribute('aria-label')}: outside the dialog`);
+    }
     for (const el of dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement>('tr[data-rule] select, tr[data-rule] input')) {
       const r = el.getBoundingClientRect();
       const label = el.getAttribute('aria-label');
@@ -553,6 +557,19 @@ test.describe('rules editor on narrow screens', () => {
     });
   }
 
+  test('a security group at 390 px: cards, and the toolbar wraps instead of pushing "Add rule" out', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem('cb-tips-dismissed', '1'));
+    await page.goto('/dashboard');
+    await page.getByRole('button', { name: `Open project ${SEED_PROJECT}` }).click();
+    await page.locator('.react-flow__node[data-id="aws_security_group.web"]').click();
+    await page.getByRole('button', { name: 'Edit rules' }).click();
+    const dialog = page.getByRole('dialog', { name: /^Rules for/ });
+    await expect(dialog.locator('.bp-rules')).toHaveAttribute('data-stacked');
+    await expect(dialog.getByRole('button', { name: 'Add rule' })).toBeVisible();
+    expect(await rulesReadable(page)).toEqual([]);
+  });
+
   test('at 1440 px the NSG keeps its table, wide enough for Portuguese', async ({ page }) => {
     await openProject(page, 'nsg-wide', NSG_TF, { locale: 'pt-BR' });
     await page.locator('.react-flow__node[data-id="azurerm_network_security_group.web"]').click();
@@ -583,6 +600,84 @@ test.describe('rules editor on narrow screens', () => {
       await page.getByRole('button', { name: 'Editar regras' }).click();
       await expect(page.getByRole('dialog').locator('.bp-rules')).toHaveAttribute('data-stacked');
       expect(await seriousAxeViolations(page, '[role="dialog"]')).toEqual([]);
+    });
+  }
+});
+
+/* ------------------------------------------------------------ phone security flow */
+
+test.describe('phone: the security toast’s "Show"', () => {
+  const panel = (page: Page) => page.getByRole('complementary', { name: /^(Security|Segurança)$/ });
+  const inspector = (page: Page) => page.getByRole('complementary', { name: /^(Inspector|Inspetor)$/ });
+
+  /** open SSH to the internet from the rules editor: the edit that raises the toast */
+  async function worsen(page: Page, en: boolean) {
+    await page.locator('.react-flow__node[data-id="aws_security_group.web"]').click();
+    await inspector(page).getByRole('button', { name: en ? 'Edit rules' : 'Editar regras' }).click();
+    const dialog = page.getByRole('dialog', { name: en ? /^Rules for/ : /^Regras de/ });
+    await dialog.getByRole('button', { name: en ? 'Add rule' : 'Nova regra' }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: 'SSH' }).click();
+    const row = dialog.locator('tr[data-rule="aws_security_group.web:ingress:3"]');
+    await row.getByRole('button', { name: en ? 'Add source' : 'Adicionar origem' }).click();
+    await page.getByRole('menu').getByRole('menuitem', { name: en ? /Anywhere, IPv4/ : /Qualquer lugar, IPv4/ }).click();
+    return dialog;
+  }
+
+  async function openAt390(page: Page, locale = 'en', theme?: string) {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(
+      ({ locale, theme }) => {
+        localStorage.setItem('cb-tips-dismissed', '1');
+        localStorage.setItem('cb-locale', locale);
+        if (theme) localStorage.setItem('cb-theme', theme);
+      },
+      { locale, theme },
+    );
+    await page.goto('/dashboard');
+    await page.getByRole('button', { name: locale === 'en' ? `Open project ${SEED_PROJECT}` : `Abrir projeto ${SEED_PROJECT}` }).click();
+    await expect(page.locator('.react-flow__node[data-id="aws_security_group.web"]')).toBeVisible();
+  }
+
+  test('one panel at a time: the finding, focused; closing it brings the inspector back', async ({ page }) => {
+    await openAt390(page);
+    const dialog = await worsen(page, true);
+    const toast = page.locator('[data-bp-live]');
+    await toast.getByRole('button', { name: 'Show' }).click();
+    await expect(dialog).toBeHidden();
+
+    // the panel alone, open on the finding, and focus on it
+    await expect(panel(page)).toBeVisible();
+    await expect(inspector(page)).toHaveCount(0);
+    const finding = panel(page).getByRole('button', { name: /^SSH \(port 22\) is open to the internet/ });
+    await expect(finding).toHaveAttribute('aria-expanded', 'true');
+    await expect(finding).toBeFocused();
+
+    // closing the panel shows what the finding is about
+    await panel(page).getByRole('button', { name: 'Close security panel' }).click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect(inspector(page).getByTestId('inspector-address')).toHaveText('aws_instance.web');
+  });
+
+  test('a resource picked from the open panel takes over: the panel closes for the inspector', async ({ page }) => {
+    await openAt390(page);
+    await page.getByRole('button', { name: /^Security grade/ }).click();
+    await expect(panel(page)).toBeVisible();
+    await expect(inspector(page)).toHaveCount(0);
+    await panel(page).getByRole('button', { name: /^Instance metadata allows IMDSv1/ }).click();
+    await panel(page).getByRole('button', { name: 'web', exact: true }).first().click();
+    await expect(panel(page)).toHaveCount(0);
+    await expect(inspector(page).getByTestId('inspector-address')).toHaveText('aws_instance.web');
+  });
+
+  for (const theme of ['light', 'dark']) {
+    test(`pt-BR, ${theme}: "Mostrar" opens the panel on the finding alone, and passes axe`, async ({ page }) => {
+      await openAt390(page, 'pt-BR', theme);
+      await worsen(page, false);
+      await page.locator('[data-bp-live]').getByRole('button', { name: 'Mostrar' }).click();
+      await expect(panel(page)).toBeVisible();
+      await expect(inspector(page)).toHaveCount(0);
+      await expect(page.locator(':focus')).toHaveAttribute('aria-expanded', 'true');
+      expect(await seriousAxeViolations(page, 'aside[aria-label="Segurança"]')).toEqual([]);
     });
   }
 });
