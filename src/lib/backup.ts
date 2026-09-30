@@ -238,11 +238,14 @@ export type ParseResult =
 /** depth of a zip path: 0 for `a`, 1 for `x/a` */
 const depthOf = (path: string) => path.split('/').length - 1;
 
-/** Reads and validates a backup .zip. Nothing is stored. */
-export function parseBackup(bytes: Uint8Array): ParseResult {
-  const m = text();
-  // pass 1: list the entries without inflating any
-  const listed: Array<{ name: string; size: number }> = [];
+interface ListedEntry {
+  name: string;
+  size: number;
+}
+
+/** The entries of a zip, without inflating any; null when it isn't a readable zip. */
+function listEntries(bytes: Uint8Array): ListedEntry[] | null {
+  const listed: ListedEntry[] = [];
   try {
     unzipSync(bytes, {
       filter: (file) => {
@@ -251,13 +254,43 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
       },
     });
   } catch {
-    return { ok: false, error: m.notAZip };
+    return null;
   }
+  return listed;
+}
 
-  // the manifest at the top, or one folder down (a backup that was unzipped and zipped again)
-  const manifestEntry = listed
+/** The manifest at the top, or one folder down (a backup that was unzipped and zipped again). */
+function manifestEntryOf(listed: ListedEntry[]): ListedEntry | undefined {
+  return listed
     .filter((e) => (e.name === MANIFEST || e.name.endsWith(`/${MANIFEST}`)) && depthOf(e.name) <= 1)
     .sort((a, b) => depthOf(a.name) - depthOf(b.name))[0];
+}
+
+/**
+ * Is this .zip a backup made by this app (rather than Terraform to import)?
+ * Only its manifest is inflated: one of ours says `"format": "cloud-blueprint-backup"`
+ * — whatever its version, so a newer backup still opens the restore dialog to say so.
+ */
+export function isBackupZip(bytes: Uint8Array): boolean {
+  const listed = listEntries(bytes);
+  const entry = listed && manifestEntryOf(listed);
+  if (!entry || entry.size > MAX_MANIFEST_BYTES) return false;
+  try {
+    const json: unknown = JSON.parse(strFromU8(unzipSync(bytes, { filter: (file) => file.name === entry.name })[entry.name]));
+    return isRecord(json) && json.format === BACKUP_FORMAT;
+  } catch {
+    return false;
+  }
+}
+
+/** Reads and validates a backup .zip. Nothing is stored. */
+export function parseBackup(bytes: Uint8Array): ParseResult {
+  const m = text();
+  // pass 1: list the entries without inflating any
+  const listed = listEntries(bytes);
+  if (!listed) return { ok: false, error: m.notAZip };
+
+  const manifestEntry = manifestEntryOf(listed);
   if (!manifestEntry) {
     return listed.some((e) => isTerraformPath(e.name))
       ? { ok: false, hint: 'terraform', error: m.terraformExport }

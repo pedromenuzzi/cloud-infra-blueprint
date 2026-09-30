@@ -20,6 +20,7 @@ import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Kbd, LogoMark, Select } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { backupAmong, openRestore } from '@/features/data/dataDialogs';
 import { DataPanel, StorageNudge } from '@/features/data/DataPanel';
 import { OpenFolderButton } from '@/features/data/OpenFolderButton';
 import { openGithubImport } from '@/features/import/githubImportStore';
@@ -356,6 +357,13 @@ export default function DashboardPage() {
     navigate(`/editor/${project.id}`);
   };
 
+  /** Files dropped or picked to import: one of this app's backups opens the restore dialog instead. */
+  const importOrRestore = async (files: File[]) => {
+    const backup = await backupAmong(files);
+    if (backup) openRestore(backup);
+    else await importProject(readTerraformFiles(files));
+  };
+
   const startTemplate = (slug: string) => {
     const t = getTemplate(slug);
     if (!t) return;
@@ -400,7 +408,11 @@ export default function DashboardPage() {
         e.preventDefault();
         setDragging(false);
         // reads the DataTransfer synchronously (it's emptied when this handler returns)
-        void importProject(readDroppedTerraform(e.dataTransfer));
+        const files = [...e.dataTransfer.files];
+        const folder = [...e.dataTransfer.items].some((item) => item.kind === 'file' && item.webkitGetAsEntry?.()?.isDirectory);
+        // one file may be a backup .zip; anything else is Terraform
+        if (files.length === 1 && !folder) void importOrRestore(files);
+        else void importProject(readDroppedTerraform(e.dataTransfer));
       }}
     >
       <AppRail active="projects" onTemplates={() => setTemplatesOpen(true)} />
@@ -439,7 +451,7 @@ export default function DashboardPage() {
                 aria-label={m.importFilesLabel}
                 onChange={(e) => {
                   // copy before resetting the input: its FileList is live and empties
-                  if (e.target.files?.length) void importProject(readTerraformFiles([...e.target.files]));
+                  if (e.target.files?.length) void importOrRestore([...e.target.files]);
                   e.target.value = '';
                 }}
               />

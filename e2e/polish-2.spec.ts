@@ -6,7 +6,9 @@
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { strToU8, zipSync } from 'fflate';
 import { expect, test, type Page } from '@playwright/test';
+import { SEED_PROJECT, storedProjects } from './helpers';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
@@ -150,4 +152,121 @@ test.describe('long type names on canvas nodes', () => {
     });
     expect(inside).toBe(true);
   });
+});
+
+/* ------------------------------------------------------------ backup drop */
+
+/** a backup .zip as the app writes it: manifest, README, one folder per project */
+function backupZip(projects: Array<{ id: string; name: string }>): Uint8Array {
+  const entries: Record<string, Uint8Array> = {};
+  const manifest = {
+    format: 'cloud-blueprint-backup',
+    version: 1,
+    app: 'Cloud Blueprint',
+    exportedAt: '2026-09-30T10:00:00.000Z',
+    projects: projects.map((p) => {
+      entries[`${p.name}/main.tf`] = strToU8(`resource "aws_s3_bucket" "${p.name.replace(/-/g, '_')}" {\n  bucket = "${p.name}"\n}\n`);
+      return {
+        ...p,
+        createdAt: '2026-09-01T00:00:00.000Z',
+        updatedAt: '2026-09-02T00:00:00.000Z',
+        hash: '',
+        files: [{ name: 'main.tf', path: `${p.name}/main.tf` }],
+      };
+    }),
+  };
+  return zipSync({ 'manifest.json': strToU8(JSON.stringify(manifest, null, 2)), 'README.md': strToU8('# backup\n'), ...entries });
+}
+
+const TWO_PROJECTS = [
+  { id: 'prj_billing', name: 'billing-api' },
+  { id: 'prj_lake', name: 'data-lake' },
+];
+
+/** drop files on the dashboard the way the OS does (a DataTransfer of Files) */
+async function dropFiles(page: Page, files: Array<{ name: string; bytes: Uint8Array }>) {
+  await page.evaluate((list) => {
+    const dt = new DataTransfer();
+    for (const f of list) dt.items.add(new File([new Uint8Array(f.bytes)], f.name, { type: 'application/zip' }));
+    const target = document.querySelector('main')!;
+    for (const type of ['dragenter', 'dragover', 'drop']) {
+      target.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }));
+    }
+  }, files.map((f) => ({ name: f.name, bytes: [...f.bytes] })));
+}
+
+async function openDashboard(page: Page, locale = 'en', theme?: string) {
+  await page.addInitScript(
+    ({ locale, theme }) => {
+      localStorage.setItem('cb-locale', locale);
+      localStorage.setItem('cb-tips-dismissed', '1');
+      if (theme) localStorage.setItem('cb-theme', theme);
+    },
+    { locale, theme },
+  );
+  await page.goto('/dashboard');
+  await expect(page.getByRole('heading', { name: SEED_PROJECT })).toBeVisible();
+}
+
+test.describe('a backup .zip given to the importer', () => {
+  test('dropped on the dashboard: the restore dialog opens instead of an import', async ({ page }) => {
+    await openDashboard(page);
+    await dropFiles(page, [{ name: 'cloud-blueprint-backup-2026-09-30.zip', bytes: backupZip(TWO_PROJECTS) }]);
+    const dialog = page.getByRole('dialog', { name: /Restore from backup/ });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('billing-api').first()).toBeVisible();
+    await expect(dialog.getByText('data-lake').first()).toBeVisible();
+    // nothing was imported as a Terraform project, and we're still on the dashboard
+    await expect(page).toHaveURL(/\/dashboard$/);
+    expect((await storedProjects(page)).map((p) => p.name)).toEqual([SEED_PROJECT]);
+
+    await dialog.getByRole('button', { name: /^Restore 2 projects/ }).click();
+    await expect(dialog).toBeHidden();
+    await expect.poll(async () => (await storedProjects(page)).map((p) => p.name).sort()).toEqual(['billing-api', 'data-lake', SEED_PROJECT]);
+  });
+
+  test('picked with "Import .tf": the restore dialog too', async ({ page }) => {
+    await openDashboard(page);
+    await page.getByLabel('Import Terraform files').setInputFiles({
+      name: 'my-backup.zip',
+      mimeType: 'application/zip',
+      buffer: Buffer.from(backupZip(TWO_PROJECTS)),
+    });
+    await expect(page.getByRole('dialog', { name: /Restore from backup/ })).toBeVisible();
+    expect((await storedProjects(page)).map((p) => p.name)).toEqual([SEED_PROJECT]);
+  });
+
+  test('from the command palette in the editor: back to the dashboard, restore dialog open', async ({ page }) => {
+    await openDashboard(page);
+    await page.getByRole('button', { name: `Open project ${SEED_PROJECT}` }).click();
+    await expect(page).toHaveURL(/\/editor\//);
+    await page.keyboard.press('Control+k');
+    const palette = page.getByRole('dialog', { name: 'Command palette' });
+    await palette.getByPlaceholder('Search or run a command…').fill('import terraform');
+    const chooser = page.waitForEvent('filechooser');
+    await palette.getByRole('option', { name: /Import Terraform files/ }).click();
+    await (await chooser).setFiles({ name: 'backup.zip', mimeType: 'application/zip', buffer: Buffer.from(backupZip(TWO_PROJECTS)) });
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect(page.getByRole('dialog', { name: /Restore from backup/ })).toBeVisible();
+  });
+
+  test('a zip of Terraform still imports as one project', async ({ page }) => {
+    await openDashboard(page);
+    const terraform = zipSync({ 'infra/main.tf': strToU8('resource "aws_vpc" "core" {\n  cidr_block = "10.0.0.0/16"\n}\n') });
+    await dropFiles(page, [{ name: 'infra.zip', bytes: terraform }]);
+    await expect(page).toHaveURL(/\/editor\//);
+    await expect(page.getByRole('dialog', { name: /Restore from backup/ })).toHaveCount(0);
+    await expect.poll(async () => (await storedProjects(page)).map((p) => p.name).sort()).toEqual(['infra', SEED_PROJECT]);
+  });
+
+  for (const theme of ['light', 'dark']) {
+    test(`pt-BR, ${theme}: "Restaurar backup" opens for a dropped backup, and passes axe`, async ({ page }) => {
+      await openDashboard(page, 'pt-BR', theme);
+      await dropFiles(page, [{ name: 'backup.zip', bytes: backupZip(TWO_PROJECTS) }]);
+      const dialog = page.getByRole('dialog', { name: /Restaurar backup/ });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByText('billing-api').first()).toBeVisible();
+      expect(await seriousAxeViolations(page, '[role="dialog"]')).toEqual([]);
+    });
+  }
 });
