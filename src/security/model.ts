@@ -12,9 +12,12 @@
  * blocks) is kept visible instead of guessed: `portsExpr` / `unmodeled` on a
  * rule, `hidden` on its owner.
  */
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { exprPreview, refTargetAddress } from '@/ir/expr';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { coversFamily, parseCidr, type IpFamily } from './cidr';
+import { modelMessages } from './model.messages';
 
 export type { IpFamily } from './cidr';
 export type Direction = 'inbound' | 'outbound';
@@ -191,6 +194,7 @@ export function parsePortRange(text: string): { from: number | null; to: number 
 
 interface Ctx {
   byId: Map<string, ResourceNode>;
+  m: (typeof modelMessages)['en'];
 }
 
 /** CIDR behind `aws_vpc.main.cidr_block` / `aws_subnet.x.cidr_block` when it is a literal */
@@ -284,11 +288,12 @@ function awsPorts(
 
 /** where an owner's inline rules live: static blocks, `x = [{…}]` objects, or something unreadable */
 function inlineBodies(
+  ctx: Ctx,
   r: ResourceNode,
   field: string,
 ): { bodies: Array<Record<string, Expression>>; syntax?: 'object'; hidden: string[] } {
   const hidden: string[] = [];
-  if (Object.keys(r.args).some((k) => k.startsWith(`dynamic "${field}"`))) hidden.push(`dynamic "${field}" blocks`);
+  if (Object.keys(r.args).some((k) => k.startsWith(`dynamic "${field}"`))) hidden.push(ctx.m.dynamicBlocks(field));
   const e = r.args[field];
   if (!e) return { bodies: [], hidden };
   if (e.kind === 'block' || e.kind === 'blocks') return { bodies: blocksOf(e), hidden };
@@ -389,7 +394,7 @@ function awsNaclRule(
 
 function awsInline(ctx: Ctx, r: ResourceNode, kind: 'sg' | 'nacl', out: Out) {
   for (const [field, direction] of [['ingress', 'inbound'], ['egress', 'outbound']] as const) {
-    const { bodies, syntax, hidden } = inlineBodies(r, field);
+    const { bodies, syntax, hidden } = inlineBodies(ctx, r, field);
     for (const reason of hidden) hide(out, r.id, [direction], reason);
     bodies.forEach((body, index) => {
       const base = {
@@ -485,7 +490,7 @@ function gcpFirewall(ctx: Ctx, r: ResourceNode, out: Out) {
   const disabled = a.disabled?.kind === 'literal' && a.disabled.value === true;
   const priority = a.priority === undefined ? 1000 : num(a.priority);
   for (const action of ['allow', 'deny'] as const) {
-    const { bodies, hidden } = inlineBodies(r, action);
+    const { bodies, hidden } = inlineBodies(ctx, r, action);
     for (const reason of hidden) hide(out, r.id, [direction], reason);
     bodies.forEach((body, index) => {
       const rowUnmodeled = [...unmodeled];
@@ -585,14 +590,15 @@ export interface SecurityRules {
   hidden: Map<string, HiddenRules[]>;
 }
 
-export function extractSecurity(ir: IR): SecurityRules {
-  const ctx: Ctx = { byId: new Map(ir.resources.map((r) => [r.id, r] as const)) };
+/** `locale`: the language of the `hidden` reasons */
+export function extractSecurity(ir: IR, locale: Locale = currentLocale()): SecurityRules {
+  const ctx: Ctx = { byId: new Map(ir.resources.map((r) => [r.id, r] as const)), m: messagesFor(modelMessages, locale) };
   const out: Out = { rules: [], hidden: new Map() };
   for (const r of ir.resources) {
     const kind = OWNER_TYPES[r.type];
     if (kind === 'sg' || kind === 'nacl') awsInline(ctx, r, kind, out);
     else if (kind === 'nsg') {
-      const { bodies, syntax, hidden } = inlineBodies(r, 'security_rule');
+      const { bodies, syntax, hidden } = inlineBodies(ctx, r, 'security_rule');
       for (const reason of hidden) hide(out, r.id, ['inbound', 'outbound'], reason);
       bodies.forEach((body, index) => {
         const origin: RuleOrigin = { kind: 'inline', field: 'security_rule', index, ...(syntax ? { syntax } : {}) };
@@ -622,6 +628,7 @@ export function ruleBlockKey(rule: SecurityRule): string {
 
 // ------------------------------------------------------------------ labels
 
+/** product and protocol names (never translated); 3000, 8080 and 8443 are in wellKnown */
 const WELL_KNOWN: Record<number, string> = {
   20: 'FTP',
   21: 'FTP',
@@ -638,7 +645,6 @@ const WELL_KNOWN: Record<number, string> = {
   1521: 'Oracle',
   2049: 'NFS',
   2375: 'Docker',
-  3000: 'App',
   3306: 'MySQL',
   3389: 'RDP',
   5432: 'PostgreSQL',
@@ -646,24 +652,35 @@ const WELL_KNOWN: Record<number, string> = {
   5601: 'Kibana',
   5672: 'AMQP',
   6379: 'Redis',
-  8080: 'HTTP alt',
-  8443: 'HTTPS alt',
   9092: 'Kafka',
   9200: 'Elasticsearch',
   11211: 'Memcached',
   27017: 'MongoDB',
 };
 
-export function serviceName(rule: Pick<SecurityRule, 'protocol' | 'fromPort' | 'toPort'> & { portsExpr?: string }): string {
-  if (rule.portsExpr) return rule.protocol === '?' ? `Protocol ${rule.portsExpr}` : `${rule.protocol.toUpperCase()} ${rule.portsExpr}`;
-  if (rule.protocol === 'all' && rule.fromPort === null) return 'All traffic';
+export function serviceName(
+  rule: Pick<SecurityRule, 'protocol' | 'fromPort' | 'toPort'> & { portsExpr?: string },
+  locale: Locale = currentLocale(),
+): string {
+  const m = messagesFor(modelMessages, locale);
+  if (rule.portsExpr) return rule.protocol === '?' ? m.protocolExpr(rule.portsExpr) : `${rule.protocol.toUpperCase()} ${rule.portsExpr}`;
+  if (rule.protocol === 'all' && rule.fromPort === null) return m.allTraffic;
   if (rule.protocol === 'icmp') return 'ICMP';
   const proto = rule.protocol === 'all' ? 'TCP/UDP' : rule.protocol.toUpperCase();
-  if (rule.fromPort === null) return `All ${proto}`;
-  if (rule.fromPort === rule.toPort) return WELL_KNOWN[rule.fromPort] ?? `${proto} ${rule.fromPort}`;
+  if (rule.fromPort === null) return m.allOf(proto);
+  if (rule.fromPort === rule.toPort) return wellKnown(rule.fromPort, m) ?? `${proto} ${rule.fromPort}`;
   return `${proto} ${rule.fromPort}–${rule.toPort}`;
 }
 
+/** the service on a port; the few that are descriptions (not product names) in the UI language */
+function wellKnown(port: number, m: (typeof modelMessages)['en']): string | undefined {
+  if (port === 8080) return m.httpAlt;
+  if (port === 8443) return m.httpsAlt;
+  if (port === 3000) return m.app;
+  return WELL_KNOWN[port];
+}
+
+/** "443", "8000-8080", "all", "icmp" or the expression: a key as well as a label (see portText) */
 export function portLabel(rule: Pick<SecurityRule, 'protocol' | 'fromPort' | 'toPort' | 'portsExpr'>): string {
   if (rule.portsExpr) return rule.portsExpr;
   if (rule.protocol === 'icmp') return 'icmp';
@@ -671,20 +688,44 @@ export function portLabel(rule: Pick<SecurityRule, 'protocol' | 'fromPort' | 'to
   return rule.fromPort === rule.toPort ? String(rule.fromPort) : `${rule.fromPort}-${rule.toPort}`;
 }
 
-export function peerLabel(peer: RulePeer, nameOf: (id: string) => string = (id) => id): string {
+/**
+ * A port label (portLabel, trafficParts, portsLabel — "all", "all TCP",
+ * "other ports"…) as a person reads it; numbers, "icmp" and expressions
+ * stay as they are.
+ */
+export function portText(label: string, locale: Locale = currentLocale()): string {
+  const w = messagesFor(modelMessages, locale).ports;
+  switch (label) {
+    case 'all':
+      return w.all;
+    case 'all TCP':
+      return w.allTcp;
+    case 'all UDP':
+      return w.allUdp;
+    case 'other protocols':
+      return w.otherProtocols;
+    case 'other ports':
+      return w.otherPorts;
+    default:
+      return label;
+  }
+}
+
+export function peerLabel(peer: RulePeer, nameOf: (id: string) => string = (id) => id, locale: Locale = currentLocale()): string {
+  const m = messagesFor(modelMessages, locale);
   switch (peer.kind) {
     case 'any':
-      if (peer.implicit) return 'Internet (default 0.0.0.0/0)';
+      if (peer.implicit) return m.internetDefault;
       if (peer.value === '0.0.0.0/0' || peer.value === '0.0.0.0') return 'Internet (IPv4)';
       if (peer.value === '::/0') return 'Internet (IPv6)';
-      if (peer.value === '*') return 'Any source (*)';
+      if (peer.value === '*') return m.anySource;
       return 'Internet';
     case 'cidr':
       return peer.src?.expr.kind === 'ref' ? `${peer.src.expr.path} (${peer.value})` : peer.value;
     case 'group':
       return nameOf(peer.ref);
     case 'self':
-      return 'itself';
+      return m.itself;
     case 'tag':
       return `tag:${peer.value}`;
     case 'other':

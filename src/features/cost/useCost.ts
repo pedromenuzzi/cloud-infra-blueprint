@@ -3,6 +3,7 @@ import { projectCost } from '@/cost/estimate';
 import { loadedPriceBook, loadPriceBook, onPriceBookLoaded } from '@/cost/load';
 import type { PriceBook, ProjectCost } from '@/cost/types';
 import { useEditor } from '@/features/editor/store';
+import { useLocale } from '@/i18n/locale';
 
 /** the price tables; starts loading them on first use. `failed` when the chunk couldn't be fetched */
 export function usePriceBook(): { book: PriceBook | null; failed: boolean; retry(): void } {
@@ -27,9 +28,10 @@ export function usePriceBook(): { book: PriceBook | null; failed: boolean; retry
   };
 }
 
-/** the estimate of the open project, recomputed when its IR changes */
+/** the estimate of the open project, recomputed when its IR changes and re-worded when the language does */
 export function useProjectCost(): { cost: ProjectCost | null; failed: boolean; retry(): void } {
   const ir = useEditor((s) => s.ir);
+  const locale = useLocale((s) => s.locale);
   const { book, failed, retry } = usePriceBook();
-  return { cost: book ? projectCost(ir, book) : null, failed, retry };
+  return { cost: book ? projectCost(ir, book, locale) : null, failed, retry };
 }

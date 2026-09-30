@@ -8,17 +8,18 @@ import { useMemo, useState } from 'react';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Select } from '@/components/ui';
 import { MOD } from '@/features/command/paletteStore';
+import { useMessages } from '@/i18n/messages';
 import { exprPreview, lit } from '@/ir/expr';
 import type { Expression } from '@/ir/types';
+import { resourceName, resourceShortName } from '@/resources/i18n';
 import { ResourceIcon } from '@/resources/icons';
 import { getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
 import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
 import { bulkConnectOps, bulkSetOps, bulkTagOps, commonFields, connectTargets, selectedNodes, sharedValue } from './bulk';
 import { canvasApi } from './canvasApi';
+import { multiSelectMessages } from './MultiSelectPanel.messages';
 import { useEditor } from './store';
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -30,6 +31,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function SharedField({ field, ids }: { field: FieldDef; ids: string[] }) {
+  const m = useMessages(multiSelectMessages);
   const ir = useEditor((s) => s.ir);
   const apply = useEditor((s) => s.applyCanvasOps);
   const nodes = selectedNodes(ir, ids);
@@ -44,7 +46,7 @@ function SharedField({ field, ids }: { field: FieldDef; ids: string[] }) {
   const label = (
     <span className="mb-1 block font-mono text-[11px] text-muted">
       {field.name}
-      {mixed ? <span className="ml-1.5 font-sans text-[10px] font-semibold uppercase text-faint">mixed</span> : null}
+      {mixed ? <span className="ml-1.5 font-sans text-[10px] font-semibold uppercase text-faint">{m.mixed}</span> : null}
     </span>
   );
   if (complex) {
@@ -70,8 +72,8 @@ function SharedField({ field, ids }: { field: FieldDef; ids: string[] }) {
             commit(v === '' ? null : field.type === 'boolean' ? lit(v === 'true') : lit(v));
           }}
         >
-          {mixed ? <option value="__mixed">Mixed — pick one for all</option> : null}
-          <option value="">— none —</option>
+          {mixed ? <option value="__mixed">{m.mixedPick}</option> : null}
+          <option value="">{m.none}</option>
           {options.map((o) => (
             <option key={o} value={o}>
               {o}
@@ -91,7 +93,7 @@ function SharedField({ field, ids }: { field: FieldDef; ids: string[] }) {
         min={field.min}
         max={field.max}
         defaultValue={text}
-        placeholder={mixed ? 'Mixed — type to set for all' : field.placeholder}
+        placeholder={mixed ? m.mixedType : field.placeholder}
         onBlur={(e) => {
           const v = e.target.value.trim();
           if (v === text) return;
@@ -119,6 +121,7 @@ function SharedField({ field, ids }: { field: FieldDef; ids: string[] }) {
 }
 
 export function MultiSelectPanel({ ids }: { ids: string[] }) {
+  const m = useMessages(multiSelectMessages);
   const ir = useEditor((s) => s.ir);
   const codeErrored = useEditor((s) => s.codeErrored);
   const readOnly = useEditor((s) => s.readOnly);
@@ -133,7 +136,7 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
 
   const counts = new Map<string, number>();
   for (const n of nodes) {
-    const name = getDef(n.type)?.displayName ?? n.type;
+    const name = resourceName(n.type);
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   const summary = [...counts].map(([name, n]) => `${name} ×${n}`).join(' · ');
@@ -146,10 +149,7 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
     if (!key) return;
     const { ops, skipped } = bulkTagOps(nodes, key, tagValue);
     if (ops.length > 0) apply(ops);
-    showToast(
-      `Tagged ${plural(ops.length, 'resource')} ${key}=${tagValue}${skipped.length ? ` — ${skipped.length} skipped (tags is an expression)` : ''}`,
-      ops.length > 0 ? 'success' : 'info',
-    );
+    showToast(m.tagged(ops.length, key, tagValue, skipped.length), ops.length > 0 ? 'success' : 'info');
     setTagKey('');
     setTagValue('');
   };
@@ -159,19 +159,14 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
     if (!to) return;
     const { ops, already } = bulkConnectOps(nodes, to);
     if (ops.length > 0) apply(ops);
-    showToast(
-      ops.length > 0
-        ? `Connected ${plural(ops.length, 'resource')} to ${to.id}${already ? ` (${already} already were)` : ''}`
-        : `All of them are already connected to ${to.id}`,
-      ops.length > 0 ? 'success' : 'info',
-    );
+    showToast(ops.length > 0 ? m.connected(ops.length, to.id, already) : m.allConnected(to.id), ops.length > 0 ? 'success' : 'info');
     setTarget('');
   };
 
   return (
     <aside
       className="bp-pop-in flex w-full flex-col overflow-hidden rounded-[14px] border bg-surface-1 shadow-xl"
-      aria-label={`${nodes.length} resources selected`}
+      aria-label={m.panel(nodes.length)}
     >
       <div className="flex items-start gap-2.5 border-b p-3.5">
         <span className="flex -space-x-2">
@@ -180,15 +175,15 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
           ))}
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-[13.5px] font-semibold leading-tight">{plural(nodes.length, 'resource')} selected</h2>
+          <h2 className="text-[13.5px] font-semibold leading-tight">{m.heading(nodes.length)}</h2>
           <p className="truncate text-[11px] text-faint" title={summary}>
             {summary}
           </p>
         </div>
         <button
           type="button"
-          aria-label="Clear selection"
-          title="Clear selection (Esc)"
+          aria-label={m.clear}
+          title={m.clearTitle}
           onClick={clear}
           className="-mr-1 rounded-[6px] p-1 text-faint transition-colors hover:bg-surface-2 hover:text-foreground"
         >
@@ -198,13 +193,13 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
 
       {codeErrored ? (
         <p role="status" className="border-b bg-warning/10 px-3.5 py-2 text-[11.5px] font-medium text-warning">
-          Read-only until the code parses — fix the errors in the code pane.
+          {m.readOnly}
         </p>
       ) : null}
 
       <fieldset disabled={locked} className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-        <Section title="Arrange">
-          <div className="grid grid-cols-8 gap-1" role="toolbar" aria-label="Align and distribute">
+        <Section title={m.arrange}>
+          <div className="grid grid-cols-8 gap-1" role="toolbar" aria-label={m.alignToolbar}>
             {ALIGN_ACTIONS.map((a) => {
               const blocked = alignActionBlocker(a, ir, ids);
               return (
@@ -225,11 +220,11 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
               );
             })}
           </div>
-          {arrangeHint ? <p className="text-[11px] text-faint">{arrangeHint} to line them up.</p> : null}
+          {arrangeHint ? <p className="text-[11px] text-faint">{m.lineUpHint(arrangeHint)}</p> : null}
         </Section>
 
         {fields.length > 0 ? (
-          <Section title="Shared settings">
+          <Section title={m.shared}>
             <div className="space-y-2.5">
               {fields.map((f) => (
                 <SharedField key={f.name} field={f} ids={ids} />
@@ -238,7 +233,7 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
           </Section>
         ) : null}
 
-        <Section title="Tag all">
+        <Section title={m.tagAll}>
           <form
             className="flex gap-1.5"
             onSubmit={(e) => {
@@ -247,23 +242,23 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
             }}
           >
             <span className="w-2/5 shrink-0">
-              <Input className="h-7.5" placeholder="key" aria-label="Tag key for all" value={tagKey} onChange={(e) => setTagKey(e.target.value)} />
+              <Input className="h-7.5" placeholder={m.tagKey} aria-label={m.tagKeyLabel} value={tagKey} onChange={(e) => setTagKey(e.target.value)} />
             </span>
             <span className="min-w-0 flex-1">
-              <Input className="h-7.5" placeholder="value" aria-label="Tag value for all" value={tagValue} onChange={(e) => setTagValue(e.target.value)} />
+              <Input className="h-7.5" placeholder={m.tagValue} aria-label={m.tagValueLabel} value={tagValue} onChange={(e) => setTagValue(e.target.value)} />
             </span>
-            <Button type="submit" variant="outline" size="icon" className="h-7.5 w-9" aria-label="Add tag to all" disabled={!tagKey.trim()}>
+            <Button type="submit" variant="outline" size="icon" className="h-7.5 w-9" aria-label={m.addTag} disabled={!tagKey.trim()}>
               <Tag className="h-3.5 w-3.5" />
             </Button>
           </form>
         </Section>
 
         {targets.length > 0 ? (
-          <Section title="Connect all to">
+          <Section title={m.connectAllTo}>
             <div className="flex gap-1.5">
               <span className="min-w-0 flex-1">
-                <Select aria-label="Resource to connect all to" value={target} onChange={(e) => setTarget(e.target.value)}>
-                  <option value="">Pick a resource…</option>
+                <Select aria-label={m.connectTarget} value={target} onChange={(e) => setTarget(e.target.value)}>
+                  <option value="">{m.pickResource}</option>
                   {targets.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.id}
@@ -271,14 +266,14 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
                   ))}
                 </Select>
               </span>
-              <Button variant="outline" size="icon" className="w-9" aria-label="Connect all" disabled={!target} onClick={connect}>
+              <Button variant="outline" size="icon" className="w-9" aria-label={m.connectAll} disabled={!target} onClick={connect}>
                 <Link2 className="h-3.5 w-3.5" />
               </Button>
             </div>
           </Section>
         ) : null}
 
-        <Section title="Selected">
+        <Section title={m.selected}>
           <ul className="space-y-0.5">
             {nodes.map((n) => (
               <li key={n.id}>
@@ -289,11 +284,11 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
                     canvasApi()?.focusNode(n.id);
                   }}
                   className="flex w-full items-center gap-2 rounded-sm px-1.5 py-1 text-left hover:bg-surface-2"
-                  title="Select only this one"
+                  title={m.selectOnly}
                 >
                   <ResourceIcon category={getDef(n.type)?.category ?? 'compute'} type={n.type} size={20} />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{n.name}</span>
-                  <span className="shrink-0 truncate text-[10.5px] text-faint">{getDef(n.type)?.shortName ?? n.type}</span>
+                  <span className="shrink-0 truncate text-[10.5px] text-faint">{resourceShortName(n.type)}</span>
                 </button>
               </li>
             ))}
@@ -309,10 +304,10 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
           className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
           onClick={() => {
             const count = useEditor.getState().deleteResources(ids);
-            showToast(`Deleted ${plural(count, 'resource')} — ${MOD} Z to undo`, 'info');
+            showToast(m.deleted(count, MOD), 'info');
           }}
         >
-          <Trash2 className="h-3.5 w-3.5" /> Delete {plural(nodes.length, 'resource')}
+          <Trash2 className="h-3.5 w-3.5" /> {m.delete(nodes.length)}
         </Button>
       </div>
     </aside>

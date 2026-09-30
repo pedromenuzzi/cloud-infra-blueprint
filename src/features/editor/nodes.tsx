@@ -14,11 +14,16 @@ import {
 } from '@xyflow/react';
 import { AlertTriangle, Globe, Lock, Shield, ShieldEllipsis, ShieldOff, ShieldQuestion } from 'lucide-react';
 import type { CSSProperties } from 'react';
+import { useLocale } from '@/i18n/locale';
+import { useMessages } from '@/i18n/messages';
 import type { Op } from '@/ir/ops';
 import type { Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS, ProviderChip, ResourceIcon } from '@/resources/icons';
 import type { Category } from '@/resources/types';
+import { portText } from '@/security/model';
+import { canvasMessages } from './CanvasPane.messages';
+import { useDropTone } from './dropHint';
 import { useEditor } from './store';
 
 /** security-lens decorations (undefined when the lens is off) */
@@ -37,6 +42,8 @@ export interface NodeSecurity {
 const RISK_COLOR = { critical: '#ef4444', high: '#f97316', medium: '#f59e0b', low: '#64748b' } as const;
 
 function SecurityChip({ security }: { security: NodeSecurity }) {
+  const m = useMessages(canvasMessages);
+  const locale = useLocale((s) => s.locale);
   const risky = security.risk === 'critical' || security.risk === 'high';
   let tone = '#10b981';
   let icon = <Lock className="h-2.5 w-2.5" />;
@@ -48,21 +55,23 @@ function SecurityChip({ security }: { security: NodeSecurity }) {
   } else if (security.exposure?.level === 'internet') {
     tone = risky ? RISK_COLOR[security.risk!] : '#0ea5e9';
     icon = <Globe className="h-2.5 w-2.5" />;
-    label = `Public :${security.exposure.ports.slice(0, 3).join(', :')}${security.exposure.ports.length > 3 ? '…' : ''}`;
+    // the same chip as the PDF's (features/export/diagramVector.ts)
+    const ports = security.exposure.ports.map((p) => (/^\d/.test(p) ? p : portText(p, locale)));
+    label = m.chipPublic(`:${ports.slice(0, 3).join(', :')}${ports.length > 3 ? '…' : ''}`);
   } else if (security.exposure?.level === 'unknown') {
     tone = '#f59e0b';
     icon = <ShieldQuestion className="h-2.5 w-2.5" />;
-    label = 'Unverified';
+    label = m.chipUnverified;
   } else if (security.exposure?.level === 'restricted') {
-    label = 'Private';
+    label = m.chipPrivate;
   } else if (security.exposure?.level === 'isolated') {
     tone = '#64748b';
     icon = <ShieldOff className="h-2.5 w-2.5" />;
-    label = 'No inbound';
+    label = m.chipNoInbound;
   } else if (security.risk) {
     tone = RISK_COLOR[security.risk];
     icon = <AlertTriangle className="h-2.5 w-2.5" />;
-    label = security.risk === 'low' ? 'Review' : 'At risk';
+    label = security.risk === 'low' ? m.chipReview : m.chipAtRisk;
   }
   if (!label) return null;
   return (
@@ -127,9 +136,10 @@ function catVars(category: Category): CSSProperties {
 }
 
 function WarnBadge() {
+  const m = useMessages(canvasMessages);
   return (
     <span
-      title="Missing required arguments"
+      title={m.missingRequired}
       className="absolute -right-1.5 -top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-warning text-white shadow-sm ring-2 ring-node"
     >
       <AlertTriangle className="h-2.5 w-2.5" />
@@ -170,13 +180,29 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
 }
 
 export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlowNode>) {
+  const m = useMessages(canvasMessages);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
   const readOnly = useEditor((s) => s.readOnly);
+  // something dragged over it: it would go in (solid outline) or can't (dashed red)
+  const drop = useDropTone(id);
   return (
     <div
       style={catVars(data.category)}
-      className={cn('bp-container h-full w-full rounded-[16px]', selected && 'bp-container-selected', data.security?.dim && 'bp-dim')}
+      data-drop={drop ?? undefined}
+      className={cn(
+        'bp-container relative h-full w-full rounded-[16px]',
+        selected && 'bp-container-selected',
+        data.security?.dim && 'bp-dim',
+        drop === 'ok' && 'outline-[2.5px] outline-offset-2 outline-primary',
+        drop === 'no' && 'outline-[2.5px] outline-offset-2 outline-dashed outline-danger',
+      )}
     >
+      {drop ? (
+        <div
+          aria-hidden
+          className={cn('pointer-events-none absolute inset-0 rounded-[16px]', drop === 'ok' ? 'bg-primary/8' : 'bg-danger/8')}
+        />
+      ) : null}
       <NodeResizer
         isVisible={selected && !readOnly}
         minWidth={240}
@@ -229,11 +255,11 @@ export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlo
             }}
           >
             {data.security.subnet === 'public' ? <Globe className="h-2.5 w-2.5" /> : <Lock className="h-2.5 w-2.5" />}
-            {data.security.subnet}
+            {m.subnet[data.security.subnet]}
           </span>
         ) : null}
         {data.security?.nacls ? (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-danger/10 px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide text-danger" title="Network ACL on this subnet">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-danger/10 px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide text-danger" title={m.naclOnSubnet}>
             <ShieldEllipsis className="h-2.5 w-2.5" /> NACL
           </span>
         ) : null}
@@ -380,6 +406,7 @@ export function SecFlowEdge({
   }
   const [path, labelX, labelY] = getBezierPath(geometry);
   const color = TONE[data?.tone ?? 'internal'];
+  const locale = useLocale((s) => s.locale);
   return (
     <>
       <BaseEdge
@@ -400,7 +427,7 @@ export function SecFlowEdge({
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
           }}
         >
-          {(data?.ports ?? []).map((p) => (p === 'all' ? 'all' : `:${p}`)).join(' ')}
+          {(data?.ports ?? []).map((p) => (p === 'all' ? portText(p, locale) : `:${portText(p, locale)}`)).join(' ')}
         </div>
       </EdgeLabelRenderer>
     </>

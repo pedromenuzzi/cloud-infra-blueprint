@@ -69,19 +69,49 @@ test('the viewer shows the project read-only: drag, delete, connect and typing c
   const menu = page.getByRole('menu', { name: 'Resource actions' });
   await expect(menu.getByRole('menuitem')).toHaveText(['Show in code', 'Copy address', 'Terraform docs']);
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('button', { name: 'Tidy up layout' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Auto-arrange' })).toHaveCount(0);
   const vpc = node(page, 'aws_vpc.main');
   await vpc.click({ position: { x: 60, y: 12 } });
   await expect(vpc.locator('.react-flow__resize-control')).toHaveCount(0);
 
   // the code can't be typed into
   const code = page.locator('[data-testid="monaco"] .view-lines');
-  const text = await code.textContent();
+  // Monaco only draws the lines in view, and reuses their elements in any order:
+  // compare from the top, line by line in the order they're drawn
+  const drawn = () =>
+    code.evaluate((el) =>
+      Array.from(el.querySelectorAll<HTMLElement>('.view-line'))
+        .sort((a, b) => parseFloat(a.style.top) - parseFloat(b.style.top))
+        .map((line) => (line.textContent ?? '').replace(/\u00a0/g, ' ')) // Monaco draws spaces as no-break spaces
+        .join('\n'),
+    );
+  /** what is drawn once the (smooth) scroll to the top has stopped */
+  const settled = async () => {
+    let previous = await drawn();
+    for (let i = 0; i < 30; i++) {
+      await page.waitForTimeout(150);
+      const now = await drawn();
+      if (now === previous) return now;
+      previous = now;
+    }
+    return previous;
+  };
+  /** scrolled to the very top (a reveal still gliding from the clicks above can win over one Ctrl+Home) */
+  const top = async () => {
+    let text = '';
+    await expect(async () => {
+      await page.keyboard.press('Control+Home');
+      text = await settled();
+      expect(text.split('\n')[0]).toBe(files['main.tf'].split('\n')[0]);
+    }).toPass({ timeout: 10_000 });
+    return text;
+  };
   await code.click();
+  const text = await top();
   await page.keyboard.type('zzz_typed');
   await page.keyboard.press('Enter');
   await expect(code).not.toContainText('zzz_typed');
-  expect(await code.textContent()).toBe(text);
+  expect(await top()).toBe(text);
 
   // double-click doesn't open "add resource"
   const pane = (await page.getByTestId('canvas').boundingBox())!;

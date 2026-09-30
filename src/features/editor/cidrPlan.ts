@@ -5,6 +5,7 @@
  * same defaults, names and wiring as a subnet dropped from the palette.
  * Pure, so tests can apply the ops and check the HCL.
  */
+import { messagesFor } from '@/i18n/messages';
 import { exprPreview, lit, list } from '@/ir/expr';
 import { deriveStructure } from '@/ir/graph';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
@@ -24,6 +25,7 @@ import {
   type CloudProvider,
 } from '@/resources/cidr';
 import { getDef } from '@/resources/registry';
+import { cidrPlannerMessages } from './CidrPlanner.messages';
 import { buildNewNode } from './newNode';
 
 /** The subnet resource each network type holds (GCP subnetworks pick their own ranges: no planner). */
@@ -38,7 +40,7 @@ export interface PlanRow {
   node: ResourceNode;
   /** the subnet's IPv4 range, when it is known and valid */
   block?: CidrBlock;
-  /** what to show for the range: the CIDR, or the expression it is written as */
+  /** what to show for the range: the CIDR, or the expression it is written as (UI language in effect) */
   label: string;
   /** AWS availability zone / GCP region */
   zone?: string;
@@ -75,7 +77,8 @@ const ZONE_ARG: Record<string, string> = { aws_subnet: 'availability_zone', goog
 
 function rowOf(subnet: SubnetInfo, ir: IR): PlanRow {
   const valid = blocksOf(subnet.ranges)[0];
-  const written = subnet.ranges[0]?.text ?? (subnet.unresolved ? exprPreview(subnet.unresolved.expr) : 'no range');
+  const written =
+    subnet.ranges[0]?.text ?? (subnet.unresolved ? exprPreview(subnet.unresolved.expr) : messagesFor(cidrPlannerMessages).noRangeRow);
   const zoneArg = ZONE_ARG[subnet.node.type];
   const zone = zoneArg ? resolveString(ir, subnet.node.args[zoneArg])?.value : undefined;
   return { node: subnet.node, block: valid, label: valid ? formatCidrBlock(valid) : written, zone };
@@ -241,17 +244,16 @@ function inFieldOrder(node: ResourceNode, values: Record<string, Expression>): R
   return out;
 }
 
+/** `error` is in the UI language in effect */
 export type PlanOutcome = PlanResult | { error: string };
 
 function createSubnets(ir: IR, plan: NetworkPlan, prefix: number, zones: Array<string | undefined>): PlanOutcome {
   const type = SUBNET_OF[plan.network.node.type];
   const def = type ? getDef(type) : undefined;
-  if (!def || plan.blocked) return { error: "This network's range isn't a literal CIDR the planner can divide" };
+  const m = messagesFor(cidrPlannerMessages);
+  if (!def || plan.blocked) return { error: m.notLiteral };
   const blocks = allocateBlocks(plan.ranges, takenBlocks(plan), prefix, zones.length);
-  if (!blocks) {
-    const what = zones.length === 1 ? `a /${prefix}` : `${zones.length} /${prefix} subnets`;
-    return { error: `There's no room left for ${what} in ${plan.network.node.id}` };
-  }
+  if (!blocks) return { error: m.noRoomFor(zones.length, prefix, plan.network.node.id) };
   const container = plan.network.node;
   const width = container.position?.w ?? CONTAINER_MIN_W;
   const boxes = childBoxes(ir, container.id);
@@ -283,15 +285,15 @@ function createSubnets(ir: IR, plan: NetworkPlan, prefix: number, zones: Array<s
 /** One subnet of /`prefix` in the network's next free block (AWS: in its least-used AZ). */
 export function addSubnetOps(ir: IR, networkId: string, prefix: number): PlanOutcome {
   const plan = networkPlan(ir, networkId);
-  if (!plan) return { error: `${networkId} isn't a network the planner knows` };
+  if (!plan) return { error: messagesFor(cidrPlannerMessages).unknownNetwork(networkId) };
   return createSubnets(ir, plan, prefix, [quietestZone(plan)]);
 }
 
 /** `count` subnets of /`prefix`, one per availability zone (a, b, c…) of the AWS provider's region. */
 export function splitAcrossZonesOps(ir: IR, networkId: string, prefix: number, count: number): PlanOutcome {
   const plan = networkPlan(ir, networkId);
-  if (!plan || plan.provider !== 'aws') return { error: 'Splitting across availability zones is for AWS VPCs' };
-  if (!plan.region) return { error: "Set the AWS provider's region to spread subnets across its zones" };
+  if (!plan || plan.provider !== 'aws') return { error: messagesFor(cidrPlannerMessages).awsOnly };
+  if (!plan.region) return { error: messagesFor(cidrPlannerMessages).needsRegion };
   return createSubnets(ir, plan, prefix, zonesFor(plan.region, count));
 }
 

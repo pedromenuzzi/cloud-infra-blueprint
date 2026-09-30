@@ -3,8 +3,10 @@
  * templates such as `"${var.region}a"`. Anything else (functions, locals,
  * data sources, conditionals) is unknown, and the checks skip it.
  */
+import { messagesFor } from '@/i18n/messages';
 import { refTargetAddress } from '../expr';
 import type { Expression, IR, ProviderBlock, ResourceNode } from '../types';
+import { checkMessages } from './messages';
 
 export interface Resolved {
   value: string;
@@ -106,5 +108,5 @@ export function providerFor(ir: IR, node: ResourceNode, source: string): Provide
 /** How to name that provider configuration in a message: `the AWS provider`, `the aws.west provider`. */
 export function providerLabel(node: ResourceNode, fallback: string): string {
   const alias = node.args.provider?.kind === 'ref' ? node.args.provider.path : undefined;
-  return alias ? `the ${alias} provider` : `the ${fallback} provider`;
+  return messagesFor(checkMessages).provider(alias, fallback);
 }

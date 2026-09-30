@@ -3,9 +3,13 @@ import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
 import { MOD } from '@/features/command/paletteStore';
 import { useEditor } from '@/features/editor/store';
+import { currentLocale, useLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import type { IR } from '@/ir/types';
 import { auditSecurity, planFixAll, type AuditResult } from '@/security/audit';
 import type { FrameworkId } from '@/security/compliance';
+import { analyzeSecurity } from '@/security/topology';
+import { securityUiMessages } from './messages';
 
 const LENS_KEY = 'cb-security-lens';
 
@@ -78,21 +82,34 @@ export const useSecurityUi = create<SecurityUiState>((set, get) => ({
   },
 }));
 
-let cache: { ir: IR; result: AuditResult } | null = null;
+let cache: { ir: IR; locale: Locale; result: AuditResult } | null = null;
 
-/** Audit of an IR, computed once per IR object (every panel / node shares it). */
-export function getAudit(ir: IR): AuditResult {
-  if (cache?.ir !== ir) cache = { ir, result: auditSecurity(ir) };
+/**
+ * Audit of an IR, computed once per IR object and language (every panel /
+ * node shares it). A language switch re-words it — findings, paths, reasons —
+ * without touching the IR or its history.
+ */
+export function getAudit(ir: IR, locale: Locale = currentLocale()): AuditResult {
+  if (cache?.ir !== ir || cache.locale !== locale) cache = { ir, locale, result: auditSecurity(ir, analyzeSecurity(ir, locale)) };
   return cache.result;
+}
+
+/** The open project's audit, in the UI language; re-renders on an edit or a language switch. */
+export function useAudit(): AuditResult {
+  const ir = useEditor((s) => s.ir);
+  const locale = useLocale((s) => s.locale);
+  return getAudit(ir, locale);
 }
 
 /** Apply every one-click fix as one undo step; the toast counts the findings that actually went away. */
 export function fixAllFindings() {
   const { ops, fixed } = planFixAll(useEditor.getState().ir);
   if (ops.length) useEditor.getState().applyCanvasOps(ops);
-  if (fixed > 0) showToast(`Fixed ${fixed} issue${fixed === 1 ? '' : 's'} — ${MOD} Z to undo`, 'success');
-  else showToast('Nothing could be fixed automatically', 'info');
+  const m = messagesFor(securityUiMessages);
+  if (fixed > 0) showToast(m.fixedCount(fixed, MOD), 'success');
+  else showToast(m.nothingFixed, 'info');
 }
+
 
 export const GRADE_COLORS: Record<string, string> = {
   A: '#10b981',

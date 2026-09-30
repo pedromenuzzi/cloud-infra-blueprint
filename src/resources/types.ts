@@ -1,3 +1,4 @@
+import type { Locale } from '@/i18n/locale';
 import type { ContainmentRule } from '@/ir/graph';
 import type { Expression, Provider } from '@/ir/types';
 
@@ -41,6 +42,7 @@ export const CATEGORY_ORDER: Category[] = [
   'edge',
 ];
 
+/** English source text — show `categoryLabel()` (./i18n.ts) to people */
 export const CATEGORY_LABELS: Record<Category, string> = {
   compute: 'Compute',
   storage: 'Storage',
@@ -81,8 +83,15 @@ export interface NamingRule {
   domain?: string;
 }
 
-export interface ResourceDef {
-  type: string;
+/**
+ * A catalog entry. `displayName`, `shortName`, `description` and the fields'
+ * `label` / `doc` are the English source text: screens show them through
+ * ./i18n.ts (`resourceName`, `fieldHelp`…), which reads the Portuguese from
+ * ./catalog.messages.ts. `T` is the literal type, so that table can require
+ * an entry for every one.
+ */
+export interface ResourceDef<T extends string = string> {
+  type: T;
   provider: Provider;
   category: Category;
   displayName: string;
@@ -114,9 +123,10 @@ export interface ResourceDef {
   connections?: ConnectionRule[];
   /** connections into nested blocks — applied with `connectionOp` (./connect.ts) */
   blockConnections?: BlockConnectionRule[];
-  subtitle?: (args: Record<string, Expression>) => string | undefined;
+  /** the canvas node's second line, in `locale` (default: the UI language in effect) */
+  subtitle?: (args: Record<string, Expression>, locale?: Locale) => string | undefined;
 }
 
-export function defineResource(def: ResourceDef): ResourceDef {
+export function defineResource<const T extends string>(def: ResourceDef<T>): ResourceDef<T> {
   return def;
 }

@@ -1,5 +1,5 @@
 import { Check, type LucideIcon } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { focusIsLost, Kbd, restoreFocus, useLayer } from './ui';
@@ -7,7 +7,8 @@ import { focusIsLost, Kbd, restoreFocus, useLayer } from './ui';
 export interface MenuItem {
   id: string;
   label: string;
-  icon?: LucideIcon;
+  /** a Lucide icon, or any component taking a className (e.g. a flag) */
+  icon?: LucideIcon | ComponentType<{ className?: string }>;
   shortcut?: string;
   /** radio-style menus (e.g. theme) */
   checked?: boolean;
@@ -36,6 +37,8 @@ export function ContextMenu({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
+  /** the labels as one string: a language switch re-words an open menu, which may change its size */
+  const words = entries.map((e) => (e === 'separator' ? '-' : e.label)).join('|');
 
   // keep the menu on screen
   useLayoutEffect(() => {
@@ -43,10 +46,10 @@ export function ContextMenu({
     if (!el) return;
     const { width, height } = el.getBoundingClientRect();
     setPos({
-      left: Math.min(x, window.innerWidth - width - 8),
-      top: Math.min(y, window.innerHeight - height - 8),
+      left: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
+      top: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
     });
-  }, [x, y]);
+  }, [x, y, words]);
 
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
@@ -109,7 +112,7 @@ export function ContextMenu({
       ref={ref}
       role="menu"
       aria-label={label}
-      className="bp-pop-in fixed z-50 min-w-[220px] rounded-[10px] border bg-surface-1/95 p-1 shadow-lg backdrop-blur-md"
+      className="bp-pop-in fixed z-50 min-w-[220px] max-w-[calc(100vw-16px)] rounded-[10px] border bg-surface-1/95 p-1 shadow-lg backdrop-blur-md"
       style={pos}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -140,7 +143,7 @@ export function ContextMenu({
             ) : (
               <span className="w-3.5" />
             )}
-            <span className="flex-1">{entry.label}</span>
+            <span className="min-w-0 flex-1">{entry.label}</span>
             {entry.shortcut ? <Kbd>{entry.shortcut}</Kbd> : null}
             {entry.checked ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
           </button>

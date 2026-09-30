@@ -16,12 +16,28 @@ import { emptyIR, providerOfType, providerSourceName, resourceAddress } from '@/
 import { cloudName, nameSlug } from '@/resources/naming';
 import { getDef } from '@/resources/registry';
 
+export type TemplateSlug =
+  | 'aws-web-app'
+  | 'aws-static-site'
+  | 'aws-container-stack'
+  | 'aws-serverless-api'
+  | 'aws-secure-3tier'
+  | 'azure-web-app'
+  | 'azure-static-site'
+  | 'gcp-web-app'
+  | 'gcp-cloud-run'
+  | 'gcp-static-site'
+  | 'multi-cloud-dr';
+
+export type TemplateTag = 'Web Apps' | 'Static Sites' | 'Containers' | 'Serverless' | 'Security' | 'Data';
+
 export interface TemplateDef {
-  slug: string;
+  slug: TemplateSlug;
+  /** English source text; show `templateName()` / `templateDescription()` (./i18n) */
   name: string;
   description: string;
   providers: Provider[];
-  tags: string[];
+  tags: TemplateTag[];
   /** approximate resource count shown on the card */
   resourceCount: number;
   build(appName: string): Record<string, string>;
@@ -654,7 +670,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'aws_route_table_association',
       name,
       { subnet_id: ref(`aws_subnet.${subnetName}.id`), route_table_id: ref(`aws_route_table.${table}.id`) },
-      { x, y: 730 },
+      { x, y: 870 },
     );
 
   ir.resources.push(
@@ -719,7 +735,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'aws_vpc',
       'main',
       { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true), tags: obj({ Name: lit(slug) }) },
-      { x: 320, y: 40, w: 1380, h: 640 },
+      { x: 320, y: 40, w: 1380, h: 780 },
       ['# Network — public, app and data tiers across two AZs'],
     ),
     subnet('public_a', '10.0.1.0/24', 'us-east-1a', 32, 64),
@@ -843,7 +859,8 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'aws_db_subnet_group',
       'main',
       { name: name('aws_db_subnet_group', 'db'), subnet_ids: list([ref('aws_subnet.db_a.id'), ref('aws_subnet.db_b.id')]) },
-      { x: 1760, y: 570 },
+      // drawn in the VPC of its subnets, with the database inside it
+      { x: 900, y: 568, w: 448, h: 180 },
     ),
     res(
       'aws_db_instance',
@@ -862,7 +879,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
         publicly_accessible: lit(false),
         skip_final_snapshot: lit(true),
       },
-      { x: 1760, y: 460 },
+      { x: 28, y: 56 },
       ['# Data — private, encrypted PostgreSQL'],
     ),
   );

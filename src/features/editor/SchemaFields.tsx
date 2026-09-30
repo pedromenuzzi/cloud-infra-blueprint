@@ -9,16 +9,20 @@ import { AlertTriangle, ChevronDown, Code2, Lock, Plus, Search, X } from 'lucide
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { Button, Field, Input } from '@/components/ui';
 import { emitExpression, emitNestedBlock } from '@/hcl/emitter';
+import { useLocale } from '@/i18n/locale';
+import { useMessages } from '@/i18n/messages';
 import type { Expression, ResourceNode } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { getDef } from '@/resources/registry';
 import type { FieldDef } from '@/resources/types';
 import { entryDetail } from '@/schema/completion';
 import type { ProviderSchema } from '@/schema/lookup';
+import { schemaMessages } from '@/schema/messages';
 import { loadSchema, requestSchemasFor, schemaProviderOf, useResourceSchema } from '@/schema/store';
 import type { SchemaBlock } from '@/schema/types';
 import { pinMismatch, schemaIssues } from '@/schema/validate';
 import { useLayout } from './layoutStore';
+import { schemaFieldsMessages } from './SchemaFields.messages';
 import { buildArgGroups, matchesQuery, type ArgRow } from './schemaFieldsModel';
 import { installSchemaBridge } from './schemaBridge';
 import { useEditor } from './store';
@@ -50,6 +54,7 @@ export function SchemaFields({
   /** shown while there's no schema for this type (loading, failed, other providers) */
   fallback: ReactNode;
 }) {
+  const m = useMessages(schemaFieldsMessages);
   const { block, schema, status } = useResourceSchema(node.type);
   const provider = schemaProviderOf(node.type);
   // "opened": selecting a resource asks for its provider's schema even before validation does
@@ -63,14 +68,14 @@ export function SchemaFields({
       {provider && status === 'loading' ? (
         <p className="flex items-center gap-2 border-t pt-3 text-[11px] text-faint" role="status">
           <span className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-border border-t-primary" aria-hidden="true" />
-          Loading the {PROVIDER_LABEL[provider]} provider schema…
+          {m.loading(PROVIDER_LABEL[provider])}
         </p>
       ) : null}
       {provider && status === 'error' ? (
         <p className="flex flex-wrap items-center gap-2 border-t pt-3 text-[11px] text-faint" role="status">
-          Couldn't load the {PROVIDER_LABEL[provider]} provider schema — showing the catalog fields only.
+          {m.failed(PROVIDER_LABEL[provider])}
           <button type="button" className="font-semibold text-primary hover:underline" onClick={() => void loadSchema(provider, { retry: true })}>
-            Retry
+            {m.retry}
           </button>
         </p>
       ) : null}
@@ -92,6 +97,9 @@ function AllArguments({
   curated: Set<string>;
   renderControl(field: FieldDef): ReactNode;
 }) {
+  const m = useMessages(schemaFieldsMessages);
+  // the findings are text: build them again in the other language
+  const locale = useLocale((s) => s.locale);
   const ir = useEditor((s) => s.ir);
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -102,7 +110,7 @@ function AllArguments({
   const groups = useMemo(() => {
     const issues = pin ? [] : schemaIssues(node, getDef(node.type));
     return buildArgGroups(node, block, curated, issues);
-  }, [node, block, curated, pin]);
+  }, [node, block, curated, pin, locale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const total = groups.required.length + groups.set.length + groups.optional.length;
   if (total === 0) return null;
@@ -127,23 +135,25 @@ function AllArguments({
     <section className="border-t pt-3" aria-labelledby={headingId} data-testid="schema-fields">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h4 id={headingId} className={sectionTitle}>
-          All arguments <span className="font-medium normal-case tracking-normal">({total})</span>
+          {m.heading} <span className="font-medium normal-case tracking-normal">({total})</span>
         </h4>
-        <span className="truncate font-mono text-[10px] text-faint" title={`Arguments from the ${PROVIDER_LABEL[schema.provider]} provider ${schema.version} schema`}>
+        <span className="truncate font-mono text-[10px] text-faint" title={m.source(PROVIDER_LABEL[schema.provider], schema.version)}>
           {schema.provider} {schema.version}
         </span>
       </div>
       {pin ? (
         <p className="mb-2 text-[11px] leading-snug text-faint">
-          This project pins <span className="font-mono">{schema.provider} {pin}</span>; the list follows {schema.version} and its warnings are off.
+          {m.pinned(schema.version).before}
+          <span className="font-mono">{schema.provider} {pin}</span>
+          {m.pinned(schema.version).after}
         </p>
       ) : null}
       <div className="relative mb-3">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-faint" aria-hidden="true" />
         <Input
           className="h-8 pl-8 pr-7"
-          placeholder={`Search ${total} arguments…`}
-          aria-label="Search all arguments"
+          placeholder={m.search(total)}
+          aria-label={m.searchLabel}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
@@ -157,7 +167,7 @@ function AllArguments({
         {query ? (
           <button
             type="button"
-            aria-label="Clear search"
+            aria-label={m.clearSearch}
             onClick={() => setQuery('')}
             className="absolute right-2 top-1/2 -translate-y-1/2 rounded-[4px] p-0.5 text-faint hover:text-foreground"
           >
@@ -167,20 +177,20 @@ function AllArguments({
       </div>
       {searching ? (
         <p className="sr-only" aria-live="polite">
-          {matches === 1 ? '1 argument matches' : `${matches} arguments match`}
+          {m.matches(matches)}
         </p>
       ) : null}
 
       <div className="space-y-4">
         {required.length > 0 ? (
           <div>
-            <h5 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-faint">Required</h5>
+            <h5 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-faint">{m.required}</h5>
             {rows(required)}
           </div>
         ) : null}
         {set.length > 0 ? (
           <div>
-            <h5 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-faint">Set in code · {set.length}</h5>
+            <h5 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-faint">{m.setInCode(set.length)}</h5>
             {rows(set)}
           </div>
         ) : null}
@@ -194,11 +204,11 @@ function AllArguments({
                 onClick={() => setExpanded(!expanded)}
                 className="flex w-full items-center justify-between gap-2 rounded-sm border bg-surface-2 px-2.5 py-1.5 text-left text-[12px] font-medium text-foreground transition-colors hover:border-border-strong"
               >
-                {expanded ? `Hide ${groups.optional.length} optional arguments` : `Show all ${groups.optional.length} optional arguments`}
+                {expanded ? m.hideOptional(groups.optional.length) : m.showOptional(groups.optional.length)}
                 <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-faint transition-transform', expanded && 'rotate-180')} aria-hidden="true" />
               </button>
             ) : (
-              <h5 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-faint">Optional</h5>
+              <h5 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-faint">{m.optional}</h5>
             )}
             <div id={optionalId} hidden={!showOptional} className={cn(folds && !searching && 'mt-3')}>
               {showOptional ? rows(optional) : null}
@@ -206,7 +216,7 @@ function AllArguments({
           </div>
         ) : null}
         {searching && matches === 0 ? (
-          <p className="text-[11.5px] text-faint">No argument matches “{query.trim()}”.</p>
+          <p className="text-[11.5px] text-faint">{m.noMatch(query.trim())}</p>
         ) : null}
       </div>
     </section>
@@ -216,27 +226,30 @@ function AllArguments({
 /* ------------------------------------------------------------------- rows */
 
 function RowLabel({ row, missing }: { row: ArgRow; missing: boolean }) {
+  const m = useMessages(schemaFieldsMessages);
+  const sm = useMessages(schemaMessages);
   const attr = row.entry?.kind === 'attribute' ? row.entry : undefined;
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      <span className="min-w-0 truncate font-mono" title={row.name}>
+      <span className="min-w-0 truncate font-mono" title={row.name} translate="no">
         {row.name}
       </span>
       {row.blockCount > 1 ? <span className="shrink-0 font-mono text-[10px] text-faint">×{row.blockCount}</span> : null}
       {row.required ? (
-        <span className={cn('shrink-0 text-[9px] font-bold uppercase', missing ? 'text-warning' : 'text-faint')}>required</span>
+        <span className={cn('shrink-0 text-[9px] font-bold uppercase', missing ? 'text-warning' : 'text-faint')}>{m.badgeRequired}</span>
       ) : null}
-      {row.deprecated ? <span className="shrink-0 text-[9px] font-bold uppercase text-warning">deprecated</span> : null}
-      {row.kind === 'meta' ? <span className="shrink-0 text-[9px] font-bold uppercase text-faint">meta-argument</span> : null}
-      {row.kind === 'unknown' ? <span className="shrink-0 text-[9px] font-bold uppercase text-warning">unknown</span> : null}
-      {attr?.sensitive ? <Lock className="h-3 w-3 shrink-0 text-faint" aria-label="sensitive" /> : null}
+      {row.deprecated ? <span className="shrink-0 text-[9px] font-bold uppercase text-warning">{m.badgeDeprecated}</span> : null}
+      {row.kind === 'meta' ? <span className="shrink-0 text-[9px] font-bold uppercase text-faint">{m.badgeMeta}</span> : null}
+      {row.kind === 'unknown' ? <span className="shrink-0 text-[9px] font-bold uppercase text-warning">{m.badgeUnknown}</span> : null}
+      {attr?.sensitive ? <Lock className="h-3 w-3 shrink-0 text-faint" aria-label={m.sensitive} /> : null}
       {row.entry ? (
         <span
           className="ml-auto shrink-0 truncate pl-0.5 font-mono text-[10px] font-normal text-faint"
           style={{ maxWidth: '45%' }}
           title={entryDetail(row.entry)}
+          translate={row.entry.kind === 'attribute' ? 'no' : undefined}
         >
-          {row.entry.kind === 'attribute' ? row.entry.type : row.entry.nesting === 'single' || row.entry.maxItems === 1 ? 'block' : `block ${row.entry.nesting}`}
+          {row.entry.kind === 'attribute' ? row.entry.type : row.entry.nesting === 'single' || row.entry.maxItems === 1 ? sm.block : sm.blockNesting(row.entry.nesting, 0)}
         </span>
       ) : null}
     </span>
@@ -244,14 +257,20 @@ function RowLabel({ row, missing }: { row: ArgRow; missing: boolean }) {
 }
 
 function RowHint({ row }: { row: ArgRow }) {
+  const m = useMessages(schemaFieldsMessages);
   const entry = row.entry;
   const issues = row.issues.filter((i) => !(i.kind === 'deprecated' && i.path.length === 0));
   if (!entry?.description && !row.deprecated && issues.length === 0) return null;
   return (
     <span className="mt-1 block space-y-0.5 text-[11px] leading-snug text-faint">
-      {entry?.description ? <span className="block">{entry.description}</span> : null}
+      {/* the provider's own documentation: English whatever the UI language (screen readers read it as English) */}
+      {entry?.description ? (
+        <span className="block" lang="en">
+          {entry.description}
+        </span>
+      ) : null}
       {row.deprecated ? (
-        <span className="block text-warning">Deprecated{entry?.deprecation ? ` — ${entry.deprecation}` : ' by the provider'}</span>
+        <span className="block text-warning">{m.deprecated(entry?.deprecation)}</span>
       ) : null}
       {issues.map((issue, i) => (
         <span key={i} className="flex items-start gap-1 text-warning">
@@ -263,7 +282,7 @@ function RowHint({ row }: { row: ArgRow }) {
   );
 }
 
-/** a few lines of what the code says, for values the inspector can't edit */
+/** a few lines of what the code says, for values the inspector can't edit (Terraform text, not translated) */
 function previewText(node: ResourceNode, row: ArgRow): string {
   const parts: string[] = [];
   for (const key of row.keys) {
@@ -279,6 +298,7 @@ function previewText(node: ResourceNode, row: ArgRow): string {
 const PREVIEW_LINES = 5;
 
 function ArgRowView({ node, row, renderControl }: { node: ResourceNode; row: ArgRow; renderControl(field: FieldDef): ReactNode }) {
+  const m = useMessages(schemaFieldsMessages);
   const applyOps = useEditor((s) => s.applyCanvasOps);
   const isSet = row.keys.length > 0;
   const missing = row.required && !isSet;
@@ -304,7 +324,7 @@ function ArgRowView({ node, row, renderControl }: { node: ResourceNode; row: Arg
       {lines.length > 0 ? (
         <pre className="mb-1.5 overflow-hidden whitespace-pre-wrap break-words rounded-sm border bg-surface-2 px-2 py-1.5 font-mono text-[11px] leading-[1.65] text-muted" title={lines.length > PREVIEW_LINES ? lines.join('\n') : undefined}>
           {lines.slice(0, PREVIEW_LINES).join('\n')}
-          {lines.length > PREVIEW_LINES ? `\n… ${lines.length - PREVIEW_LINES} more lines` : ''}
+          {lines.length > PREVIEW_LINES ? m.moreLines(lines.length - PREVIEW_LINES) : ''}
         </pre>
       ) : null}
       <div className="flex flex-wrap gap-1.5">
@@ -312,10 +332,10 @@ function ArgRowView({ node, row, renderControl }: { node: ResourceNode; row: Arg
           <Button
             variant="outline"
             size="sm"
-            aria-label={`Add ${row.name} block`}
+            aria-label={m.addBlockLabel(row.name)}
             onClick={() => applyOps([{ kind: 'set_arg', nodeId: node.id, field: row.name, value: { kind: 'block', body: {} } }])}
           >
-            <Plus className="h-3.5 w-3.5" /> Add block
+            <Plus className="h-3.5 w-3.5" /> {m.addBlock}
           </Button>
         ) : null}
         {unknown?.suggestion && plainKey ? (
@@ -329,12 +349,13 @@ function ArgRowView({ node, row, renderControl }: { node: ResourceNode; row: Arg
               ])
             }
           >
-            Rename to <span className="font-mono">{unknown.suggestion}</span>
+            {m.renameTo}
+            <span className="font-mono">{unknown.suggestion}</span>
           </Button>
         ) : null}
         {!canAdd ? (
-          <Button variant="outline" size="sm" aria-label={`Edit ${row.name} in code`} onClick={() => editInCode(node.id)}>
-            <Code2 className="h-3.5 w-3.5" /> {isSet ? 'Edit in code' : 'Set in code'}
+          <Button variant="outline" size="sm" aria-label={m.editInCodeLabel(row.name)} onClick={() => editInCode(node.id)}>
+            <Code2 className="h-3.5 w-3.5" /> {isSet ? m.editInCode : m.setInCodeButton}
           </Button>
         ) : null}
       </div>

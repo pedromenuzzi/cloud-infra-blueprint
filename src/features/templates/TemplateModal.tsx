@@ -2,12 +2,16 @@ import { ArrowRight, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { Badge, Button, Input, Modal } from '@/components/ui';
+import { useMessages } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
 import { blankProjectName, createProject, uniqueProjectName, type Project } from '@/lib/storage';
 import { cn, slugify } from '@/lib/utils';
 import { PROVIDER_LABELS, ProviderDot } from '@/resources/icons';
-import { scratchProject, TEMPLATES, type TemplateDef } from '@/templates';
+import { scratchProject, TEMPLATES, type TemplateDef, type TemplateTag } from '@/templates';
+import { templateDescription, templateName, templateSearchText, templateTagLabel } from '@/templates/i18n';
+import { templatePickerMessages } from './messages';
 
+/** filter ids (English); the chips show them in the UI language */
 const FILTERS = [
   'All',
   'AWS',
@@ -29,22 +33,21 @@ const PROVIDER_FILTER: Partial<Record<Filter, Provider>> = {
   GCP: 'gcp',
 };
 
+/** the search matches either language: a Portuguese UI still finds "serverless" or "static" */
 function matches(t: TemplateDef, filter: Filter, query: string): boolean {
   const q = query.trim().toLowerCase();
-  if (q && !`${t.name} ${t.description} ${t.tags.join(' ')}`.toLowerCase().includes(q)) {
-    return false;
-  }
+  if (q && !templateSearchText(t).toLowerCase().includes(q)) return false;
   if (filter === 'All') return true;
   if (filter === 'Multi-cloud') return t.providers.length > 1;
   const provider = PROVIDER_FILTER[filter];
   if (provider) return t.providers.length === 1 && t.providers.includes(provider);
-  return t.tags.includes(filter);
+  return t.tags.includes(filter as TemplateTag);
 }
 
-function providerBadge(providers: Provider[]) {
-  if (providers.length > 1) return <Badge variant="multi">Multi</Badge>;
+function providerBadge(providers: Provider[], multi: string) {
+  if (providers.length > 1) return <Badge variant="multi">{multi}</Badge>;
   const p = providers[0];
-  if (!p || p === 'other') return <Badge variant="multi">Multi</Badge>;
+  if (!p || p === 'other') return <Badge variant="multi">{multi}</Badge>;
   return <Badge variant={p}>{PROVIDER_LABELS[p]}</Badge>;
 }
 
@@ -60,6 +63,9 @@ export function TemplateModal({
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('All');
   const [name, setName] = useState('');
+  const m = useMessages(templatePickerMessages);
+  const filterLabel = (f: Filter) =>
+    f === 'All' ? m.all : f === 'Multi-cloud' ? m.multiCloud : f in PROVIDER_FILTER ? f : templateTagLabel(f as TemplateTag);
 
   const visible = useMemo(
     () => TEMPLATES.filter((t) => matches(t, filter, query)),
@@ -71,7 +77,7 @@ export function TemplateModal({
     const projectName = typed
       ? uniqueProjectName(typed)
       : template
-        ? uniqueProjectName(template.name)
+        ? uniqueProjectName(templateName(template))
         : blankProjectName(scratch ?? 'aws');
     const slug = slugify(projectName);
     const files = template ? template.build(slug) : scratchProject(scratch ?? 'aws', projectName);
@@ -81,7 +87,7 @@ export function TemplateModal({
         name: projectName,
         files,
         templateSlug: template?.slug,
-        description: template?.description,
+        description: template ? templateDescription(template) : undefined,
       });
     } catch {
       return; // storage full — the storage notice says so; stay here
@@ -94,13 +100,11 @@ export function TemplateModal({
       open={open}
       onClose={onClose}
       wide
-      label="Start from a template"
+      label={m.title}
       title={
         <div>
-          <h2 className="text-[17px] font-bold">Start from a template</h2>
-          <p className="mt-0.5 text-[12.5px] text-muted">
-            Pre-built infrastructure patterns you can customize
-          </p>
+          <h2 className="text-[17px] font-bold">{m.title}</h2>
+          <p className="mt-0.5 text-[12.5px] text-muted">{m.subtitle}</p>
         </div>
       }
     >
@@ -111,22 +115,22 @@ export function TemplateModal({
             <Input
               autoFocus
               className="pl-8"
-              placeholder="Search templates…"
-              aria-label="Search templates"
+              placeholder={m.searchPlaceholder}
+              aria-label={m.searchLabel}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
           <Input
             className="w-52 max-sm:w-full"
-            placeholder="Project name (optional)"
+            placeholder={m.namePlaceholder}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            aria-label="Project name"
+            aria-label={m.nameLabel}
           />
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label="Filter templates">
+        <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={m.filterLabel}>
           {FILTERS.map((f) => (
             <button
               key={f}
@@ -140,7 +144,7 @@ export function TemplateModal({
                   : 'text-muted hover:border-border-strong hover:text-foreground',
               )}
             >
-              {f}
+              {filterLabel(f)}
             </button>
           ))}
         </div>
@@ -158,20 +162,20 @@ export function TemplateModal({
                 </div>
                 <div className="flex flex-1 flex-col p-3.5">
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-[13.5px] font-semibold">{t.name}</h3>
-                    {providerBadge(t.providers)}
+                    <h3 className="text-[13.5px] font-semibold">{templateName(t)}</h3>
+                    {providerBadge(t.providers, m.multiBadge)}
                   </div>
                   <p className="mt-1.5 line-clamp-2 flex-1 text-[12px] leading-relaxed text-muted">
-                    {t.description}
+                    {templateDescription(t)}
                   </p>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-[11px] text-faint">{t.resourceCount} resources</span>
+                    <span className="text-[11px] text-faint">{m.resources(t.resourceCount)}</span>
                     <button
                       type="button"
                       onClick={() => create(t)}
                       className="inline-flex items-center gap-1 text-[12.5px] font-semibold text-primary hover:text-primary-hover"
                     >
-                      Use template <ArrowRight className="h-3.5 w-3.5" />
+                      {m.useTemplate} <ArrowRight className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 </div>
@@ -180,13 +184,13 @@ export function TemplateModal({
           })}
           {visible.length === 0 ? (
             <p className="col-span-full py-10 text-center text-[13px] text-muted">
-              No templates match “{query}”.
+              {m.noMatch(query)}
             </p>
           ) : null}
         </div>
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-          <span className="text-[12.5px] text-muted">Or start from scratch:</span>
+          <span className="text-[12.5px] text-muted">{m.fromScratch}</span>
           <div className="flex flex-wrap gap-2">
             {(['aws', 'azure', 'gcp'] as const).map((p) => (
               <Button key={p} variant="outline" size="sm" onClick={() => create(undefined, p)}>

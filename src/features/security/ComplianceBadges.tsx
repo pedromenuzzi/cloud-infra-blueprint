@@ -10,6 +10,7 @@ import { FRAMEWORKS, frameworkOf, type Control, type FrameworkId } from '@/secur
 
 const TIP_WIDTH = 264;
 
+/** `controls` come from an audit, their titles already in its language */
 function ControlBadge({ framework, controls }: { framework: FrameworkId; controls: Control[] }) {
   const f = frameworkOf(framework);
   const ref = useRef<HTMLButtonElement>(null);

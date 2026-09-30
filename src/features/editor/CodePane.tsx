@@ -1,9 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { lineColOf } from '@/hcl/parser';
+import { useLocale } from '@/i18n/locale';
+import { useMessages } from '@/i18n/messages';
 import { prefersReducedMotion } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import { codeMessages } from './CodePane.messages';
 import { ensureMonacoSetup, monaco, setCompletionSource } from './monaco/setup';
-import { orderedFiles, READ_ONLY_HINT, useEditor } from './store';
+import { orderedFiles, readOnlyHint, useEditor } from './store';
 
 ensureMonacoSetup();
 
@@ -30,7 +33,10 @@ function applyMinimalEdit(model: monaco.editor.ITextModel, newText: string) {
   ]);
 }
 
-export function CodePane() {
+/** `controls`: layout buttons for the header (grip, expand, hide) — the editor passes them, the viewer doesn't. */
+export function CodePane({ controls }: { controls?: ReactNode } = {}) {
+  const m = useMessages(codeMessages);
+  const locale = useLocale((s) => s.locale);
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const modelsRef = useRef(new Map<string, monaco.editor.ITextModel>());
@@ -51,6 +57,12 @@ export function CodePane() {
   /** resource waiting to be scrolled into view once its file's model is active */
   const pendingRevealRef = useRef<string | null>(null);
   const flashRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
+  /**
+   * The editor was just created (the pane opened to show a block): a smooth
+   * scroll started before its first frame stops short, and there is nothing
+   * to animate from anyway — jump.
+   */
+  const freshRef = useRef(true);
 
   const fileList = orderedFiles(files);
 
@@ -103,7 +115,7 @@ export function CodePane() {
       fixedOverflowWidgets: true,
       readOnly: useEditor.getState().readOnly,
       domReadOnly: useEditor.getState().readOnly,
-      readOnlyMessage: { value: READ_ONLY_HINT },
+      readOnlyMessage: { value: readOnlyHint() },
     });
     // code → canvas: explicit caret moves (click, arrows) select the enclosing resource
     let syncTimer: ReturnType<typeof setTimeout> | undefined;
@@ -136,6 +148,8 @@ export function CodePane() {
     );
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyY, () => useEditor.getState().redo());
     editorRef.current = editor;
+    freshRef.current = true;
+    const settle = requestAnimationFrame(() => requestAnimationFrame(() => (freshRef.current = false)));
 
     // theme follows the app's dark class
     const el = document.documentElement;
@@ -148,10 +162,11 @@ export function CodePane() {
     const models = modelsRef.current;
     return () => {
       clearTimeout(syncTimer);
+      cancelAnimationFrame(settle);
       observer.disconnect();
       editor.dispose();
       host.remove();
-      for (const m of models.values()) m.dispose();
+      for (const model of models.values()) model.dispose();
       models.clear();
       editorRef.current = null;
     };
@@ -161,6 +176,15 @@ export function CodePane() {
   useEffect(() => {
     editorRef.current?.updateOptions({ readOnly, domReadOnly: readOnly });
   }, [readOnly]);
+
+  // a language switch re-words the read-only tooltip in place (the editor, its models and undo stay);
+  // the editor was created in the language in effect, so nothing to do until it changes
+  const wordedIn = useRef(locale);
+  useEffect(() => {
+    if (wordedIn.current === locale) return;
+    wordedIn.current = locale;
+    editorRef.current?.updateOptions({ readOnlyMessage: { value: readOnlyHint() } });
+  }, [locale]);
 
   // dispose stale models when switching projects
   useEffect(() => {
@@ -215,7 +239,11 @@ export function CodePane() {
     if (!model) return;
     const start = model.getPositionAt(range.start).lineNumber;
     const end = model.getPositionAt(Math.max(range.start, range.end - 1)).lineNumber;
-    editor.revealLinesInCenterIfOutsideViewport(start, end, monaco.editor.ScrollType.Smooth);
+    editor.revealLinesInCenterIfOutsideViewport(
+      start,
+      end,
+      freshRef.current ? monaco.editor.ScrollType.Immediate : monaco.editor.ScrollType.Smooth,
+    );
     flashRef.current?.clear();
     flashRef.current = editor.createDecorationsCollection([
       {
@@ -297,32 +325,35 @@ export function CodePane() {
     parseDiagnostics.some((d) => d.file === file && d.severity === 'error');
 
   return (
-    <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label="Terraform code">
-      <div ref={tabsRef} className="flex items-center gap-0.5 overflow-x-auto border-b px-1.5 pt-1" role="tablist" aria-label="Files">
-        {fileList.map((f) => (
-          <button
-            key={f}
-            type="button"
-            role="tab"
-            aria-selected={activeFile === f}
-            data-file={f}
-            onClick={() => setActiveFile(f)}
-            className={cn(
-              'relative shrink-0 rounded-t-[6px] border border-b-0 px-3 py-1.5 font-mono text-[11.5px] transition-colors',
-              activeFile === f
-                ? 'border-border bg-surface-1 font-semibold text-foreground'
-                : 'border-transparent text-muted hover:text-foreground',
-            )}
-          >
-            {f}
-            {fileErrors(f) ? (
-              <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger" />
-            ) : null}
-            {activeFile === f ? (
-              <span className="absolute inset-x-0 -bottom-px h-px bg-surface-1" />
-            ) : null}
-          </button>
-        ))}
+    <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label={m.terraformCode}>
+      <div className="flex items-center border-b">
+        <div ref={tabsRef} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 pt-1" role="tablist" aria-label={m.files}>
+          {fileList.map((f) => (
+            <button
+              key={f}
+              type="button"
+              role="tab"
+              aria-selected={activeFile === f}
+              data-file={f}
+              onClick={() => setActiveFile(f)}
+              className={cn(
+                'relative shrink-0 rounded-t-[6px] border border-b-0 px-3 py-1.5 font-mono text-[11.5px] transition-colors',
+                activeFile === f
+                  ? 'border-border bg-surface-1 font-semibold text-foreground'
+                  : 'border-transparent text-muted hover:text-foreground',
+              )}
+            >
+              {f}
+              {fileErrors(f) ? (
+                <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger" />
+              ) : null}
+              {activeFile === f ? (
+                <span className="absolute inset-x-0 -bottom-px h-px bg-surface-1" />
+              ) : null}
+            </button>
+          ))}
+        </div>
+        {controls ? <div className="flex shrink-0 items-center gap-0.5 px-1.5">{controls}</div> : null}
       </div>
 
       <div ref={containerRef} className="min-h-0 flex-1" data-testid="monaco" />
@@ -332,9 +363,7 @@ export function CodePane() {
           <span>HCL</span>
           <span>UTF-8</span>
         </span>
-        <span>
-          Ln {cursor.line}, Col {cursor.col}
-        </span>
+        <span>{m.position(cursor.line, cursor.col)}</span>
       </div>
     </section>
   );

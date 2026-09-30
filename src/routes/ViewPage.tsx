@@ -30,29 +30,27 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Link, useLocation } from 'react-router-dom';
 import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { offerShareImport } from '@/components/ShareLinkHost';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, buttonClass, hasOpenLayer, LogoMark } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { CanvasPane } from '@/features/editor/CanvasPane';
 import { Inspector } from '@/features/editor/Inspector';
+import { useRevealOpensCode } from '@/features/editor/layoutEffects';
 import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
 import { ExportPdfHost, openExportPdf } from '@/features/export/ExportPdfDialog';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import { copyText, exportZip } from '@/lib/download';
 import { parseViewHash, shareHash, viewLinkInfo, viewUrl, type ShareError, type SharePayload } from '@/lib/share';
 import { detectProviders, type Project } from '@/lib/storage';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/theme/useTheme';
+import { routeMessages } from './messages';
 
 const CodePane = lazy(() => import('@/features/editor/CodePane').then((m) => ({ default: m.CodePane })));
-
-const ERRORS: Record<ShareError, string> = {
-  invalid: 'This view link is damaged or incomplete — ask for a new one.',
-  'too-large': 'This view link is too large to open safely.',
-  version: 'This view link needs a newer version of Cloud Blueprint — reload and try again.',
-};
 
 const COMPACT = '(max-width: 1099px)';
 const EPOCH = new Date(0).toISOString();
@@ -84,9 +82,10 @@ function copyViewLink(payload: SharePayload) {
     showToast(link.warning!, 'error');
     return;
   }
+  const m = messagesFor(routeMessages);
   void copyText(link.url).then(
-    () => showToast(link.warning ?? 'View link copied — anyone with it can look, nobody can edit', link.warning ? 'info' : 'success'),
-    () => showToast('Could not copy the link', 'error'),
+    () => showToast(link.warning ?? m.viewCopied, link.warning ? 'info' : 'success'),
+    () => showToast(m.copyLinkFailed, 'error'),
   );
 }
 
@@ -96,28 +95,32 @@ function copyEmbed(payload: SharePayload) {
     showToast(link.warning!, 'error');
     return;
   }
+  const m = messagesFor(routeMessages);
   void copyText(embedSnippet(payload)).then(
-    () => showToast(link.warning ?? 'Embed code copied — paste it into any page that allows iframes', link.warning ? 'info' : 'success'),
-    () => showToast('Could not copy the embed code', 'error'),
+    () => showToast(link.warning ?? m.embedCopied, link.warning ? 'info' : 'success'),
+    () => showToast(m.copyEmbedFailed, 'error'),
   );
 }
 
 /* ------------------------------------------------------------------ bits */
 
 function LinkError({ error, embed }: { error: ShareError; embed: boolean }) {
-  useDocumentTitle('View link');
+  const m = useMessages(routeMessages);
+  useDocumentTitle(m.viewLink);
   return (
     <main className="flex h-full flex-col items-center justify-center gap-3 bg-background px-6 text-center" role="alert">
       <LogoMark size={embed ? 28 : 44} />
-      <h1 className={cn('font-bold', embed ? 'text-[15px]' : 'text-[22px]')}>Can’t open this view</h1>
-      <p className="max-w-sm text-[13px] leading-relaxed text-muted">{ERRORS[error]}</p>
+      <h1 className={cn('font-bold', embed ? 'text-[15px]' : 'text-[22px]')}>{m.cantOpenView}</h1>
+      <p className="max-w-sm text-[13px] leading-relaxed text-muted">
+        {error === 'too-large' ? m.viewTooLarge : error === 'version' ? m.viewVersion : m.viewInvalid}
+      </p>
       {embed ? (
         <a href={import.meta.env.BASE_URL} target="_blank" rel="noopener" className={buttonClass('outline', 'sm')}>
-          Open Cloud Blueprint <ArrowUpRight className="h-3.5 w-3.5" />
+          {m.openCloudBlueprint} <ArrowUpRight className="h-3.5 w-3.5" />
         </a>
       ) : (
         <Link to="/" className={buttonClass('primary', 'md', 'mt-2')}>
-          Go to Cloud Blueprint
+          {m.goToCloudBlueprint}
         </Link>
       )}
     </main>
@@ -125,14 +128,15 @@ function LinkError({ error, embed }: { error: ShareError; embed: boolean }) {
 }
 
 function CodeFallback() {
+  const m = useMessages(routeMessages);
   return (
     <section
       className="flex h-full flex-col items-center justify-center gap-3 bg-surface-1 text-[12px] text-faint"
-      aria-label="Terraform code"
+      aria-label={m.terraformCode}
       aria-busy="true"
     >
       <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
-      Loading code…
+      {m.loadingCode}
     </section>
   );
 }
@@ -178,6 +182,7 @@ function ViewerTopbar({
 }) {
   const [menu, setMenu] = useState<{ kind: MenuKind; x: number; y: number } | null>(null);
   const { theme, setTheme } = useTheme();
+  const m = useMessages(routeMessages);
   const open = (kind: MenuKind) => (e: React.MouseEvent<HTMLButtonElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     setMenu({ kind, x: r.right - 230, y: r.bottom + 6 });
@@ -185,19 +190,20 @@ function ViewerTopbar({
 
   const item = (id: string, label: string, icon: LucideIcon, onSelect: () => void): MenuEntry => ({ id, label, icon, onSelect });
   const share: MenuEntry[] = [
-    item('view-link', 'Copy view link', Link2, () => copyViewLink(payload)),
-    item('embed', 'Copy embed code', FileCode2, () => copyEmbed(payload)),
+    item('view-link', m.copyViewLink, Link2, () => copyViewLink(payload)),
+    item('embed', m.copyEmbed, FileCode2, () => copyEmbed(payload)),
   ];
   const exports: MenuEntry[] = [
-    item('pdf', 'PDF document…', FileText, openExportPdf),
-    item('png', 'Diagram as PNG', ImageDown, () => void canvasApi()?.exportImage('png')),
-    item('svg', 'Diagram as SVG', FileImage, () => void canvasApi()?.exportImage('svg')),
+    item('pdf', m.pdfDocument, FileText, openExportPdf),
+    item('png', m.diagramPng, ImageDown, () => void canvasApi()?.exportImage('png')),
+    item('svg', m.diagramSvg, FileImage, () => void canvasApi()?.exportImage('svg')),
     'separator',
-    item('zip', 'Terraform files (.zip)', FileArchive, () => {
+    item('zip', m.terraformZip, FileArchive, () => {
       exportZip(payload.name, payload.files);
-      showToast('Terraform zip downloaded', 'success');
+      showToast(messagesFor(routeMessages).zipDownloaded, 'success');
     }),
   ];
+  const themeLabel = { light: m.lightTheme, dark: m.darkTheme, system: m.systemTheme };
   const entries: Record<MenuKind, MenuEntry[]> = {
     share,
     export: exports,
@@ -208,7 +214,7 @@ function ViewerTopbar({
       'separator',
       ...(['light', 'dark', 'system'] as const).map((t) => ({
         id: `theme-${t}`,
-        label: `${t[0]!.toUpperCase()}${t.slice(1)} theme`,
+        label: themeLabel[t],
         icon: t === 'light' ? Sun : t === 'dark' ? Moon : Monitor,
         checked: theme === t,
         onSelect: () => setTheme(t),
@@ -218,42 +224,43 @@ function ViewerTopbar({
 
   return (
     <header className="relative flex h-12 shrink-0 items-center gap-1.5 border-b bg-surface-1 px-2 sm:gap-2 sm:px-3">
-      <Link to="/" aria-label="Cloud Blueprint home" className="shrink-0 rounded-sm p-1 hover:bg-surface-2">
+      <Link to="/" aria-label={m.cloudBlueprintHome} className="shrink-0 rounded-sm p-1 hover:bg-surface-2">
         <LogoMark size={22} />
       </Link>
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <h1 className="flex min-w-0 items-baseline gap-1.5 text-[13px]">
-          <span className="hidden shrink-0 text-muted sm:inline">Viewing</span>
+          <span className="hidden shrink-0 text-muted sm:inline">{m.viewing}</span>
           <span className="truncate font-semibold" title={payload.name}>
             {payload.name}
           </span>
         </h1>
-        <Badge variant="outline" className="shrink-0" title="Read-only — nothing here can be changed or saved">
+        <Badge variant="outline" className="shrink-0" title={m.readOnlyTitle}>
           <Eye className="h-3 w-3" />
-          <span className="max-sm:sr-only">read-only</span>
+          <span className="max-sm:sr-only">{m.readOnly}</span>
         </Badge>
       </div>
 
-      <IconToggle label="Code (⌘J)" pressed={codeOpen} onClick={onToggleCode}>
+      <IconToggle label={m.codeToggle} pressed={codeOpen} onClick={onToggleCode}>
         <Code2 className="h-4 w-4" />
       </IconToggle>
       <span className="hidden sm:contents">
-        <Button variant="outline" size="sm" aria-label="Share" aria-haspopup="menu" aria-expanded={menu?.kind === 'share'} onClick={open('share')}>
-          <Link2 className="h-3.5 w-3.5" /> <span className="hidden lg:inline">Share</span>
+        <Button variant="outline" size="sm" aria-label={m.share} aria-haspopup="menu" aria-expanded={menu?.kind === 'share'} onClick={open('share')}>
+          <Link2 className="h-3.5 w-3.5" /> <span className="hidden lg:inline">{m.share}</span>
         </Button>
-        <Button variant="outline" size="sm" aria-label="Export" aria-haspopup="menu" aria-expanded={menu?.kind === 'export'} onClick={open('export')}>
-          <Download className="h-3.5 w-3.5" /> <span className="hidden lg:inline">Export</span>
+        <Button variant="outline" size="sm" aria-label={m.export} aria-haspopup="menu" aria-expanded={menu?.kind === 'export'} onClick={open('export')}>
+          <Download className="h-3.5 w-3.5" /> <span className="hidden lg:inline">{m.export}</span>
         </Button>
+        <LanguageSwitcher compact />
         <ThemeToggle />
       </span>
       <span className="contents sm:hidden">
         <Button
           variant="ghost"
           size="icon"
-          aria-label="More actions"
+          aria-label={m.moreActions}
           aria-haspopup="menu"
           aria-expanded={menu?.kind === 'more'}
-          title="More actions"
+          title={m.moreActions}
           onClick={open('more')}
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -262,7 +269,8 @@ function ViewerTopbar({
       <Button size="sm" className="shrink-0" onClick={() => offerShareImport(payload)}>
         <CopyPlus className="h-3.5 w-3.5" />
         <span>
-          Make a copy<span className="max-md:hidden"> to edit</span>
+          {m.makeCopy}
+          <span className="max-md:hidden">{m.toEdit}</span>
         </span>
       </Button>
 
@@ -270,7 +278,7 @@ function ViewerTopbar({
         <ContextMenu
           x={menu.x}
           y={menu.y}
-          label={menu.kind === 'share' ? 'Share' : menu.kind === 'export' ? 'Export' : 'More actions'}
+          label={menu.kind === 'share' ? m.share : menu.kind === 'export' ? m.export : m.moreActions}
           onClose={() => setMenu(null)}
           entries={entries[menu.kind]}
         />
@@ -302,7 +310,10 @@ function FullViewer({ payload }: { payload: SharePayload }) {
   const [codeOpen, setCodeOpen] = useState(() => !window.matchMedia(COMPACT).matches);
   const selection = useEditor((s) => s.selection);
   const inspector = useLayout((s) => s.panels.inspector);
-  useDocumentTitle(`${payload.name} (view)`);
+  const m = useMessages(routeMessages);
+  useDocumentTitle(m.viewTitle(payload.name));
+  // the inspector's Code button and "Show in code" reveal the block in the code pane
+  useRevealOpensCode(() => setCodeOpen(true));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -336,7 +347,7 @@ function FullViewer({ payload }: { payload: SharePayload }) {
   return (
     <div className="flex h-full flex-col">
       <ViewerTopbar payload={payload} codeOpen={codeOpen} onToggleCode={() => setCodeOpen((v) => !v)} />
-      <main className="flex min-h-0 flex-1" aria-label="Blueprint (read-only)">
+      <main className="flex min-h-0 flex-1" aria-label={m.blueprintReadOnly}>
         <div className="relative min-w-0 flex-1">
           <CanvasPane />
           {showInspector ? (
@@ -367,7 +378,8 @@ function FullViewer({ payload }: { payload: SharePayload }) {
 
 function EmbedViewer({ payload }: { payload: SharePayload }) {
   const wrapper = useRef<HTMLDivElement>(null);
-  useDocumentTitle(`${payload.name} (view)`);
+  const m = useMessages(routeMessages);
+  useDocumentTitle(m.viewTitle(payload.name));
   // the iframe can be resized by its page: keep the whole diagram in view
   useEffect(() => {
     const el = wrapper.current;
@@ -394,7 +406,7 @@ function EmbedViewer({ payload }: { payload: SharePayload }) {
       ref={wrapper}
       // an embed is a picture of the architecture: no minimap covering it
       className="@container relative h-full [&_.react-flow__minimap]:hidden"
-      aria-label={`${payload.name} — read-only diagram`}
+      aria-label={m.embedLabel(payload.name)}
     >
       <h1 className="sr-only">{payload.name}</h1>
       <CanvasPane />
@@ -402,13 +414,13 @@ function EmbedViewer({ payload }: { payload: SharePayload }) {
         href={full}
         target="_blank"
         rel="noopener"
-        aria-label={`Open ${payload.name} in Cloud Blueprint (new tab)`}
-        title={`Open “${payload.name}” in Cloud Blueprint`}
+        aria-label={m.openInNewTab(payload.name)}
+        title={m.openInCloudBlueprint(payload.name)}
         className="absolute left-2 top-2 z-30 flex items-center gap-1.5 rounded-full border bg-surface-1/90 py-1 pl-1.5 pr-2.5 text-[11.5px] font-medium text-muted shadow-sm backdrop-blur-md transition-colors hover:border-border-strong hover:text-foreground"
       >
         <LogoMark size={15} />
         <span className="hidden @xl:inline">Cloud Blueprint</span>
-        <span className="@xl:hidden">Open</span>
+        <span className="@xl:hidden">{m.open}</span>
         <ArrowUpRight className="h-3 w-3" />
       </a>
     </main>

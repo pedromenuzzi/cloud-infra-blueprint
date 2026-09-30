@@ -46,29 +46,38 @@ import { Button, Kbd } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
 import { CostChip } from '@/features/cost/CostChip';
 import { captureDiagram } from '@/features/export/captureDiagram';
+import { useLocale, type Locale } from '@/i18n/locale';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
-import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
+import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
 import { detectProviders } from '@/lib/storage';
 import { cn } from '@/lib/utils';
+import { resourceName, resourceShortName, resourceSubtitle } from '@/resources/i18n';
 import { CATEGORY_COLORS } from '@/resources/icons';
 import { connectionOp, findConnectionRule } from '@/resources/connect';
 import { docsUrl, getDef, isContainerType } from '@/resources/registry';
 import type { ResourceDef } from '@/resources/types';
 import { registerCanvasApi } from './canvasApi';
+import { isCanvasDragging } from './canvasDrag';
 import { CanvasToolbar } from './CanvasToolbar';
 import { exportDiagramImage } from './exportImage';
 import { removeReferencesOps } from './connections';
 import { ProjectOverview } from './Inspector';
-import { useLayout } from './layoutStore';
+import { floatingInspectorInset, useFloatingInspectorShown } from './inspectorPlacement';
 import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
-import { buildNewNode, duplicateNode } from './newNode';
+import { duplicateNode } from './newNode';
 import { ResourcePicker } from './ResourcePicker';
-import { computeTidyOps } from './tidy';
+import { arrangeMessages } from './arrange.messages';
+import { canvasMessages } from './CanvasPane.messages';
+import { DropHintCard, useTrackPaletteDrag } from './dropHint';
+import { hasOverlaps } from './placement';
+import { computeArrangeInsideOps, computeTidyOps } from './tidy';
+import { useCanvasDrops } from './useCanvasDrops';
 import {
   ContainerNodeView,
   FlowEdge,
@@ -84,7 +93,7 @@ import {
 import { getAudit, useSecurityUi } from '@/features/security/securityStore';
 import type { AuditResult } from '@/security/audit';
 import { ruleRisk } from '@/security/audit';
-import { isRuleResource } from '@/security/model';
+import { isRuleResource, portText } from '@/security/model';
 import { useEditor } from './store';
 
 const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, internet: InternetNodeView };
@@ -93,7 +102,8 @@ const edgeTypes = { flow: FlowEdge, secflow: SecFlowEdge };
 export const INTERNET_NODE = '__internet__';
 
 /** Security-lens decorations per resource, derived from the audit. */
-function lensDecorations(ir: IR, audit: AuditResult) {
+function lensDecorations(ir: IR, audit: AuditResult, locale: Locale) {
+  const m = messagesFor(canvasMessages, locale);
   const t = audit.topology;
   const order = ['critical', 'high', 'medium', 'low'] as const;
   const risk = new Map<string, NodeSecurity['risk']>();
@@ -112,7 +122,7 @@ function lensDecorations(ir: IR, audit: AuditResult) {
     const rules = t.rules.get(r.id);
     if (rules) {
       const inbound = rules.filter((x) => x.direction === 'inbound').length;
-      sec.rules = `${inbound} in · ${rules.length - inbound} out`;
+      sec.rules = m.lensRules(inbound, rules.length - inbound);
     }
     if (t.subnets.has(r.id)) sec.subnet = t.subnets.get(r.id);
     if (t.subnetNacls.has(r.id)) sec.nacls = t.subnetNacls.get(r.id)!.length;
@@ -134,12 +144,18 @@ export const PALETTE_MIME = 'application/x-blueprint-type';
 
 /** Why two resources can't be wired directly — with the usual indirection when there is one. */
 function connectHint(a: string, b: string): string {
+  const m = messagesFor(canvasMessages);
   const pair = new Set([a, b]);
-  if (pair.has('aws_instance') && pair.has('aws_iam_role')) {
-    return 'An EC2 instance uses a role through an aws_iam_instance_profile — add one in code';
-  }
-  return 'These resources have no direct attribute to connect';
+  if (pair.has('aws_instance') && pair.has('aws_iam_role')) return m.roleNeedsProfile;
+  return m.noAttribute;
 }
+
+/** a resource's kind as the canvas names it: the catalog's short name, else the type without its provider prefix */
+const typeLabelOf = (type: string, locale: Locale) =>
+  getDef(type) ? resourceShortName(type, locale) : type.replace(/^(aws|azurerm|google)_/, '');
+
+/** traffic ports as a sentence lists them: ":443" stays, "all" is worded */
+const portWords = (ports: string[], locale: Locale) => ports.map((p) => portText(p, locale)).join(', ');
 
 /**
  * Nodes and edges for the IR. Selection is applied separately (withSelection)
@@ -147,10 +163,12 @@ function connectHint(a: string, b: string): string {
  */
 function buildFlow(
   state: Pick<ReturnType<typeof useEditor.getState>, 'ir' | 'edges' | 'warnings'>,
-  audit: AuditResult | null = null,
+  audit: AuditResult | null,
+  locale: Locale,
 ): { nodes: FlowNode[]; edges: Array<FlowEdgeType | SecFlowEdgeType> } {
   const { ir, edges, warnings } = state;
-  const lens = audit ? lensDecorations(ir, audit) : null;
+  const m = messagesFor(canvasMessages, locale);
+  const lens = audit ? lensDecorations(ir, audit, locale) : null;
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
   const warned = new Set(warnings.map((w) => w.nodeId).filter(Boolean));
 
@@ -170,13 +188,18 @@ function buildFlow(
     const def = getDef(r.type);
     const container = isContainerType(r.type);
     const parent = r.parentId ? byId.get(r.parentId) : undefined;
+    const name = def ? resourceName(r.type, locale) : r.type;
     const common = {
       id: r.id,
       position: { x: r.position?.x ?? 0, y: r.position?.y ?? 0 },
       parentId: r.parentId,
-      ariaLabel: `${def?.displayName ?? r.type} ${r.name}${
-        parent ? `, in ${getDef(parent.type)?.displayName ?? parent.type} ${parent.name}` : ''
-      }${warned.has(r.id) ? ', missing required settings' : ''}`,
+      domAttributes: { 'aria-roledescription': m.nodeRole },
+      ariaLabel: m.nodeLabel(
+        name,
+        r.name,
+        parent ? `${getDef(parent.type) ? resourceName(parent.type, locale) : parent.type} ${parent.name}` : null,
+        warned.has(r.id),
+      ),
     };
     if (container) {
       return {
@@ -184,8 +207,8 @@ function buildFlow(
         type: 'container',
         data: {
           title: r.name,
-          subtitle: def?.subtitle?.(r.args),
-          typeLabel: def?.shortName ?? r.type.replace(/^(aws|azurerm|google)_/, ''),
+          subtitle: resourceSubtitle(r.type, r.args, locale),
+          typeLabel: typeLabelOf(r.type, locale),
           resourceType: r.type,
           provider: r.provider,
           category: def?.category ?? 'network',
@@ -207,8 +230,8 @@ function buildFlow(
       type: 'resource',
       data: {
         title: r.name,
-        subtitle: def?.subtitle?.(r.args) ?? def?.displayName ?? r.type,
-        typeLabel: def?.shortName ?? r.type.replace(/^(aws|azurerm|google)_/, ''),
+        subtitle: resourceSubtitle(r.type, r.args, locale) ?? name,
+        typeLabel: typeLabelOf(r.type, locale),
         resourceType: r.type,
         provider: r.provider,
         category: def?.category ?? 'compute',
@@ -222,6 +245,8 @@ function buildFlow(
     id: e.id,
     source: e.source,
     target: e.target,
+    ariaLabel: m.edgeLabel(e.source, e.target),
+    domAttributes: { 'aria-roledescription': m.edgeRole },
     type: 'flow',
     markerEnd: {
       type: MarkerType.ArrowClosed,
@@ -254,6 +279,8 @@ function buildFlow(
       id: `sec:${f.id}`,
       source: f.from === 'internet' ? INTERNET_NODE : f.from,
       target: f.to,
+      ariaLabel: m.edgeLabel(name(f.from), name(f.to)),
+      domAttributes: { 'aria-roledescription': m.edgeRole },
       type: 'secflow',
       zIndex: 5,
       selectable: false,
@@ -263,8 +290,8 @@ function buildFlow(
         tone,
         explain:
           f.from === 'internet'
-            ? `Anyone on the internet can reach ${name(f.to)} on ${f.ports.join(', ')}`
-            : `${name(f.from)} → ${name(f.to)} allowed on ${f.ports.join(', ')}`,
+            ? m.internetReaches(name(f.to), portWords(f.ports, locale))
+            : m.allowedOn(name(f.from), name(f.to), portWords(f.ports, locale)),
       },
     };
   });
@@ -278,6 +305,8 @@ function buildFlow(
     nodes.push({
       id: INTERNET_NODE,
       type: 'internet',
+      ariaLabel: 'Internet',
+      domAttributes: { 'aria-roledescription': m.nodeRole },
       position: { x: minX - 300, y: Math.round(centerY - NODE_H / 2) },
       width: 184,
       height: NODE_H,
@@ -328,9 +357,7 @@ function CanvasInner() {
     null,
   );
   const [overview, setOverview] = useState(false);
-  const panelsInspector = useLayout((s) => s.panels.inspector);
-  const compact = useLayout((s) => s.compact);
-  const drawer = useLayout((s) => s.drawer);
+  const inspectorOpen = useFloatingInspectorShown();
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeType | SecFlowEdgeType>([]);
@@ -343,12 +370,14 @@ function CanvasInner() {
     (window as unknown as { __rf: unknown }).__rf = rf;
   }
 
+  // the labels are words too: a language switch rebuilds them (positions, selection and history stay)
+  const locale = useLocale((s) => s.locale);
   useEffect(() => {
-    const built = buildFlow({ ir, edges: irEdges, warnings }, lensOn ? getAudit(ir) : null);
+    const built = buildFlow({ ir, edges: irEdges, warnings }, lensOn ? getAudit(ir, locale) : null, locale);
     const { selection: primary, selectedIds: picked } = useEditor.getState();
     setNodes(withSelection(built.nodes, picked));
     setEdges(withActiveEdges(built.edges, primary));
-  }, [ir, irEdges, warnings, lensOn, setNodes, setEdges]);
+  }, [ir, irEdges, warnings, lensOn, locale, setNodes, setEdges]);
 
   useEffect(() => {
     setNodes((previous) => withSelection(previous, selectedIds));
@@ -370,7 +399,9 @@ function CanvasInner() {
   }, [nodes, rf, updateNodeInternals]);
 
   const byId = useMemo(() => new Map(ir.resources.map((r) => [r.id, r] as const)), [ir]);
-  const absRects = useMemo(() => computeAbsoluteRects(ir), [ir]);
+  const overlapping = useMemo(() => hasOverlaps(ir), [ir]);
+  const am = useMessages(arrangeMessages);
+  const m = useMessages(canvasMessages);
 
   // arrow keys move selected nodes: persist them (one undo step per burst) like a drag
   const lastArrowKey = useRef(0);
@@ -446,153 +477,18 @@ function CanvasInner() {
     [syncSelection],
   );
 
-  /** containers that may adopt `node`, deepest first */
-  const findContainerAt = useCallback(
-    (nodeId: string | null, def: ResourceDef | undefined, cx: number, cy: number) => {
-      if (!def?.containment) return undefined;
-      const accepted = new Set(def.containment.flatMap((c) => c.parentTypes));
-      // exclude self and descendants
-      const isDescendantOfNode = (r: ResourceNode): boolean => {
-        let cur: ResourceNode | undefined = r;
-        let guard = 0;
-        while (cur && guard++ < 12) {
-          if (cur.id === nodeId) return true;
-          cur = cur.parentId ? byId.get(cur.parentId) : undefined;
-        }
-        return false;
-      };
-      let best: AbsRect | undefined;
-      for (const rect of absRects.values()) {
-        if (!rect.isContainer) continue;
-        if (!accepted.has(rect.node.type)) continue;
-        if (nodeId && (rect.node.id === nodeId || isDescendantOfNode(rect.node))) continue;
-        const inside =
-          cx >= rect.x && cx <= rect.x + rect.w && cy >= rect.y && cy <= rect.y + rect.h;
-        if (!inside) continue;
-        if (!best || rect.depth > best.depth) best = rect;
-      }
-      return best;
-    },
-    [absRects, byId],
-  );
+  /** nodes glide to their new place for a moment (Auto-arrange, a refused drop snapping back) */
+  const layoutTimer = useRef<ReturnType<typeof setTimeout>>();
+  const animateLayout = useCallback((ms = 520) => {
+    setLayoutAnim(true);
+    clearTimeout(layoutTimer.current);
+    layoutTimer.current = setTimeout(() => setLayoutAnim(false), ms);
+  }, []);
+  useEffect(() => () => clearTimeout(layoutTimer.current), []);
 
-  /**
-   * The deepest container under a point that `node` is not part of (neither
-   * its parent chain nor itself/its descendants) — dropping there misleads.
-   */
-  const foreignContainerAt = useCallback(
-    (node: ResourceNode, cx: number, cy: number): AbsRect | undefined => {
-      const ancestors = new Set<string>();
-      for (let cur = node.parentId, guard = 0; cur && guard < 12; cur = byId.get(cur)?.parentId, guard++) ancestors.add(cur);
-      const isSelfOrDescendant = (r: ResourceNode): boolean => {
-        for (let cur: ResourceNode | undefined = r, guard = 0; cur && guard < 12; cur = cur.parentId ? byId.get(cur.parentId) : undefined, guard++) {
-          if (cur.id === node.id) return true;
-        }
-        return false;
-      };
-      let best: AbsRect | undefined;
-      for (const rect of absRects.values()) {
-        if (!rect.isContainer || ancestors.has(rect.node.id) || isSelfOrDescendant(rect.node)) continue;
-        const inside = cx >= rect.x && cx <= rect.x + rect.w && cy >= rect.y && cy <= rect.y + rect.h;
-        if (inside && (!best || rect.depth > best.depth)) best = rect;
-      }
-      return best;
-    },
-    [absRects, byId],
-  );
-
-  const onNodeDragStop = useCallback(
-    (_e: unknown, node: Node, dragged: Node[]) => {
-      const ops: Op[] = [];
-      const group = dragged.length > 0 ? dragged : [node];
-
-      for (const n of group) {
-        const irNode = byId.get(n.id);
-        if (!irNode) continue;
-        const def = getDef(irNode.type);
-        const internal = rf.getInternalNode(n.id);
-        const abs = internal?.internals.positionAbsolute ?? n.position;
-        const { w, h } = internal ? sizeOf(internal) : { w: NODE_W, h: NODE_H };
-        const keepSize =
-          irNode.position?.w !== undefined
-            ? { w: irNode.position.w, h: irNode.position.h }
-            : {};
-
-        // only the primary node may reparent, and only when it's a single-drag
-        const canReparent = group.length === 1 && n.id === node.id;
-        if (canReparent && def?.containment) {
-          const target = findContainerAt(n.id, def, abs.x + w / 2, abs.y + h / 2);
-          const currentParent = irNode.parentId;
-          const nextParent = target?.node.id;
-          if (nextParent !== currentParent) {
-            if (nextParent && target) {
-              const rule = findConnectionRule(def, target.node.type);
-              const link = rule && rule.mode === 'set' ? connectionOp(irNode, target.node, rule) : null;
-              if (link) {
-                ops.push(link);
-                ops.push({
-                  kind: 'move_node',
-                  nodeId: n.id,
-                  position: {
-                    x: Math.round(abs.x - target.x),
-                    y: Math.round(abs.y - target.y),
-                    ...keepSize,
-                  },
-                });
-                continue;
-              }
-              showToast(`Can't nest here — connect it in code instead`, 'info');
-            } else if (currentParent) {
-              // dropped outside: detach from the parent that a containment arg points at
-              const parent = byId.get(currentParent);
-              const rule = def.containment.find((c) =>
-                parent ? c.parentTypes.includes(parent.type) : false,
-              );
-              if (rule) {
-                ops.push({ kind: 'unset_arg', nodeId: n.id, field: rule.arg });
-                ops.push({
-                  kind: 'move_node',
-                  nodeId: n.id,
-                  position: { x: Math.round(abs.x), y: Math.round(abs.y), ...keepSize },
-                });
-                showToast(`Removed ${rule.arg} from ${n.id} — it's no longer in ${currentParent} (${MOD} Z to undo)`, 'info');
-                continue;
-              }
-            }
-          }
-        }
-
-        // a drop over a container the node can't belong to would draw it inside
-        // something it isn't part of: set it down just beside that container
-        const over = group.length === 1 ? foreignContainerAt(irNode, abs.x + w / 2, abs.y + h / 2) : undefined;
-        if (over) {
-          const parentRect = irNode.parentId ? absRects.get(irNode.parentId) : undefined;
-          ops.push({
-            kind: 'move_node',
-            nodeId: n.id,
-            position: {
-              x: Math.round(over.x + over.w + 24 - (parentRect?.x ?? 0)),
-              y: Math.round(abs.y - (parentRect?.y ?? 0)),
-              ...keepSize,
-            },
-          });
-          showToast(
-            `${def?.shortName ?? irNode.type} can't go inside ${getDef(over.node.type)?.shortName ?? over.node.type} — placed next to it`,
-            'info',
-          );
-          continue;
-        }
-
-        ops.push({
-          kind: 'move_node',
-          nodeId: n.id,
-          position: { x: Math.round(n.position.x), y: Math.round(n.position.y), ...keepSize },
-        });
-      }
-      if (ops.length > 0) applyCanvasOps(ops);
-    },
-    [absRects, applyCanvasOps, byId, findContainerAt, foreignContainerAt, rf],
-  );
+  // drags and palette drops: nesting rules, hints, explanations and fixes
+  const drops = useCanvasDrops({ animate: animateLayout });
+  useTrackPaletteDrag();
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -605,7 +501,7 @@ function CanvasInner() {
         source.provider !== 'other' &&
         target.provider !== 'other'
       ) {
-        showToast('Cross-cloud connections are not allowed', 'error');
+        showToast(messagesFor(canvasMessages).crossCloud, 'error');
         return;
       }
 
@@ -630,11 +526,11 @@ function CanvasInner() {
 
       const op = tryRule(source, target) ?? tryRule(target, source);
       if (op === 'complex') {
-        showToast('That argument is an expression — connect them in code', 'info');
+        showToast(messagesFor(canvasMessages).expressionArg, 'info');
         return;
       }
       if (op === 'connected') {
-        showToast('These resources are already connected', 'info');
+        showToast(messagesFor(canvasMessages).alreadyConnected, 'info');
         return;
       }
       if (!op) {
@@ -665,7 +561,7 @@ function CanvasInner() {
       const state = useEditor.getState();
       if (deletedNodes.length > 0) {
         const count = state.deleteResources(deletedNodes.map((n) => n.id));
-        if (count > 1) showToast(`Deleted ${count} resources — ${MOD} Z to undo`, 'info');
+        if (count > 1) showToast(messagesFor(canvasMessages).deletedMany(count, MOD), 'info');
         return;
       }
       const refs = deletedEdges.map((e) => ({
@@ -675,35 +571,14 @@ function CanvasInner() {
       }));
       const ops = removeReferencesOps(state.ir, refs);
       if (ops.length < new Set(refs.map((r) => `${r.source}:${r.field}`)).size) {
-        showToast('Some connections are complex expressions — edit them in code', 'info');
+        showToast(messagesFor(canvasMessages).complexConnections, 'info');
       }
       if (ops.length > 0) applyCanvasOps(ops);
     },
     [applyCanvasOps],
   );
 
-  /** add a catalog resource at a flow position, nesting it in the container under it */
-  const placeResource = useCallback(
-    (def: ResourceDef, flowPos: { x: number; y: number }) => {
-      const state = useEditor.getState();
-      const container = findContainerAt(null, def, flowPos.x, flowPos.y);
-      const size = isContainerType(def.type) ? { w: CONTAINER_MIN_W, h: CONTAINER_MIN_H } : {};
-      const position = container
-        ? {
-            x: Math.max(12, Math.round(flowPos.x - container.x - NODE_W / 2)),
-            y: Math.max(48, Math.round(flowPos.y - container.y - NODE_H / 2)),
-            ...size,
-          }
-        : {
-            x: Math.round(flowPos.x - NODE_W / 2),
-            y: Math.round(flowPos.y - NODE_H / 2),
-            ...size,
-          };
-      const { node, ops } = buildNewNode(state.ir, def, position, container?.node);
-      applyCanvasOps(ops, node.id);
-    },
-    [applyCanvasOps, findContainerAt],
-  );
+  const { placeResource } = drops;
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -728,9 +603,29 @@ function CanvasInner() {
       if (!source) return;
       const { node, ops } = duplicateNode(state.ir, source, getDef(source.type));
       applyCanvasOps(ops, node.id);
-      showToast(`Duplicated as ${node.id}`, 'success');
+      showToast(messagesFor(canvasMessages).duplicated(node.id), 'success');
     },
     [applyCanvasOps],
+  );
+
+  /** apply layout moves as one undo step, gliding; says so when nothing would move */
+  const applyLayout = useCallback(
+    (ops: Op[]) => {
+      const current = new Map(useEditor.getState().ir.resources.map((r) => [r.id, r.position] as const));
+      const moves = ops.filter((op) => {
+        if (op.kind !== 'move_node') return true;
+        const p = current.get(op.nodeId);
+        return !p || p.x !== op.position.x || p.y !== op.position.y || p.w !== op.position.w || p.h !== op.position.h;
+      });
+      if (moves.length === 0) {
+        showToast(messagesFor(arrangeMessages).already, 'info');
+        return false;
+      }
+      animateLayout();
+      applyCanvasOps(moves);
+      return true;
+    },
+    [animateLayout, applyCanvasOps],
   );
 
   const tidy = useCallback(async () => {
@@ -739,16 +634,25 @@ function CanvasInner() {
     setTidying(true);
     try {
       const ops = await computeTidyOps(state.ir, state.edges, isContainerType);
-      setLayoutAnim(true);
-      applyCanvasOps(ops);
-      setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(450) }), 60);
-      setTimeout(() => setLayoutAnim(false), 520);
+      if (applyLayout(ops)) {
+        // once containers are re-measured at their new sizes (after the glide)
+        setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(400) }), motionMs(480) + 60);
+      }
     } catch (err) {
-      showToast(`Couldn't tidy the layout: ${(err as Error).message}`, 'error');
+      showToast(messagesFor(arrangeMessages).failed((err as Error).message), 'error');
     } finally {
       setTidying(false);
     }
-  }, [applyCanvasOps, rf, tidying]);
+  }, [applyLayout, rf, tidying]);
+
+  /** "Arrange inside": only one container's contents */
+  const arrangeInside = useCallback(
+    (containerId: string) => {
+      const state = useEditor.getState();
+      applyLayout(computeArrangeInsideOps(state.ir, state.edges, isContainerType, containerId));
+    },
+    [applyLayout],
+  );
 
   /**
    * Run `capture` on a clean diagram (no selection glow, resize handles or
@@ -804,10 +708,11 @@ function CanvasInner() {
         const done = await withCleanDiagram((bounds) =>
           exportDiagramImage(bounds, format, useEditor.getState().projectName).then(() => true),
         );
-        if (done) showToast(`Diagram exported as ${format.toUpperCase()}`, 'success');
-        else showToast('Nothing to export yet — add a resource first', 'info');
+        const t = messagesFor(canvasMessages);
+        if (done) showToast(t.exported(format.toUpperCase()), 'success');
+        else showToast(t.nothingToExport, 'info');
       } catch (err) {
-        showToast(`Export failed: ${(err as Error).message}`, 'error');
+        showToast(messagesFor(canvasMessages).exportFailed((err as Error).message), 'error');
       }
     },
     [withCleanDiagram],
@@ -816,10 +721,12 @@ function CanvasInner() {
   const autoPan = useRef<{ before: Viewport; after: Viewport } | null>(null);
 
   // inspector closed: undo our automatic pan, unless the user moved the canvas since
+  // (or is dragging: grabbing another node clears the selection, the pointer owns the canvas)
   useEffect(() => {
     if (selection !== null || !autoPan.current) return;
     const { before, after } = autoPan.current;
     autoPan.current = null;
+    if (isCanvasDragging()) return;
     const vp = rf.getViewport();
     if (Math.abs(vp.x - after.x) < 2 && Math.abs(vp.y - after.y) < 2 && vp.zoom === after.zoom) {
       void rf.setViewport(before, { duration: motionMs(300) });
@@ -827,12 +734,7 @@ function CanvasInner() {
   }, [selection, rf]);
 
   /** width the floating inspector covers on the right while a resource is selected */
-  const inspectorInset = useCallback(() => {
-    const layout = useLayout.getState();
-    const open = layout.panels.inspector && useEditor.getState().selection && !(layout.compact && layout.drawer === 'code');
-    const width = wrapper.current?.clientWidth ?? 0;
-    return open ? Math.min(300, width - 24) + 20 : 0;
-  }, []);
+  const inspectorInset = useCallback(() => floatingInspectorInset(wrapper.current?.clientWidth ?? 0), []);
 
   /** pan (keeping the zoom) by the smallest amount that puts a node in the visible area */
   const focusNode = useCallback(
@@ -845,16 +747,17 @@ function CanvasInner() {
       const tl = rf.flowToScreenPosition({ x, y });
       const br = rf.flowToScreenPosition({ x: x + w, y: y + h });
       const pad = 16;
+      const inset = inspectorInset();
       const left = rect.left + pad;
-      const right = rect.right - inspectorInset() - pad;
+      // a phone-width canvas has no room beside the inspector: use all of it
+      const right = rect.right - (rect.width - inset >= 240 ? inset : 0) - pad;
       const top = rect.top + pad;
       const bottom = rect.bottom - pad;
-      if (br.x - tl.x > right - left || br.y - tl.y > bottom - top) {
-        void rf.setCenter(x + w / 2, y + h / 2, { zoom: rf.getZoom(), duration: motionMs(350) });
-        return;
-      }
-      const dx = br.x > right ? right - br.x : tl.x < left ? left - tl.x : 0;
-      const dy = br.y > bottom ? bottom - br.y : tl.y < top ? top - tl.y : 0;
+      // the least movement that shows it; too big to fit: centered in the room the inspector leaves
+      const shift = (lo: number, hi: number, a: number, b: number) =>
+        b - a > hi - lo ? (lo + hi - a - b) / 2 : b > hi ? hi - b : a < lo ? lo - a : 0;
+      const dx = shift(left, right, tl.x, br.x);
+      const dy = shift(top, bottom, tl.y, br.y);
       if (dx === 0 && dy === 0) return;
       const vp = rf.getViewport();
       const next = { x: vp.x + dx, y: vp.y + dy, zoom: vp.zoom };
@@ -882,19 +785,28 @@ function CanvasInner() {
       zoomIn: () => void rf.zoomIn({ duration: motionMs(200) }),
       zoomOut: () => void rf.zoomOut({ duration: motionMs(200) }),
       tidy,
+      arrangeInside,
       exportImage,
       captureDiagram: (options) =>
         withCleanDiagram((bounds) => captureDiagram(rf, bounds, useSecurityUi.getState().lens, options)),
       addResource: (type, screen) => {
         const def = getDef(type);
-        if (def) placeResource(def, rf.screenToFlowPosition(screen ?? viewportCenter()));
+        if (!def) return;
+        // a container is selected: as if dropped on it (its next free cell, or where its network takes it)
+        const added = screen ? null : drops.addToSelection(def);
+        if (added) setTimeout(() => focusNode(added), 60);
+        else placeResource(def, rf.screenToFlowPosition(screen ?? viewportCenter()));
+      },
+      addToSelection: (type) => {
+        const def = getDef(type);
+        return def ? drops.addToSelection(def) : null;
       },
       duplicate,
       focusNode,
       toggleMinimap,
     });
     return () => registerCanvasApi(null);
-  }, [duplicate, exportImage, focusNode, placeResource, rf, tidy, toggleMinimap, viewportCenter, withCleanDiagram]);
+  }, [arrangeInside, drops, duplicate, exportImage, focusNode, placeResource, rf, tidy, toggleMinimap, viewportCenter, withCleanDiagram]);
 
   // code → canvas: a resource picked in the editor scrolls into view
   useEffect(() => {
@@ -921,7 +833,7 @@ function CanvasInner() {
           'separator' as const,
           {
             id: 'delete-all',
-            label: `Delete ${picked.length} resources`,
+            label: m.deleteMany(picked.length),
             icon: Trash2,
             shortcut: 'Del',
             danger: true,
@@ -933,31 +845,34 @@ function CanvasInner() {
       return [
         {
           id: 'code',
-          label: 'Show in code',
+          label: m.showInCode,
           icon: Code2,
           onSelect: () => useEditor.getState().revealInCode(node.id),
         },
         {
           id: 'rename',
-          label: 'Rename…',
+          label: m.rename,
           icon: PencilLine,
           shortcut: 'F2',
           onSelect: () => focusRenameInput(),
         },
-        { id: 'duplicate', label: 'Duplicate', icon: CopyPlus, shortcut: `${MOD}D`, onSelect: () => duplicate(node.id) },
+        { id: 'duplicate', label: m.duplicate, icon: CopyPlus, shortcut: `${MOD}D`, onSelect: () => duplicate(node.id) },
+        ...(isContainerType(node.type) && ir.resources.some((r) => r.parentId === node.id)
+          ? [{ id: 'arrange-inside', label: am.arrangeInside(node.name), icon: WandSparkles, onSelect: () => arrangeInside(node.id) }]
+          : []),
         {
           id: 'copy',
-          label: 'Copy address',
+          label: m.copyAddress,
           icon: Copy,
-          onSelect: () => void copyText(node.id).then(() => showToast(`Copied ${node.id}`, 'success')),
+          onSelect: () => void copyText(node.id).then(() => showToast(messagesFor(canvasMessages).copied(node.id), 'success')),
         },
         ...(docs
-          ? [{ id: 'docs', label: 'Terraform docs', icon: ArrowUpRight, onSelect: () => window.open(docs, '_blank', 'noopener') }]
+          ? [{ id: 'docs', label: m.terraformDocs, icon: ArrowUpRight, onSelect: () => window.open(docs, '_blank', 'noopener') }]
           : []),
         'separator',
         {
           id: 'delete',
-          label: 'Delete',
+          label: m.delete,
           icon: Trash2,
           shortcut: 'Del',
           danger: true,
@@ -966,28 +881,31 @@ function CanvasInner() {
       ];
     }
     const exportEntries: MenuEntry[] = [
-      { id: 'pdf', label: 'Export PDF document…', icon: FileText, onSelect: openExportPdf },
-      { id: 'png', label: 'Export as PNG', icon: ImageDown, onSelect: () => void exportImage('png') },
-      { id: 'svg', label: 'Export as SVG', icon: FileImage, onSelect: () => void exportImage('svg') },
+      { id: 'pdf', label: m.exportPdf, icon: FileText, onSelect: openExportPdf },
+      { id: 'png', label: m.exportPng, icon: ImageDown, onSelect: () => void exportImage('png') },
+      { id: 'svg', label: m.exportSvg, icon: FileImage, onSelect: () => void exportImage('svg') },
     ];
     if (menu.exportOnly) return exportEntries;
     const at = { x: menu.x, y: menu.y };
     return [
-      { id: 'add', label: 'Add resource here…', icon: Plus, shortcut: 'Dbl-click', onSelect: () => setQuickAdd(at) },
+      { id: 'add', label: m.addHere, icon: Plus, shortcut: m.doubleClick, onSelect: () => setQuickAdd(at) },
       'separator',
-      { id: 'fit', label: 'Fit view', icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) }) },
-      { id: 'tidy', label: 'Tidy up layout', icon: WandSparkles, onSelect: () => void tidy() },
+      { id: 'fit', label: m.fitView, icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) }) },
+      { id: 'tidy', label: am.button, icon: WandSparkles, onSelect: () => void tidy() },
       'separator',
       ...exportEntries,
     ];
-  }, [menu, byId, duplicate, rf, tidy, exportImage, applyCanvasOps]);
+  }, [menu, byId, duplicate, rf, tidy, exportImage, applyCanvasOps, am, m, arrangeInside, ir]);
 
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-  const stats = `${plural(ir.resources.length, 'resource')}, ${plural(irEdges.length, 'connection')}`;
-  const inspectorOpen = panelsInspector && selection !== null && !(compact && drawer === 'code');
+  const stats = m.stats(ir.resources.length, irEdges.length);
   // the minimap sits bottom-right and slides left of the inspector; hide it
   // rather than cover the toolbar on the bottom-left
   const minimapFits = canvasWidth - (inspectorOpen ? inspectorInset() : 0) >= 176 + 320 + 48;
+  // the pills stay in the canvas the floating inspector leaves free: centered in it, never wider;
+  // a phone's inspector leaves no room beside it, and the pills step aside until it closes
+  const freeWidth = canvasWidth - (inspectorOpen ? inspectorInset() : 0);
+  const pillsHidden = inspectorOpen && freeWidth < 240;
+  const pillsStyle = inspectorOpen && !pillsHidden ? { left: freeWidth / 2, maxWidth: freeWidth - 16 } : undefined;
 
   return (
     <div
@@ -1026,6 +944,8 @@ function CanvasInner() {
           setMenu({ x: e.clientX, y: e.clientY, nodeId: null });
         }}
         zoomOnDoubleClick={false}
+        // a drag moves a node without selecting it (and so never pops the inspector over it); a click selects
+        selectNodesOnDrag={false}
         snapToGrid
         snapGrid={[8, 8]}
         onNodesChange={handleNodesChange}
@@ -1040,7 +960,9 @@ function CanvasInner() {
           document.body.style.userSelect = '';
           syncSelection(rf.getNodes().filter((n) => n.selected && n.id !== INTERNET_NODE).map((n) => n.id));
         }}
-        onNodeDragStop={onNodeDragStop}
+        onNodeDragStart={drops.onNodeDragStart}
+        onNodeDrag={drops.onNodeDrag}
+        onNodeDragStop={drops.onNodeDragStop}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         nodesDraggable={!locked && !spaceHeld}
@@ -1050,13 +972,16 @@ function CanvasInner() {
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'copy';
+          drops.onPaletteDragOver(e);
         }}
+        onDragLeave={drops.onPaletteDragLeave}
         deleteKeyCode={locked ? null : ['Delete', 'Backspace']}
         fitView
         fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
         minZoom={0.05}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
+        ariaLabelConfig={m.flowAria}
         className="!bg-canvas"
       >
         <Background
@@ -1070,6 +995,8 @@ function CanvasInner() {
           tidying={tidying}
           onToggleMinimap={toggleMinimap}
           onTidy={readOnly ? undefined : () => void tidy()}
+          compact={canvasWidth < 640}
+          overlapping={overlapping && !locked}
           onExport={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setMenu({ x: r.left, y: r.top - 112, nodeId: null, exportOnly: true });
@@ -1097,15 +1024,20 @@ function CanvasInner() {
         {/* one stacked panel: separate top-center/top-right panels collide on narrow canvases */}
         <Panel
           position="top-center"
-          className="flex w-max max-w-[calc(100%-2rem)] flex-col items-center gap-1.5 transition-[left]"
-          style={inspectorOpen ? { left: `max(calc(50% - ${inspectorInset() / 2}px), 120px)` } : undefined}
+          className={cn(
+            'flex w-max max-w-[calc(100%-2rem)] flex-col items-center gap-1.5 transition-[left]',
+            pillsHidden && 'invisible',
+          )}
+          style={pillsStyle}
+          data-testid="canvas-pills"
         >
-          <span className="flex items-center gap-1">
+          <span className="flex flex-wrap items-center justify-center gap-1">
             <button
               type="button"
               onClick={() => setOverview((v) => !v)}
               aria-expanded={overview}
-              aria-label={`${stats} — project overview`}
+              aria-label={m.overviewToggle(stats)}
+              data-overview-toggle
               className="rounded-full border bg-surface-1/85 px-3 py-1 text-[11.5px] font-medium text-muted shadow-xs backdrop-blur-md transition-colors hover:border-border-strong hover:text-foreground"
             >
               {stats}
@@ -1115,7 +1047,7 @@ function CanvasInner() {
               <button
                 type="button"
                 onClick={() => setOverview(true)}
-                title="Show warnings"
+                title={m.showWarnings}
                 className="flex items-center gap-1 rounded-full border border-warning/40 bg-surface-1/85 px-2 py-1 text-[11.5px] font-semibold text-warning shadow-xs backdrop-blur-md"
               >
                 <AlertTriangle className="h-3 w-3" /> {warnings.length}
@@ -1129,7 +1061,7 @@ function CanvasInner() {
               className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--surface-1))] px-3 py-1 text-center text-[11.5px] font-semibold text-warning shadow-xs"
             >
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              Code has errors — fix them to edit the canvas again
+              {m.codeErrored}
             </span>
           ) : null}
           {!overview && !readOnly ? <EditorTips /> : null}
@@ -1145,15 +1077,17 @@ function CanvasInner() {
           label={
             menu.nodeId
               ? selectedIds.length > 1 && selectedIds.includes(menu.nodeId)
-                ? 'Selection actions'
-                : 'Resource actions'
+                ? m.selectionActions
+                : m.resourceActions
               : menu.exportOnly
-                ? 'Export'
-                : 'Canvas actions'
+                ? m.export
+                : m.canvasActions
           }
           onClose={() => setMenu(null)}
         />
       ) : null}
+
+      <DropHintCard />
 
       {quickAdd ? (
         <QuickAddPopover
@@ -1178,7 +1112,7 @@ export function sizeOf(internal: { measured: { width?: number; height?: number }
 }
 
 /** Menu entries that change the project — left out of a read-only view's menus. */
-const EDIT_ENTRIES = new Set(['add', 'rename', 'duplicate', 'delete', 'tidy', 'delete-all', ...ALIGN_ACTIONS.map((a) => a.id)]);
+const EDIT_ENTRIES = new Set(['add', 'rename', 'duplicate', 'delete', 'tidy', 'arrange-inside', 'delete-all', ...ALIGN_ACTIONS.map((a) => a.id)]);
 
 function viewOnlyEntries(entries: MenuEntry[]): MenuEntry[] {
   const out: MenuEntry[] = [];
@@ -1198,6 +1132,7 @@ const TIPS_KEY = 'cb-tips-dismissed';
 
 /** First-run hints, dismissed for good once closed. */
 function EditorTips() {
+  const m = useMessages(canvasMessages);
   const [visible, setVisible] = useState(() => {
     try {
       return localStorage.getItem(TIPS_KEY) !== '1';
@@ -1215,20 +1150,20 @@ function EditorTips() {
     }
   };
   const tips: Array<[string, string]> = [
-    ['Double-click', 'add a resource right there'],
-    [`${MOD} K`, 'search, add, jump, export…'],
-    ['Right-click', 'rename, duplicate, delete'],
-    ['?', 'all keyboard shortcuts'],
+    [m.tipKeys.doubleClick, m.tips.doubleClick],
+    [`${MOD} K`, m.tips.palette],
+    [m.tipKeys.rightClick, m.tips.rightClick],
+    ['?', m.tips.shortcuts],
   ];
   return (
-    <div className="bp-pop-in w-64 rounded-[12px] border bg-surface-1/95 p-3 shadow-lg backdrop-blur-md" role="note" aria-label="Editor tips">
+    <div className="bp-pop-in w-72 max-w-full rounded-[12px] border bg-surface-1/95 p-3 shadow-lg backdrop-blur-md" role="note" aria-label={m.tipsLabel}>
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-primary" />
-          <span className="flex-1 text-[12.5px] font-semibold">Pro tips</span>
+          <span className="flex-1 text-[12.5px] font-semibold">{m.proTips}</span>
           <button
             type="button"
             onClick={dismiss}
-            aria-label="Dismiss tips"
+            aria-label={m.dismissTips}
             className="rounded-[5px] p-0.5 text-faint hover:bg-surface-2 hover:text-foreground"
           >
             <X className="h-3.5 w-3.5" />
@@ -1248,11 +1183,12 @@ function EditorTips() {
 
 /** Stats pill popover: name, counts, clickable files and warnings. */
 function OverviewPopover({ onClose }: { onClose(): void }) {
+  const m = useMessages(canvasMessages);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onPointer = (e: PointerEvent) => {
       const target = e.target as HTMLElement;
-      if (!ref.current?.contains(target) && !target.closest('[aria-label$="project overview"]')) onClose();
+      if (!ref.current?.contains(target) && !target.closest('[data-overview-toggle]')) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -1271,7 +1207,7 @@ function OverviewPopover({ onClose }: { onClose(): void }) {
     <div
       ref={ref}
       role="dialog"
-      aria-label="Project overview"
+      aria-label={m.projectOverview}
       className="bp-pop-in max-h-[70vh] w-[320px] overflow-y-auto rounded-[14px] border bg-surface-1 shadow-xl"
     >
       <ProjectOverview onNavigate={onClose} />
@@ -1281,6 +1217,7 @@ function OverviewPopover({ onClose }: { onClose(): void }) {
 
 /** Blank project: say what to do instead of showing an empty grid. */
 function EmptyCanvas() {
+  const m = useMessages(canvasMessages);
   const navigate = useNavigate();
   return (
     <Panel position="top-center" className="!top-1/2 !-translate-y-1/2">
@@ -1288,17 +1225,14 @@ function EmptyCanvas() {
         <span className="flex h-11 w-11 items-center justify-center rounded-[12px] bg-primary-soft text-primary">
           <Plus className="h-5 w-5" />
         </span>
-        <h2 className="mt-3 text-[15px] font-semibold">Start your blueprint</h2>
-        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-          Drag a resource from the palette, double-click anywhere on the canvas, or type Terraform in
-          the code editor.
-        </p>
+        <h2 className="mt-3 text-[15px] font-semibold">{m.emptyTitle}</h2>
+        <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{m.emptyBody}</p>
         <div className="mt-4 flex gap-2">
           <Button size="sm" onClick={() => usePalette.getState().setOpen(true)}>
-            <Plus className="h-3.5 w-3.5" /> Add resource
+            <Plus className="h-3.5 w-3.5" /> {m.addResource}
           </Button>
           <Button size="sm" variant="outline" onClick={() => navigate('/dashboard?new=1')}>
-            <LayoutTemplate className="h-3.5 w-3.5" /> Use a template
+            <LayoutTemplate className="h-3.5 w-3.5" /> {m.useTemplate}
           </Button>
         </div>
       </div>
@@ -1332,6 +1266,7 @@ function QuickAddPopover({
   onClose(): void;
   onPick(def: ResourceDef): void;
 }) {
+  const m = useMessages(canvasMessages);
   const ref = useRef<HTMLDivElement>(null);
   const preferred = useMemo(() => detectProviders(useEditor.getState().files), []);
   useEffect(() => {
@@ -1349,7 +1284,7 @@ function QuickAddPopover({
       className="bp-pop-in fixed z-50 w-[340px] overflow-hidden rounded-[12px] border bg-surface-1 shadow-lg"
       style={{ left, top }}
       role="dialog"
-      aria-label="Quick add resource"
+      aria-label={m.quickAdd}
     >
       <ResourcePicker onPick={onPick} onClose={onClose} preferred={preferred} />
     </div>

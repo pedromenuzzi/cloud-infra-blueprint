@@ -1,3 +1,6 @@
+import { formatRelativeTime } from '@/i18n/format';
+import { currentLocale, type Locale } from '@/i18n/locale';
+
 /** Join class names, skipping falsy values. */
 export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ');
@@ -13,11 +16,17 @@ export function uid(prefix = 'id'): string {
   ).toString(36)}`;
 }
 
-/** "2h ago" style relative time. */
-export function timeAgo(iso: string): string {
+/**
+ * "2h ago" style relative time; in Portuguese "há 2 horas" (Intl), "agora"
+ * under 45 seconds. Components showing it re-render on a language switch
+ * through their own `useMessages`.
+ */
+export function timeAgo(iso: string, locale: Locale = currentLocale()): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) return '';
-  const s = Math.max(0, Math.floor((Date.now() - then) / 1000));
+  const now = Date.now();
+  const s = Math.max(0, Math.floor((now - then) / 1000));
+  if (locale === 'pt-BR') return s < 45 ? 'agora' : formatRelativeTime(then, now, locale);
   if (s < 45) return 'just now';
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
@@ -33,6 +42,9 @@ export function timeAgo(iso: string): string {
 export function slugify(name: string): string {
   return (
     name
+      // accents fold to their letter ("estático" → "estatico") instead of a dash
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')

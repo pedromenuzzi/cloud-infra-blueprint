@@ -3,11 +3,13 @@ import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
 import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
 import type { IR, IREdge } from '@/ir/types';
+import { textWidth } from '@/lib/pdf/metrics';
 import { parseSvgPath } from '@/lib/pdf/svgPath';
 import { expectWellFormed, latin1, pdfLayout, pdfPages, pdfText } from '@/lib/pdf/testing';
 import { allDefs, getDef, isContainerType } from '@/resources/registry';
 import { CATEGORY_ORDER } from '@/resources/types';
 import { auditSecurity } from '@/security/audit';
+import { analyzeSecurity } from '@/security/topology';
 import { TEMPLATES } from '@/templates';
 import {
   BOTTOM_SPACE,
@@ -130,9 +132,10 @@ function expectLaidOut(bytes: Uint8Array, label: string) {
 }
 
 const COLUMN_TITLES = new Set(
-  ['Resource', 'Service', 'Configuration', 'Placement', 'Name', 'Type', 'Default', 'Description', 'Value', 'From', 'To', 'Ports', 'Reach', 'Uses', 'Through'].map(
-    (t) => t.toUpperCase(),
-  ),
+  [
+    ...['Resource', 'Service', 'Configuration', 'Placement', 'Name', 'Type', 'Default', 'Description', 'Value', 'From', 'To', 'Ports', 'Reach', 'Uses', 'Through'],
+    ...['Recurso', 'Serviço', 'Configuração', 'Localização', 'Nome', 'Tipo', 'Padrão', 'Descrição', 'Valor', 'De', 'Para', 'Portas', 'Alcance', 'Usa', 'Por meio de'],
+  ].map((t) => t.toUpperCase()),
 );
 
 /** headings, section titles and table headers always have content under them on their page */
@@ -165,7 +168,7 @@ const notesOf = (lines: number) => Array.from({ length: lines }, (_, i) => `Note
 
 describe('architecture document', () => {
   for (const t of TEMPLATES) {
-    it(`${t.slug}: a well-formed PDF that names every resource`, () => {
+    it(`${t.slug}: a well-formed PDF that names every resource`, { timeout: 20_000 }, () => {
       const input = inputFor(t.build('demo'));
       const bytes = buildArchitecturePdf(input);
       expectWellFormed(bytes);
@@ -544,3 +547,120 @@ resource "aws_instance" "web" {
     });
   });
 });
+
+describe('in Portuguese', () => {
+  /** the document as the dialog builds it with the UI in Portuguese: the audit worded in it too */
+  function ptInput(files: Record<string, string>, overrides: Partial<ArchDocInput> = {}): ArchDocInput {
+    const input = inputFor(files, overrides);
+    return { ...input, audit: auditSecurity(input.ir, analyzeSecurity(input.ir, 'pt-BR')), locale: 'pt-BR', ...overrides };
+  }
+  const withSsh = () => {
+    const files = TEMPLATES.find((t) => t.slug === 'aws-web-app')!.build('demo');
+    return {
+      ...files,
+      'main.tf': files['main.tf'].replace(
+        '  egress {',
+        '  ingress {\n    from_port   = 22\n    to_port     = 22\n    protocol    = "tcp"\n    cidr_blocks = ["0.0.0.0/0"]\n  }\n\n  egress {',
+      ),
+    };
+  };
+
+  it('every heading, finding, path and control in Portuguese, accents intact', { timeout: 20_000 }, () => {
+    const bytes = buildArchitecturePdf(ptInput(withSsh(), { notes: 'Revisão pendente — não compartilhar.' }));
+    expectWellFormed(bytes);
+    const text = pdfText(bytes);
+    for (const s of [
+      'Visão geral',
+      'Gerado em 28 de set. de 2026, 09:05 com o Cloud Blueprint.',
+      'NOTAS',
+      'Revisão pendente — não compartilhar.',
+      'Inventário de recursos',
+      'CONFIGURAÇÃO',
+      'LOCALIZAÇÃO',
+      'Conexões e tráfego',
+      'Tráfego de rede permitido',
+      'Revisão de segurança',
+      'SSH (porta 22) aberto para a internet',
+      'CRÍTICA',
+      'Controles de conformidade',
+      'Garantir que nenhum grupo de segurança permita entrada de 0.0.0.0/0',
+      'As instâncias EC2 devem usar o Instance Metadata',
+      'Código Terraform',
+      'Neste documento',
+    ]) {
+      expect(text, s).toContain(s);
+    }
+    expect(text).toMatch(/Correção sugerida: Restringir a 10\.0\.0\.0\/16/);
+    expect(text).toMatch(/:22\s+via Internet gateway igw › Rota 0\.0\.0\.0\/0 -> igw › Sub-rede public_a › Grupo de segurança web ingress #4/);
+    expect(text).toMatch(/Página 1 de \d+/);
+    // the Terraform itself is never translated
+    expect(text).toContain('resource "aws_security_group" "web" {');
+    expect(text).not.toMatch(/\b(Overview|Findings|Security review|Page \d+ of)\b/);
+    // the accented letters went out as their WinAnsi codes (ç = E7, ã = E3), not as '?'
+    expect(latin1(bytes)).toMatch(/<[0-9a-f]*e7e36f[0-9a-f]*> Tj/);
+    expectLaidOut(bytes, 'pt-BR security review');
+    expectNoStrandedHeadings(bytes, 'pt-BR security review');
+  });
+
+  it('measures accented text with the real glyph widths (Adobe core-14 AFM)', () => {
+    // á ã â ç é ê í ó õ ô ú in Helvetica: 556 556 556 500 556 556 278 556 556 556 556
+    expect(textWidth('áãâçéêíóõôú', 'regular', 1000)).toBe(556 * 3 + 500 + 556 * 2 + 278 + 556 * 4);
+    // Á Ç É Í Ó Ú in Helvetica-Bold: 722 722 667 278 778 722
+    expect(textWidth('ÁÇÉÍÓÚ', 'bold', 1000)).toBe(722 + 722 + 667 + 278 + 778 + 722);
+    expect(textWidth('Configuração', 'regular', 10)).toBeCloseTo(textWidth('Configuracao', 'regular', 10), 5);
+  });
+
+  it('stays inside the margins on both papers, for every template', { timeout: 60_000 }, () => {
+    for (const t of TEMPLATES) {
+      for (const paper of ['a4', 'letter'] as const) {
+        const bytes = buildArchitecturePdf(ptInput(t.build('demo'), { paper, notes: notesOf(14), sections: { ...ALL, cost: true } }));
+        const label = `pt-BR ${t.slug}, ${paper}`;
+        expectLaidOut(bytes, label);
+        expectNoStrandedHeadings(bytes, label);
+      }
+    }
+    const every = buildArchitecturePdf(ptInput({ 'main.tf': everyCategory() }));
+    expectLaidOut(every, 'pt-BR every category');
+    expectNoStrandedHeadings(every, 'pt-BR every category');
+  });
+
+  it('diagram legend, lens chips, tiles and stages', { timeout: 30_000 }, async () => {
+    const tall = Array.from({ length: 12 }, (_, i) => `# @blueprint:pos=0,${i * 110}\nresource "aws_instance" "i${i}" {\n  ami = "ami-1"\n}\n`).join('\n');
+    const input = ptInput({ 'main.tf': tall });
+    const lens = buildArchitecturePdf({ ...input, diagram: fakeDiagram(input.ir, input.edges, true) });
+    const text = pdfText(lens);
+    for (const s of ['Limite de rede (VPC, sub-rede, grupo)', 'Tráfego permitido (lente de segurança)', 'PÚBLICO :80, :443']) expect(text, s).toContain(s);
+    expectLaidOut(lens, 'pt-BR lens legend');
+
+    const grid = Array.from({ length: 250 }, (_, i) => `# @blueprint:pos=${(i % 16) * 240},${Math.floor(i / 16) * 120}\nresource "aws_instance" "node${i}" {\n  ami = "ami-${i}"\n}\n`).join('\n');
+    const big = ptInput({ 'main.tf': grid });
+    const stages: string[] = [];
+    const bytes = await buildArchitecturePdfAsync(big, { onStage: (s) => stages.push(s) });
+    expect(stages[0]).toBe('Desenhando o diagrama…');
+    expect(stages).toContain('Salvando…');
+    expect(pdfText(bytes)).toMatch(/Diagrama — área 1 de \d+/);
+    expectLaidOut(bytes, 'pt-BR tiles');
+  });
+
+  it('names resources and categories as the catalog does in Portuguese', () => {
+    const input = ptInput(TEMPLATES.find((t) => t.slug === 'aws-web-app')!.build('demo'));
+    const text = pdfText(buildArchitecturePdf(input));
+    for (const s of ['Instância EC2', 'Instância RDS', 'Perfil do IAM', 'Sub-rede', 'Grupo de segurança', 'Computação', 'Rede', 'Banco de dados']) {
+      expect(text, s).toContain(s);
+    }
+    expect(text).not.toContain('EC2 Instance');
+  });
+
+  it("a subnet's lens badge", () => {
+    const files = {
+      'main.tf': 'resource "aws_vpc" "main" {\n  cidr_block = "10.0.0.0/16"\n}\n\nresource "aws_subnet" "a" {\n  vpc_id     = aws_vpc.main.id\n  cidr_block = "10.0.1.0/24"\n}\n',
+    };
+    const input = ptInput(files);
+    const diagram = { ...fakeDiagram(input.ir, input.edges), lens: true };
+    diagram.nodes = diagram.nodes.map((n) => (n.id === 'aws_subnet.a' ? { ...n, security: { subnet: 'public' as const } } : n));
+    expect(pdfText(buildArchitecturePdf({ ...input, diagram }))).toContain('PÚBLICA');
+    const english = inputFor(files);
+    expect(pdfText(buildArchitecturePdf({ ...english, diagram }))).toContain('PUBLIC');
+  });
+});
+

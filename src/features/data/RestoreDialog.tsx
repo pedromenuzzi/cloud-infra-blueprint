@@ -6,6 +6,8 @@
 import { AlertTriangle, ArchiveRestore, Check, FileWarning } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Modal } from '@/components/ui';
+import { formatDate } from '@/i18n/format';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import {
   applyRestore,
   parseBackup,
@@ -18,6 +20,7 @@ import {
 } from '@/lib/backup';
 import { listProjects, localStorageUsage } from '@/lib/storage';
 import { cn, timeAgo } from '@/lib/utils';
+import { dataMessages } from './messages';
 import { formatBytes } from './meter';
 
 export interface RestoreSummary {
@@ -30,34 +33,36 @@ type Phase =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; backup: ParsedBackup };
 
-const STATUS: Record<RestoreItem['status'], { label: string; variant: 'success' | 'outline' | 'warning' }> = {
-  new: { label: 'New', variant: 'success' },
-  duplicate: { label: 'Already here', variant: 'outline' },
-  conflict: { label: 'Differs', variant: 'warning' },
+const STATUS_VARIANT: Record<RestoreItem['status'], 'success' | 'outline' | 'warning'> = {
+  new: 'success',
+  duplicate: 'outline',
+  conflict: 'warning',
 };
 
-function fileCount(files: Record<string, string>) {
-  const n = Object.keys(files).length;
-  return `${n} file${n === 1 ? '' : 's'}`;
+type Text = (typeof dataMessages)['en'];
+
+function statusLabel(status: RestoreItem['status'], m: Text): string {
+  return status === 'new' ? m.statusNew : status === 'duplicate' ? m.statusDuplicate : m.statusConflict;
 }
 
-function formatDate(iso: string) {
+/** the backup's date in the UI language ("Sep 29, 2026" / "29 de set. de 2026") */
+function exportedOn(iso: string) {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) || d.getTime() === 0 ? null : d.toLocaleDateString(undefined, { dateStyle: 'medium' });
+  return Number.isNaN(d.getTime()) || d.getTime() === 0 ? null : formatDate(d, { dateStyle: 'medium' });
 }
 
-function detail(item: RestoreItem, action: RestoreAction, mode: RestoreMode): { text: string; warn?: boolean } {
+function detail(item: RestoreItem, action: RestoreAction, mode: RestoreMode, m: Text): { text: string; warn?: boolean } {
   const { project, existing } = item;
-  const base = `${fileCount(project.files)} · updated ${timeAgo(project.updatedAt)}`;
+  const base = m.baseDetail(m.files(Object.keys(project.files).length), timeAgo(project.updatedAt));
   if (item.status === 'duplicate') {
-    return { text: existing && existing.name !== project.name ? `Same files as “${existing.name}” here — skipped` : 'Same files as the copy here — skipped' };
+    return { text: existing && existing.name !== project.name ? m.sameAs(existing.name) : m.sameAsCopy };
   }
   if (item.status === 'conflict') {
     if (action === 'replace' && item.existingIsNewer) {
-      return { text: `Yours was changed ${timeAgo(existing!.updatedAt)} — after this backup. Replacing loses those changes.`, warn: true };
+      return { text: m.yoursNewer(timeAgo(existing!.updatedAt)), warn: true };
     }
-    if (mode === 'replace' && action === 'replace') return { text: `${base} · replaces the version here` };
-    return { text: `${base} · the version here is kept${item.existingIsNewer ? ' (it’s newer)' : ''}` };
+    if (mode === 'replace' && action === 'replace') return { text: m.replacesHere(base) };
+    return { text: m.keptHere(base, item.existingIsNewer === true) };
   }
   return { text: base };
 }
@@ -81,6 +86,7 @@ export default function RestoreDialog({
   const modeName = useId();
   const listId = useId();
   const readyFocus = useRef<HTMLElement | null>(null);
+  const m = useMessages(dataMessages);
 
   useEffect(() => {
     let live = true;
@@ -97,7 +103,7 @@ export default function RestoreDialog({
         setSelected(new Set(plan.items.filter((i) => i.status !== 'duplicate').map((i) => i.project.id)));
         setPhase({ kind: 'ready', backup: result.backup });
       })
-      .catch(() => live && setPhase({ kind: 'error', message: 'The file could not be read.' }));
+      .catch(() => live && setPhase({ kind: 'error', message: messagesFor(dataMessages).fileUnreadable }));
     return () => {
       live = false;
     };
@@ -142,12 +148,9 @@ export default function RestoreDialog({
       return;
     }
     if (result.reason === 'quota') {
-      setApplyError(
-        `There isn’t enough browser storage for this restore (it needs about ${formatBytes(resolved.bytes)}, ` +
-          `${formatBytes(free)} is free). Nothing was changed. Deselect some projects, or delete projects you no longer need, and try again.`,
-      );
+      setApplyError(m.notEnoughStorage(formatBytes(resolved.bytes), formatBytes(free)));
     } else {
-      setApplyError('Your projects changed in another tab meanwhile. Review the list again, then restore.');
+      setApplyError(m.changedMeanwhile);
       setEpoch((e) => e + 1);
     }
   };
@@ -157,19 +160,17 @@ export default function RestoreDialog({
     if (phase.kind !== 'reading') readyFocus.current?.focus({ preventScroll: true });
   }, [phase.kind]);
 
-  const exported = phase.kind === 'ready' ? formatDate(phase.backup.exportedAt) : null;
+  const exported = phase.kind === 'ready' ? exportedOn(phase.backup.exportedAt) : null;
   const title = (
     <div className="flex items-center gap-2.5">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary-soft text-primary">
         <ArchiveRestore className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <h2 className="text-[15px] font-semibold">Restore from backup</h2>
+        <h2 className="text-[15px] font-semibold">{m.restoreTitle}</h2>
         <p className="truncate text-[12px] text-muted">
           {file.name}
-          {phase.kind === 'ready'
-            ? ` · ${phase.backup.projects.length} project${phase.backup.projects.length === 1 ? '' : 's'}${exported ? ` · exported ${exported}` : ''}`
-            : ''}
+          {phase.kind === 'ready' ? m.backupSummary(phase.backup.projects.length, exported) : ''}
         </p>
       </div>
     </div>
@@ -180,36 +181,36 @@ export default function RestoreDialog({
       {phase.kind === 'reading' ? (
         <div className="flex items-center justify-center gap-3 px-5 py-12 text-[13px] text-muted" aria-busy="true">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
-          Reading the backup…
+          {m.readingBackup}
         </div>
       ) : phase.kind === 'error' ? (
         <div className="px-5 py-5 max-sm:px-4">
           <div role="alert" className="flex gap-3 rounded-md border border-danger/30 bg-danger/8 p-3.5">
             <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
             <div className="min-w-0 text-[13px] leading-relaxed">
-              <p className="font-semibold text-danger">This backup can’t be restored</p>
+              <p className="font-semibold text-danger">{m.cantRestore}</p>
               <p className="mt-0.5 text-muted">{phase.message}</p>
             </div>
           </div>
           <div className="mt-5 flex justify-end">
             <Button ref={(el) => void (readyFocus.current ??= el)} variant="outline" onClick={onClose}>
-              Close
+              {m.close}
             </Button>
           </div>
         </div>
       ) : (
         <>
           <div className="space-y-4 px-5 py-4 max-sm:px-4">
-            <ul className="flex flex-wrap gap-2 text-[12px]" aria-label="Summary">
+            <ul className="flex flex-wrap gap-2 text-[12px]" aria-label={m.summary}>
               <li>
-                <Badge variant="success">{plan!.counts.new} new</Badge>
+                <Badge variant="success">{m.countNew(plan!.counts.new)}</Badge>
               </li>
               <li>
-                <Badge variant="outline">{plan!.counts.duplicate} already here</Badge>
+                <Badge variant="outline">{m.countDuplicate(plan!.counts.duplicate)}</Badge>
               </li>
               <li>
                 <Badge variant={plan!.counts.conflict > 0 ? 'warning' : 'outline'}>
-                  {plan!.counts.conflict} differ{plan!.counts.conflict === 1 ? 's' : ''} from yours
+                  {m.countConflict(plan!.counts.conflict)}
                 </Badge>
               </li>
             </ul>
@@ -217,17 +218,13 @@ export default function RestoreDialog({
             {plan!.counts.conflict > 0 ? (
               <fieldset>
                 <legend className="mb-2 text-[12px] font-medium text-muted">
-                  For projects that differ from the ones in this browser
+                  {m.conflictLegend}
                 </legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {(
                     [
-                      ['copy', 'Add as copies', 'Keep yours; the backup’s version is added next to it.'],
-                      [
-                        'replace',
-                        'Replace existing',
-                        `Overwrite ${plan!.counts.conflict === 1 ? 'the project' : `the ${plan!.counts.conflict} projects`} here with the backup’s version.`,
-                      ],
+                      ['copy', m.addAsCopies, m.addAsCopiesHint],
+                      ['replace', m.replaceExisting, m.replaceExistingHint(plan!.counts.conflict)],
                     ] as const
                   ).map(([value, label, hint]) => (
                     <label
@@ -262,18 +259,17 @@ export default function RestoreDialog({
             <div>
               <div className="mb-1.5 flex items-center justify-between">
                 <h3 id={listId} className="text-[11px] font-bold uppercase tracking-wider text-faint">
-                  Projects in the backup
+                  {m.inTheBackup}
                 </h3>
-                <span className="text-[11.5px] text-faint">{total} selected</span>
+                <span className="text-[11.5px] text-faint">{m.selected(total)}</span>
               </div>
               <ul
                 aria-labelledby={listId}
                 className="max-h-[min(340px,45vh)] divide-y overflow-y-auto rounded-md border bg-surface-1"
               >
                 {resolved!.entries.map(({ item, action, name }) => {
-                  const status = STATUS[item.status];
                   const disabled = item.status === 'duplicate';
-                  const info = detail(item, action, mode);
+                  const info = detail(item, action, mode, m);
                   const renamed = !disabled && action !== 'skip' && name !== item.project.name;
                   return (
                     <li key={item.project.id}>
@@ -298,9 +294,9 @@ export default function RestoreDialog({
                           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                             <span className="min-w-0 truncate text-[13px] font-semibold">{item.project.name}</span>
                             {renamed ? <span className="text-[12px] text-muted">→ {name}</span> : null}
-                            <Badge variant={status.variant}>{status.label}</Badge>
-                            {action === 'replace' ? <Badge variant="danger">Replaces yours</Badge> : null}
-                            {action === 'copy' ? <Badge variant="default">Added as a copy</Badge> : null}
+                            <Badge variant={STATUS_VARIANT[item.status]}>{statusLabel(item.status, m)}</Badge>
+                            {action === 'replace' ? <Badge variant="danger">{m.replacesYours}</Badge> : null}
+                            {action === 'copy' ? <Badge variant="default">{m.addedAsCopy}</Badge> : null}
                           </span>
                           <span
                             id={`${listId}-${item.project.id}`}
@@ -319,7 +315,7 @@ export default function RestoreDialog({
                     <FileWarning className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
                     <span className="min-w-0">
                       <span className="block truncate text-[13px] font-semibold">{entry.name}</span>
-                      <span className="block text-[12px] text-danger">Can’t be restored: {entry.reason}</span>
+                      <span className="block text-[12px] text-danger">{m.cantBeRestored(entry.reason)}</span>
                     </span>
                   </li>
                 ))}
@@ -334,8 +330,7 @@ export default function RestoreDialog({
             ) : tooBig && total > 0 ? (
               <p className="flex gap-2 rounded-md border border-warning/30 bg-warning/8 px-3 py-2.5 text-[12.5px] text-warning">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                This needs about {formatBytes(resolved!.bytes)}, and only {formatBytes(free)} of browser storage is free.
-                It may not fit — deselect some projects, or delete projects you no longer need.
+                {m.mayNotFit(formatBytes(resolved!.bytes), formatBytes(free))}
               </p>
             ) : null}
           </div>
@@ -343,19 +338,19 @@ export default function RestoreDialog({
           <div className="flex flex-wrap items-center justify-end gap-2 border-t px-5 py-3.5 max-sm:px-4">
             <p className="mr-auto text-[12px] text-muted">
               {total === 0 ? (
-                'Nothing selected'
+                m.nothingSelected
               ) : (
                 <>
                   <Check className="mr-1 inline h-3.5 w-3.5 text-success" />
-                  {[adding > 0 ? `Adds ${adding}` : '', replacing > 0 ? `${adding > 0 ? 'replaces' : 'Replaces'} ${replacing}` : '']
+                  {[adding > 0 ? m.adds(adding) : '', replacing > 0 ? m.replaces(replacing, adding === 0) : '']
                     .filter(Boolean)
                     .join(' · ')}
-                  {` · about ${formatBytes(resolved!.bytes)}`}
+                  {m.about(formatBytes(resolved!.bytes))}
                 </>
               )}
             </p>
             <Button variant="outline" onClick={onClose}>
-              Cancel
+              {m.cancel}
             </Button>
             <Button
               ref={(el) => void (readyFocus.current ??= el)}
@@ -363,9 +358,7 @@ export default function RestoreDialog({
               disabled={total === 0 || busy}
               onClick={restore}
             >
-              {replacing > 0
-                ? `Restore and replace ${replacing}`
-                : `Restore ${total} project${total === 1 ? '' : 's'}`}
+              {replacing > 0 ? m.restoreAndReplace(replacing) : m.restoreProjects(total)}
             </Button>
           </div>
         </>

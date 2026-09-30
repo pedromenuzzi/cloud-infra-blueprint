@@ -1,9 +1,25 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { hasOpenLayer } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
+import { codeMessages } from '@/features/editor/CodePane.messages';
+import { useCanvasDrag, useCanvasDragTracking } from '@/features/editor/canvasDrag';
 import { CanvasPane, focusRenameInput } from '@/features/editor/CanvasPane';
+import { dockedInspector, floatingInspectorSlot, INSPECTOR_WIDTH, securityPanelSlot } from '@/features/editor/inspectorPlacement';
+import { useKeepSelectionVisible, useRevealOpensCode } from '@/features/editor/layoutEffects';
+import { layoutMessages } from '@/features/editor/layout.messages';
+import { SPLIT_DEFAULT } from '@/features/editor/layoutPrefs';
 import { useLayout } from '@/features/editor/layoutStore';
+import {
+  CanvasLayoutControls,
+  CodePaneControls,
+  CollapsedStrip,
+  FLOAT_CHROME,
+  focusSoon,
+  InspectorTab,
+  PanelDropZones,
+  WORKSPACE_ID,
+} from '@/features/editor/PanelChrome';
 import { ExportPdfHost } from '@/features/export/ExportPdfDialog';
 import { RulesEditor } from '@/features/security/RulesEditor';
 import { SecurityPanel } from '@/features/security/SecurityPanel';
@@ -13,8 +29,10 @@ import { Inspector } from '@/features/editor/Inspector';
 import { Palette } from '@/features/editor/Palette';
 import { Topbar } from '@/features/editor/Topbar';
 import { loadProjectIntoEditor, useEditor } from '@/features/editor/store';
-import { safeStorage } from '@/lib/storage';
+import { useMessages } from '@/i18n/messages';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
+import { cn } from '@/lib/utils';
+import { editorPageMessages } from './EditorPage.messages';
 
 // Monaco is ~2 MB: split it out so the canvas paints while the code pane loads
 const CodePane = lazy(() =>
@@ -22,14 +40,15 @@ const CodePane = lazy(() =>
 );
 
 function CodePaneFallback() {
+  const m = useMessages(codeMessages);
   return (
     <section
       className="flex h-full flex-col items-center justify-center gap-3 bg-surface-1 text-[12px] text-faint"
-      aria-label="Terraform code"
+      aria-label={m.terraformCode}
       aria-busy="true"
     >
       <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
-      Loading code editor…
+      {m.loading}
     </section>
   );
 }
@@ -51,9 +70,12 @@ function focusWhenReady(find: () => HTMLElement | null, fallback: () => HTMLElem
 
 /** First Tab stops on the page: jump past the topbar and palette. */
 function SkipLinks() {
+  const m = useMessages(editorPageMessages);
   const toCanvas = (e: React.MouseEvent) => {
     e.preventDefault();
-    document.getElementById(CANVAS_TARGET)?.focus();
+    const layout = useLayout.getState();
+    if (!layout.panels.canvas) layout.setVisible('canvas', true);
+    requestAnimationFrame(() => document.getElementById(CANVAS_TARGET)?.focus());
   };
   const toCode = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -69,35 +91,55 @@ function SkipLinks() {
   return (
     <>
       <a href={`#${CANVAS_TARGET}`} onClick={toCanvas} className={cls}>
-        Skip to canvas
+        {m.skipToCanvas}
       </a>
       <a href={`#${CODE_TARGET}`} onClick={toCode} className={cls}>
-        Skip to code
+        {m.skipToCode}
       </a>
     </>
   );
 }
 
-const SPLIT_KEY = 'cb-split-pct';
-
-function readSplit(): number {
-  const v = Number(safeStorage.getItem(SPLIT_KEY));
-  return Number.isFinite(v) && v >= 20 && v <= 70 ? v : 36;
+/** The docked inspector's column when nothing is selected. */
+function DockedEmpty() {
+  const m = useMessages(layoutMessages);
+  return (
+    <div className="flex flex-1 items-center justify-center p-6 text-center text-[12px] leading-relaxed text-faint">
+      {m.dockedEmpty}
+    </div>
+  );
 }
 
 export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const m = useMessages(editorPageMessages);
   const [ready, setReady] = useState(false);
-  const [split, setSplit] = useState(readSplit);
-  const splitRef = useRef<HTMLDivElement>(null);
+  const splitRef = useRef<HTMLElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const panels = useLayout((s) => s.panels);
   const compact = useLayout((s) => s.compact);
   const drawer = useLayout((s) => s.drawer);
+  const paletteSide = useLayout((s) => s.paletteSide);
+  const codeSide = useLayout((s) => s.codeSide);
+  const split = useLayout((s) => s.split);
+  const floatingSlot = useLayout(floatingInspectorSlot);
+  const docked = useLayout(dockedInspector);
+  const securitySlot = useLayout(securityPanelSlot);
   const selection = useEditor((s) => s.selection);
   const securityPanel = useSecurityUi((s) => s.panelOpen);
+  const dragging = useCanvasDrag((s) => s.kind !== null);
   useDocumentTitle(useEditor((s) => s.projectName));
   useSecurityDelta();
+  useCanvasDragTracking(canvasRef, ready);
+  useRevealOpensCode(() => useLayout.getState().show('code'));
+  useKeepSelectionVisible();
+
+  // the configurable layout (docking, hidden canvas) applies while this page is up
+  useEffect(() => {
+    useLayout.getState().setEditorLayout(true);
+    return () => useLayout.getState().setEditorLayout(false);
+  }, []);
 
   // compact layout below 1100px: canvas full-width, palette/code as drawers
   useEffect(() => {
@@ -171,23 +213,28 @@ export default function EditorPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // a hidden canvas stays mounted (viewport, exports and canvas actions keep working) but out of reach
+  useEffect(() => {
+    canvasRef.current?.toggleAttribute('inert', !panels.canvas);
+  }, [panels.canvas, ready]);
+
+  /** code pane splitter: drags from either side of the canvas */
   const startDrag = useCallback((e: React.PointerEvent) => {
     e.preventDefault();
     const container = splitRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
+    const codeOnLeft = useLayout.getState().codeSide === 'left';
+    let last = useLayout.getState().split;
     const onMove = (ev: PointerEvent) => {
-      const pct = 100 - ((ev.clientX - rect.left) / rect.width) * 100;
-      const clamped = Math.min(70, Math.max(20, pct));
-      setSplit(clamped);
+      const fromLeft = ((ev.clientX - rect.left) / rect.width) * 100;
+      last = codeOnLeft ? fromLeft : 100 - fromLeft;
+      useLayout.getState().setSplit(last, false);
     };
     const onUp = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      setSplit((v) => {
-        safeStorage.setItem(SPLIT_KEY, String(Math.round(v)));
-        return v;
-      });
+      useLayout.getState().setSplit(last);
     };
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
@@ -195,70 +242,161 @@ export default function EditorPage() {
 
   if (!ready) return null;
 
+  const minimizeInspector = () => {
+    useLayout.getState().setVisible('inspector', false);
+    focusSoon('[data-strip="inspector"]');
+  };
+  const wide = !compact;
+  const canvasShown = panels.canvas;
+  /** the code pane as a column beside the canvas (wide) or, with the canvas hidden, as the whole stage */
+  const codeColumn = canvasShown ? wide && panels.code : true;
+  const codePane = (
+    <Suspense fallback={<CodePaneFallback />}>
+      <CodePane controls={<CodePaneControls />} />
+    </Suspense>
+  );
+
+  const securityEl =
+    securityPanel && securitySlot ? (
+      <div
+        className={cn(
+          'absolute bottom-[68px] left-3 top-3 z-20 flex w-[min(340px,calc(100%-24px))] transition-opacity',
+          FLOAT_CHROME,
+        )}
+      >
+        <SecurityPanel />
+      </div>
+    ) : null;
+
+  const canvasSlot = (
+    <div
+      key="canvas"
+      id={CANVAS_TARGET}
+      ref={canvasRef}
+      tabIndex={-1}
+      data-dragging={dragging || undefined}
+      className={cn(
+        'group/canvas flex min-w-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
+        canvasShown ? 'relative' : 'pointer-events-none absolute inset-0 -z-10 opacity-0',
+        canvasShown && !codeColumn && 'flex-1',
+      )}
+      style={canvasShown && codeColumn ? { width: `${100 - split}%` } : undefined}
+    >
+      <div className="relative min-w-0 flex-1">
+        <CanvasPane />
+        {wide && canvasShown ? <CanvasLayoutControls /> : null}
+        {floatingSlot && selection ? (
+          <div
+            className={cn('absolute bottom-3 right-3 top-3 z-20 flex transition-opacity', FLOAT_CHROME)}
+            style={{ width: `min(${INSPECTOR_WIDTH}px, calc(100% - 24px))` }}
+          >
+            <div className="bp-drawer-right flex min-w-0 flex-1">
+              <Inspector onMinimize={minimizeInspector} />
+            </div>
+          </div>
+        ) : null}
+        {!panels.inspector && selection && canvasShown && !docked ? <InspectorTab /> : null}
+        {canvasShown ? securityEl : null}
+      </div>
+      {docked ? (
+        panels.inspector ? (
+          <div className="flex shrink-0 flex-col border-l bg-surface-1" style={{ width: INSPECTOR_WIDTH }} data-testid="docked-inspector">
+            {selection ? (
+              <Inspector docked onMinimize={minimizeInspector} />
+            ) : (
+              <DockedEmpty />
+            )}
+          </div>
+        ) : (
+          <CollapsedStrip panel="inspector" edge="left" />
+        )
+      ) : null}
+    </div>
+  );
+
+  const codeSlot: ReactNode[] = [];
+  if (codeColumn) {
+    if (canvasShown) {
+      codeSlot.push(
+        <div
+          key="separator"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={m.resizeCode}
+          className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60 active:bg-primary"
+          onPointerDown={startDrag}
+          onDoubleClick={() => useLayout.getState().setSplit(SPLIT_DEFAULT)}
+        />,
+      );
+    }
+    codeSlot.push(
+      <div
+        key="code"
+        id={CODE_TARGET}
+        tabIndex={-1}
+        className={cn('min-w-[300px] outline-none', !canvasShown && 'min-w-0 flex-1')}
+        style={canvasShown ? { width: `${split}%` } : undefined}
+      >
+        {codePane}
+      </div>,
+    );
+  } else if (wide) {
+    codeSlot.push(<CollapsedStrip key="code-strip" panel="code" edge={codeSide === 'right' ? 'left' : 'right'} />);
+  }
+  // the separator always sits between the canvas and the code
+  if (codeSide === 'left') codeSlot.reverse();
+
+  const canvasColumn: ReactNode[] = [canvasSlot];
+  if (!canvasShown && wide) {
+    canvasColumn.push(<CollapsedStrip key="canvas-strip" panel="canvas" edge={codeSide === 'right' ? 'right' : 'left'} />);
+  }
+  const mainChildren = codeSide === 'left' ? [...codeSlot, ...canvasColumn] : [...canvasColumn, ...codeSlot];
+
+  const main = (
+    <main key="main" ref={splitRef} className="relative isolate flex min-w-0 flex-1" aria-label={m.main}>
+      <h1 className="sr-only">{m.heading}</h1>
+      {mainChildren}
+      {canvasShown ? null : securityEl}
+      {compact && drawer === 'palette' ? (
+        <div
+          className={cn(
+            'absolute bottom-0 top-0 z-30 flex shadow-lg',
+            paletteSide === 'left' ? 'bp-drawer-left left-0' : 'bp-drawer-right right-0',
+          )}
+        >
+          <Palette />
+        </div>
+      ) : null}
+      {compact && drawer === 'code' && canvasShown ? (
+        <div
+          id={CODE_TARGET}
+          tabIndex={-1}
+          className={cn(
+            'absolute bottom-0 top-0 z-30 w-[min(560px,94%)] shadow-lg outline-none',
+            codeSide === 'right' ? 'bp-drawer-right right-0 border-l' : 'bp-drawer-left left-0 border-r',
+          )}
+        >
+          {codePane}
+        </div>
+      ) : null}
+    </main>
+  );
+
+  const palette = wide ? (
+    panels.palette ? (
+      <Palette key="palette" />
+    ) : (
+      <CollapsedStrip key="palette" panel="palette" side={paletteSide} edge={paletteSide === 'left' ? 'right' : 'left'} />
+    )
+  ) : null;
+
   return (
     <div className="flex h-full flex-col">
       <SkipLinks />
       <Topbar />
-      <div className="flex min-h-0 flex-1">
-        {!compact && panels.palette ? <Palette /> : null}
-        <main ref={splitRef} className="flex min-w-0 flex-1" aria-label="Blueprint">
-          <h1 className="sr-only">Cloud Blueprint editor</h1>
-          <div
-            id={CANVAS_TARGET}
-            tabIndex={-1}
-            className="relative min-w-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
-            style={{ width: !compact && panels.code ? `${100 - split}%` : '100%' }}
-          >
-            <CanvasPane />
-            {panels.inspector && selection && !(compact && drawer === 'code') ? (
-              <div className="bp-drawer-right absolute bottom-3 right-3 top-3 z-20 flex w-[min(300px,calc(100%-24px))]">
-                <Inspector />
-              </div>
-            ) : null}
-            {securityPanel && drawer !== 'palette' ? (
-              <div className="absolute bottom-[68px] left-3 top-3 z-20 flex w-[min(340px,calc(100%-24px))]">
-                <SecurityPanel />
-              </div>
-            ) : null}
-            {compact && drawer === 'palette' ? (
-              <div className="bp-drawer-left absolute bottom-0 left-0 top-0 z-30 flex shadow-lg">
-                <Palette />
-              </div>
-            ) : null}
-            {compact && drawer === 'code' ? (
-              <div
-                id={CODE_TARGET}
-                tabIndex={-1}
-                className="bp-drawer-right absolute bottom-0 right-0 top-0 z-30 w-[min(560px,94%)] border-l shadow-lg outline-none"
-              >
-                <Suspense fallback={<CodePaneFallback />}>
-                  <CodePane />
-                </Suspense>
-              </div>
-            ) : null}
-          </div>
-          {!compact && panels.code ? (
-            <>
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize code panel"
-                className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60 active:bg-primary"
-                onPointerDown={startDrag}
-              />
-              <div
-                id={CODE_TARGET}
-                tabIndex={-1}
-                className="min-w-[300px] outline-none"
-                style={{ width: `${split}%` }}
-              >
-                <Suspense fallback={<CodePaneFallback />}>
-                  <CodePane />
-                </Suspense>
-              </div>
-            </>
-          ) : null}
-        </main>
+      <div id={WORKSPACE_ID} className="relative flex min-h-0 flex-1">
+        {paletteSide === 'left' ? [palette, main] : [main, palette]}
+        <PanelDropZones />
       </div>
       <RulesEditor />
       <ExportPdfHost />

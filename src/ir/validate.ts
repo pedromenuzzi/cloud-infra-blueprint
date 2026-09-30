@@ -1,12 +1,16 @@
 /**
  * Semantic validation layered above the parser: missing required fields,
- * dangling references, cross-cloud references.
+ * dangling references, cross-cloud references. Messages are in the UI
+ * language in effect when it runs — whoever keeps the result re-runs it on a
+ * language switch (relocalizeEditorMessages in src/features/editor/store.ts).
  */
+import { messagesFor } from '@/i18n/messages';
 import { fieldBoundsDiagnostics } from '@/resources/fieldRules';
 import { schemaDiagnostics } from '@/schema/validate';
 import type { ResourceDef } from '@/resources/types';
 import { runChecks } from './checks';
 import { collectRefs, refTargetAddress } from './expr';
+import { validateMessages } from './messages';
 import type { Diagnostic, IR, ResourceNode } from './types';
 
 const RESOURCE_PREFIX = /^(aws_|azurerm_|azuread_|google_)/;
@@ -36,6 +40,7 @@ export function validateProject(
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
+  const m = messagesFor(validateMessages);
 
   for (const node of ir.resources) {
     const file = node.trivia.sourceFile ?? 'main.tf';
@@ -52,7 +57,7 @@ export function validateProject(
           out.push({
             file,
             severity: 'warning',
-            message: `${node.id}: required argument "${field.name}" is missing`,
+            message: m.requiredMissing(node.id, field.name),
             nodeId: node.id,
             ...markerAt(node, value === undefined ? undefined : field.name),
           });
@@ -81,7 +86,7 @@ export function validateProject(
         out.push({
           file,
           severity: 'warning',
-          message: `${node.id}: "${r.field}" references unknown resource ${address}`,
+          message: m.unknownReference(node.id, r.field, address),
           nodeId: node.id,
           ...marker,
         });
@@ -95,7 +100,7 @@ export function validateProject(
         out.push({
           file,
           severity: 'warning',
-          message: `${node.id}: cross-cloud reference to ${address} (${node.provider} → ${target.provider})`,
+          message: m.crossCloud(node.id, address, node.provider, target.provider),
           nodeId: node.id,
           ...marker,
         });

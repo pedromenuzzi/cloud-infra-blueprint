@@ -5,7 +5,9 @@
  * validate.ts calls it per resource with a catalog def and reports each
  * message as a warning on that node.
  */
+import { messagesFor } from '@/i18n/messages';
 import type { ResourceNode } from '@/ir/types';
+import { resourceMessages } from './messages';
 import type { FieldDef, ResourceDef } from './types';
 
 /** Whether `value` is acceptable for a number field with bounds. */
@@ -16,17 +18,18 @@ export function withinBounds(field: Pick<FieldDef, 'min' | 'max'>, value: number
 /** One message per number field whose literal value is outside its bounds. */
 export function fieldBoundsDiagnostics(node: ResourceNode, def: ResourceDef): Array<{ field: string; message: string }> {
   const out: Array<{ field: string; message: string }> = [];
+  const m = messagesFor(resourceMessages);
   for (const field of def.fields) {
     if (field.type !== 'number' || (field.min === undefined && field.max === undefined)) continue;
     const value = node.args[field.name];
     if (value?.kind !== 'literal' || typeof value.value !== 'number' || withinBounds(field, value.value)) continue;
     const range =
       field.min !== undefined && field.max !== undefined
-        ? `between ${field.min} and ${field.max}`
+        ? m.between(field.min, field.max)
         : field.min !== undefined
-          ? `at least ${field.min}`
-          : `at most ${field.max}`;
-    out.push({ field: field.name, message: `${node.id}: "${field.name}" is ${value.value} but must be ${range}` });
+          ? m.atLeast(field.min)
+          : m.atMost(field.max!);
+    out.push({ field: field.name, message: m.outOfBounds(node.id, field.name, value.value, range) });
   }
   return out;
 }

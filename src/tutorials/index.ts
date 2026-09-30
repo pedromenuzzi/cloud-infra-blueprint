@@ -5,6 +5,9 @@
  */
 import type { Provider } from '@/ir/types';
 
+export type TutorialSlug = 'first-vpc-ec2' | 'static-site-cdn' | 'refs-become-connections' | 'azure-nesting';
+
+/** English prose, the source; show `tutorialText()` (./i18n) */
 export interface TutorialStep {
   title: string;
   /** paragraphs; `backticks` render as inline code */
@@ -15,7 +18,7 @@ export interface TutorialStep {
 }
 
 export interface TutorialDef {
-  slug: string;
+  slug: TutorialSlug;
   title: string;
   description: string;
   level: 'Beginner' | 'Intermediate';

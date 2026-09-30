@@ -1,0 +1,36 @@
+import { defineMessages } from '@/i18n/messages';
+
+export const templatePickerMessages = defineMessages(
+  {
+    title: 'Start from a template',
+    subtitle: 'Pre-built infrastructure patterns you can customize',
+    searchPlaceholder: 'Search templates…',
+    searchLabel: 'Search templates',
+    namePlaceholder: 'Project name (optional)',
+    nameLabel: 'Project name',
+    filterLabel: 'Filter templates',
+    all: 'All',
+    multiCloud: 'Multi-cloud',
+    multiBadge: 'Multi',
+    resources: (n: number) => `${n} resources`,
+    useTemplate: 'Use template',
+    noMatch: (query: string) => `No templates match “${query}”.`,
+    fromScratch: 'Or start from scratch:',
+  },
+  {
+    title: 'Começar com um template',
+    subtitle: 'Padrões de infraestrutura prontos para você personalizar',
+    searchPlaceholder: 'Buscar templates…',
+    searchLabel: 'Buscar templates',
+    namePlaceholder: 'Nome do projeto (opcional)',
+    nameLabel: 'Nome do projeto',
+    filterLabel: 'Filtrar templates',
+    all: 'Todos',
+    multiCloud: 'Multicloud',
+    multiBadge: 'Multi',
+    resources: (n: number) => `${n} recursos`,
+    useTemplate: 'Usar template',
+    noMatch: (query: string) => `Nenhum template corresponde a “${query}”.`,
+    fromScratch: 'Ou comece do zero:',
+  },
+);

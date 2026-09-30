@@ -6,6 +6,8 @@
  * cut into page-sized tiles.
  */
 import type { NodeSecurity } from '@/features/editor/nodes';
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
 import { fitText, textWidth } from '@/lib/pdf/metrics';
 import type { PathSeg } from '@/lib/pdf/svgPath';
@@ -13,6 +15,8 @@ import { pathEnd, pointOnPath } from '@/lib/pdf/svgPath';
 import type { PdfColor, PdfPage, PathTransform } from '@/lib/pdf/writer';
 import { CATEGORY_COLORS, PROVIDER_COLORS, PROVIDER_LABELS } from '@/resources/icons';
 import type { Category } from '@/resources/types';
+import { portText } from '@/security/model';
+import { docMessages } from './archDoc.messages';
 
 export interface DiagramPalette {
   canvas: PdfColor;
@@ -103,20 +107,21 @@ const TEXT_BLOCK_H = 48.35;
 
 const intersects = (a: Region, b: Region) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
-/** the security chip under a node — same rules as the canvas (nodes.tsx SecurityChip) */
-function securityChip(security: NodeSecurity): { tone: PdfColor; label: string } | undefined {
+/** the security chip under a node — same rules as the canvas (nodes.tsx SecurityChip), in the document's language */
+function securityChip(security: NodeSecurity, locale: Locale): { tone: PdfColor; label: string } | undefined {
+  const t = messagesFor(docMessages, locale);
   const risky = security.risk === 'critical' || security.risk === 'high';
   if (security.rules !== undefined) return { tone: security.risk ? RISK_COLOR[security.risk] : '#64748b', label: security.rules };
   if (security.exposure?.level === 'internet') {
-    const ports = security.exposure.ports;
+    const ports = security.exposure.ports.map((p) => (/^\d/.test(p) ? p : portText(p, locale)));
     return {
       tone: risky ? RISK_COLOR[security.risk!] : INTERNET_BLUE,
-      label: `Public :${ports.slice(0, 3).join(', :')}${ports.length > 3 ? '…' : ''}`,
+      label: t.chipPublic(`:${ports.slice(0, 3).join(', :')}${ports.length > 3 ? '…' : ''}`),
     };
   }
-  if (security.exposure?.level === 'restricted') return { tone: '#10b981', label: 'Private' };
-  if (security.exposure?.level === 'isolated') return { tone: '#64748b', label: 'No inbound' };
-  if (security.risk) return { tone: RISK_COLOR[security.risk], label: security.risk === 'low' ? 'Review' : 'At risk' };
+  if (security.exposure?.level === 'restricted') return { tone: '#10b981', label: t.chipPrivate };
+  if (security.exposure?.level === 'isolated') return { tone: '#64748b', label: t.chipNoInbound };
+  if (security.risk) return { tone: RISK_COLOR[security.risk], label: security.risk === 'low' ? t.chipReview : t.chipAtRisk };
   return undefined;
 }
 
@@ -126,6 +131,7 @@ class Painter {
     readonly page: PdfPage,
     readonly d: DiagramVector,
     readonly t: PathTransform,
+    readonly locale: Locale,
   ) {
     this.s = t.scale;
   }
@@ -261,7 +267,7 @@ class Painter {
   }
 
   securityChip(security: NodeSecurity, left: number, bottom: number) {
-    const chip = securityChip(security);
+    const chip = securityChip(security, this.locale);
     if (!chip) return;
     const label = chip.label.toUpperCase();
     const h = 17;
@@ -321,8 +327,9 @@ class Painter {
       this.text(label, end + 16, mid + 3.3, 9.5, color, { font: 'bold' });
     };
     if (n.security?.nacls) badge('NACL', '#ef4444', '#ef4444', 0.1);
-    if (n.security?.subnet === 'public') badge('PUBLIC', '#0284c7', '#0ea5e9', 0.14);
-    if (n.security?.subnet === 'private') badge('PRIVATE', '#059669', '#10b981', 0.14);
+    const words = messagesFor(docMessages, this.locale).subnetBadge;
+    if (n.security?.subnet === 'public') badge(words.public.toUpperCase(), '#0284c7', '#0ea5e9', 0.14);
+    if (n.security?.subnet === 'private') badge(words.private.toUpperCase(), '#059669', '#10b981', 0.14);
 
     let x = n.x + 44;
     const typeLabel = n.typeLabel?.toUpperCase() ?? '';
@@ -468,10 +475,15 @@ function pathBox(path: PathSeg[]): Region | undefined {
  * Anything entirely outside the region is left out, so tiles stay small and
  * text search only finds what is visible.
  */
-export function drawDiagram(page: PdfPage, d: DiagramVector, view: { x: number; y: number; scale: number; region: Region }): void {
+export function drawDiagram(
+  page: PdfPage,
+  d: DiagramVector,
+  view: { x: number; y: number; scale: number; region: Region; locale?: Locale },
+): void {
   const { region, scale } = view;
   const t: PathTransform = { dx: view.x - region.x * scale, dy: view.y - region.y * scale, scale };
-  const p = new Painter(page, d, t);
+  const p = new Painter(page, d, t, view.locale ?? currentLocale());
+
   const visible = (r: Region | undefined) => !!r && intersects(r, region);
 
   for (const n of d.nodes) if (n.kind === 'container' && visible(footprint(n))) p.container(n);

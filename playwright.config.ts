@@ -23,6 +23,8 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     serviceWorkers: 'block',
+    // the UI follows the browser language: specs speak English unless they switch
+    locale: 'en-US',
   },
   projects: [
     {

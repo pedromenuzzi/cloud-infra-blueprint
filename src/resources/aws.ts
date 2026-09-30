@@ -1,8 +1,18 @@
+import type { Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { block, list, lit, literalString, raw } from '@/ir/expr';
+import type { Expression } from '@/ir/types';
 import { blocksOf } from '@/security/model';
+import { resourceMessages } from './messages';
 import { defineResource } from './types';
 
 const litStr = literalString;
+/** subtitle text in the UI language (or `locale`) */
+const t = (locale?: Locale) => messagesFor(resourceMessages, locale);
+
+/** "2 subnets" — subtitle of a subnet group */
+const subnetCount = (args: Record<string, Expression>, locale?: Locale) =>
+  t(locale).subnetCount(args.subnet_ids?.kind === 'list' ? args.subnet_ids.items.length : 0);
 
 export const AWS_RESOURCES = [
   defineResource({
@@ -61,11 +71,11 @@ export const AWS_RESOURCES = [
       { name: 'tags', type: 'tags' },
     ],
     connections: [{ targetTypes: ['aws_vpc'], arg: 'vpc_id', attr: 'id', mode: 'set' }],
-    subtitle: (args) => {
+    subtitle: (args, locale) => {
       const inbound = blocksOf(args.ingress).length;
       const outbound = blocksOf(args.egress).length;
-      if (inbound + outbound === 0) return litStr(args.description) ?? 'no inline rules';
-      return `${inbound} inbound · ${outbound} outbound`;
+      if (inbound + outbound === 0) return litStr(args.description) ?? t(locale).noInlineRules;
+      return t(locale).inboundOutbound(inbound, outbound);
     },
   }),
 
@@ -130,6 +140,14 @@ export const AWS_RESOURCES = [
       { name: 'username', type: 'string' },
       { name: 'password', type: 'string', doc: 'Prefer var.db_password over a literal' },
       {
+        name: 'db_subnet_group_name',
+        type: 'string',
+        refTo: ['aws_db_subnet_group'],
+        refAttr: 'name',
+        label: 'DB subnet group',
+        doc: 'The subnets (2+ AZs) the database runs in',
+      },
+      {
         name: 'vpc_security_group_ids',
         type: 'list',
         refTo: ['aws_security_group'],
@@ -142,7 +160,10 @@ export const AWS_RESOURCES = [
       instance_class: lit('db.t3.micro'),
       allocated_storage: lit(20),
     },
+    // not in one subnet: RDS runs in a DB subnet group that spans several
+    containment: [{ arg: 'db_subnet_group_name', parentTypes: ['aws_db_subnet_group'] }],
     connections: [
+      { targetTypes: ['aws_db_subnet_group'], arg: 'db_subnet_group_name', attr: 'name', mode: 'set' },
       { targetTypes: ['aws_security_group'], arg: 'vpc_security_group_ids', attr: 'id', mode: 'append' },
     ],
     subtitle: (args) => {
@@ -186,7 +207,7 @@ export const AWS_RESOURCES = [
         `jsonencode({\n    Version = "2012-10-17"\n    Statement = [{\n      Action    = "sts:AssumeRole"\n      Effect    = "Allow"\n      Principal = { Service = "ec2.amazonaws.com" }\n    }]\n  })`,
       ),
     },
-    subtitle: () => 'IAM role',
+    subtitle: (_, locale) => t(locale).iamRole,
   }),
 
   defineResource({
@@ -213,7 +234,7 @@ export const AWS_RESOURCES = [
       { targetTypes: ['aws_subnet'], arg: 'subnets', attr: 'id', mode: 'append' },
       { targetTypes: ['aws_security_group'], arg: 'security_groups', attr: 'id', mode: 'append' },
     ],
-    subtitle: (args) => litStr(args.load_balancer_type) ?? 'load balancer',
+    subtitle: (args, locale) => litStr(args.load_balancer_type) ?? t(locale).loadBalancer,
   }),
 
   defineResource({
@@ -287,7 +308,7 @@ export const AWS_RESOURCES = [
       { name: 'name', type: 'string', required: true },
       { name: 'image_tag_mutability', type: 'select', options: ['MUTABLE', 'IMMUTABLE'] },
     ],
-    subtitle: () => 'container registry',
+    subtitle: (_, locale) => t(locale).containerRegistry,
   }),
 
   defineResource({
@@ -357,9 +378,9 @@ export const AWS_RESOURCES = [
         `jsonencode([{\n    name         = "app"\n    image        = "public.ecr.aws/nginx/nginx:latest"\n    essential    = true\n    portMappings = [{ containerPort = 80 }]\n  }])`,
       ),
     },
-    subtitle: (args) => {
+    subtitle: (args, locale) => {
       const cpu = litStr(args.cpu);
-      return cpu ? `${cpu} CPU units` : undefined;
+      return cpu ? t(locale).cpuUnits(cpu) : undefined;
     },
   }),
 
@@ -452,7 +473,7 @@ export const AWS_RESOURCES = [
       { name: 'tags', type: 'tags' },
     ],
     connections: [{ targetTypes: ['aws_vpc'], arg: 'vpc_id', attr: 'id', mode: 'set' }],
-    subtitle: () => 'internet access',
+    subtitle: (_, locale) => t(locale).internetAccess,
   }),
 
   defineResource({
@@ -469,7 +490,7 @@ export const AWS_RESOURCES = [
     ],
     defaults: { domain: lit('vpc') },
     connections: [{ targetTypes: ['aws_instance'], arg: 'instance', attr: 'id', mode: 'set' }],
-    subtitle: () => 'static IP',
+    subtitle: (_, locale) => t(locale).staticIp,
   }),
 
   defineResource({
@@ -675,7 +696,7 @@ export const AWS_RESOURCES = [
       ),
     },
     connections: [{ targetTypes: ['aws_iam_role'], arg: 'role', attr: 'id', mode: 'set' }],
-    subtitle: () => 'inline policy',
+    subtitle: (_, locale) => t(locale).inlinePolicy,
   }),
 
   defineResource({
@@ -693,8 +714,8 @@ export const AWS_RESOURCES = [
       { name: 'message_retention_seconds', type: 'number', min: 60, max: 1209600 },
       { name: 'tags', type: 'tags' },
     ],
-    subtitle: (args) =>
-      args.fifo_queue?.kind === 'literal' && args.fifo_queue.value === true ? 'FIFO queue' : 'queue',
+    subtitle: (args, locale) =>
+      args.fifo_queue?.kind === 'literal' && args.fifo_queue.value === true ? t(locale).fifoQueue : t(locale).queue,
   }),
 
   defineResource({
@@ -710,7 +731,7 @@ export const AWS_RESOURCES = [
       { name: 'fifo_topic', type: 'boolean' },
       { name: 'tags', type: 'tags' },
     ],
-    subtitle: () => 'topic',
+    subtitle: (_, locale) => t(locale).topic,
   }),
 
   defineResource({
@@ -759,7 +780,7 @@ export const AWS_RESOURCES = [
       hash_key: lit('id'),
       attribute: block({ name: lit('id'), type: lit('S') }),
     },
-    subtitle: (args) => (litStr(args.billing_mode) === 'PROVISIONED' ? 'provisioned' : 'on-demand'),
+    subtitle: (args, locale) => (litStr(args.billing_mode) === 'PROVISIONED' ? t(locale).provisioned : t(locale).onDemand),
   }),
 
   defineResource({
@@ -781,7 +802,13 @@ export const AWS_RESOURCES = [
       },
       { name: 'num_cache_nodes', type: 'number', min: 1, max: 40, doc: 'Must be 1 for Redis' },
       { name: 'port', type: 'number', min: 1, max: 65535 },
-      { name: 'subnet_group_name', type: 'string' },
+      {
+        name: 'subnet_group_name',
+        type: 'string',
+        refTo: ['aws_elasticache_subnet_group'],
+        refAttr: 'name',
+        label: 'Cache subnet group',
+      },
       {
         name: 'security_group_ids',
         type: 'list',
@@ -790,7 +817,9 @@ export const AWS_RESOURCES = [
       },
     ],
     defaults: { engine: lit('redis'), node_type: lit('cache.t4g.micro'), num_cache_nodes: lit(1) },
+    containment: [{ arg: 'subnet_group_name', parentTypes: ['aws_elasticache_subnet_group'] }],
     connections: [
+      { targetTypes: ['aws_elasticache_subnet_group'], arg: 'subnet_group_name', attr: 'name', mode: 'set' },
       { targetTypes: ['aws_security_group'], arg: 'security_group_ids', attr: 'id', mode: 'append' },
     ],
     subtitle: (args) => litStr(args.engine),
@@ -810,7 +839,7 @@ export const AWS_RESOURCES = [
       { name: 'tags', type: 'tags' },
     ],
     defaults: { deletion_window_in_days: lit(10), enable_key_rotation: lit(true) },
-    subtitle: () => 'encryption key',
+    subtitle: (_, locale) => t(locale).encryptionKey,
   }),
 
   defineResource({
@@ -828,7 +857,7 @@ export const AWS_RESOURCES = [
       { name: 'tags', type: 'tags' },
     ],
     connections: [{ targetTypes: ['aws_kms_key'], arg: 'kms_key_id', attr: 'arn', mode: 'set' }],
-    subtitle: () => 'secret',
+    subtitle: (_, locale) => t(locale).secret,
   }),
 
   defineResource({
@@ -881,9 +910,9 @@ export const AWS_RESOURCES = [
       { targetTypes: ['aws_iam_role'], arg: 'node_role_arn', attr: 'arn', mode: 'set' },
       { targetTypes: ['aws_subnet'], arg: 'subnet_ids', attr: 'id', mode: 'append' },
     ],
-    subtitle: (args) => {
+    subtitle: (args, locale) => {
       const it = args.instance_types;
-      return it?.kind === 'list' && it.items[0] ? litStr(it.items[0]) : 'worker nodes';
+      return it?.kind === 'list' && it.items[0] ? litStr(it.items[0]) : t(locale).workerNodes;
     },
   }),
 
@@ -905,9 +934,9 @@ export const AWS_RESOURCES = [
     ],
     defaults: { ip_protocol: lit('tcp'), from_port: lit(443), to_port: lit(443), cidr_ipv4: lit('10.0.0.0/16') },
     connections: [{ targetTypes: ['aws_security_group'], arg: 'security_group_id', attr: 'id', mode: 'set' }],
-    subtitle: (args) => {
+    subtitle: (args, locale) => {
       const from = args.from_port?.kind === 'literal' ? args.from_port.value : undefined;
-      return `${litStr(args.ip_protocol) ?? 'tcp'}${from !== undefined ? ` :${from}` : ''} in`;
+      return t(locale).ingressRule(litStr(args.ip_protocol) ?? 'tcp', from);
     },
   }),
 
@@ -929,7 +958,10 @@ export const AWS_RESOURCES = [
     ],
     defaults: { ip_protocol: lit('-1'), cidr_ipv4: lit('0.0.0.0/0') },
     connections: [{ targetTypes: ['aws_security_group'], arg: 'security_group_id', attr: 'id', mode: 'set' }],
-    subtitle: (args) => `${litStr(args.ip_protocol) === '-1' ? 'all' : (litStr(args.ip_protocol) ?? 'all')} out`,
+    subtitle: (args, locale) => {
+      const protocol = litStr(args.ip_protocol);
+      return t(locale).egressRule(protocol === '-1' ? undefined : protocol);
+    },
   }),
 
   defineResource({
@@ -967,7 +999,7 @@ export const AWS_RESOURCES = [
       { targetTypes: ['aws_vpc'], arg: 'vpc_id', attr: 'id', mode: 'set' },
       { targetTypes: ['aws_subnet'], arg: 'subnet_ids', attr: 'id', mode: 'append' },
     ],
-    subtitle: (args) => `${blocksOf(args.ingress).length + blocksOf(args.egress).length} rules`,
+    subtitle: (args, locale) => t(locale).ruleCount(blocksOf(args.ingress).length + blocksOf(args.egress).length),
   }),
 
   defineResource({
@@ -983,9 +1015,9 @@ export const AWS_RESOURCES = [
       { name: 'tags', type: 'tags' },
     ],
     connections: [{ targetTypes: ['aws_vpc'], arg: 'vpc_id', attr: 'id', mode: 'set' }],
-    subtitle: (args) => {
+    subtitle: (args, locale) => {
       const routes = blocksOf(args.route);
-      return routes.length ? `${routes.length} route${routes.length === 1 ? '' : 's'}` : 'local only';
+      return routes.length ? t(locale).routeCount(routes.length) : t(locale).localOnly;
     },
   }),
 
@@ -1004,7 +1036,7 @@ export const AWS_RESOURCES = [
       { targetTypes: ['aws_subnet'], arg: 'subnet_id', attr: 'id', mode: 'set' },
       { targetTypes: ['aws_route_table'], arg: 'route_table_id', attr: 'id', mode: 'set' },
     ],
-    subtitle: () => 'subnet ↔ routes',
+    subtitle: (_, locale) => t(locale).subnetRoutes,
   }),
 
   defineResource({
@@ -1028,7 +1060,7 @@ export const AWS_RESOURCES = [
       restrict_public_buckets: lit(true),
     },
     connections: [{ targetTypes: ['aws_s3_bucket'], arg: 'bucket', attr: 'id', mode: 'set' }],
-    subtitle: () => 'never public',
+    subtitle: (_, locale) => t(locale).neverPublic,
   }),
 
   defineResource({
@@ -1039,15 +1071,34 @@ export const AWS_RESOURCES = [
     shortName: 'DB Subnets',
     description: 'Private subnets (2+ AZs) where RDS places the database',
     naming: { maxLength: 255 },
+    // the database is drawn inside it, and it inside the VPC of its subnets
+    container: true,
+    containment: [{ arg: 'subnet_ids', parentTypes: ['aws_vpc'], via: ['aws_subnet'] }],
     fields: [
       { name: 'name', type: 'string' },
       { name: 'subnet_ids', type: 'list', required: true, refTo: ['aws_subnet'], label: 'Subnets' },
       { name: 'tags', type: 'tags' },
     ],
     connections: [{ targetTypes: ['aws_subnet'], arg: 'subnet_ids', attr: 'id', mode: 'append' }],
-    subtitle: (args) => {
-      const n = args.subnet_ids?.kind === 'list' ? args.subnet_ids.items.length : 0;
-      return `${n} subnet${n === 1 ? '' : 's'}`;
-    },
+    subtitle: subnetCount,
+  }),
+
+  defineResource({
+    type: 'aws_elasticache_subnet_group',
+    provider: 'aws',
+    category: 'database',
+    displayName: 'Cache Subnet Group',
+    shortName: 'Cache Subnets',
+    description: 'Private subnets where ElastiCache places the cache nodes',
+    naming: { maxLength: 255 },
+    container: true,
+    containment: [{ arg: 'subnet_ids', parentTypes: ['aws_vpc'], via: ['aws_subnet'] }],
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'subnet_ids', type: 'list', required: true, refTo: ['aws_subnet'], label: 'Subnets' },
+      { name: 'tags', type: 'tags' },
+    ],
+    connections: [{ targetTypes: ['aws_subnet'], arg: 'subnet_ids', attr: 'id', mode: 'append' }],
+    subtitle: subnetCount,
   }),
 ];

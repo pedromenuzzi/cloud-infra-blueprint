@@ -27,7 +27,12 @@ import type {
   Trivia,
 } from '@/ir/types';
 import { emptyIR, providerOfType, resourceAddress } from '@/ir/types';
+import { messagesFor } from '@/i18n/messages';
 import { POS_COMMENT_RE } from './emitter';
+import { hclMessages } from './messages';
+
+/** error messages in the UI language in effect */
+const t = () => messagesFor(hclMessages);
 
 /** Deeper nesting is kept verbatim instead of recursing (guards the call stack). */
 const MAX_DEPTH = 64;
@@ -230,7 +235,7 @@ class Scanner {
     const start = this.pos;
     if (this.startsWith('/*')) {
       const end = this.src.indexOf('*/', this.pos + 2);
-      if (end === -1) this.error('Unterminated comment', start);
+      if (end === -1) this.error(t().unterminatedComment, start);
       this.pos = end === -1 ? this.src.length : end + 2;
       return this.src.slice(start, this.pos);
     }
@@ -341,7 +346,7 @@ class Scanner {
     }
     if (!this.reported.has(from)) {
       this.reported.add(from);
-      this.error('Unterminated string', from);
+      this.error(t().unterminatedString, from);
     }
     const nl = this.src.indexOf('\n', from);
     this.pos = nl === -1 ? this.src.length : nl;
@@ -369,7 +374,7 @@ class Scanner {
       }
       lineStart = lineEnd + 1;
     }
-    this.error(`Missing heredoc terminator "${tag}"`, start);
+    this.error(t().missingHeredocTerminator(tag), start);
     this.pos = this.src.length;
   }
 
@@ -417,7 +422,7 @@ class Scanner {
         if (open.length === 0) break;
         const opener = this.src[open[open.length - 1]];
         if (OPENERS[opener] !== this.src[this.pos]) {
-          this.error(`Expected "${OPENERS[opener]}" to close "${opener}"`, open[open.length - 1]);
+          this.error(t().expectedClose(OPENERS[opener], opener), open[open.length - 1]);
           open.length = 0;
           break;
         }
@@ -430,7 +435,7 @@ class Scanner {
     }
     if (open.length > 0) {
       const opener = this.src[open[0]];
-      this.error(`Expected "${OPENERS[opener]}" to close "${opener}"`, open[0]);
+      this.error(t().expectedClose(OPENERS[opener], opener), open[0]);
     }
     return this.src.slice(from, this.pos).trimEnd();
   }
@@ -637,7 +642,7 @@ function parseList(s: Scanner, start: number, depth: number): Expression {
   for (;;) {
     skipWsCommentsNewlines(s);
     if (s.eof()) {
-      s.error('Expected "]" to close this list', start);
+      s.error(t().expectedListClose, start);
       return { kind: 'raw', hcl: s.src.slice(start, s.pos).trimEnd() };
     }
     if (s.code() === RBRACKET) {
@@ -648,7 +653,7 @@ function parseList(s: Scanner, start: number, depth: number): Expression {
     items.push(parseExpression(s, depth + 1));
     if (s.pos === itemStart) {
       // stray `}` / `)` / `,` — no progress possible (e.g. `x = [` then the block's `}`)
-      s.error('Expected "]" to close this list', start);
+      s.error(t().expectedListClose, start);
       return { kind: 'raw', hcl: s.src.slice(start, s.pos).trimEnd() };
     }
     skipWsCommentsNewlines(s);
@@ -669,7 +674,7 @@ function parseObject(s: Scanner, start: number, depth: number): Expression {
   for (;;) {
     skipWsCommentsNewlines(s);
     if (s.eof()) {
-      s.error('Expected "}" to close this object', start);
+      s.error(t().expectedObjectClose, start);
       return { kind: 'raw', hcl: s.src.slice(start, s.pos).trimEnd() };
     }
     if (s.code() === RBRACE) {
@@ -784,10 +789,10 @@ function finishEntry(
   }
   if (c === RBRACE) return { contentEnd, end: contentEnd, inline: true, comment };
   if (c === COMMA) {
-    s.error(`Unexpected "," after "${key}": arguments in a block go on separate lines`, s.pos);
+    s.error(t().commaAfter(key), s.pos);
     s.pos++;
   } else {
-    s.error(`Missing newline after "${key}": each argument or block goes on its own line`, s.pos);
+    s.error(t().newlineAfter(key), s.pos);
   }
   return { contentEnd, end: contentEnd, inline: true, comment };
 }
@@ -796,9 +801,9 @@ function finishEntry(
 function noteKind(s: Scanner, kinds: Map<string, EntrySpan['kind']>, head: EntryHead, kind: EntrySpan['kind']) {
   const prev = kinds.get(head.key);
   if (prev === 'attr' && kind === 'attr') {
-    s.error(`Duplicate argument "${head.key}": each argument may be set only once`, head.keyStart);
+    s.error(t().duplicateArgument(head.key), head.keyStart);
   } else if (prev !== undefined && prev !== kind && prev !== 'raw' && kind !== 'raw') {
-    s.error(`"${head.key}" is set both as an argument and as a block`, head.keyStart);
+    s.error(t().argumentAndBlock(head.key), head.keyStart);
   }
   kinds.set(head.key, kind);
 }
@@ -876,7 +881,7 @@ function parseBody(s: Scanner, open: number, depth: number): BodyResult {
       key = s.readIdent();
     }
     if (key === null) {
-      s.error('Expected attribute name or block', s.pos);
+      s.error(t().expectedAttributeOrBlock, s.pos);
       return result;
     }
 
@@ -910,7 +915,7 @@ function parseBody(s: Scanner, open: number, depth: number): BodyResult {
       const value = parseExpression(s, depth);
       const valueEnd = value.kind === 'raw' ? valueStart + value.hcl.length : s.pos;
       if (value.kind === 'raw' && value.hcl === '') {
-        s.error(`Expected a value after "${key} ="`, keyStart);
+        s.error(t().expectedValue(key), keyStart);
       }
       noteKind(s, kinds, head, 'attr');
       args[key] = value;
@@ -975,13 +980,13 @@ function parseBody(s: Scanner, open: number, depth: number): BodyResult {
         continue;
       }
       s.error(
-        c === QUOTE ? `Unexpected string after "${key}"` : `Expected "=" or "{" after "${key}"`,
+        c === QUOTE ? t().unexpectedString(key) : t().expectedEqualsOrBrace(key),
         labelsAt,
       );
       return result;
     }
 
-    s.error(`Expected "=" or "{" after "${key}"`, s.pos);
+    s.error(t().expectedEqualsOrBrace(key), s.pos);
     return result;
   }
 }
@@ -1024,7 +1029,7 @@ function parseTopLevel(s: Scanner, comments: readonly CommentRec[], errStart: nu
   const keywordStart = s.pos;
   const keyword = s.readIdent();
   if (keyword === null) {
-    s.error(`Unexpected character "${s.peek()}"`, s.pos);
+    s.error(t().unexpectedCharacter(s.peek()), s.pos);
     // recover: skip to next line
     s.skipLine();
     return null;
@@ -1049,7 +1054,7 @@ function parseTopLevel(s: Scanner, comments: readonly CommentRec[], errStart: nu
 
   s.skipInlineWs();
   if (s.code() !== LBRACE) {
-    s.error(`Expected "{" after "${keyword}" block header`, s.pos);
+    s.error(t().expectedHeaderBrace(keyword), s.pos);
     s.skipLine();
     return null;
   }
@@ -1057,7 +1062,7 @@ function parseTopLevel(s: Scanner, comments: readonly CommentRec[], errStart: nu
   const expectedLabels = BLOCK_LABELS[keyword];
   if (expectedLabels !== undefined && labels.length !== expectedLabels.length) {
     const usage = [keyword, ...expectedLabels.map((l) => `"${l}"`)].join(' ');
-    s.error(`Expected ${usage} { … }`, keywordStart);
+    s.error(t().expectedUsage(usage), keywordStart);
   }
 
   const openBrace = s.pos;
@@ -1080,7 +1085,7 @@ function parseTopLevel(s: Scanner, comments: readonly CommentRec[], errStart: nu
   } else {
     // parseBody reports every failure except running off the end of the file
     if (s.errors.length === errCountBefore) {
-      s.error(`Missing "}" to close this "${keyword}" block`, keywordStart);
+      s.error(t().missingBlockClose(keyword), keywordStart);
     }
     // capture whole block verbatim
     endOffset = s.findMatchingBrace(openBrace);
@@ -1251,7 +1256,7 @@ export function buildIR(parsed: ParsedFile[]): { ir: IR; diagnostics: Diagnostic
         if (first) {
           diagnostics.push({
             file,
-            message: `Duplicate resource "${id}" (already declared at ${first.file}:${first.line}): Terraform requires unique addresses — rename one of them`,
+            message: t().duplicateResource(id, first.file, first.line),
             severity: 'error',
             start: { line: b.spans.line, col: b.spans.col },
             nodeId: id,

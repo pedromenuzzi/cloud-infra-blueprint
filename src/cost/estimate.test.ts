@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseProject } from '@/hcl/parser';
+import { TEMPLATES } from '@/templates';
 import { estimateProject, estimateResource, projectCost, regionFactor } from './estimate';
-import { approx, describeLines, rate, usd } from './format';
+import { approx, describeLines, priceDate, rate, usd } from './format';
 import { multiplicity, resolveNumber, resolveString, resourceRegion } from './resolve';
 import { TEST_BOOK } from './testing';
 import type { ResourceCost } from './types';
@@ -372,3 +373,78 @@ describe('project totals', () => {
     expect(projectCost(project(hcl), book)).not.toBe(projectCost(ir, book));
   });
 });
+
+describe('in Portuguese', () => {
+  const NBSP = ' ';
+  const pt = (hcl: string, address: string) => {
+    const ir = project(hcl);
+    return estimateResource(ir.resources.find((x) => x.id === address)!, ir, book, 'pt-BR');
+  };
+
+  it('writes US dollars the Brazilian way', () => {
+    expect(usd(7.592, 'pt-BR')).toBe(`US$${NBSP}7,59`);
+    expect(usd(1234.5, 'pt-BR')).toBe(`US$${NBSP}1.234,50`);
+    expect(rate(0.0104, 'pt-BR')).toBe(`US$${NBSP}0,0104`);
+    expect(rate(0.1, 'pt-BR')).toBe(`US$${NBSP}0,10`);
+    expect(rate(0.0000166667, 'pt-BR')).toBe(`US$${NBSP}0,00001667`);
+    expect(approx(0, 'pt-BR')).toBe(`US$${NBSP}0`);
+    expect(approx(8.232, 'pt-BR')).toBe(`~US$${NBSP}8,23`);
+    expect(approx(1234.4, 'pt-BR')).toBe(`~US$${NBSP}1.234`);
+    expect(approx(12_345, 'pt-BR')).toBe(`~US$${NBSP}12,3 mil`);
+    expect(approx(2_345_678, 'pt-BR')).toBe(`~US$${NBSP}2,3 mi`);
+    expect(priceDate('2026-09-29', 'pt-BR')).toBe('29 de set. de 2026');
+  });
+
+  it('breakdowns, assumptions, region notes and reasons', () => {
+    const c = pt(`${AWS}resource "aws_instance" "web" {\n  ami = "ami-1"\n  instance_type = "t3.micro"\n}\n`, 'aws_instance.web');
+    expect(describeLines(c.breakdown, 'pt-BR')).toBe(
+      `t3.micro 730 h × US$${NBSP}0,0104 = US$${NBSP}7,59 + 8 GB gp3 × US$${NBSP}0,08 = US$${NBSP}0,64`,
+    );
+    expect(c.assumptions).toEqual([
+      'Linux, locação compartilhada (uma AMI Windows ou licenciada custa mais)',
+      'Volume raiz: 8 GB gp3, um padrão comum de AMI (defina root_block_device para mudar)',
+    ]);
+    const sa = pt(`provider "aws" {\n  region = "sa-east-1"\n}\nresource "aws_instance" "web" {\n  instance_type = "t3.micro"\n}\n`, 'aws_instance.web');
+    expect(sa.assumptions[0]).toBe('sa-east-1: preços de us-east-1 × 1,50 (multiplicador regional)');
+    const fargate = `${AWS}resource "aws_ecs_task_definition" "app" {\n  family = "app"\n  cpu = "256"\n  memory = "512"\n}\nresource "aws_ecs_service" "svc" {\n  launch_type = "FARGATE"\n  desired_count = 2\n  task_definition = aws_ecs_task_definition.app.arn\n}\n`;
+    expect(pt(fargate, 'aws_ecs_service.svc').breakdown[0].label).toBe('2 tarefas (0,25 vCPU, 0,5 GB)');
+    expect(pt(fargate, 'aws_ecs_task_definition.app').note).toBe('Cobrada pelo serviço ECS que a executa');
+    expect(pt(`${AWS}resource "aws_instance" "web" {\n  instance_type = "x2iedn.32xlarge"\n}\n`, 'aws_instance.web').note).toBe(
+      'instance_type "x2iedn.32xlarge" não está na tabela de preços',
+    );
+    const counted = pt(`${AWS}variable "n" {}\nresource "aws_instance" "web" {\n  count = var.n\n  instance_type = "t3.micro"\n}\n`, 'aws_instance.web');
+    expect(counted.note).toMatch(/^count é uma expressão: o número de instâncias só é decidido no plan\. Uma unidade custa cerca de US\$ \d+,\d\d por mês\.$/);
+    const p = estimateProject(project(`${AWS}resource "aws_instance" "web" {\n  instance_type = "t3.micro"\n}\n`), book, 'pt-BR');
+    expect(p.assumptions[0]).toBe('Preços de tabela sob demanda, 730 horas por mês.');
+    expect(p.assumptions).toContain('AWS: preços de us-east-1 em 29 de set. de 2026; outras regiões ajustadas por um multiplicador regional.');
+  });
+
+  it('every rule the templates use is worded in Portuguese, with the same numbers', () => {
+    for (const t of TEMPLATES) {
+      const ir = parseProject(t.build('demo')).ir;
+      const en = estimateProject(ir, book, 'en');
+      const ptBr = estimateProject(ir, book, 'pt-BR');
+      expect(ptBr.total, t.slug).toBe(en.total);
+      ptBr.items.forEach((item, i) => {
+        const english = en.items[i];
+        expect([item.kind, item.monthly], `${t.slug} ${item.id}`).toEqual([english.kind, english.monthly]);
+        if (english.note) expect(item.note, `${t.slug} ${item.id}: ${english.note}`).not.toBe(english.note);
+        // "PostgreSQL, Single-AZ" is product vocabulary in both languages
+        const names = /^\w+, Single-AZ$/;
+        item.assumptions.forEach((a, j) => {
+          if (!names.test(a)) expect(a, `${t.slug} ${item.id}: ${english.assumptions[j]}`).not.toBe(english.assumptions[j]);
+        });
+      });
+    }
+  });
+
+  it('the shared estimate is re-worded on a language switch', () => {
+    const ir = project(`${AWS}resource "aws_instance" "web" {\n  instance_type = "t3.micro"\n}\n`);
+    const en = projectCost(ir, book, 'en');
+    const ptBr = projectCost(ir, book, 'pt-BR');
+    expect(ptBr).not.toBe(en);
+    expect(projectCost(ir, book, 'pt-BR')).toBe(ptBr);
+    expect(ptBr.total).toBe(en.total);
+  });
+});
+

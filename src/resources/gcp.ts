@@ -1,8 +1,13 @@
+import type { Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { block, list, lit, literalString } from '@/ir/expr';
 import { blocksOf } from '@/security/model';
+import { resourceMessages } from './messages';
 import { defineResource } from './types';
 
 const litStr = literalString;
+/** subtitle text in the UI language (or `locale`) */
+const t = (locale?: Locale) => messagesFor(resourceMessages, locale);
 
 const GCP_REGIONS = ['us-central1', 'us-east1', 'europe-west1', 'southamerica-east1'];
 /** most GCP names: lowercase letters, digits and hyphens, starting with a letter, up to 63 */
@@ -23,7 +28,7 @@ export const GCP_RESOURCES = [
       { name: 'auto_create_subnetworks', type: 'boolean' },
     ],
     defaults: { auto_create_subnetworks: lit(false) },
-    subtitle: () => 'VPC network',
+    subtitle: (_, locale) => t(locale).vpcNetwork,
   }),
 
   defineResource({
@@ -75,11 +80,11 @@ export const GCP_RESOURCES = [
     connections: [
       { targetTypes: ['google_compute_network'], arg: 'network', attr: 'id', mode: 'set' },
     ],
-    subtitle: (args) => {
+    subtitle: (args, locale) => {
       const ports = [...blocksOf(args.allow), ...blocksOf(args.deny)].flatMap((b) =>
         b.ports?.kind === 'list' ? b.ports.items.map((p) => litStr(p) ?? '?') : [litStr(b.protocol) ?? 'all'],
       );
-      const dir = (litStr(args.direction) ?? 'INGRESS') === 'EGRESS' ? 'out' : 'in';
+      const dir = (litStr(args.direction) ?? 'INGRESS') === 'EGRESS' ? t(locale).outbound : t(locale).inbound;
       return ports.length ? `${dir} · ${ports.slice(0, 4).join(', ')}` : dir;
     },
   }),
@@ -202,7 +207,7 @@ export const GCP_RESOURCES = [
     connections: [
       { targetTypes: ['google_storage_bucket'], arg: 'bucket_name', attr: 'name', mode: 'set' },
     ],
-    subtitle: () => 'CDN backend',
+    subtitle: (_, locale) => t(locale).cdnBackend,
   }),
 
   defineResource({
@@ -229,7 +234,7 @@ export const GCP_RESOURCES = [
         mode: 'set',
       },
     ],
-    subtitle: () => 'HTTP routing',
+    subtitle: (_, locale) => t(locale).httpRouting,
   }),
 
   defineResource({
@@ -247,7 +252,7 @@ export const GCP_RESOURCES = [
     connections: [
       { targetTypes: ['google_compute_url_map'], arg: 'url_map', attr: 'id', mode: 'set' },
     ],
-    subtitle: () => 'LB frontend',
+    subtitle: (_, locale) => t(locale).lbFrontend,
   }),
 
   defineResource({
@@ -298,7 +303,7 @@ export const GCP_RESOURCES = [
       { name: 'location', type: 'select', options: GCP_REGIONS },
     ],
     defaults: { format: lit('DOCKER') },
-    subtitle: (args) => litStr(args.format) ?? 'registry',
+    subtitle: (args, locale) => litStr(args.format) ?? t(locale).registry,
   }),
 
   defineResource({
@@ -394,7 +399,7 @@ export const GCP_RESOURCES = [
     connections: [
       { targetTypes: ['google_compute_network'], arg: 'network', attr: 'id', mode: 'set' },
     ],
-    subtitle: (args) => litStr(args.region) ?? 'router',
+    subtitle: (args, locale) => litStr(args.region) ?? t(locale).router,
   }),
 
   defineResource({
@@ -438,7 +443,7 @@ export const GCP_RESOURCES = [
     connections: [
       { targetTypes: ['google_compute_router'], arg: 'router', attr: 'name', mode: 'set' },
     ],
-    subtitle: () => 'egress NAT',
+    subtitle: (_, locale) => t(locale).egressNat,
   }),
 
   defineResource({
@@ -531,7 +536,7 @@ export const GCP_RESOURCES = [
       { name: 'name', type: 'string', required: true },
       { name: 'message_retention_duration', type: 'string', placeholder: '86400s' },
     ],
-    subtitle: () => 'topic',
+    subtitle: (_, locale) => t(locale).topic,
   }),
 
   defineResource({
@@ -550,7 +555,7 @@ export const GCP_RESOURCES = [
     ],
     defaults: { ack_deadline_seconds: lit(20) },
     connections: [{ targetTypes: ['google_pubsub_topic'], arg: 'topic', attr: 'id', mode: 'set' }],
-    subtitle: () => 'subscription',
+    subtitle: (_, locale) => t(locale).subscription,
   }),
 
   defineResource({
@@ -610,7 +615,7 @@ export const GCP_RESOURCES = [
       { name: 'account_id', type: 'string', required: true, doc: '6–30 lowercase letters, digits, hyphens' },
       { name: 'display_name', type: 'string' },
     ],
-    subtitle: () => 'service account',
+    subtitle: (_, locale) => t(locale).serviceAccount,
   }),
 
   defineResource({
@@ -624,6 +629,6 @@ export const GCP_RESOURCES = [
     naming: { maxLength: 255 },
     fields: [{ name: 'secret_id', type: 'string', required: true }],
     defaults: { replication: block({ auto: block({}) }) },
-    subtitle: () => 'secret',
+    subtitle: (_, locale) => t(locale).secret,
   }),
 ];

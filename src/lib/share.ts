@@ -7,6 +7,8 @@
  * to hundreds of MB) and the payload shape is validated strictly.
  */
 import { deflateSync, Inflate, strFromU8, strToU8 } from 'fflate';
+import { messagesFor } from '@/i18n/messages';
+import { libMessages } from './messages';
 
 export interface SharePayload {
   name: string;
@@ -99,7 +101,7 @@ export function decodeShareResult(encoded: string): ShareDecodeResult {
   for (const [name, text] of entries) {
     if (FILE_NAME.test(name) && name !== '__proto__') files[name] = text as string;
   }
-  return { ok: true, payload: { name: n.trim().slice(0, 80) || 'Shared project', files } };
+  return { ok: true, payload: { name: n.trim().slice(0, 80) || messagesFor(libMessages).sharedProject, files } };
 }
 
 /** Decoded payload, or null for anything invalid (see decodeShareResult for why). */
@@ -130,7 +132,7 @@ export interface ShareLinkInfo {
   long: boolean;
   /** too big for anyone to open (over the decode cap) */
   tooLarge: boolean;
-  /** a sentence for a toast when the link is risky, else null */
+  /** a sentence for a toast when the link is risky (in the UI language of the moment), else null */
   warning: string | null;
 }
 
@@ -148,12 +150,8 @@ function linkInfo(url: string, payload: SharePayload): ShareLinkInfo {
   const bytes = url.length;
   const tooLarge = strToU8(JSON.stringify({ v: VERSION, n: payload.name, f: payload.files })).length > MAX_SHARE_BYTES;
   const long = bytes > SHARE_URL_SOFT_LIMIT;
-  const kb = Math.round(bytes / 1024);
-  const warning = tooLarge
-    ? 'This project is too large to share as a link — export a Terraform zip instead.'
-    : long
-      ? `This link is ${kb} KB — links over 32 KB can get cut off by chat apps and browsers. For big projects, share a Terraform zip.`
-      : null;
+  const m = messagesFor(libMessages);
+  const warning = tooLarge ? m.shareTooLarge : long ? m.shareLong(Math.round(bytes / 1024)) : null;
   return { url, bytes, long, tooLarge, warning };
 }
 

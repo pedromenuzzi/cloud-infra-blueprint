@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useToasts } from '@/components/Toast';
 import { useEditor } from '@/features/editor/store';
+import { useLocale } from '@/i18n/locale';
 import { createProject } from '@/lib/storage';
 import { addRuleOps } from '@/security/edit';
 import { getTemplate } from '@/templates';
 import { DELTA_SETTLE_MS, editKind, startSecurityDelta } from './securityDelta';
-import { useSecurityUi } from './securityStore';
+import { getAudit, useSecurityUi } from './securityStore';
 
 // the seed project: an instance behind a web SG (HTTP + HTTPS), grade A
 const SEED = getTemplate('aws-web-app')!.build('production-web');
@@ -40,6 +41,7 @@ afterEach(() => {
   vi.runOnlyPendingTimers();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  useLocale.getState().setLocale('en');
 });
 
 describe('security delta toast', () => {
@@ -111,7 +113,48 @@ describe('security delta toast', () => {
   });
 });
 
+describe('in Portuguese', () => {
+  it('a language switch in the middle of an edit is not a change: only the edit counts, and the toast speaks the new language', () => {
+    // an improvement, then a switch before it settles: the baseline was worded in English, the result in Portuguese
+    useEditor.getState().applyCanvasOps([{ kind: 'set_arg', nodeId: 'aws_db_instance.main', field: 'storage_encrypted', value: { kind: 'literal', value: true } }]);
+    useLocale.getState().setLocale('pt-BR');
+    settle();
+    expect(toasts()).toEqual([]);
+
+    addSsh();
+    useLocale.getState().setLocale('en');
+    useLocale.getState().setLocale('pt-BR');
+    settle();
+    expect(toasts().map((t) => [t.message, t.hint, t.action?.label])).toEqual([
+      ['Nota de segurança A → C: SSH (22) agora está aberto para a internet em aws_instance.web', 'Ctrl Z para desfazer', 'Mostrar'],
+    ]);
+  });
+
+  it('a risk that was already there is not "new" because it now reads in another language', () => {
+    addSsh();
+    open(useEditor.getState().files); // a project that already has SSH open to the internet
+    useEditor.getState().applyCanvasOps([{ kind: 'set_arg', nodeId: 'aws_db_instance.main', field: 'storage_encrypted', value: { kind: 'literal', value: true } }]);
+    useLocale.getState().setLocale('pt-BR');
+    settle();
+    expect(toasts()).toEqual([]);
+  });
+
+  it('the shared audit is re-worded on a switch, without touching the project or its history', () => {
+    const { ir, past } = useEditor.getState();
+    const english = getAudit(ir);
+    useLocale.getState().setLocale('pt-BR');
+    const portuguese = getAudit(ir);
+    expect(portuguese).not.toBe(english);
+    expect(portuguese.locale).toBe('pt-BR');
+    expect(portuguese.findings.map((f) => f.key)).toEqual(english.findings.map((f) => f.key));
+    expect(getAudit(ir)).toBe(portuguese);
+    expect(useEditor.getState().ir).toBe(ir);
+    expect(useEditor.getState().past).toBe(past);
+  });
+});
+
 describe('editKind', () => {
+
   it('tells edits from undo, redo and loads by the history the store keeps', () => {
     const s0 = useEditor.getState();
     addSsh();

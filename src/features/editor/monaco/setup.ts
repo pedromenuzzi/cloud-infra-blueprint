@@ -5,9 +5,12 @@
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import './contribs';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+import { messagesFor } from '@/i18n/messages';
 import type { IR } from '@/ir/types';
 import { emptyIR } from '@/ir/types';
+import { fieldHelp, resourceDescription, resourceName } from '@/resources/i18n';
 import { allDefs, getDef } from '@/resources/registry';
+import { codeMessages } from '../CodePane.messages';
 import {
   schemaBodySuggestions,
   schemaEntryAt,
@@ -218,8 +221,8 @@ export function ensureMonacoSetup() {
             label: def.type,
             kind: monaco.languages.CompletionItemKind.Class,
             insertText: def.type,
-            detail: def.displayName,
-            documentation: def.description,
+            detail: resourceName(def.type),
+            documentation: resourceDescription(def.type),
             range,
           });
         }
@@ -273,7 +276,7 @@ export function ensureMonacoSetup() {
               label: `${r.id}.${attr}`,
               kind: monaco.languages.CompletionItemKind.Reference,
               insertText: `${r.id}.${attr}`,
-              detail: getDef(r.type)?.displayName,
+              detail: getDef(r.type) ? resourceName(r.type) : undefined,
               range: tokenRange,
               sortText: `1${r.id}`,
             });
@@ -293,6 +296,7 @@ export function ensureMonacoSetup() {
 
       // attribute names inside a known resource block
       if (/^\s*[\w-]*$/.test(line)) {
+        const m = messagesFor(codeMessages);
         const type = enclosingResourceType(model, position.lineNumber);
         const def = type ? getDef(type) : undefined;
         // provider schema: every other argument and block — nested blocks get only their own
@@ -315,8 +319,8 @@ export function ensureMonacoSetup() {
               kind: monaco.languages.CompletionItemKind.Property,
               insertText: insert,
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-              detail: `${f.type}${f.required ? ' · required' : ''}`,
-              documentation: f.doc,
+              detail: `${f.type}${f.required ? m.required : ''}`,
+              documentation: fieldHelp(def.type, f.name).doc,
               range,
               sortText: f.required ? `0${f.name}` : `1${f.name}`,
             });
@@ -324,7 +328,7 @@ export function ensureMonacoSetup() {
         }
         if (schemaItems) suggestions.push(...schemaItems.suggestions);
         suggestions.push({
-          label: 'res — resource block',
+          label: m.resourceSnippet,
           kind: monaco.languages.CompletionItemKind.Snippet,
           insertText: 'resource "${1:aws_instance}" "${2:main}" {\n  ${0}\n}',
           insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -341,15 +345,14 @@ export function ensureMonacoSetup() {
     provideHover(model, position) {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
+      const m = messagesFor(codeMessages);
       const def = getDef(word.word);
       if (def) {
         return {
           contents: [
-            { value: `**${def.displayName}** · \`${def.type}\`` },
-            { value: def.description ?? '' },
-            {
-              value: `Category: ${def.category} · Provider: ${def.provider.toUpperCase()}`,
-            },
+            { value: `**${resourceName(def.type)}** · \`${def.type}\`` },
+            { value: resourceDescription(def.type) ?? '' },
+            { value: m.hoverMeta(def.category, def.provider.toUpperCase()) },
           ],
         };
       }
@@ -358,14 +361,15 @@ export function ensureMonacoSetup() {
       const type = enclosingResourceType(model, position.lineNumber);
       const parentDef = type ? getDef(type) : undefined;
       const field = parentDef?.fields.find((f) => f.name === word.word);
+      const doc = field && type ? fieldHelp(type, field.name).doc : undefined;
       // provider schema: any argument or block (nested too) and `aws_x.name.<attr>`
       const hit = schemaEntryAt(model, position);
-      if (hit) return { contents: schemaHoverContents(hit.entry, hit.argument ? field?.doc : undefined) };
+      if (hit) return { contents: schemaHoverContents(hit.entry, hit.argument ? doc : undefined) };
       if (field) {
         return {
           contents: [
-            { value: `**${field.name}** · ${field.type}${field.required ? ' · required' : ''}` },
-            { value: field.doc ?? '' },
+            { value: `**${field.name}** · ${field.type}${field.required ? m.required : ''}` },
+            { value: doc ?? '' },
           ],
         };
       }

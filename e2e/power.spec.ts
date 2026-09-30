@@ -89,7 +89,7 @@ test.describe('editor power features', () => {
 
   test('tidy up re-lays out the diagram as one undo step', async ({ page }) => {
     const before = (await storedProject(page, SEED_PROJECT))!.files['main.tf'];
-    await page.getByRole('button', { name: 'Tidy up layout' }).click();
+    await page.getByRole('button', { name: 'Auto-arrange' }).click();
     await expect
       .poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf'])
       .not.toBe(before);

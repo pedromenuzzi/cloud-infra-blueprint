@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { confirmAction } from '@/components/Confirm';
 import { showToast } from '@/components/Toast';
 import { flushPendingSave, useEditor } from '@/features/editor/store';
+import { messagesFor } from '@/i18n/messages';
 import {
   baselineFor,
   createLink,
@@ -21,17 +22,23 @@ import {
   previewLink,
   readFolderFiles,
   requestFolderPermission,
+  problemOf,
   syncableFiles,
   syncFolder,
   type ConflictInfo,
   type DirHandleLike,
   type FolderLink,
+  type FolderProblem,
   type LinkPreview,
   type SyncIO,
   type SyncOptions,
   type SyncResult,
 } from '@/lib/fsSync';
 import { getProject, updateProject } from '@/lib/storage';
+import { dataMessages } from './messages';
+
+/** the messages in the UI language of the moment (toasts and confirmations) */
+const text = () => messagesFor(dataMessages);
 
 export type FolderStatus = 'off' | 'permission' | 'synced' | 'conflict' | 'missing' | 'error';
 
@@ -42,7 +49,8 @@ interface FolderSyncState {
   busy: boolean;
   label: string | null;
   conflicts: ConflictInfo[];
-  error: string | null;
+  /** why syncing stopped — a reason, shown in the language picked at the time (`folderProblemText`) */
+  error: FolderProblem | null;
   syncedAt: string | null;
   conflictOpen: boolean;
   /** linking to a folder that already holds other Terraform: waiting for the user's choice */
@@ -97,22 +105,17 @@ const io: SyncIO = {
     return true;
   },
   confirmRemove(names) {
-    const label = link?.label ?? 'the folder';
+    const m = text();
+    const label = link?.label ?? m.theFolder;
     return confirmAction({
-      title: names.length === 1 ? `Delete “${names[0]}” from “${label}”?` : `Delete ${names.length} files from “${label}”?`,
-      body:
-        `${names.length === 1 ? 'It was' : `${names.join(', ')} were`} removed from the project, but Cloud Blueprint ` +
-        'didn’t create it on disk. Cancel keeps the file in the folder (it just stops syncing).',
-      confirmLabel: 'Delete from folder',
+      title: names.length === 1 ? m.deleteOneFromFolder(names[0]!, label) : m.deleteManyFromFolder(names.length, label),
+      body: m.deleteFromFolderBody(names),
+      confirmLabel: m.deleteFromFolder,
       danger: true,
     });
   },
   saveLink: (next) => store.set(next),
 };
-
-function describeError(err: unknown): string {
-  return err instanceof Error && err.message ? err.message : 'The folder could not be read or written';
-}
 
 function applyResult(result: SyncResult) {
   const prev = useFolderSync.getState();
@@ -133,10 +136,10 @@ function applyResult(result: SyncResult) {
       useFolderSync.setState({ status: 'permission' });
       break;
     case 'missing':
-      useFolderSync.setState({ status: 'missing', error: 'The folder was moved, renamed or deleted' });
+      useFolderSync.setState({ status: 'missing', error: { kind: 'missing' } });
       break;
     case 'error':
-      useFolderSync.setState({ status: 'error', error: result.message });
+      useFolderSync.setState({ status: 'error', error: result.problem });
       break;
   }
 }
@@ -153,7 +156,7 @@ function runSync(options: SyncOptions = {}): Promise<void> {
   useFolderSync.setState({ busy: true });
   lastFiles = useEditor.getState().files;
   running = syncFolder(current, io, options)
-    .catch((err: unknown): SyncResult => ({ status: 'error', message: describeError(err) }))
+    .catch((err: unknown): SyncResult => ({ status: 'error', problem: problemOf(err) }))
     .then((result) => {
       if (link === current) applyResult(result);
     })
@@ -247,7 +250,7 @@ export function syncNow() {
 export async function reconnectFolder() {
   if (!link) return;
   if (await requestFolderPermission(link.dir)) await runSync();
-  else showToast(`Cloud Blueprint needs permission to edit “${link.label}” to keep it in sync`, 'error');
+  else showToast(text().needsPermission(link.label), 'error');
 }
 
 export function resolveFolderConflicts(side: 'app' | 'disk') {
@@ -267,7 +270,7 @@ export async function unlinkFolder() {
   clearTimeout(timer);
   useFolderSync.setState({ ...OFF });
   await store.delete(projectId).catch(() => undefined);
-  showToast(`Stopped syncing with “${current.label}” — its files stay as they are`);
+  showToast(text().stoppedSyncing(current.label));
 }
 
 async function finishLink(dir: DirHandleLike, label: string, synced: Record<string, string>, allowRemove: string[]) {
@@ -279,10 +282,10 @@ async function finishLink(dir: DirHandleLike, label: string, synced: Record<stri
   try {
     await store.set(next);
   } catch {
-    showToast('The folder link can’t be remembered in this browser — it lasts until you reload', 'error');
+    showToast(text().linkNotRemembered, 'error');
   }
   await runSync({ allowRemove });
-  if (link === next && useFolderSync.getState().status === 'synced') showToast(`Synced to “${label}”`, 'success');
+  if (link === next && useFolderSync.getState().status === 'synced') showToast(text().syncedToast(label), 'success');
 }
 
 /** "Sync with folder…" in the editor: pick a folder and link the open project to it. */
@@ -297,7 +300,7 @@ export async function startFolderLink() {
   try {
     dir = await pickFolder();
   } catch {
-    showToast('That folder can’t be opened here', 'error');
+    showToast(text().cantOpenFolder, 'error');
     return;
   }
   if (!dir) return;
@@ -307,10 +310,11 @@ export async function startFolderLink() {
   if (other && other.projectId !== projectId) {
     const owner = getProject(other.projectId);
     if (owner) {
+      const m = text();
       const ok = await confirmAction({
-        title: `“${dir.name}” is linked to “${owner.name}”`,
-        body: `Link it to this project instead? “${owner.name}” stops syncing with the folder (nothing is deleted).`,
-        confirmLabel: 'Link to this project',
+        title: m.linkedElsewhere(dir.name, owner.name),
+        body: m.linkInstead(owner.name),
+        confirmLabel: m.linkHere,
       });
       if (!ok) return;
     }
@@ -321,7 +325,7 @@ export async function startFolderLink() {
   try {
     disk = (await readFolderFiles(dir)).files;
   } catch {
-    showToast(`“${dir.name}” can’t be read`, 'error');
+    showToast(text().cantRead(dir.name), 'error');
     return;
   }
   const app = syncableFiles(useEditor.getState().files);

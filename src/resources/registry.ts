@@ -4,6 +4,12 @@ import { AZURE_RESOURCES } from './azure';
 import { GCP_RESOURCES } from './gcp';
 import { CATEGORY_ORDER, type Category, type ResourceDef } from './types';
 
+/** every resource type the catalog describes */
+export type CatalogType =
+  | (typeof AWS_RESOURCES)[number]['type']
+  | (typeof AZURE_RESOURCES)[number]['type']
+  | (typeof GCP_RESOURCES)[number]['type'];
+
 const registry = new Map<string, ResourceDef>();
 for (const def of [...AWS_RESOURCES, ...AZURE_RESOURCES, ...GCP_RESOURCES]) {
   registry.set(def.type, def);

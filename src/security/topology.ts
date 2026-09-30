@@ -12,8 +12,11 @@
  * chain of controls that lets the traffic in, and for traffic a rule means to
  * admit, the control that stops it (access.ts has the shapes and wording).
  */
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
 import { collectRefs, exprPreview, refTargetAddress } from '@/ir/expr';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
+import { accessMessages, type Via } from './access.messages';
 import {
   blockReason,
   byPorts,
@@ -78,6 +81,8 @@ export interface Flow {
 }
 
 export interface SecurityTopology {
+  /** the language of every text in it (paths, reasons) — and of an audit built on it */
+  locale: Locale;
   rules: Map<string, SecurityRule[]>;
   /** owner id → rules the model can't read (dynamic blocks, expressions) */
   hidden: Map<string, HiddenRules[]>;
@@ -165,8 +170,7 @@ function both(address: Reachability, route: Reachability): Reachability {
   return UNKNOWN;
 }
 
-const noAddress = (resource: string, detail: string, title = 'No public IP address'): Reachability =>
-  no({ kind: 'address', title, detail, resource });
+const noAddress = (resource: string, detail: string, title: string): Reachability => no({ kind: 'address', title, detail, resource });
 
 /** config, not a running thing: its exposure shows on whatever uses it */
 const NOT_WORKLOADS = new Set([
@@ -325,11 +329,13 @@ function evaluateLanes(lanes: Lane[]): ResourceEval {
   };
 }
 
-export function analyzeSecurity(ir: IR): SecurityTopology {
+/** `locale`: the language of the paths and reasons (the UI language by default) */
+export function analyzeSecurity(ir: IR, locale: Locale = currentLocale()): SecurityTopology {
+  const m = messagesFor(accessMessages, locale);
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
   const typeOf = (id: string) => byId.get(id)?.type;
   const ofType = (e: Expression | undefined, type: string) => refsIn(e).filter((id) => typeOf(id) === type);
-  const { rules, hidden } = extractSecurity(ir);
+  const { rules, hidden } = extractSecurity(ir, locale);
   const rulesOf = (owners: string[]) => owners.flatMap((o) => rules.get(o) ?? []);
   const push = (m: Map<string, string[]>, k: string, v: string) => {
     const list = m.get(k) ?? [];
@@ -588,56 +594,53 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
     const rt = routing.get(s);
     const detail = rt?.table
       ? rt.main
-        ? `subnet ${name(s)} uses the VPC's main route table ${name(rt.table)}, which has none`
-        : `subnet ${name(s)} uses route table ${name(rt.table)}, which has none`
-      : `subnet ${name(s)} has no route table association, and the VPC's main route table has none`;
-    return no({ kind: 'route', title: 'No route to an internet gateway', detail, resource: rt?.table ?? s });
+        ? m.mainTableHasNone(name(s), name(rt.table))
+        : m.tableHasNone(name(s), name(rt.table))
+      : m.noAssociation(name(s));
+    return no({ kind: 'route', title: m.noRoute, detail, resource: rt?.table ?? s });
   };
   /** absent = the default VPC, whose subnets route to an IGW and hand out public IPs */
   const routeOf = (e: Expression | undefined, absent: Reach = 'yes'): Reachability => {
     if (!e) {
       if (absent === 'yes') return yes({ defaultVpc: true });
-      return absent === 'no'
-        ? no({ kind: 'route', title: 'No route to an internet gateway', detail: 'it is not placed in a subnet that routes to one' })
-        : UNKNOWN;
+      return absent === 'no' ? no({ kind: 'route', title: m.noRoute, detail: m.notInPublicSubnet }) : UNKNOWN;
     }
     const { ids, unknown } = subnetRefs(e);
     return anyOf(...ids.map((s) => (subnets.get(s) === 'public' ? yes({ subnet: s }) : noRoute(s))), unknown ? UNKNOWN : NO);
   };
   const autoPublicIp = (e: Expression | undefined, owner: string): Reachability => {
-    if (!e) return yes({ address: { resource: owner, label: 'the default VPC assigns one on launch' } });
+    if (!e) return yes({ address: { resource: owner, label: m.defaultVpcAssigns } });
     const { ids, unknown } = subnetRefs(e);
     return anyOf(
       ...ids.map((s) => {
         const b = boolArg(byId.get(s)?.args.map_public_ip_on_launch) ?? 'no';
-        if (b === 'yes') return yes({ address: { resource: s, label: `map_public_ip_on_launch = true on subnet ${name(s)}` } });
+        if (b === 'yes') return yes({ address: { resource: s, label: m.subnetMapsPublicIp(name(s)) } });
         if (b === 'unknown') return UNKNOWN;
-        return noAddress(owner, `subnet ${name(s)} doesn't assign public IPs (map_public_ip_on_launch) and nothing else gives it one`);
+        return noAddress(owner, m.subnetNoPublicIp(name(s)), m.noPublicIp);
       }),
       unknown ? UNKNOWN : NO,
     );
   };
   /** an explicit true / false on `holder`: the resource itself, or its launch template / configuration */
-  const flag = (e: Expression | undefined, holder: string, field: string, via?: string): Reachability | undefined => {
+  const flag = (e: Expression | undefined, holder: string, field: string, via?: Via): Reachability | undefined => {
     const b = boolArg(e);
     if (b === undefined) return undefined;
     if (b === 'unknown') return UNKNOWN;
-    const where = via ? ` in ${via} ${name(holder)}` : '';
-    const step = via ? { title: `${via.charAt(0).toUpperCase()}${via.slice(1)} ${name(holder)}`, detail: `${field} = true` } : undefined;
+    const where = via ? m.inHolder(via, name(holder)) : '';
+    const step = via ? { title: m.holderTitle(via, name(holder)), detail: `${field} = true` } : undefined;
     return b === 'yes'
       ? yes({ address: { resource: holder, label: `${field} = true${where}`, step } })
-      : noAddress(holder, `${field} = false${where}`);
+      : noAddress(holder, `${field} = false${where}`, m.noPublicIp);
   };
   const elasticIp = (eip: string): Reachability =>
-    yes({ address: { resource: eip, label: `Elastic IP ${name(eip)}`, step: { title: `Elastic IP ${name(eip)}`, detail: 'gives it a public address' } } });
+    yes({ address: { resource: eip, label: m.elasticIp(name(eip)), step: { title: m.elasticIp(name(eip)), detail: m.givesPublicAddress } } });
   const dbRoute = (group: Expression | undefined): Reachability => {
     if (!group) return yes({ defaultVpc: true });
     const [id] = ofType(group, 'aws_db_subnet_group');
     return id ? routeOf(byId.get(id)?.args.subnet_ids, 'no') : UNKNOWN;
   };
   const publiclyAccessible = (r: ResourceNode): Reachability =>
-    flag(r.args.publicly_accessible, r.id, 'publicly_accessible') ??
-    noAddress(r.id, "publicly_accessible isn't set (it defaults to false)", 'Not publicly accessible');
+    flag(r.args.publicly_accessible, r.id, 'publicly_accessible') ?? noAddress(r.id, m.publiclyAccessibleUnset, m.notPubliclyAccessible);
   const instanceReach = (r: ResourceNode): Reachability => {
     const enis = enisOf.get(r.id) ?? [];
     const eip = eipOf.get(r.id) ?? enis.map((e) => eipOf.get(e)).find(Boolean);
@@ -647,7 +650,7 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
       // an existing ENI as the primary interface never gets an auto-assigned public IP
       return eipAddress
         ? both(eipAddress, anyOf(...eniSubnets.map((s) => routeOf(s, 'no'))))
-        : noAddress(r.id, 'its primary network interface is an existing ENI with no Elastic IP');
+        : noAddress(r.id, m.existingEni, m.noPublicIp);
     }
     const lt = launchTemplateOf(r);
     const nic = primaryNic(lt);
@@ -665,9 +668,9 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
       case 'aws_alb':
       case 'aws_elb': {
         const internal = boolArg(r.args.internal);
-        if (internal === 'yes') return noAddress(r.id, 'internal = true — it gets no public address', 'Internal load balancer');
+        if (internal === 'yes') return noAddress(r.id, m.internalLb, m.internalLbTitle);
         if (internal === 'unknown') return UNKNOWN;
-        return yes({ address: { resource: r.id, label: internal === 'no' ? 'internet-facing (internal = false)' : "internet-facing (internal isn't set)" } });
+        return yes({ address: { resource: r.id, label: m.internetFacing(internal === 'no') } });
       }
       case 'aws_instance':
         return instanceReach(r);
@@ -678,12 +681,12 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
       case 'aws_rds_cluster':
         return anyOf(
           ...ir.resources.filter((x) => x.type === 'aws_rds_cluster_instance' && clusterOf(x)?.id === r.id).map((x) => reachOf(x)),
-          noAddress(r.id, 'none of its cluster instances is publicly accessible', 'Not publicly accessible'),
+          noAddress(r.id, m.noClusterInstancePublic, m.notPubliclyAccessible),
         );
       case 'aws_ecs_service': {
         const nc = blocksOf(r.args.network_configuration)[0];
         return both(
-          flag(nc?.assign_public_ip, r.id, 'assign_public_ip') ?? noAddress(r.id, "assign_public_ip isn't set (it defaults to false)"),
+          flag(nc?.assign_public_ip, r.id, 'assign_public_ip') ?? noAddress(r.id, m.assignPublicIpUnset, m.noPublicIp),
           routeOf(nc?.subnets, 'no'),
         );
       }
@@ -699,26 +702,26 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
       }
       case 'aws_network_interface': {
         const eip = eipOf.get(r.id);
-        return eip ? both(elasticIp(eip), routeOf(r.args.subnet_id, 'no')) : noAddress(r.id, 'no Elastic IP is associated with it');
+        return eip ? both(elasticIp(eip), routeOf(r.args.subnet_id, 'no')) : noAddress(r.id, m.noEip, m.noPublicIp);
       }
       case 'google_compute_instance': {
         const index = blocksOf(r.args.network_interface).findIndex((ni) => ni.access_config !== undefined);
         return index === -1
-          ? noAddress(r.id, 'no access_config on its network interfaces — it has no external IP', 'No external IP')
-          : yes({ address: { resource: r.id, label: `external IP (access_config on network_interface #${index + 1})` } });
+          ? noAddress(r.id, m.noAccessConfig, m.noExternalIp)
+          : yes({ address: { resource: r.id, label: m.externalIp(index + 1) } });
       }
       default: {
         if (isAzureVm(r)) {
           const nic = nicsOf(r).find(nicPublic);
-          if (!nic) return noAddress(r.id, 'none of its network interfaces has a public IP');
+          if (!nic) return noAddress(r.id, m.noNicPublicIp, m.noPublicIp);
           const [ip] = refsIn(nicPublicIp(nic));
           return yes({
             address: ip
-              ? { resource: ip, label: `public IP ${name(ip)} on NIC ${name(nic)}`, step: { title: `Public IP ${name(ip)}`, detail: `on NIC ${name(nic)}` } }
-              : { resource: nic, label: `a public IP on NIC ${name(nic)}`, step: { title: `NIC ${name(nic)}`, detail: 'has a public IP' } },
+              ? { resource: ip, label: m.publicIpOnNic(name(ip), name(nic)), step: { title: m.publicIpTitle(name(ip)), detail: m.onNic(name(nic)) } }
+              : { resource: nic, label: m.aPublicIpOnNic(name(nic)), step: { title: m.nicTitle(name(nic)), detail: m.nicHasPublicIp } },
           });
         }
-        return noAddress(r.id, 'this kind of resource gets no public address', 'No public address');
+        return noAddress(r.id, m.noPublicAddressKind, m.noPublicAddress);
       }
     }
   };
@@ -738,8 +741,8 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
   const targetsLabel = (fw: ResourceNode | undefined) => {
     if (!fw) return undefined;
     const t = fwTargets(fw);
-    if (t.accounts.length) return `service account ${t.accounts.join(', ')}`;
-    return t.tags.length ? `tag ${t.tags.join(', ')}` : 'every instance in the network';
+    if (t.accounts.length) return m.serviceAccountTargets(t.accounts.join(', '));
+    return t.tags.length ? m.tagTargets(t.tags.join(', ')) : m.everyInstance;
   };
   const layerOf = (owners: string[], ctx: StepContext = {}): Layer => {
     const kind = OWNER_TYPES[typeOf(owners[0]) ?? ''] ?? 'sg';
@@ -787,20 +790,18 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
     const { route } = rt;
     const table = rt.table ? name(rt.table) : undefined;
     return [
-      { kind: 'gateway', title: `Internet gateway ${name(route.gateway)}`, resource: route.gateway, verdict: 'allow' },
+      { kind: 'gateway', title: m.gatewayTitle(name(route.gateway)), resource: route.gateway, verdict: 'allow' },
       {
         kind: 'route',
-        title: `Route ${route.destination} → ${name(route.gateway)}`,
-        detail: rt.main
-          ? `${table ? `route table ${table}, ` : ''}the VPC's main route table — subnet ${name(s)} has no association of its own`
-          : `route table ${table}, associated with subnet ${name(s)}`,
+        title: m.routeTitle(route.destination, name(route.gateway)),
+        detail: rt.main ? m.mainRouteTable(table, name(s)) : m.associatedTable(table, name(s)),
         resource: route.resource,
         verdict: 'allow',
       },
       {
         kind: 'subnet',
-        title: `Subnet ${name(s)}`,
-        detail: address?.resource === s ? 'public · assigns public IPs on launch' : 'public — routes to the internet gateway',
+        title: m.subnetTitle(name(s)),
+        detail: address?.resource === s ? m.subnetAssigns : m.subnetRoutes,
         resource: s,
         verdict: 'allow',
       },
@@ -813,12 +814,16 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
     const pub = via ?? subnetsOf(r).find((s) => subnets.get(s) === 'public');
     if (pub) return routeSteps(pub, reach.address);
     if (reach.defaultVpc) {
-      return [{ kind: 'route', title: 'Default VPC', detail: 'its default subnets route to an internet gateway', verdict: 'allow' }];
+      return [{ kind: 'route', title: m.defaultVpc, detail: m.defaultVpcRoutes, verdict: 'allow' }];
     }
     return [];
   };
   const hopStep = (hop: { rule: SecurityRule; layer: Layer }, extra: Partial<PathStep> = {}): PathStep => ({
-    ...ruleStep(hop.rule, { ...hop.layer.ctx, targets: hop.rule.ownerKind === 'firewall' ? targetsLabel(byId.get(hop.rule.owner)) : undefined }),
+    ...ruleStep(
+      hop.rule,
+      { ...hop.layer.ctx, targets: hop.rule.ownerKind === 'firewall' ? targetsLabel(byId.get(hop.rule.owner)) : undefined },
+      locale,
+    ),
     ...extra,
   });
   /** the resource, after whatever gives it its public address (an EIP, a launch template, a public IP) */
@@ -831,7 +836,7 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
       {
         kind: 'resource',
         title: r.id,
-        detail: address ? `public address: ${address.label}` : undefined,
+        detail: address ? m.publicAddress(address.label) : undefined,
         resource: r.id,
         ...extra,
       },
@@ -844,8 +849,8 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
     if (reach.reach === 'no') {
       const blockers = reach.blockers.length
         ? reach.blockers
-        : [{ kind: 'address' as const, title: 'No public address', detail: 'it gets no public address', resource: r.id, verdict: 'deny' as const }];
-      const reason = blockers.map((b) => b.title.charAt(0).toLowerCase() + b.title.slice(1)).join(' and ');
+        : [{ kind: 'address' as const, title: m.noPublicAddress, detail: m.getsNoPublicAddress, resource: r.id, verdict: 'deny' as const }];
+      const reason = m.reasons(blockers.map((b) => b.title));
       const blocked: BlockedPort[] = ev.intents.map(({ rule, layer }) => {
         const traffic = ruleTraffic(rule);
         const families = internetFamilies(rule);
@@ -854,14 +859,14 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
           traffic,
           families,
           reason,
-          steps: [internetStep(families), ...blockers, hopStep({ rule, layer }, unreached), ...targetSteps(r, reach, unreached)],
+          steps: [internetStep(families, locale), ...blockers, hopStep({ rule, layer }, unreached), ...targetSteps(r, reach, unreached)],
         };
       });
       return { open: [], blocked: blocked.sort(byPorts) };
     }
     if (reach.reach !== 'yes') return { open: [], blocked: [] };
 
-    const open = groupByPort([
+    const chains = [
       ...ev.pieces.map((p) => ({
         traffic: p.traffic,
         family: p.family,
@@ -876,13 +881,15 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
             ...networkSteps(r, reach),
             hopStep(
               { rule, layer: ev.intents.find((i) => i.rule.id === rule.id)?.layer ?? layerOf([rule.owner]) },
-              { detail: `${ruleStep(rule).detail} — the ports are an expression, so this can't be verified` },
+              { detail: m.portsExpression(ruleStep(rule, {}, locale).detail ?? '') },
             ),
             ...targetSteps(r, reach),
           ],
         })),
       ),
-    ]);
+    ];
+    const open = groupByPort(chains, locale);
+
 
     // one entry per intent rule + blocker; IPv4 / IPv6 fold together when they read the same
     const merged = new Map<string, Barrier & { families: IpFamily[] }>();
@@ -901,15 +908,15 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
       const stop: PathStep =
         'rule' in blocker
           ? hopStep(blocker)
-          : defaultStep(blocker.layer.kind, blocker.layer.owners[0], blocker.layer.ctx);
+          : defaultStep(blocker.layer.kind, blocker.layer.owners[0], blocker.layer.ctx, locale);
       const families = [...b.families].sort();
       return {
         ports: portsLabel(b.traffic),
         traffic: b.traffic,
         families,
-        reason: blockReason('rule' in blocker ? blocker.rule : { kind: blocker.layer.kind, owner: blocker.layer.owners[0] }),
+        reason: blockReason('rule' in blocker ? blocker.rule : { kind: blocker.layer.kind, owner: blocker.layer.owners[0] }, locale),
         steps: [
-          internetStep(families),
+          internetStep(families, locale),
           ...networkSteps(r, reach, b.lane),
           ...b.passed.map((h) => hopStep(h)),
           stop,
@@ -942,13 +949,13 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
         level: 'unknown',
         ports: [],
         owners,
-        reason: 'Its rules let internet traffic in, but whether it has a public address depends on expressions.',
+        reason: m.unknownAddress,
       });
     } else if (reach !== 'no' && (hiddenOwners.length > 0 || ev.unknownSources.length > 0)) {
       const detail = hiddenOwners.length
-        ? `${name(hiddenOwners[0])} defines rules the audit can't read (${hidden.get(hiddenOwners[0])![0].reason})`
-        : `a rule's sources are an expression (${ev.unknownSources[0].peers.find((p) => p.kind === 'expr')?.value})`;
-      exposure.set(resource, { level: 'unknown', ports: [], owners, reason: `Can't tell whether it is reachable from the internet: ${detail}.` });
+        ? m.unreadableRules(name(hiddenOwners[0]), hidden.get(hiddenOwners[0])![0].reason)
+        : m.sourcesExpression(ev.unknownSources[0].peers.find((p) => p.kind === 'expr')?.value);
+      exposure.set(resource, { level: 'unknown', ports: [], owners, reason: m.cantTell(detail) });
     } else {
       const inbound = rulesOf(owners).some((x) => x.direction === 'inbound' && x.action === 'allow' && !x.disabled);
       exposure.set(resource, { level: inbound || hiddenOwners.length ? 'restricted' : 'isolated', ports: [], owners });
@@ -1014,5 +1021,6 @@ export function analyzeSecurity(ir: IR): SecurityTopology {
     }
   }
 
-  return { rules, hidden, attachments, protects, subnets, subnetNacls, exposure, access, flows: [...flowMap.values()], effective };
+  return { locale, rules, hidden, attachments, protects, subnets, subnetNacls, exposure, access, flows: [...flowMap.values()], effective };
+
 }

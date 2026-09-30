@@ -20,10 +20,13 @@ import {
 import { useId, useState } from 'react';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useEditor } from '@/features/editor/store';
+import { useLocale, type Locale } from '@/i18n/locale';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import { cn } from '@/lib/utils';
 import { familiesLabel, type AccessExplanation, type BlockedPort, type PathStep, type PortAccess, type StepKind } from '@/security/access';
 import { trafficRisk } from '@/security/audit';
 import { serviceName } from '@/security/model';
+import { securityUiMessages } from './messages';
 import { SEVERITY_COLORS, SEVERITY_TEXT, useSecurityUi } from './securityStore';
 
 const STEP_ICONS: Record<StepKind, LucideIcon> = {
@@ -39,35 +42,50 @@ const STEP_ICONS: Record<StepKind, LucideIcon> = {
   resource: Server,
 };
 
-const WORDS: Record<string, string> = {
-  all: 'All traffic',
-  'all TCP': 'All TCP ports',
-  'all UDP': 'All UDP ports',
-  icmp: 'ICMP',
-  'other protocols': 'Other protocols',
-  'other ports': 'Other ports',
-};
+/** a port label that reads as words ("All TCP ports"), in the UI language; undefined for ports and expressions */
+function wordsFor(ports: string, locale: Locale): string | undefined {
+  const w = messagesFor(securityUiMessages, locale).portWords;
+  switch (ports) {
+    case 'all':
+      return w.all;
+    case 'all TCP':
+      return w.allTcp;
+    case 'all UDP':
+      return w.allUdp;
+    case 'icmp':
+      return 'ICMP';
+    case 'other protocols':
+      return w.otherProtocols;
+    case 'other ports':
+      return w.otherPorts;
+    default:
+      return undefined;
+  }
+}
 
 /** ":443" for ports, words for the rest; an expression stays as written */
-const portText = (ports: string) => WORDS[ports] ?? (/^\d/.test(ports) ? `:${ports.replace(/\/udp$/, '')}` : ports);
+const portText = (ports: string, locale: Locale) =>
+  wordsFor(ports, locale) ?? (/^\d/.test(ports) ? `:${ports.replace(/\/udp$/, '')}` : ports);
 
 /** "HTTPS", "DNS · UDP", "UDP" — what runs on a port label */
-function serviceOf(ports: string): string | undefined {
+function serviceOf(ports: string, locale: Locale): string | undefined {
   const udp = ports.endsWith('/udp');
   const m = /^(\d+)(?:\/udp)?$/.exec(ports);
   if (!m) return udp ? 'UDP' : undefined;
   const port = Number(m[1]);
-  const name = serviceName({ protocol: udp ? 'udp' : 'tcp', fromPort: port, toPort: port });
+  const name = serviceName({ protocol: udp ? 'udp' : 'tcp', fromPort: port, toPort: port }, locale);
   const known = !/^(TCP|UDP) /.test(name);
   if (udp) return known ? `${name} · UDP` : 'UDP';
   return known ? name : undefined;
 }
 
 /** "Port 22", "Ports 8000-8080", "All TCP ports", "Ports var.port" */
-function portTitle(ports: string): string {
-  if (WORDS[ports]) return WORDS[ports];
+function portTitle(ports: string, locale: Locale): string {
+  const words = wordsFor(ports, locale);
+  if (words) return words;
+  const m = messagesFor(securityUiMessages, locale);
   const text = ports.replace(/\/udp/g, '');
-  return /^\d+$/.test(text) ? `Port ${text}` : `Ports ${text}`;
+  return /^\d+$/.test(text) ? m.port(text) : m.ports(text);
 }
 
 /** Select a resource, or open a rule in the rules editor (at its row). */
@@ -83,9 +101,10 @@ export function activateStep(step: PathStep) {
 }
 
 function StepRow({ step }: { step: PathStep }) {
+  const m = useMessages(securityUiMessages);
   const Icon = step.verdict === 'deny' ? Ban : STEP_ICONS[step.kind];
   const deny = step.verdict === 'deny';
-  const action = step.rule ? (step.rule.id ? 'open this rule in the rules editor' : 'open these rules in the rules editor') : step.resource ? 'show it on the canvas' : undefined;
+  const action = step.rule ? (step.rule.id ? m.openRule : m.openRules) : step.resource ? m.showIt : undefined;
   const body = (
     <>
       <span className={cn('block break-words text-[11.5px] font-semibold leading-snug', deny ? 'text-danger' : 'text-foreground')}>
@@ -110,7 +129,7 @@ function StepRow({ step }: { step: PathStep }) {
         <button
           type="button"
           onClick={() => activateStep(step)}
-          title={step.rule ? 'Open in the rules editor' : 'Show on the canvas'}
+          title={step.rule ? m.openInEditor : m.showOnCanvasTitle}
           className="group block w-full rounded-[6px] px-1.5 py-1 text-left transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-primary"
         >
           {body}
@@ -167,12 +186,13 @@ function Disclosure({
 }
 
 function PortHeader({ ports, families, note, risk }: { ports: string; families: string; note?: string; risk?: string }) {
-  const service = serviceOf(ports);
-  const text = portText(ports);
+  const locale = useLocale((s) => s.locale);
+  const service = serviceOf(ports, locale);
+  const text = portText(ports, locale);
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5">
       {risk ? <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: risk }} /> : null}
-      <span className={cn('shrink-0 text-[11.5px] font-semibold text-foreground', text.startsWith(':') || !WORDS[ports] ? 'font-mono' : '')}>
+      <span className={cn('shrink-0 text-[11.5px] font-semibold text-foreground', text.startsWith(':') || !wordsFor(ports, locale) ? 'font-mono' : '')}>
         {text}
       </span>
       {service ? <span className="truncate text-[11px] text-muted">{service}</span> : null}
@@ -184,8 +204,10 @@ function PortHeader({ ports, families, note, risk }: { ports: string; families: 
 }
 
 function OpenPort({ port, defaultOpen }: { port: PortAccess; defaultOpen?: boolean }) {
-  const risk = port.traffic ? trafficRisk(port.traffic) : null;
-  const families = familiesLabel([...new Set(port.paths.flatMap((p) => p.families))]);
+  const m = useMessages(securityUiMessages);
+  const locale = useLocale((s) => s.locale);
+  const risk = port.traffic ? trafficRisk(port.traffic, locale) : null;
+  const families = familiesLabel([...new Set(port.paths.flatMap((p) => p.families))], locale);
   return (
     <Disclosure
       testId={`access-port-${port.ports}`}
@@ -195,15 +217,17 @@ function OpenPort({ port, defaultOpen }: { port: PortAccess; defaultOpen?: boole
           ports={port.ports}
           families={families}
           risk={risk ? SEVERITY_COLORS[risk.severity] : undefined}
-          note={!port.traffic ? "can't verify" : port.paths.length > 1 ? `${port.paths.length} ways in` : undefined}
+          note={!port.traffic ? m.cantVerifyNote : port.paths.length > 1 ? m.waysIn(port.paths.length) : undefined}
         />
       }
     >
       {risk ? <p className={cn('text-[11px] font-medium', SEVERITY_TEXT[risk.severity])}>{risk.title}</p> : null}
       {port.paths.map((p, i) => (
         <div key={i}>
-          {port.paths.length > 1 ? <p className="mb-1 text-[10.5px] font-semibold text-faint">Way {i + 1} · {familiesLabel(p.families)}</p> : null}
-          <Chain steps={p.steps} label={`Path for ${portText(port.ports)}${port.paths.length > 1 ? `, way ${i + 1}` : ''}`} />
+          {port.paths.length > 1 ? (
+            <p className="mb-1 text-[10.5px] font-semibold text-faint">{m.way(i + 1, familiesLabel(p.families, locale))}</p>
+          ) : null}
+          <Chain steps={p.steps} label={m.pathFor(portText(port.ports, locale), port.paths.length > 1 ? i + 1 : undefined)} />
         </div>
       ))}
     </Disclosure>
@@ -211,8 +235,10 @@ function OpenPort({ port, defaultOpen }: { port: PortAccess; defaultOpen?: boole
 }
 
 function BlockedEntry({ entry }: { entry: BlockedPort }) {
-  const service = serviceOf(entry.ports);
-  const title = portTitle(entry.ports);
+  const m = useMessages(securityUiMessages);
+  const locale = useLocale((s) => s.locale);
+  const service = serviceOf(entry.ports, locale);
+  const title = portTitle(entry.ports, locale);
   return (
     <Disclosure
       testId={`blocked-port-${entry.ports}`}
@@ -221,7 +247,8 @@ function BlockedEntry({ entry }: { entry: BlockedPort }) {
           <span className="flex items-center gap-1.5">
             <Ban aria-hidden="true" className="h-3 w-3 shrink-0 text-danger" />
             <span className="truncate text-[11.5px] font-semibold text-foreground">
-              {title} from the internet{service ? <span className="font-normal text-muted"> · {service}</span> : null}
+              {m.fromInternet(title)}
+              {service ? <span className="font-normal text-muted"> · {service}</span> : null}
             </span>
             {entry.families.length === 1 && entry.families[0] === 'ipv6' ? <span className="ml-auto shrink-0 text-[10px] text-faint">IPv6</span> : null}
           </span>
@@ -229,7 +256,7 @@ function BlockedEntry({ entry }: { entry: BlockedPort }) {
         </span>
       }
     >
-      <Chain steps={entry.steps} label={`Why ${title.toLowerCase()} is blocked`} />
+      <Chain steps={entry.steps} label={m.whyBlocked(title)} />
     </Disclosure>
   );
 }
@@ -239,9 +266,10 @@ function BlockedEntry({ entry }: { entry: BlockedPort }) {
  * `bare`: just the open ports, no headings (the security panel lists them under the resource).
  */
 export function AccessPaths({ access, openFirst, bare }: { access: AccessExplanation; openFirst?: boolean; bare?: boolean }) {
+  const m = useMessages(securityUiMessages);
   if (bare) {
     return (
-      <ul className="space-y-1" aria-label="Ways in from the internet">
+      <ul className="space-y-1" aria-label={m.waysInFromInternet}>
         {access.open.map((p, i) => (
           <OpenPort key={p.ports} port={p} defaultOpen={openFirst && i === 0} />
         ))}
@@ -251,8 +279,8 @@ export function AccessPaths({ access, openFirst, bare }: { access: AccessExplana
   return (
     <div className="space-y-2.5">
       {access.open.length ? (
-        <section aria-label="Why is this reachable?">
-          <h4 className="mb-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">Why is this reachable?</h4>
+        <section aria-label={m.whyThis}>
+          <h4 className="mb-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.whyThis}</h4>
           <ul className="space-y-1">
             {access.open.map((p, i) => (
               <OpenPort key={p.ports} port={p} defaultOpen={openFirst && i === 0} />
@@ -261,8 +289,8 @@ export function AccessPaths({ access, openFirst, bare }: { access: AccessExplana
         </section>
       ) : null}
       {access.blocked.length ? (
-        <section aria-label="Blocked from the internet">
-          <h4 className="mb-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">Blocked from the internet</h4>
+        <section aria-label={m.blockedFromInternet}>
+          <h4 className="mb-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.blockedFromInternet}</h4>
           <ul className="space-y-1">
             {access.blocked.map((b, i) => (
               <BlockedEntry key={`${b.ports}:${b.reason}:${i}`} entry={b} />

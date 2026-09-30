@@ -6,32 +6,31 @@ import { CircleDollarSign, Info, Loader2 } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { approx } from '@/cost/format';
 import type { ProjectCost } from '@/cost/types';
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor, useMessages } from '@/i18n/messages';
 import { cn } from '@/lib/utils';
 import { useEditor } from '@/features/editor/store';
 import { CostPopover } from './CostPopover';
+import { costUiMessages } from './messages';
 import { useProjectCost } from './useCost';
 
 /** what the chip says, and the longer sentence for its tooltip / accessible name */
-export function chipText(cost: ProjectCost): { label: string; muted: boolean; tip: string } {
+export function chipText(cost: ProjectCost, locale: Locale = currentLocale()): { label: string; muted: boolean; tip: string } {
+  const m = messagesFor(costUiMessages, locale);
   const { counts, total } = cost;
-  const extra = [counts.usage ? `${counts.usage} usage-based` : '', counts.unknown ? `${counts.unknown} not estimated` : '']
-    .filter(Boolean)
-    .join(', ');
+  const extra = m.extras([counts.usage ? m.usageBased(counts.usage) : '', counts.unknown ? m.notEstimated(counts.unknown) : ''].filter(Boolean));
   if (counts.fixed === 0) {
-    return {
-      label: '$0/mo',
-      muted: true,
-      tip: `Nothing here has a fixed monthly price${extra ? ` — ${extra}` : ''}. Click for details.`,
-    };
+    return { label: `${approx(0, locale)}${m.perMonthShort}`, muted: true, tip: m.chipZeroTip(extra) };
   }
   return {
-    label: `${approx(total)}/mo${counts.usage ? ' + usage' : ''}`,
+    label: `${approx(total, locale)}${m.perMonthShort}${counts.usage ? m.plusUsage : ''}`,
     muted: false,
-    tip: `About ${approx(total).replace('~', '')} a month at on-demand list prices${extra ? `, plus ${extra}` : ''}. Click for the breakdown.`,
+    tip: m.chipTip(approx(total, locale).replace('~', ''), extra),
   };
 }
 
 export function CostChip() {
+  const m = useMessages(costUiMessages);
   const hasResources = useEditor((s) => s.ir.resources.length > 0);
   const { cost, failed, retry } = useProjectCost();
   const [open, setOpen] = useState(false);
@@ -40,8 +39,8 @@ export function CostChip() {
   if (!hasResources) return null;
 
   const text = cost ? chipText(cost) : null;
-  const label = failed ? 'Cost unavailable' : text ? text.label : 'Estimating…';
-  const tip = failed ? "The price tables couldn't be loaded — click to try again." : text ? text.tip : 'Loading the price tables…';
+  const label = failed ? m.unavailable : text ? text.label : m.estimating;
+  const tip = failed ? m.loadFailed : text ? text.tip : m.loading;
   const muted = !text || text.muted || failed;
   const Icon = !cost && !failed ? Loader2 : muted ? Info : CircleDollarSign;
 
@@ -53,7 +52,8 @@ export function CostChip() {
         data-testid="cost-chip"
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={`Cost estimate: ${label}`}
+        aria-label={m.chipLabel(label)}
+
         aria-describedby={tipId}
         aria-busy={!cost && !failed}
         onClick={() => {
