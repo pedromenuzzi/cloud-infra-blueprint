@@ -15,6 +15,7 @@ import { parseProject } from '@/hcl/parser';
 import { applyOpsWithPatches } from '@/hcl/patch';
 import { lit } from '@/ir/expr';
 import { moduleInputs, moduleSourceInfo } from '@/ir/modules';
+import { moduleMoveOps } from '@/ir/moduleMoved';
 import type { Op } from '@/ir/ops';
 
 const root = process.argv[2];
@@ -111,7 +112,11 @@ for (const dir of dirs) {
         return d.added.length === 1 && d.removed.length === 1 && d.added[0].includes('"corpus-check"') ? null : `diff +${d.added.length} -${d.removed.length}`;
       });
     }
-    check('rename', [{ kind: 'rename_resource', nodeId: m.id, newName: `${m.name}_renamed` }], (_before, after) => {
+    const renameOps: Op[] = [
+      { kind: 'rename_resource', nodeId: m.id, newName: `${m.name}_renamed` },
+      ...moduleMoveOps(ir, m.id, `module.${m.name}_renamed`),
+    ];
+    check('rename', renameOps, (_before, after) => {
       if (!after.includes(`module "${m.name}_renamed"`)) return 'label not renamed';
       if (!after.includes(`to   = module.${m.name}_renamed`)) return 'no moved block';
       return null;

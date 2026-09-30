@@ -37,6 +37,7 @@ import {
 } from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
 import { confirmModuleDelete } from '@/features/modules/deleteGuard';
+import { applyOpsInModule } from '@/features/modules/scopedPatch';
 import { deleteResourcesOps } from './connections';
 import { storeMessages } from './store.messages';
 
@@ -129,6 +130,8 @@ interface EditorState {
    */
   resolveConflict(choice: 'reload' | 'overwrite' | 'restore' | 'fork' | 'discard'): string | null;
   applyCanvasOps(ops: Op[], select?: string | null): void;
+  /** ops on the blocks of the child module in folder `dir` (an opened module), patched into its own files — one undo step */
+  applyModuleOps(dir: string, ops: Op[]): void;
   onCodeChange(file: string, text: string): void;
   setActiveFile(file: string): void;
   setSelection(id: string | null, origin?: 'canvas' | 'code'): void;
@@ -400,6 +403,28 @@ export const useEditor = create<EditorState>((set, get) => {
         selection,
         ...(select !== undefined ? { selectionOrigin: 'canvas' as const } : {}),
       });
+      persist();
+    },
+
+    applyModuleOps(dir, ops) {
+      if (ops.length === 0) return;
+      if (get().readOnly) {
+        showToast(readOnlyHint(), 'info');
+        return;
+      }
+      if ((parseTimer !== undefined || codeBurstBase) && !commitCode()) {
+        showToast(messagesFor(storeMessages).fixCodeFirst, 'error');
+        return;
+      }
+      const { files, ir } = get();
+      const outcome = applyOpsInModule(files, dir, ops);
+      if (!outcome.ok) {
+        showToast(outcome.message ?? messagesFor(storeMessages).cantApply, 'error');
+        return;
+      }
+      pushHistory({ ...files });
+      // the root module's blocks are untouched: same IR, the module checks read the new files
+      set({ files: outcome.files, filesRevision: get().filesRevision + 1, warnings: validateAll(ir, outcome.files) });
       persist();
     },
 

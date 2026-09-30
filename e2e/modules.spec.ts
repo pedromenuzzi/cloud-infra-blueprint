@@ -1,10 +1,11 @@
 /**
  * Module calls: a zip with a local module imports with it (a module node on
- * the canvas, its files in the code pane), the module opens read-only and
- * Esc comes back; "Add module…" writes a Registry module in one undo step;
- * rename rewrites references and records a `moved` block; deleting a module
- * other blocks read asks first; the module inspector, the dialog and the
- * opened module speak Portuguese and pass axe in both themes.
+ * the canvas, its files in the code pane), the module opens (its layout can
+ * change, patched into its own files) and Esc comes back; "Add module…"
+ * writes a Registry module in one undo step; rename rewrites references and
+ * records a `moved` block unless told not to; deleting a module other blocks
+ * read asks first; the module inspector, the dialog and the opened module
+ * speak Portuguese and pass axe in both themes.
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -119,9 +120,9 @@ async function select(page: Page, id: string) {
   await expect(page.getByTestId('inspector-address')).toHaveText(id);
 }
 
-async function mainTf(page: Page): Promise<string> {
+async function mainTf(page: Page, file = 'main.tf'): Promise<string> {
   const project = await storedProject(page, 'stack');
-  return project?.files['main.tf'] ?? '';
+  return project?.files[file] ?? '';
 }
 
 async function audit(page: Page) {
@@ -146,7 +147,7 @@ async function audit(page: Page) {
   });
 }
 
-test('a zip with a local module: a module node, its files, open it read-only and come back', async ({ page }) => {
+test('a zip with a local module: a module node, its files, open it and come back', async ({ page }) => {
   await importStack(page);
   await expect(page.getByText('Imported the root module (stack/) and kept its child module; 1 other file was left out.')).toBeVisible();
   await expect(canvasStats(page)).toHaveText('2 resources, 2 connections, 2 modules');
@@ -161,7 +162,7 @@ test('a zip with a local module: a module node, its files, open it read-only and
 
   await select(page, 'module.network');
   await node(page, 'module.network').dblclick();
-  const view = page.getByRole('region', { name: 'Module network (read-only)' });
+  const view = page.getByRole('region', { name: 'Module network', exact: true });
   await expect(view).toBeVisible();
   await expect(view.getByRole('navigation', { name: 'Module path' })).toHaveText(/root.*network/);
   for (const id of ['aws_vpc.this', 'aws_subnet.private', 'aws_internet_gateway.this']) {
@@ -171,8 +172,20 @@ test('a zip with a local module: a module node, its files, open it read-only and
   // its interface: required and optional inputs, outputs
   await expect(view.getByText('cidr', { exact: true })).toBeVisible();
   await expect(view.getByText('optional')).toBeVisible();
-  // read-only: nothing inside moves
-  await expect(view.locator('.react-flow__node.draggable')).toHaveCount(0);
+  // its layout can change: a drag is patched into the module's own file, one undo step
+  const igw = view.locator('.react-flow__node[data-id="aws_internet_gateway.this"]');
+  const b = (await igw.boundingBox())!;
+  await page.mouse.move(b.x + 40, b.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(b.x + 40, b.y + 180, { steps: 12 });
+  await page.mouse.up();
+  await expect
+    .poll(() => mainTf(page, 'modules/network/main.tf'))
+    .toMatch(/# @blueprint:pos=-?\d+,-?\d+\nresource "aws_internet_gateway" "this" \{/);
+  expect((await mainTf(page, 'modules/network/main.tf')).replace(/# @blueprint:pos=-?\d+,-?\d+\n/, '')).toBe(NETWORK['main.tf']);
+  expect(await mainTf(page)).toBe(ROOT);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => mainTf(page, 'modules/network/main.tf')).toBe(NETWORK['main.tf']);
 
   await page.keyboard.press('Escape');
   await expect(view).toBeHidden();
@@ -224,6 +237,14 @@ test('rename rewrites module.old references and records a moved block', async ({
   expect(text).toContain('value = module.core.vpc_id');
   expect(text).toContain('moved {\n  from = module.network\n  to   = module.core\n}');
   expect(text).not.toContain('module.network.');
+
+  // told not to keep the state: no moved block for that rename
+  await page.getByLabel('Keep the state (write a moved block)').uncheck();
+  await name.fill('base');
+  await name.press('Enter');
+  await expect(node(page, 'module.base')).toBeVisible();
+  await expect.poll(() => mainTf(page)).toContain('module "base" {');
+  expect(await mainTf(page)).not.toContain('to   = module.base');
 });
 
 test('deleting a module other blocks read asks first, then deletes it in one undo step', async ({ page }) => {
@@ -291,7 +312,12 @@ test('a view link carries the child module: its node, its inspector read-only, a
   await expect(inspector.getByRole('button', { name: 'Remove input cidr' })).toBeDisabled();
   await expect(inspector.getByRole('button', { name: 'Delete module' })).toHaveCount(0);
   await inspector.getByRole('button', { name: 'Open module' }).first().click();
-  await expect(page.getByTestId('module-view').locator('.react-flow__node[data-id="aws_vpc.this"]')).toBeVisible();
+  const view = page.getByTestId('module-view');
+  await expect(view.locator('.react-flow__node[data-id="aws_vpc.this"]')).toBeVisible();
+  // a view link changes nothing, the module's layout included
+  await expect(view).toContainText('Read-only');
+  await expect(view.locator('.react-flow__node.draggable')).toHaveCount(0);
+  await expect(view.getByRole('button', { name: 'Auto-arrange' })).toHaveCount(0);
 });
 
 test('in Portuguese: the import note, the inspector, the opened module and the dialog', async ({ page }) => {
@@ -303,7 +329,7 @@ test('in Portuguese: the import note, the inspector, the opened module and the d
   const inspector = page.getByRole('complementary', { name: 'Inspetor do módulo' });
   await expect(inspector).toContainText('Recursos dentro dele (3)');
   await inspector.getByRole('button', { name: 'Abrir módulo' }).first().click();
-  const view = page.getByRole('region', { name: 'Módulo network (somente leitura)' });
+  const view = page.getByRole('region', { name: 'Módulo network', exact: true });
   await expect(view.getByRole('navigation', { name: 'Caminho do módulo' })).toHaveText(/raiz.*network/);
   await expect(view).toContainText('obrigatória');
   await view.getByRole('button', { name: 'Voltar' }).click();

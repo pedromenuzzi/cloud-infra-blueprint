@@ -18,7 +18,9 @@ import {
   versionLabel,
   withModuleNodes,
 } from './modules';
+import { moduleMoveOps } from './moduleMoved';
 import { movedAddresses } from './moduleOps';
+import type { Op } from './ops';
 import type { ModuleNode } from './types';
 
 /** the shapes found in real projects: registry + version, git, local folders, meta-arguments, comments */
@@ -145,8 +147,18 @@ describe('patches on module blocks touch only what changes', () => {
     expect(out.ir.modules.map((m) => m.id)).not.toContain('module.app');
   });
 
-  it('rename rewrites the label and every module.old reference, and records a moved block', () => {
-    const out = run([{ kind: 'rename_resource', nodeId: 'module.vpc', newName: 'network' }]);
+  /** a module rename as the inspector asks for it: the rename, and (keeping the state) its moved block */
+  const rename = (ir: ReturnType<typeof parseProject>['ir'], from: string, name: string, keep = true): Op[] => [
+    { kind: 'rename_resource', nodeId: from, newName: name },
+    ...(keep ? moduleMoveOps(ir, from, `module.${name}`) : []),
+  ];
+
+  it('rename rewrites the label and every module.old reference; the moved block is asked for on its own', () => {
+    const plain = run(rename(parseProject(files).ir, 'module.vpc', 'network', false));
+    expect(plain.files['main.tf']).toBe(MAIN.replace('module "vpc" {', 'module "network" {').replace(/module\.vpc\b/g, 'module.network'));
+    expect(plain.ir.extras).toEqual([]);
+
+    const out = run(rename(parseProject(files).ir, 'module.vpc', 'network'));
     const expected =
       MAIN.replace('module "vpc" {', 'module "network" {').replace(/module\.vpc\b/g, 'module.network') +
       '\nmoved {\n  from = module.vpc\n  to   = module.network\n}\n';
@@ -155,13 +167,22 @@ describe('patches on module blocks touch only what changes', () => {
     expect(out.ir.extras.map((x) => movedAddresses(x.text))).toEqual([{ from: 'module.vpc', to: 'module.network' }]);
 
     // renamed on: the moved chain grows; renamed back: the moved block goes away
-    const again = applyOpsWithPatches(out.files, out.ir, [{ kind: 'rename_resource', nodeId: 'module.network', newName: 'core' }]);
+    const again = applyOpsWithPatches(out.files, out.ir, rename(out.ir, 'module.network', 'core'));
     expect(again.ir.extras.map((x) => movedAddresses(x.text))).toEqual([
       { from: 'module.vpc', to: 'module.network' },
       { from: 'module.network', to: 'module.core' },
     ]);
-    const back = applyOpsWithPatches(out.files, out.ir, [{ kind: 'rename_resource', nodeId: 'module.network', newName: 'vpc' }]);
+    const back = applyOpsWithPatches(out.files, out.ir, rename(out.ir, 'module.network', 'vpc'));
     expect(back.files['main.tf']).toBe(MAIN);
+  });
+
+  it('a rename leaves moved and removed blocks as they were written', () => {
+    const history = `${MAIN}\nmoved {\n  from = module.old\n  to   = module.vpc\n}\n\nremoved {\n  from = module.vpc.aws_s3_bucket.gone\n}\n`;
+    const input = { 'main.tf': history };
+    const out = run(rename(parseProject(input).ir, 'module.vpc', 'net', false), input);
+    expect(out.files['main.tf']).toContain('moved {\n  from = module.old\n  to   = module.vpc\n}');
+    expect(out.files['main.tf']).toContain('removed {\n  from = module.vpc.aws_s3_bucket.gone\n}');
+    expect(out.files['main.tf']).toContain('vpc_id     = module.net.vpc_id');
   });
 
   it('renaming a resource rewrites references inside module inputs', () => {

@@ -8,6 +8,7 @@ export const moduleInspectorMessages = defineMessages(
     label: 'Module inspector',
     title: 'Module',
     referencedAs: (id: string) => `Outputs are read as \`${id}.<output>\``,
+    keepState: 'Keep the state (write a moved block)',
     alreadyExists: (id: string) => `${id} already exists`,
 
     source: 'Source',
@@ -73,6 +74,7 @@ export const moduleInspectorMessages = defineMessages(
     label: 'Inspetor do módulo',
     title: 'Módulo',
     referencedAs: (id) => `Os outputs são lidos como \`${id}.<output>\``,
+    keepState: 'Manter o state (escrever um bloco moved)',
     alreadyExists: (id) => `${id} já existe`,
 
     source: 'Origem',

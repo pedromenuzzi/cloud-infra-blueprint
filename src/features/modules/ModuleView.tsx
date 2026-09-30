@@ -1,24 +1,33 @@
 /**
  * An opened child module, over the canvas: its resources drawn like the
  * root module's (containment, edges, nested module calls — which open one
- * level deeper), read-only, with a breadcrumb back (`root › network`) and
- * its interface (inputs, required or not, and outputs). Esc goes back up.
- * Its files are edited in the code pane.
+ * level deeper), with a breadcrumb back (`root › network`) and its
+ * interface (inputs, required or not, and outputs). Esc goes back up.
+ *
+ * Only its layout can change here — drag a block, Auto-arrange — patched
+ * into the module's own files like the root canvas's moves (one undo step);
+ * its code is edited in the code pane.
  */
 import {
   Background,
   BackgroundVariant,
   MarkerType,
+  Panel,
   ReactFlow,
   ReactFlowProvider,
+  useNodesState,
   useReactFlow,
   type Node,
 } from '@xyflow/react';
-import { ArrowLeft, ChevronRight, Code2, Eye, Maximize } from 'lucide-react';
-import { useMemo, useRef } from 'react';
+import { ArrowLeft, ChevronRight, Code2, Eye, Maximize, Move, WandSparkles } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { showToast } from '@/components/Toast';
 import { useLayer } from '@/components/ui';
+import { arrangeMessages } from '@/features/editor/arrange.messages';
 import { buildFlow } from '@/features/editor/CanvasPane';
 import { canvasMessages } from '@/features/editor/CanvasPane.messages';
+import { computeTidyOps } from '@/features/editor/tidy';
+import { messagesFor } from '@/i18n/messages';
 import { useLayout } from '@/features/editor/layoutStore';
 import { ContainerNodeView, FlowEdge, ResourceNodeView } from '@/features/editor/nodes';
 import { useEditor } from '@/features/editor/store';
@@ -28,8 +37,9 @@ import { exprPreview } from '@/ir/expr';
 import { deriveStructure } from '@/ir/graph';
 import { readLocalModule, type LocalModule } from '@/ir/localModules';
 import { layoutWithModules } from '@/ir/moduleLayout';
-import { moduleEdges } from '@/ir/modules';
-import type { IR } from '@/ir/types';
+import { findNode, moduleEdges, withModuleNodes } from '@/ir/modules';
+import type { Op } from '@/ir/ops';
+import type { CanvasPosition, IR } from '@/ir/types';
 import { motionMs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { getDef, isContainerType } from '@/resources/registry';
@@ -49,35 +59,83 @@ function layoutCopy(ir: IR): IR {
   };
 }
 
-function ModuleCanvas({ child }: { child: LocalModule }) {
+function ModuleCanvas({ child, editable }: { child: LocalModule; editable: boolean }) {
   const locale = useLocale((s) => s.locale);
   const m = useMessages(canvasMessages);
   const vm = useMessages(moduleViewMessages);
-  const { nodes, edges } = useMemo(() => {
+  const am = useMessages(arrangeMessages);
+  const rf = useReactFlow();
+  const [arranging, setArranging] = useState(false);
+  /** where unpinned blocks were drawn last: pinning one (a drag) mustn't make the others jump */
+  const carried = useRef(new Map<string, CanvasPosition>());
+  const built = useMemo(() => {
     const ir = layoutCopy(child.ir);
     const irEdges = deriveStructure(ir, getDef);
+    for (const b of [...ir.resources, ...ir.modules]) {
+      const last = carried.current.get(b.id);
+      if (!b.position && last) b.position = { ...last };
+    }
     irEdges.push(...moduleEdges(ir));
     layoutWithModules(ir, isContainerType);
-    const built = buildFlow({ ir, edges: irEdges, warnings: [] }, null, locale);
+    for (const b of [...ir.resources, ...ir.modules]) if (b.position) carried.current.set(b.id, { ...b.position });
+    const flow = buildFlow({ ir, edges: irEdges, warnings: [] }, null, locale);
     return {
-      nodes: built.nodes.map(
+      ir,
+      irEdges,
+      nodes: flow.nodes.map(
         (n): Node =>
           n.type === 'module'
-            ? { ...n, data: { ...n.data, nested: true }, draggable: false, connectable: false, deletable: false }
-            : { ...n, draggable: false, connectable: false, deletable: false },
+            ? { ...n, data: { ...n.data, nested: true }, connectable: false, deletable: false }
+            : { ...n, connectable: false, deletable: false },
       ),
-      edges: built.edges.map((e) => ({ ...e, markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--edge-ref)' } })),
+      edges: flow.edges.map((e) => ({ ...e, markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--edge-ref)' } })),
     };
   }, [child, locale]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(built.nodes);
+  useEffect(() => setNodes(built.nodes), [built.nodes, setNodes]);
+
+  /** a drag ends: the blocks moved keep their place (relative to their container, like the root canvas) */
+  const onNodeDragStop = useCallback(
+    (_e: unknown, node: Node, dragged: Node[]) => {
+      const ops: Op[] = (dragged.length > 0 ? dragged : [node]).flatMap((n) => {
+        const b = findNode(built.ir, n.id);
+        if (!b) return [];
+        const size = b.position?.w !== undefined ? { w: b.position.w, h: b.position.h } : {};
+        return [{ kind: 'move_node' as const, nodeId: n.id, position: { x: Math.round(n.position.x), y: Math.round(n.position.y), ...size } }];
+      });
+      useEditor.getState().applyModuleOps(child.dir, ops);
+    },
+    [built.ir, child.dir],
+  );
+
+  const arrange = async () => {
+    if (arranging) return;
+    setArranging(true);
+    try {
+      const ops = await computeTidyOps(withModuleNodes(built.ir), built.irEdges, isContainerType);
+      useEditor.getState().applyModuleOps(child.dir, ops);
+      setTimeout(() => void rf.fitView({ padding: 0.2, maxZoom: 1, duration: motionMs(400) }), motionMs(120) + 60);
+    } catch (err) {
+      showToast(messagesFor(arrangeMessages).failed((err as Error).message), 'error');
+    } finally {
+      setArranging(false);
+    }
+  };
+
   return (
     <ReactFlow
       nodes={nodes}
-      edges={edges}
+      edges={built.edges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      nodesDraggable={false}
+      onNodesChange={onNodesChange}
+      onNodeDragStop={onNodeDragStop}
+      nodesDraggable={editable}
       nodesConnectable={false}
       elementsSelectable={false}
+      selectNodesOnDrag={false}
+      snapToGrid
+      snapGrid={[8, 8]}
       deleteKeyCode={null}
       zoomOnDoubleClick={false}
       fitView
@@ -90,6 +148,18 @@ function ModuleCanvas({ child }: { child: LocalModule }) {
       className="!bg-canvas"
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="var(--canvas-grid)" />
+      {editable && built.ir.resources.length + built.ir.modules.length > 1 ? (
+        <Panel position="bottom-left">
+          <button
+            type="button"
+            onClick={() => void arrange()}
+            disabled={arranging}
+            className="inline-flex items-center gap-1.5 rounded-[9px] border bg-surface-1/90 px-2.5 py-1.5 text-[12px] font-semibold text-primary shadow-xs backdrop-blur-md transition-colors hover:bg-surface-2 disabled:opacity-60"
+          >
+            <WandSparkles className="h-3.5 w-3.5" /> {am.button}
+          </button>
+        </Panel>
+      ) : null}
     </ReactFlow>
   );
 }
@@ -120,7 +190,7 @@ function Interface({ child }: { child: LocalModule }) {
       <div className="max-h-[50vh] space-y-3 overflow-y-auto border-t px-3 pb-3 pt-2">
         <section>
           <h3 className="mb-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.inputs(child.variables.length)}</h3>
-          {child.variables.length === 0 ? <p className="text-[11.5px] text-faint">{m.none}</p> : null}
+          {child.variables.length === 0 ? <p className="text-[11.5px] text-faint">{m.noInputs}</p> : null}
           <ul className="space-y-1">
             {child.variables.map((v) => (
               <li key={v.name} className="rounded-[7px] bg-surface-2 px-2 py-1">
@@ -141,7 +211,7 @@ function Interface({ child }: { child: LocalModule }) {
         </section>
         <section>
           <h3 className="mb-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.outputs(child.outputs.length)}</h3>
-          {child.outputs.length === 0 ? <p className="text-[11.5px] text-faint">{m.none}</p> : null}
+          {child.outputs.length === 0 ? <p className="text-[11.5px] text-faint">{m.noOutputs}</p> : null}
           <p className="font-mono text-[11px] leading-relaxed text-muted">{child.outputs.map((o) => o.name).join(', ')}</p>
         </section>
       </div>
@@ -153,6 +223,7 @@ export default function ModuleView() {
   const m = useMessages(moduleViewMessages);
   const path = useModuleView((s) => s.path);
   const files = useEditor((s) => s.files);
+  const editable = useEditor((s) => !s.readOnly && !s.codeErrored);
   const ref = useRef<HTMLElement>(null);
   const current = path[path.length - 1];
   // Esc goes one level up (the layer stack gives it to the top-most layer)
@@ -212,8 +283,11 @@ export default function ModuleView() {
           {child && !child.broken ? (
             <span className="text-[11.5px] text-muted">{m.counts(child.ir.resources.length, child.ir.modules.length)}</span>
           ) : null}
-          <span className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-muted" title={m.readOnlyHint}>
-            <Eye className="h-3 w-3" /> {m.readOnly}
+          <span
+            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-muted"
+            title={editable ? m.layoutOnlyHint : m.readOnlyHint}
+          >
+            {editable ? <Move className="h-3 w-3" /> : <Eye className="h-3 w-3" />} {editable ? m.layoutOnly : m.readOnly}
           </span>
           {child && !child.broken ? <FitButton /> : null}
           {child ? (
@@ -227,7 +301,7 @@ export default function ModuleView() {
           ) : null}
         </header>
         <div className="relative min-h-0 flex-1">
-          {child && !child.broken ? <ModuleCanvas child={child} /> : null}
+          {child && !child.broken ? <ModuleCanvas child={child} editable={editable} /> : null}
           {child && !child.broken ? (
             <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-col gap-2">
               <Interface child={child} />

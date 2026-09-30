@@ -29,6 +29,7 @@ import {
   referencedOutputs,
   registryUrl,
 } from '@/ir/modules';
+import { moduleMoveOps } from '@/ir/moduleMoved';
 import type { Op } from '@/ir/ops';
 import type { Expression, ModuleNode } from '@/ir/types';
 import { cn, tfName } from '@/lib/utils';
@@ -200,26 +201,39 @@ function NameField({ node }: { node: ModuleNode }) {
   const im = useMessages(inspectorMessages);
   const m = useMessages(moduleInspectorMessages);
   const apply = useApply();
+  // renaming a module without a `moved` block re-creates everything in it
+  const [keepState, setKeepState] = useState(true);
   return (
-    <Field label={im.terraformName} hint={richText(m.referencedAs(node.id))}>
-      <Input
-        id="inspector-tf-name"
-        key={`${node.id}:name`}
-        defaultValue={node.name}
-        onBlur={(e) => {
-          const next = tfName(e.target.value);
-          if (next === node.name) return;
-          const ir = useEditor.getState().ir;
-          if (hasNode(ir, moduleAddress(next))) {
-            showToast(messagesFor(moduleInspectorMessages).alreadyExists(moduleAddress(next)), 'error');
-            e.target.value = node.name;
-            return;
-          }
-          apply([{ kind: 'rename_resource', nodeId: node.id, newName: next }], moduleAddress(next));
-        }}
-        onKeyDown={editKeys(node.name)}
-      />
-    </Field>
+    <div className="space-y-1.5">
+      <Field label={im.terraformName} hint={richText(m.referencedAs(node.id))}>
+        <Input
+          id="inspector-tf-name"
+          key={`${node.id}:name`}
+          defaultValue={node.name}
+          onBlur={(e) => {
+            const next = tfName(e.target.value);
+            if (next === node.name) return;
+            const ir = useEditor.getState().ir;
+            const to = moduleAddress(next);
+            if (hasNode(ir, to)) {
+              showToast(messagesFor(moduleInspectorMessages).alreadyExists(to), 'error');
+              e.target.value = node.name;
+              return;
+            }
+            const ops: Op[] = [
+              { kind: 'rename_resource', nodeId: node.id, newName: next },
+              ...(keepState ? moduleMoveOps(ir, node.id, to) : []),
+            ];
+            apply(ops, to);
+          }}
+          onKeyDown={editKeys(node.name)}
+        />
+      </Field>
+      <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-muted">
+        <input type="checkbox" checked={keepState} onChange={(e) => setKeepState(e.target.checked)} className="h-3.5 w-3.5 accent-primary" />
+        {m.keepState}
+      </label>
+    </div>
   );
 }
 

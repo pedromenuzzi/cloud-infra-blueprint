@@ -43,6 +43,7 @@ export type ModuleFlowNode = Node<ModuleNodeData, 'module'>;
 
 export function ModuleNodeView({ data, selected }: NodeProps<ModuleFlowNode>) {
   const m = useMessages(modulesMessages);
+  const tail = data.source.lastIndexOf('/');
   return (
     <div
       className={cn(
@@ -72,8 +73,16 @@ export function ModuleNodeView({ data, selected }: NodeProps<ModuleFlowNode>) {
           ) : null}
         </div>
         <div className="mt-px truncate text-[13px] font-semibold leading-tight text-foreground">{data.title}</div>
-        <div className="truncate text-[11px] leading-snug text-muted" title={data.source}>
-          {data.source}
+        {/* the end says the most (`…/vpc`, `…/network`): the front gives way first */}
+        <div className="flex min-w-0 text-[11px] leading-snug text-muted" title={data.source} translate="no">
+          {tail > 0 ? (
+            <>
+              <span className="truncate">{data.source.slice(0, tail)}</span>
+              <span className="shrink-0">{data.source.slice(tail)}</span>
+            </>
+          ) : (
+            <span className="truncate">{data.source}</span>
+          )}
         </div>
       </div>
       {data.inputs > 0 ? (

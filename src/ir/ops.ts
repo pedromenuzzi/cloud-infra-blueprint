@@ -17,7 +17,9 @@ export type Op =
   | { kind: 'rename_resource'; nodeId: string; newName: string }
   | { kind: 'move_node'; nodeId: string; position: CanvasPosition }
   /** a new `module` call (the other kinds act on one through its id, `module.x`: see ./moduleOps.ts) */
-  | { kind: 'add_module'; node: ModuleNode };
+  | { kind: 'add_module'; node: ModuleNode }
+  /** keep a renamed module's state: a `moved` block (asked for through ./moduleMoved.ts) */
+  | { kind: 'module_moved'; from: string; to: string };
 
 export interface ApplyResult {
   ir: IR;

@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProject } from '@/lib/storage';
 import { orderedFiles, useEditor } from '@/features/editor/store';
 import { computeTidyOps } from '@/features/editor/tidy';
+import { moduleMoveOps } from '@/ir/moduleMoved';
 import { withModuleNodes } from '@/ir/modules';
 import { isContainerType } from '@/resources/registry';
+import { applyOpsInModule } from './scopedPatch';
 
 const answer = vi.hoisted(() => ({ ok: true, asked: [] as Array<{ title: string; body?: string }> }));
 vi.mock('@/components/Confirm', () => ({
@@ -80,7 +82,10 @@ describe('module calls in the editor', () => {
 
   it('follow a rename (selection included)', () => {
     useEditor.getState().setSelection('module.net');
-    useEditor.getState().applyCanvasOps([{ kind: 'rename_resource', nodeId: 'module.net', newName: 'network' }]);
+    useEditor.getState().applyCanvasOps([
+      { kind: 'rename_resource', nodeId: 'module.net', newName: 'network' },
+      ...moduleMoveOps(useEditor.getState().ir, 'module.net', 'module.network'),
+    ]);
     const { files, selection } = useEditor.getState();
     expect(selection).toBe('module.network');
     expect(files['main.tf']).toContain('subnet_id = module.network.subnet_id');
@@ -133,6 +138,33 @@ describe('module calls in the editor', () => {
       'module.net: "cidr" isn\'t an input of modules/net (no variable "cidr")',
       'aws_instance.web: "subnet_id" reads output "subnet_id", which module.net doesn\'t have',
     ]);
+  });
+});
+
+describe('layout edits inside an opened module', () => {
+  it('are patched into the module’s own file only, one undo step', () => {
+    useEditor.getState().applyModuleOps('modules/net', [{ kind: 'move_node', nodeId: 'aws_vpc.this', position: { x: 40, y: 64, w: 400, h: 240 } }]);
+    const { files, past } = useEditor.getState();
+    expect(files['modules/net/main.tf']).toBe(FILES['modules/net/main.tf'].replace('resource "aws_vpc"', '# @blueprint:pos=40,64,400,240\nresource "aws_vpc"'));
+    expect(files['main.tf']).toBe(MAIN);
+    expect(past).toHaveLength(1);
+    useEditor.getState().undo();
+    expect(useEditor.getState().files).toEqual(FILES);
+  });
+
+  it('a module whose code has errors, or a folder that is gone, changes nothing', () => {
+    expect(applyOpsInModule({ 'modules/x/main.tf': 'resource "aws_vpc" "a" {\n' }, 'modules/x', [{ kind: 'move_node', nodeId: 'aws_vpc.a', position: { x: 1, y: 1 } }])).toEqual({ ok: false });
+    expect(applyOpsInModule(FILES, 'modules/gone', [{ kind: 'move_node', nodeId: 'aws_vpc.a', position: { x: 1, y: 1 } }])).toEqual({ ok: false });
+    // a nested module call inside moves like the module's resources
+    const nested = { 'modules/a/main.tf': 'module "b" {\n  source = "../b"\n}\n' };
+    const out = applyOpsInModule(nested, 'modules/a', [{ kind: 'move_node', nodeId: 'module.b', position: { x: 8, y: 16 } }]);
+    expect(out.ok && out.files['modules/a/main.tf']).toBe('# @blueprint:pos=8,16\nmodule "b" {\n  source = "../b"\n}\n');
+  });
+
+  it('are refused in a read-only view', () => {
+    useEditor.getState().load(createProject({ name: 'view', files: FILES }), { readOnly: true });
+    useEditor.getState().applyModuleOps('modules/net', [{ kind: 'move_node', nodeId: 'aws_vpc.this', position: { x: 1, y: 1 } }]);
+    expect(useEditor.getState().files).toEqual(FILES);
   });
 });
 
