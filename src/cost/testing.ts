@@ -37,6 +37,9 @@ export const TEST_BOOK: PriceBook = {
       snsPerMillion: 0.5,
       apiGatewayHttpPerMillion: 1,
       ecrGbMonth: 0.1,
+      auroraGbMonth: 0.1,
+      auroraIoPerMillion: 0.2,
+      auroraIoOptimizedGbMonth: 0.225,
     },
   },
   azure: {

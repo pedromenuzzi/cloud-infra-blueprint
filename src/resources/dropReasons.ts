@@ -32,6 +32,7 @@ export const NOUNS: Record<string, Noun> = {
   aws_security_group: n('security group', 'grupo de segurança'),
   aws_instance: n('EC2 instance', 'instância EC2', { an: true, f: true }),
   aws_db_instance: n('RDS database', 'banco RDS', { an: true }),
+  aws_rds_cluster: n('Aurora cluster', 'cluster Aurora', { an: true }),
   aws_s3_bucket: n('S3 bucket', 'bucket S3', { an: true }),
   aws_iam_role: n('IAM role', 'perfil do IAM', { an: true }),
   aws_lb: n('load balancer', 'balanceador de carga'),
@@ -216,6 +217,7 @@ export const OWNER: Record<string, string> = {
 /** resources that run in a subnet group rather than in one subnet */
 export const SUBNET_GROUP_OF: Record<string, string> = {
   aws_db_instance: 'aws_db_subnet_group',
+  aws_rds_cluster: 'aws_db_subnet_group',
   aws_elasticache_cluster: 'aws_elasticache_subnet_group',
 };
 

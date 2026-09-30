@@ -70,6 +70,10 @@ export interface AwsPrices {
     snsPerMillion: number;
     apiGatewayHttpPerMillion: number;
     ecrGbMonth: number;
+    /** Aurora Standard: storage per GB-month and I/O per million requests; I/O-Optimized: storage only */
+    auroraGbMonth: number;
+    auroraIoPerMillion: number;
+    auroraIoOptimizedGbMonth: number;
   };
 }
 

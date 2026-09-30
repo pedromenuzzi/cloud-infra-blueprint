@@ -8,6 +8,7 @@ import { Button, Modal } from '@/components/ui';
 import { useMessages } from '@/i18n/messages';
 import { deleteProject, listProjects, projectSize } from '@/lib/storage';
 import { cn, timeAgo } from '@/lib/utils';
+import { forgetFolderLink } from './folderLinks';
 import { dataMessages } from './messages';
 import { formatBytes } from './meter';
 
@@ -35,7 +36,11 @@ export default function FreeSpaceDialog({
 
   const remove = () => {
     let count = 0;
-    for (const id of selected) if (deleteProject(id)) count += 1;
+    for (const id of selected) {
+      if (!deleteProject(id)) continue;
+      count += 1;
+      void forgetFolderLink(id); // the folder on disk is left alone
+    }
     onDeleted(count);
   };
 

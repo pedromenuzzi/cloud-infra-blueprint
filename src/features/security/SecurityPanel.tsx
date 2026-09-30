@@ -164,12 +164,14 @@ export function SecurityPanel() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [setPanel]);
 
-  const reveal = (selector: string) =>
-    requestAnimationFrame(() =>
-      panelRef.current?.querySelector(selector)?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }),
-    );
+  const reveal = (selector: string, focus = false) =>
+    requestAnimationFrame(() => {
+      const target = panelRef.current?.querySelector(selector);
+      target?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
+      if (focus) target?.querySelector<HTMLElement>('button[aria-expanded]')?.focus({ preventScroll: true });
+    });
 
-  // "Show" on a security toast: open the finding it is about
+  // "Show" on a security toast: open the finding it is about — and take focus there (the toast is gone)
   useEffect(() => {
     if (!spotlight) return;
     useSecurityUi.getState().setSpotlight(null);
@@ -177,7 +179,7 @@ export function SecurityPanel() {
     setFramework('all');
     setExpanded(spotlight);
     setFlash(spotlight);
-    reveal(`[data-finding="${CSS.escape(spotlight)}"]`);
+    reveal(`[data-finding="${CSS.escape(spotlight)}"]`, true);
   }, [spotlight, setFramework]);
 
   // the command palette's "Why is … reachable?"

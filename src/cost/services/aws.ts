@@ -84,6 +84,18 @@ const dbInstance: Rule = (ctx) => {
   return fixed(lines, assumptions);
 };
 
+/** An Aurora cluster: its storage and I/O by use; compute is on its instances (or serverless ACUs). */
+const auroraCluster: Rule = (ctx) => {
+  const { usage: u } = ctx.book.aws;
+  const { m } = ctx;
+  const note =
+    ctx.str('storage_type') === 'aurora-iopt1'
+      ? m.aws.auroraIoOptimized(ctx.rate(ctx.at(u.auroraIoOptimizedGbMonth)))
+      : m.aws.auroraStandard(ctx.rate(ctx.at(u.auroraGbMonth)), ctx.rate(ctx.at(u.auroraIoPerMillion)));
+  const serverless = ctx.str('engine_mode') === 'serverless' || ctx.block('serverlessv2_scaling_configuration') !== undefined;
+  return usage(note, [serverless ? m.aws.auroraServerless : m.aws.auroraInstances, m.aws.backups]);
+};
+
 const cacheCluster: Rule = (ctx) => {
   if (ctx.r.args.replication_group_id) return free(ctx.m.aws.replicationGroup);
   const node = ctx.str('node_type');
@@ -261,6 +273,7 @@ const FREE: Record<string, ((m: ServiceMessages) => string) | undefined> = {
 export const AWS_RULES: Record<string, Rule> = {
   aws_instance: instance,
   aws_db_instance: dbInstance,
+  aws_rds_cluster: auroraCluster,
   aws_elasticache_cluster: cacheCluster,
   aws_ecs_service: ecsService,
   aws_eks_cluster: eksCluster,

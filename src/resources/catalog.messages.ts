@@ -56,6 +56,17 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
       vpc_security_group_ids: SECURITY_GROUPS,
     },
   },
+  aws_rds_cluster: {
+    name: 'Cluster Aurora',
+    shortName: 'Aurora',
+    description: 'Cluster de banco de dados Aurora gerenciado (compatível com MySQL ou PostgreSQL)',
+    fields: {
+      cluster_identifier: { doc: 'Letras minúsculas, dígitos e hifens, até 63' },
+      manage_master_user_password: { doc: 'Guarda a senha no Secrets Manager' },
+      db_subnet_group_name: { label: 'Grupo de sub-redes do banco', doc: 'As sub-redes (2+ AZs) onde o cluster roda' },
+      vpc_security_group_ids: SECURITY_GROUPS,
+    },
+  },
   aws_s3_bucket: {
     name: 'Bucket S3',
     shortName: 'S3',
@@ -283,7 +294,8 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
   },
   azurerm_storage_account: {
     name: 'Conta de armazenamento',
-    shortName: 'Armazenamento',
+    // the service's name: "ARMAZENAMENTO" alone is wider than a canvas node's header
+    shortName: 'Storage',
     description: 'Armazenamento de blobs / arquivos / filas',
     fields: { name: { doc: '3–24 letras minúsculas e números, único globalmente' } },
   },

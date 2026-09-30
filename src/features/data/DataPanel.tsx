@@ -14,13 +14,13 @@ import {
   X,
 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useId, useRef, useState } from 'react';
-import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
 import { Button } from '@/components/ui';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import type { Project } from '@/lib/storage';
 import { cn, timeAgo } from '@/lib/utils';
 import { downloadBackup, lastBackupAt } from './backupActions';
+import { openRestore, useDataDialogs } from './dataDialogs';
 import { dataMessages } from './messages';
 import { formatBytes, type Meter } from './meter';
 import { usePwa, warmOfflineCache } from './pwa';
@@ -29,12 +29,6 @@ import { useStorageMeter } from './useStorageMeter';
 
 const RestoreDialog = lazy(() => import('./RestoreDialog'));
 const FreeSpaceDialog = lazy(() => import('./FreeSpaceDialog'));
-
-/** dialogs shared by the panel and the nudge (the panel hosts them) */
-const useDataDialogs = create<{ restore: File | null; freeSpace: string | null }>(() => ({
-  restore: null,
-  freeSpace: null,
-}));
 
 async function backUp(): Promise<string | null> {
   try {
@@ -99,7 +93,7 @@ function useRestorePicker() {
       onChange={(e) => {
         const file = e.target.files?.[0];
         e.target.value = '';
-        if (file) useDataDialogs.setState({ restore: file });
+        if (file) openRestore(file);
       }}
     />
   );

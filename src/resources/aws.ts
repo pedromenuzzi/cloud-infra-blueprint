@@ -174,6 +174,58 @@ export const AWS_RESOURCES = [
   }),
 
   defineResource({
+    type: 'aws_rds_cluster',
+    provider: 'aws',
+    category: 'database',
+    displayName: 'Aurora Cluster',
+    shortName: 'Aurora',
+    description: 'Managed Aurora database cluster (MySQL or PostgreSQL compatible)',
+    nameArg: 'cluster_identifier',
+    naming: { maxLength: 63 },
+    fields: [
+      { name: 'cluster_identifier', type: 'string', doc: 'Lowercase letters, digits and hyphens, up to 63' },
+      { name: 'engine', type: 'select', required: true, options: ['aurora-postgresql', 'aurora-mysql'] },
+      { name: 'engine_version', type: 'string', placeholder: '16.4' },
+      { name: 'database_name', type: 'string' },
+      { name: 'master_username', type: 'string' },
+      { name: 'manage_master_user_password', type: 'boolean', doc: 'Keeps the password in Secrets Manager' },
+      {
+        name: 'db_subnet_group_name',
+        type: 'string',
+        refTo: ['aws_db_subnet_group'],
+        refAttr: 'name',
+        label: 'DB subnet group',
+        doc: 'The subnets (2+ AZs) the cluster runs in',
+      },
+      {
+        name: 'vpc_security_group_ids',
+        type: 'list',
+        refTo: ['aws_security_group'],
+        label: 'Security groups',
+      },
+      { name: 'storage_encrypted', type: 'boolean' },
+      { name: 'skip_final_snapshot', type: 'boolean' },
+    ],
+    defaults: {
+      engine: lit('aurora-postgresql'),
+      master_username: lit('dbadmin'),
+      manage_master_user_password: lit(true),
+      storage_encrypted: lit(true),
+    },
+    // like an RDS instance: it runs in a DB subnet group that spans several zones
+    containment: [{ arg: 'db_subnet_group_name', parentTypes: ['aws_db_subnet_group'] }],
+    connections: [
+      { targetTypes: ['aws_db_subnet_group'], arg: 'db_subnet_group_name', attr: 'name', mode: 'set' },
+      { targetTypes: ['aws_security_group'], arg: 'vpc_security_group_ids', attr: 'id', mode: 'append' },
+    ],
+    subtitle: (args) => {
+      const engine = litStr(args.engine);
+      const version = litStr(args.engine_version);
+      return engine ? `${engine}${version ? ` ${version}` : ''}` : undefined;
+    },
+  }),
+
+  defineResource({
     type: 'aws_s3_bucket',
     provider: 'aws',
     category: 'storage',

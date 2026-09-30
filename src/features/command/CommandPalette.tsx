@@ -46,6 +46,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { focusIsLost, Kbd, restoreFocus, useLayer } from '@/components/ui';
+import { backupAmong, openRestore } from '@/features/data/dataDialogs';
 import { ALIGN_ACTIONS, alignActionBlocker } from '@/features/editor/alignActions';
 import { arrangeMessages } from '@/features/editor/arrange.messages';
 import { canvasApi } from '@/features/editor/canvasApi';
@@ -470,6 +471,13 @@ export function CommandPalette() {
                     run(async () => {
                       const picked = await pickTerraformFiles();
                       if (!picked) return;
+                      // one of this app's backups: the dashboard's restore dialog, not an import
+                      const backup = await backupAmong(picked);
+                      if (backup) {
+                        openRestore(backup);
+                        navigate('/dashboard');
+                        return;
+                      }
                       const imported = await readTerraformFiles(picked);
                       const t = messagesFor(commandMessages);
                       if (!imported) {

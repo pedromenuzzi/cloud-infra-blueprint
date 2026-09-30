@@ -57,6 +57,7 @@ import {
   posFromComment,
   shiftParsedBlock,
 } from './parser';
+import { CommentsWouldBeLost, keepComments, lostComments } from './keepComments';
 import { hclMessages, type StaleReason } from './messages';
 import { isRootModuleFile } from '@/ir/modules';
 
@@ -453,10 +454,13 @@ function patchBody(
     }
     const previous = text.slice(span.valueStart!, span.valueEnd!);
     const at = indentAt(text, span.keyStart);
-    const value =
-      renamedInPlace(ctx, o, n, previous) ??
-      editListLines(o, n, previous, at) ??
-      emitValueLike(n, at, previous);
+    let value = renamedInPlace(ctx, o, n, previous) ?? editListLines(o, n, previous, at);
+    if (value === null) {
+      // comments inside the value aren't in the IR: edit its text around them, or refuse
+      const kept = keepComments(o, n, previous, at);
+      if (kept === null) throw new CommentsWouldBeLost(key);
+      value = kept ?? emitValueLike(n, at, previous);
+    }
     edits.push({ start: span.valueStart!, end: span.valueEnd!, text: withEol(value, eol) });
   }
 
@@ -557,6 +561,7 @@ function patchBlockItems(
     // irregular layout: re-emit just this nested block (its first line starts at the key)
     const block = emitNestedBlock(key, newItems[i], indent).join('\n').slice(indent.length);
     const end = span.body ? span.body.close + 1 : span.contentEnd;
+    if (lostComments(text.slice(span.keyStart, end), block).length > 0) throw new CommentsWouldBeLost(key);
     edits.push({ start: span.keyStart, end, text: withEol(block, eol) });
   }
   for (let i = newItems.length; i < oldItems.length; i++) deleted.add(spans[i]);
@@ -639,9 +644,15 @@ function spliceBlock(ctx: FileCtx, old: Block, next: Block, edits: Edit[]): bool
 function patchBlock(ctx: FileCtx, old: Block, next: Block): Edit[] {
   const edits: Edit[] = [];
   if (spliceBlock(ctx, old, next, edits) && disjoint(edits)) return edits;
-  // too irregular to splice (e.g. a single-line body): re-emit the whole block
+  // too irregular to splice (e.g. a single-line body): re-emit the whole block — unless comments
+  // it holds (inside values or nested blocks: not in the IR) would go, other than a removed entry's
   const range = old.node.trivia.rawTextRange!;
-  return [{ start: range.start, end: range.end, text: withEol(emitBlock(next), ctx.eol) }];
+  const text = withEol(emitBlock(next), ctx.eol);
+  const nextArgs = 'args' in next.node ? next.node.args : {};
+  const gone = (old.node.trivia.spans?.body.entries ?? []).filter((e) => !Object.hasOwn(nextArgs, e.key));
+  const inGone = (at: number) => gone.some((e) => range.start + at >= e.start && range.start + at < e.end);
+  if (lostComments(ctx.text.slice(range.start, range.end), text, inGone).length > 0) throw new CommentsWouldBeLost(null);
+  return [{ start: range.start, end: range.end, text }];
 }
 
 /**
@@ -796,7 +807,13 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
   const edits = new Map<string, Edit[]>();
   for (const [old, next] of changed) {
     const file = old.node.trivia.sourceFile!;
-    push(edits, file, ...patchBlock(ctxOf(file), old, next));
+    try {
+      push(edits, file, ...patchBlock(ctxOf(file), old, next));
+    } catch (err) {
+      if (!(err instanceof CommentsWouldBeLost)) throw err;
+      const where = old.kind === 'resource' ? old.node.id : old.kind === 'extra' ? file : `${old.kind} "${old.node.name}"`;
+      return { stale: { file, message: messagesFor(hclMessages).commentsWouldBeLost(where, err.key) } };
+    }
   }
   for (const [file, at] of inserts) {
     for (const [offset, texts] of at) push(edits, file, insertAfter(ctxOf(file), offset, texts));

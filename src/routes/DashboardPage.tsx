@@ -3,6 +3,7 @@ import {
   Copy,
   FileDown,
   FileUp,
+  FolderSync,
   Github,
   LayoutTemplate,
   Pencil,
@@ -20,7 +21,9 @@ import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Kbd, LogoMark, Select } from '@/components/ui';
 import { MOD, usePalette } from '@/features/command/paletteStore';
+import { backupAmong, openRestore } from '@/features/data/dataDialogs';
 import { DataPanel, StorageNudge } from '@/features/data/DataPanel';
+import { forgetFolderLink, useFolderLinks } from '@/features/data/folderLinks';
 import { OpenFolderButton } from '@/features/data/OpenFolderButton';
 import { openGithubImport } from '@/features/import/githubImportStore';
 import { TemplateModal } from '@/features/templates/TemplateModal';
@@ -119,10 +122,13 @@ const ACTION_BUTTON = 'h-7 w-7';
  */
 const ProjectCard = memo(function ProjectCard({
   project,
+  folder,
   onOpen,
   onChanged,
 }: {
   project: Project;
+  /** the folder on disk the project syncs with */
+  folder?: string;
   onOpen(id: string): void;
   onChanged(): void;
 }) {
@@ -159,6 +165,16 @@ const ProjectCard = memo(function ProjectCard({
                 <ProviderChip key={p} provider={p} className="bg-surface-1/90" />
               ))}
           </div>
+          {folder ? (
+            <p
+              title={`${m.syncedFolder} “${folder}”`}
+              className="absolute bottom-2.5 left-3 flex max-w-[calc(100%-24px)] items-center gap-1 rounded-[6px] bg-surface-1/90 px-1.5 py-0.5 text-[11px] font-medium text-muted shadow-xs ring-1 ring-border"
+            >
+              <FolderSync className="h-3 w-3 shrink-0 text-primary" aria-hidden="true" />
+              <span className="sr-only">{m.syncedFolder} </span>
+              <span className="truncate font-mono">{folder}</span>
+            </p>
+          ) : null}
         </div>
         <div className="px-4 pb-4 pt-3.5">
           {renaming ? (
@@ -256,11 +272,13 @@ const ProjectCard = memo(function ProjectCard({
             const text = messagesFor(dashboardMessages);
             const ok = await confirmAction({
               title: text.deleteTitle(project.name),
-              body: text.deleteBody,
+              body: folder ? text.deleteLinkedBody(folder) : text.deleteBody,
               confirmLabel: text.deleteLabel,
               danger: true,
             });
             if (ok && deleteProject(project.id)) {
+              // its folder link goes with it (the folder itself is untouched)
+              void forgetFolderLink(project.id);
               onChanged();
               showToast(messagesFor(dashboardMessages).deleted);
             }
@@ -312,6 +330,7 @@ export default function DashboardPage() {
   }, [tick, templatesOpen]);
 
   const index = useMemo(() => new Map(projects.map((p) => [p, searchText(p)] as const)), [projects]);
+  const folders = useFolderLinks(projects);
 
   const visible = useMemo(() => {
     const terms = deferredQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -354,6 +373,13 @@ export default function DashboardPage() {
     const note = importNote(imported);
     showToast(note ?? text.importedToast(imported.name), note ? 'info' : 'success');
     navigate(`/editor/${project.id}`);
+  };
+
+  /** Files dropped or picked to import: one of this app's backups opens the restore dialog instead. */
+  const importOrRestore = async (files: File[]) => {
+    const backup = await backupAmong(files);
+    if (backup) openRestore(backup);
+    else await importProject(readTerraformFiles(files));
   };
 
   const startTemplate = (slug: string) => {
@@ -400,7 +426,11 @@ export default function DashboardPage() {
         e.preventDefault();
         setDragging(false);
         // reads the DataTransfer synchronously (it's emptied when this handler returns)
-        void importProject(readDroppedTerraform(e.dataTransfer));
+        const files = [...e.dataTransfer.files];
+        const folder = [...e.dataTransfer.items].some((item) => item.kind === 'file' && item.webkitGetAsEntry?.()?.isDirectory);
+        // one file may be a backup .zip; anything else is Terraform
+        if (files.length === 1 && !folder) void importOrRestore(files);
+        else void importProject(readDroppedTerraform(e.dataTransfer));
       }}
     >
       <AppRail active="projects" onTemplates={() => setTemplatesOpen(true)} />
@@ -439,7 +469,7 @@ export default function DashboardPage() {
                 aria-label={m.importFilesLabel}
                 onChange={(e) => {
                   // copy before resetting the input: its FileList is live and empties
-                  if (e.target.files?.length) void importProject(readTerraformFiles([...e.target.files]));
+                  if (e.target.files?.length) void importOrRestore([...e.target.files]);
                   e.target.value = '';
                 }}
               />
@@ -560,7 +590,7 @@ export default function DashboardPage() {
           ) : (
             <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
               {visible.map((p) => (
-                <ProjectCard key={p.id} project={p} onOpen={openProject} onChanged={refresh} />
+                <ProjectCard key={p.id} project={p} folder={folders.get(p.id)} onOpen={openProject} onChanged={refresh} />
               ))}
             </div>
           )}

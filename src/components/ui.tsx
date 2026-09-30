@@ -367,7 +367,8 @@ export function Modal({
   open: boolean;
   onClose(): void;
   children: ReactNode;
-  wide?: boolean;
+  /** `xl`: for a table that needs the room (the rules of an NSG or a network ACL) */
+  wide?: boolean | 'xl';
   role?: 'dialog' | 'alertdialog';
   /** id of the element that describes the dialog (alertdialogs) */
   describedBy?: string;
@@ -454,7 +455,7 @@ export function Modal({
         tabIndex={-1}
         className={cn(
           'bp-modal-in w-full min-w-0 rounded-lg border bg-surface-1 shadow-lg outline-none',
-          wide ? 'max-w-3xl' : 'max-w-md',
+          wide === 'xl' ? 'max-w-5xl' : wide ? 'max-w-3xl' : 'max-w-md',
         )}
       >
         {title !== undefined ? (
