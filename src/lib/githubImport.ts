@@ -12,16 +12,25 @@
  * in a URL — opens private repositories and raises the limit to 5,000; with
  * one, contents come from the git blobs API (same origin as the token).
  *
- * Only a ROOT module is imported, with the same rules and caps as a dropped
- * folder (see importTf): `.tf` files only — never state, the lock file or
- * `.terraform/` — at most 2 MB a file and 20 MB in all, checked against the
- * listing's sizes BEFORE anything is downloaded.
+ * One ROOT module is imported — with the child modules it calls from the
+ * same repository (`source = "./modules/x"`, `"../../modules/x"`) — under
+ * the same rules and caps as a dropped folder (see importTf): `.tf` files
+ * only — never state, the lock file or `.terraform/` — at most 2 MB a file
+ * and 20 MB in all, checked against the listing's sizes BEFORE anything is
+ * downloaded.
  */
 import { formatDate, formatNumber } from '@/i18n/format';
 import { currentLocale, type Locale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
 import { githubMessages } from './githubImport.messages';
-import { importNote, isTerraformPath, readTerraformFiles, type ImportedProject } from './importTf';
+import {
+  assembleProject,
+  importNote,
+  isTerraformPath,
+  localModuleSources,
+  resolveInTree,
+  type ImportedProject,
+} from './importTf';
 
 /** the messages in the UI language of the moment (errors are made when they happen) */
 const text = () => messagesFor(githubMessages);
@@ -770,9 +779,11 @@ async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>
 }
 
 /**
- * Step 2: download one root module and turn it into an import. The size caps
- * are checked against the listing first (oversized files are never fetched),
- * then the text goes through importTf's own reader — same names, same caps.
+ * Step 2: download one root module — and the child modules it calls from
+ * the same listing, folder by folder — and turn it into an import. The size
+ * caps are checked against the listing first (oversized files are never
+ * fetched), then the texts go through importTf's own assembly — same names,
+ * same folders.
  */
 export async function fetchRootModule(
   listing: Listing,
@@ -782,48 +793,93 @@ export async function fetchRootModule(
 ): Promise<GithubImport> {
   let used = 0;
   let oversized = 0;
-  const wanted: TreeFile[] = [];
-  for (const file of module.files) {
-    if (file.size > MAX_FILE_BYTES || used + file.size > MAX_TOTAL_BYTES) {
-      oversized += 1;
-      continue;
+  let overCount = 0;
+  let picked = 0;
+  /** what fits the caps, in download order */
+  const take = (files: TreeFile[]): TreeFile[] => {
+    const out: TreeFile[] = [];
+    for (const file of files) {
+      if (file.size > MAX_FILE_BYTES || used + file.size > MAX_TOTAL_BYTES) {
+        oversized += 1;
+        continue;
+      }
+      if (picked >= MAX_FILES) {
+        overCount += 1;
+        continue;
+      }
+      used += file.size;
+      picked += 1;
+      out.push(file);
     }
-    used += file.size;
-    wanted.push(file);
-  }
-  const overCount = Math.max(0, wanted.length - MAX_FILES);
-  const picked = wanted.slice(0, MAX_FILES);
-  if (picked.length === 0) {
-    throw new GithubImportError('no-terraform', text().allOversized);
-  }
+    return out;
+  };
 
   const texts = new Map<string, string>();
   let done = 0;
-  opts.onProgress?.({ phase: 'files', done, total: picked.length });
-  await pool(
-    picked,
-    PARALLEL,
-    async (file) => {
-      texts.set(file.path, await fetchText(listing, file, opts));
-      done += 1;
-      opts.onProgress?.({ phase: 'files', done, total: picked.length });
-    },
-    opts.signal,
-  );
-  if (opts.signal?.aborted) throw abortError();
+  let total = 0;
+  const download = async (files: TreeFile[]) => {
+    total += files.length;
+    opts.onProgress?.({ phase: 'files', done, total });
+    await pool(
+      files,
+      PARALLEL,
+      async (file) => {
+        texts.set(file.path, await fetchText(listing, file, opts));
+        done += 1;
+        opts.onProgress?.({ phase: 'files', done, total });
+      },
+      opts.signal,
+    );
+    if (opts.signal?.aborted) throw abortError();
+  };
 
-  const asFiles = picked.map((f) => new File([texts.get(f.path) ?? ''], f.path.split('/').pop()!, { type: 'text/plain' }));
-  const read = await readTerraformFiles(asFiles);
-  if (!read || Object.keys(read.files).length === 0) {
+  const rootFiles = take(module.files);
+  if (rootFiles.length === 0) {
+    throw new GithubImportError('no-terraform', text().allOversized);
+  }
+  await download(rootFiles);
+
+  // the child modules it calls (and the ones those call), one folder level at a time
+  const byDir = new Map<string, TreeFile[]>();
+  for (const file of listing.files) {
+    if (!isTerraformPath(file.path)) continue;
+    const dir = dirOf(file.path);
+    byDir.set(dir, [...(byDir.get(dir) ?? []), file]);
+  }
+  const visited = new Set([module.dir]);
+  let frontier = [module.dir];
+  while (frontier.length > 0) {
+    const next: string[] = [];
+    for (const dir of frontier) {
+      for (const file of byDir.get(dir) ?? []) {
+        for (const source of localModuleSources(texts.get(file.path) ?? '')) {
+          const target = resolveInTree(dir, source);
+          if (target === null || visited.has(target) || !byDir.has(target)) continue;
+          visited.add(target);
+          next.push(target);
+        }
+      }
+    }
+    const wanted = take(next.flatMap((dir) => [...byDir.get(dir)!].sort((a, b) => a.path.localeCompare(b.path))));
+    if (wanted.length > 0) await download(wanted);
+    frontier = next;
+  }
+
+  const sources = [...texts].map(([path, text]) => ({ path, text }));
+  const assembled = assembleProject(sources, module.dir);
+  if (!Object.keys(assembled.files).some((f) => !f.includes('/'))) {
     throw new GithubImportError('no-terraform', text().notTerraform);
   }
   const name = projectName(listing, module.dir);
+  const keptModuleFiles = Object.keys(assembled.files).filter((f) => f.includes('/')).length;
   const imported: ImportedProject = {
-    ...read,
     name,
+    files: assembled.files,
     rootDir: module.dir,
-    skipped: childModuleFiles,
-    oversized: read.oversized + oversized,
+    // child-module files under the link that the root module doesn't use
+    skipped: Math.max(0, childModuleFiles - keptModuleFiles),
+    oversized,
+    modules: assembled.modules,
   };
   const m = text();
   const extra: string[] = [];

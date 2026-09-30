@@ -304,7 +304,7 @@ describe('listGithub + fetchRootModule', () => {
     expect(result.imported.name).toBe('infra');
     expect(result.origin).toBe('github:acme/infra@trunk');
     expect(result.description).toBe('Imported from GitHub — acme/infra @ trunk.');
-    expect(result.note).toMatch(/1 file in modules\/ was skipped/);
+    expect(result.note).toMatch(/1 other file was left out/);
     expect(rates).toEqual([58, 57]);
     expect(phases).toEqual(['repo', 'tree', 'files', 'files', 'files']);
     // state and the lock file are never downloaded; no token → no Authorization anywhere
@@ -327,6 +327,28 @@ describe('listGithub + fetchRootModule', () => {
     expect(result.note).toBeNull();
     // an explicit ref needs no repository lookup: one API call for the whole listing
     expect(gh.calls.filter((c) => c.url.startsWith(API))).toHaveLength(1);
+  });
+
+  it('brings the child modules the root module calls, from anywhere in the repository', async () => {
+    const gh = fakeGithub({
+      [`${API}/repos/acme/infra/git/trees/main?recursive=1`]: { body: INFRA_TREE },
+      [`${RAW}/acme/infra/main/envs/prod/main.tf`]: { text: 'module "vpc" {\n  source = "../../modules/vpc"\n}\n' },
+      [`${RAW}/acme/infra/main/modules/vpc/main.tf`]: { text: 'resource "aws_vpc" "this" {}\n' },
+    });
+    const listing = await listGithub(target('https://github.com/acme/infra/tree/main/envs/prod'), { fetch: gh.fetch });
+    const scan = findRootModules(listing.files, listing.basePath);
+    const progress: string[] = [];
+    const result = await fetchRootModule(listing, scan.modules[0]!, scan.childModuleFiles, {
+      fetch: gh.fetch,
+      onProgress: (p) => progress.push(p.phase === 'files' ? `${p.done}/${p.total}` : p.phase),
+    });
+    expect(result.imported.files).toEqual({
+      'main.tf': 'module "vpc" {\n  source = "../../modules/vpc"\n}\n',
+      'modules/vpc/main.tf': 'resource "aws_vpc" "this" {}\n',
+    });
+    expect(result.imported.modules).toEqual(['modules/vpc']);
+    expect(result.note).toBe('Imported the root module (envs/prod/) and kept its child module.');
+    expect(progress).toEqual(['0/1', '1/1', '1/2', '2/2']);
   });
 
   it('finds where a slashed branch name ends', async () => {

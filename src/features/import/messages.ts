@@ -25,7 +25,7 @@ export const importMessages = defineMessages(
     theGist: 'the gist',
     noRootModule: (where: string) => `No Terraform root module found in ${where}`,
     onlyChildModules:
-      " — only child modules (modules/…), which aren't supported yet. Link to the folder of one to import it anyway.",
+      ' — only child modules (modules/…). Link to the folder that calls them, or to one of them to import it on its own.',
     tooLargeToList:
       ' — the repository is too large to list completely; link straight to the folder that holds your Terraform.',
     storageFull: 'Browser storage is full — export or delete a project, then import again.',
@@ -53,7 +53,7 @@ export const importMessages = defineMessages(
     fromYourLink: ' · from your link',
     noFolderMatch: (filter: string) => `No folder matches “${filter}”.`,
     childModulesLeftOut: (n: number) =>
-      `${n} .tf file${s(n)} in \`modules/\` folders ${n === 1 ? 'is' : 'are'} left out — modules aren’t supported yet.`,
+      `${n} .tf file${s(n)} in \`modules/\` folders: the child modules the root module calls (\`source = "./…"\`) come with it, the rest ${n === 1 ? 'is' : 'are'} left out.`,
     repoTruncated:
       'This repository is too large to list completely — some folders may be missing. Link straight to a folder to see all of it.',
     downloading: (done: number, total: number) => `Downloading ${done} of ${total} file${s(total)}…`,
@@ -80,7 +80,7 @@ export const importMessages = defineMessages(
     theGist: 'o gist',
     noRootModule: (where: string) => `Nenhum módulo raiz de Terraform encontrado em ${where}`,
     onlyChildModules:
-      ' — só módulos filhos (modules/…), que ainda não são suportados. Aponte o link para a pasta de um deles para importá-lo mesmo assim.',
+      ' — só módulos filhos (modules/…). Aponte o link para a pasta que os chama, ou para um deles para importá-lo sozinho.',
     tooLargeToList:
       ' — o repositório é grande demais para listar por completo; aponte o link direto para a pasta que tem o seu Terraform.',
     storageFull: 'O armazenamento do navegador está cheio — exporte ou exclua um projeto e importe de novo.',
@@ -108,9 +108,7 @@ export const importMessages = defineMessages(
     fromYourLink: ' · do seu link',
     noFolderMatch: (filter: string) => `Nenhuma pasta corresponde a “${filter}”.`,
     childModulesLeftOut: (n: number) =>
-      n === 1
-        ? '1 arquivo .tf em pastas `modules/` ficou de fora — módulos ainda não são suportados.'
-        : `${n} arquivos .tf em pastas \`modules/\` ficaram de fora — módulos ainda não são suportados.`,
+      `${n === 1 ? '1 arquivo .tf' : `${n} arquivos .tf`} em pastas \`modules/\`: os módulos filhos que o módulo raiz chama (\`source = "./…"\`) vêm junto, o resto fica de fora.`,
     repoTruncated:
       'Este repositório é grande demais para listar por completo — algumas pastas podem estar faltando. Aponte o link direto para uma pasta para ver tudo.',
     downloading: (done: number, total: number) => `Baixando ${done} de ${total} arquivo${s(total)}…`,

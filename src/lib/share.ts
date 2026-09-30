@@ -9,6 +9,7 @@
 import { deflateSync, Inflate, strFromU8, strToU8 } from 'fflate';
 import { messagesFor } from '@/i18n/messages';
 import { libMessages } from './messages';
+import { isProjectFilePath } from './projectPath';
 
 export interface SharePayload {
   name: string;
@@ -23,8 +24,6 @@ const MAX_ENCODED_CHARS = 2 * 1024 * 1024;
 const MAX_FILES = 500;
 /** Links longer than this get cut off by some chat apps, mail clients and browsers. */
 export const SHARE_URL_SOFT_LIMIT = 32 * 1024;
-/** A file name: letters, digits, `_`, `.`, `-` — and not just dots (`..`). */
-const FILE_NAME = /^(?!\.+$)[\p{L}\p{N}_.-]{1,120}$/u;
 
 export type ShareError = 'invalid' | 'too-large' | 'version';
 export type ShareDecodeResult = { ok: true; payload: SharePayload } | { ok: false; error: ShareError };
@@ -99,7 +98,8 @@ export function decodeShareResult(encoded: string): ShareDecodeResult {
   }
   const files: Record<string, string> = {};
   for (const [name, text] of entries) {
-    if (FILE_NAME.test(name) && name !== '__proto__') files[name] = text as string;
+    // a file name, or a child module's file in its folder (`modules/net/main.tf`) — never `..`
+    if (isProjectFilePath(name)) files[name] = text as string;
   }
   return { ok: true, payload: { name: n.trim().slice(0, 80) || messagesFor(libMessages).sharedProject, files } };
 }
