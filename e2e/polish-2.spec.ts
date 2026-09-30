@@ -439,3 +439,37 @@ folderTest.describe('folder-linked projects on the dashboard', () => {
     });
   }
 });
+
+/* ------------------------------------------------------------ lens labels */
+
+test.describe('security lens: port labels over their lines', () => {
+  for (const theme of ['light', 'dark']) {
+    test(`${theme}: each label is drawn above its edge (nothing crosses the text)`, async ({ page }) => {
+      await page.addInitScript((t) => {
+        localStorage.setItem('cb-tips-dismissed', '1');
+        localStorage.setItem('cb-security-lens', '1');
+        localStorage.setItem('cb-theme', t);
+      }, theme);
+      await page.goto('/dashboard');
+      await page.getByRole('button', { name: `Open project ${SEED_PROJECT}` }).click();
+      const labels = page.locator('.react-flow__edgelabel-renderer > div');
+      await expect(labels.first()).toBeVisible();
+      await expect(labels.first()).toHaveText(':80 :443');
+      // the edge from the internet runs into a subnet: its line is raised above the containers
+      const hidden = await labels.evaluateAll((els) =>
+        els
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            // a few points across the label, where the line would cross it
+            const hits = [0.2, 0.5, 0.8].map((fx) => document.elementFromPoint(r.left + r.width * fx, r.top + r.height / 2));
+            return hits.every((hit) => hit !== null && el.contains(hit)) ? null : `${el.textContent}: under ${hits.map((h) => h?.tagName).join(',')}`;
+          })
+          .filter(Boolean),
+      );
+      expect(hidden).toEqual([]);
+      // an opaque background in both themes
+      const bg = await labels.first().evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(bg).toMatch(/^rgb\(/);
+    });
+  }
+});

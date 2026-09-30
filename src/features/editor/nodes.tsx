@@ -6,6 +6,7 @@ import {
   NodeResizer,
   Position,
   useInternalNode,
+  useStore,
   type Edge,
   type InternalNode,
   type EdgeProps,
@@ -313,6 +314,17 @@ function facingSide(node: InternalNode, other: InternalNode): { x: number; y: nu
     : { x: a.x + aw / 2, y: a.y, position: Position.Top };
 }
 
+/**
+ * The stacking order React Flow gives an edge's line (its own zIndex, raised to
+ * its nodes' when they sit in a container): its label takes the same, and comes
+ * later in the page, so it's drawn over its line rather than crossed by it.
+ */
+function useLabelZ(id: string, source: InternalNode | undefined, target: InternalNode | undefined): number {
+  const own = useStore((s) => s.edgeLookup.get(id)?.zIndex ?? 0);
+  const nested = (n: InternalNode | undefined) => (n?.parentId ? n.internals.z : 0);
+  return own + Math.max(nested(source), nested(target));
+}
+
 export function FlowEdge({
   id,
   source,
@@ -343,6 +355,7 @@ export function FlowEdge({
     };
   }
   const [path, labelX, labelY] = getBezierPath(geometry);
+  const labelZ = useLabelZ(id, sourceNode, targetNode);
   const security = data?.kind === 'security';
   const active = selected || data?.active;
   const color = security ? 'var(--edge-security)' : 'var(--edge-ref)';
@@ -370,7 +383,7 @@ export function FlowEdge({
         <EdgeLabelRenderer>
           <div
             className="nodrag nopan pointer-events-none absolute rounded-full border bg-surface-1 px-2 py-0.5 font-mono text-[10px] font-medium text-muted shadow-sm"
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, zIndex: labelZ }}
           >
             {data.field}
           </div>
@@ -413,6 +426,7 @@ export function SecFlowEdge({
     geometry = { sourceX: s.x, sourceY: s.y, sourcePosition: s.position, targetX: t.x, targetY: t.y, targetPosition: t.position };
   }
   const [path, labelX, labelY] = getBezierPath(geometry);
+  const labelZ = useLabelZ(id, sourceNode, targetNode);
   const color = TONE[data?.tone ?? 'internal'];
   const locale = useLocale((s) => s.locale);
   return (
@@ -433,6 +447,7 @@ export function SecFlowEdge({
             color,
             borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            zIndex: labelZ,
           }}
         >
           {(data?.ports ?? []).map((p) => (p === 'all' ? portText(p, locale) : `:${portText(p, locale)}`)).join(' ')}
