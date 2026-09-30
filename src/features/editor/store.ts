@@ -18,7 +18,9 @@ import { parseProject } from '@/hcl/parser';
 import { useLocale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
 import { deriveStructure } from '@/ir/graph';
-import { autoLayout } from '@/ir/layout';
+import { moduleDiagnostics } from '@/ir/moduleChecks';
+import { carryModulePositions, layoutWithModules } from '@/ir/moduleLayout';
+import { findNode, hasNode, moduleEdges, nodeIds } from '@/ir/modules';
 import type { Op } from '@/ir/ops';
 import type { Diagnostic, IR, IREdge } from '@/ir/types';
 import { emptyIR } from '@/ir/types';
@@ -34,16 +36,20 @@ import {
   type Project,
 } from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
+import { confirmModuleDelete } from '@/features/modules/deleteGuard';
 import { deleteResourcesOps } from './connections';
 import { storeMessages } from './store.messages';
 
 const FILE_ORDER = ['main.tf', 'variables.tf', 'outputs.tf', 'providers.tf', 'versions.tf'];
 
+/** The root module's files (the usual ones first), then each child module's, folder by folder. */
 export function orderedFiles(files: Record<string, string>): string[] {
   const keys = Object.keys(files);
+  const root = keys.filter((f) => !f.includes('/'));
   return [
-    ...FILE_ORDER.filter((f) => keys.includes(f)),
-    ...keys.filter((f) => !FILE_ORDER.includes(f)).sort(),
+    ...FILE_ORDER.filter((f) => root.includes(f)),
+    ...root.filter((f) => !FILE_ORDER.includes(f)).sort(),
+    ...keys.filter((f) => f.includes('/')).sort(),
   ];
 }
 
@@ -53,7 +59,13 @@ interface Derived {
   warnings: Diagnostic[];
 }
 
-function derive(ir: IR, prev?: IR): Derived {
+/** Validation warnings: resources (validate.ts) and module calls (moduleChecks.ts, which reads child modules). */
+function validateAll(ir: IR, files: Record<string, string>): Diagnostic[] {
+  const warnings = validateProject(ir, getDef);
+  return ir.modules.length > 0 ? [...warnings, ...moduleDiagnostics(ir, files)] : warnings;
+}
+
+function derive(ir: IR, prev: IR | undefined, files: Record<string, string>): Derived {
   // carry canvas positions for nodes the text doesn't pin yet
   if (prev) {
     const prevById = new Map(prev.resources.map((r) => [r.id, r] as const));
@@ -63,10 +75,12 @@ function derive(ir: IR, prev?: IR): Derived {
         if (old?.position) node.position = { ...old.position };
       }
     }
+    carryModulePositions(ir, prev);
   }
   const edges = deriveStructure(ir, getDef);
-  autoLayout(ir, isContainerType);
-  return { ir, edges, warnings: validateProject(ir, getDef) };
+  if (ir.modules.length > 0) edges.push(...moduleEdges(ir));
+  layoutWithModules(ir, isContainerType);
+  return { ir, edges, warnings: validateAll(ir, files) };
 }
 
 interface EditorState {
@@ -198,7 +212,7 @@ export const useEditor = create<EditorState>((set, get) => {
       return false;
     }
     codeBurstBase = null;
-    const derived = derive(ir, prev);
+    const derived = derive(ir, prev, files);
     const selection = get().selection;
     set({
       ir: derived.ir,
@@ -206,7 +220,7 @@ export const useEditor = create<EditorState>((set, get) => {
       warnings: derived.warnings,
       parseDiagnostics: diagnostics,
       codeErrored: false,
-      selection: derived.ir.resources.some((r) => r.id === selection) ? selection : null,
+      selection: selection && hasNode(derived.ir, selection) ? selection : null,
     });
     return true;
   };
@@ -255,7 +269,7 @@ export const useEditor = create<EditorState>((set, get) => {
       dirty = false;
       const { ir, diagnostics } = parseProject(project.files);
       const errored = diagnostics.some((d) => d.severity === 'error');
-      const derived = derive(ir);
+      const derived = derive(ir, undefined, project.files);
       const fileList = orderedFiles(project.files);
       const { selection, activeFile } = get();
       set({
@@ -269,7 +283,7 @@ export const useEditor = create<EditorState>((set, get) => {
         parseDiagnostics: diagnostics,
         codeErrored: errored,
         readOnly,
-        selection: keep && derived.ir.resources.some((r) => r.id === selection) ? selection : null,
+        selection: keep && selection && hasNode(derived.ir, selection) ? selection : null,
         activeFile:
           keep && fileList.includes(activeFile)
             ? activeFile
@@ -367,12 +381,12 @@ export const useEditor = create<EditorState>((set, get) => {
         return;
       }
       pushHistory({ ...files });
-      const derived = derive(outcome.ir, ir);
+      const derived = derive(outcome.ir, ir, outcome.files);
 
       let selection = select !== undefined ? select : get().selection;
       if (selection) {
         selection = outcome.renamed.get(selection) ?? selection;
-        if (!derived.ir.resources.some((r) => r.id === selection)) selection = null;
+        if (!hasNode(derived.ir, selection)) selection = null;
       }
 
       set({
@@ -433,13 +447,18 @@ export const useEditor = create<EditorState>((set, get) => {
         showToast(readOnlyHint(), 'info');
         return 0;
       }
-      const { ops, removed } = deleteResourcesOps(ir, edges, ids);
-      if (ops.length > 0) get().applyCanvasOps(ops, null);
-      return removed.length;
+      const run = (state: { ir: IR; edges: IREdge[] }) => {
+        const { ops, removed } = deleteResourcesOps(state.ir, state.edges, ids);
+        if (ops.length > 0) get().applyCanvasOps(ops, null);
+        return removed.length;
+      };
+      // a module other blocks still read from: ask first (the deletion then runs on the IR of that moment)
+      if (confirmModuleDelete(ir, ids, () => run(get()))) return 0;
+      return run({ ir, edges });
     },
 
     revealInCode(nodeId) {
-      const node = get().ir.resources.find((r) => r.id === nodeId);
+      const node = findNode(get().ir, nodeId);
       if (!node) return;
       const file = node.trivia.sourceFile ?? 'main.tf';
       set({
@@ -458,7 +477,7 @@ export const useEditor = create<EditorState>((set, get) => {
       codeBurstBase = null;
       const previous = past[past.length - 1];
       const { ir, diagnostics } = parseProject(previous);
-      const derived = derive(ir, get().ir);
+      const derived = derive(ir, get().ir, previous);
       set({
         past: past.slice(0, -1),
         future: [{ ...files }, ...get().future],
@@ -483,7 +502,7 @@ export const useEditor = create<EditorState>((set, get) => {
       codeBurstBase = null;
       const next = future[0];
       const { ir, diagnostics } = parseProject(next);
-      const derived = derive(ir, get().ir);
+      const derived = derive(ir, get().ir, next);
       set({
         future: future.slice(1),
         past: [...get().past, { ...files }],
@@ -502,7 +521,7 @@ export const useEditor = create<EditorState>((set, get) => {
   };
 });
 
-const keptSelection = (id: string | null, ir: IR) => (id && ir.resources.some((r) => r.id === id) ? id : null);
+const keptSelection = (id: string | null, ir: IR) => (id && hasNode(ir, id) ? id : null);
 
 const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
 
@@ -510,7 +529,7 @@ const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((
 // IR changes: a primary outside it means a single pick, deleted ids leave it.
 useEditor.subscribe((state, prev) => {
   if (state.selection === prev.selection && state.ir === prev.ir && state.selectedIds === prev.selectedIds) return;
-  const exists = new Set(state.ir.resources.map((r) => r.id));
+  const exists = nodeIds(state.ir);
   let ids = state.selectedIds.filter((id) => exists.has(id));
   if (state.selection === null) ids = [];
   else if (!ids.includes(state.selection)) ids = [state.selection];
@@ -527,7 +546,7 @@ useEditor.subscribe((state, prev) => {
 export function relocalizeEditorMessages() {
   const { ir, files, parseDiagnostics } = useEditor.getState();
   useEditor.setState({
-    warnings: validateProject(ir, getDef),
+    warnings: validateAll(ir, files),
     // nothing to translate when the code parsed cleanly
     ...(parseDiagnostics.length > 0 ? { parseDiagnostics: parseProject(files).diagnostics } : {}),
   });
