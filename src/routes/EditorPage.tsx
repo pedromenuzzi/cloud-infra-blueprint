@@ -151,15 +151,16 @@ export default function EditorPage() {
   // one panel at a time on a narrow canvas: the security panel covers the inspector while it's
   // open (it opens with the resource a toast's "Show" is about), and a resource picked while it's
   // already open — from the panel itself — closes it for the inspector
-  const seen = useRef({ selection, securityPanel });
+  const securityShown = securityPanel && securitySlot && panels.canvas;
+  const seen = useRef({ selection, securityShown });
   useEffect(() => {
     const before = seen.current;
-    seen.current = { selection, securityPanel };
-    if (onePanel && securityPanel && before.securityPanel && selection !== null && selection !== before.selection) {
+    seen.current = { selection, securityShown };
+    if (onePanel && securityShown && before.securityShown && selection !== null && selection !== before.selection) {
       useSecurityUi.getState().setPanel(false);
     }
-  }, [onePanel, selection, securityPanel]);
-  const inspectorYields = onePanel && securityPanel;
+  }, [onePanel, selection, securityShown]);
+  const inspectorYields = onePanel && securityShown;
   useDocumentTitle(useEditor((s) => s.projectName));
   useSecurityDelta();
   useCanvasDragTracking(canvasRef, ready);
