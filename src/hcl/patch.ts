@@ -25,6 +25,7 @@ import type {
   EntrySpan,
   Expression,
   IR,
+  ModuleNode,
   OutputDecl,
   ProviderBlock,
   RawBlock,
@@ -35,6 +36,7 @@ import {
   DEFAULT_FILES,
   emitExpression,
   emitLabel,
+  emitModule,
   emitNestedBlock,
   emitOutput,
   emitProvider,
@@ -56,6 +58,7 @@ import {
   shiftParsedBlock,
 } from './parser';
 import { hclMessages, type StaleReason } from './messages';
+import { isRootModuleFile } from '@/ir/modules';
 
 interface Edit {
   start: number;
@@ -83,6 +86,7 @@ type Block =
   | { kind: 'variable'; node: VariableDecl }
   | { kind: 'output'; node: OutputDecl }
   | { kind: 'provider'; node: ProviderBlock }
+  | { kind: 'module'; node: ModuleNode }
   | { kind: 'extra'; node: RawBlock };
 
 function blocksOf(ir: IR): Block[] {
@@ -91,6 +95,7 @@ function blocksOf(ir: IR): Block[] {
     ...ir.variables.map((node) => ({ kind: 'variable' as const, node })),
     ...ir.outputs.map((node) => ({ kind: 'output' as const, node })),
     ...ir.providers.map((node) => ({ kind: 'provider' as const, node })),
+    ...ir.modules.map((node) => ({ kind: 'module' as const, node })),
     ...ir.extras.map((node) => ({ kind: 'extra' as const, node })),
   ];
 }
@@ -105,6 +110,8 @@ function emitBlock(b: Block): string {
       return emitOutput(b.node);
     case 'provider':
       return emitProvider(b.node);
+    case 'module':
+      return emitModule(b.node);
     case 'extra':
       return emitRawBlock(b.node);
   }
@@ -592,6 +599,17 @@ function spliceBlock(ctx: FileCtx, old: Block, next: Block, edits: Edit[]): bool
     if (n.position && n.position !== o.position && !writePosition(ctx, spans, n.position, edits)) {
       return false;
     }
+  } else if (old.kind === 'module') {
+    // a module call's one label is its name; it moves like a resource
+    const n = next.node as ModuleNode;
+    if (old.node.name !== n.name) {
+      const label = spans.labels[0];
+      if (!label) return false;
+      edits.push({ start: label.start, end: label.end, text: emitLabel(n.name, !label.quoted) });
+    }
+    if (n.position && n.position !== old.node.position && !writePosition(ctx, spans, n.position, edits)) {
+      return false;
+    }
   } else if (old.node.name !== (next.node as typeof old.node).name) {
     return false;
   }
@@ -776,6 +794,7 @@ function toParsed(b: Block, text: string): ParsedBlock | null {
     case 'variable':
     case 'output':
     case 'provider':
+    case 'module':
       return { kind: 'labeled', keyword: b.kind, name: b.node.name, args: b.node.args, ...base };
     case 'extra':
       return { kind: 'raw', text: b.node.text, ...base };
@@ -839,6 +858,8 @@ function reparseFile(file: string, before: string, after: string, blocks: Block[
 function reparseProject(files: Record<string, string>, nextFiles: Record<string, string>, planned: Plan) {
   const parsed: ParsedFile[] = [];
   for (const [file, after] of Object.entries(nextFiles)) {
+    // child module files are not part of the root module's IR (parseProject)
+    if (!isRootModuleFile(file)) continue;
     const blocks = planned.oldByFile.get(file) ?? [];
     const edits = planned.edits.get(file) ?? [];
     const reusable =
@@ -867,7 +888,7 @@ function verify(
   fresh: { ir: IR; diagnostics: Diagnostic[] },
   touched: string[],
 ): PatchRefusal | null {
-  const ids = (ir: IR) => ir.resources.map((r) => r.id).sort().join('\n');
+  const ids = (ir: IR) => [...ir.resources, ...ir.modules].map((r) => r.id).sort().join('\n');
   const counts = (ir: IR) =>
     [ir.variables.length, ir.outputs.length, ir.providers.length, ir.extras.length].join();
   if (ids(expected) !== ids(fresh.ir) || counts(expected) !== counts(fresh.ir)) {

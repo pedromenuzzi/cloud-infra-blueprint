@@ -220,6 +220,7 @@ function mentionedOutsideResources(ir: IR): Set<string> {
   const out = new Set<string>();
   const refs: Array<{ field: string; path: string }> = [];
   for (const o of ir.outputs) for (const e of Object.values(o.args)) collectRefs(e, '', refs);
+  for (const m of ir.modules) for (const e of Object.values(m.args)) collectRefs(e, '', refs);
   for (const r of refs) {
     const a = refTargetAddress(r.path);
     if (a) out.add(a.replace(/\[.*$/, ''));

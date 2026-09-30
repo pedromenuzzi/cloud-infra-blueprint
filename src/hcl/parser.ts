@@ -27,6 +27,7 @@ import type {
   Trivia,
 } from '@/ir/types';
 import { emptyIR, providerOfType, resourceAddress } from '@/ir/types';
+import { isRootModuleFile, moduleAddress } from '@/ir/modules';
 import { messagesFor } from '@/i18n/messages';
 import { POS_COMMENT_RE } from './emitter';
 import { hclMessages } from './messages';
@@ -108,7 +109,7 @@ export type ParsedBlock =
     } & ParsedBlockBase)
   | ({
       kind: 'labeled';
-      keyword: 'variable' | 'output' | 'provider';
+      keyword: 'variable' | 'output' | 'provider' | 'module';
       name: string;
       args: Record<string, Expression>;
     } & ParsedBlockBase)
@@ -1134,7 +1135,7 @@ function parseTopLevel(s: Scanner, comments: readonly CommentRec[], errStart: nu
   }
   if (
     !degraded &&
-    (keyword === 'variable' || keyword === 'output' || keyword === 'provider') &&
+    (keyword === 'variable' || keyword === 'output' || keyword === 'provider' || keyword === 'module') &&
     labels.length === 1
   ) {
     return { kind: 'labeled', keyword, name: labels[0], args: body.args, ...base };
@@ -1278,6 +1279,21 @@ export function buildIR(parsed: ParsedFile[]): { ir: IR; diagnostics: Diagnostic
           ir.variables.push({ id: `var.${b.name}`, name: b.name, args: b.args, trivia });
         } else if (b.keyword === 'output') {
           ir.outputs.push({ id: `output.${b.name}`, name: b.name, args: b.args, trivia });
+        } else if (b.keyword === 'module') {
+          const id = moduleAddress(b.name);
+          const first = firstSeen.get(id);
+          if (first) {
+            diagnostics.push({
+              file,
+              message: t().duplicateModule(b.name, first.file, first.line),
+              severity: 'error',
+              start: { line: b.spans.line, col: b.spans.col },
+              nodeId: id,
+            });
+          } else {
+            firstSeen.set(id, { file, line: b.spans.line });
+          }
+          ir.modules.push({ id, name: b.name, args: b.args, position: b.pos && { ...b.pos }, trivia });
         } else {
           ir.providers.push({ id: `provider.${b.name}.${providerSeq++}`, name: b.name, args: b.args, trivia });
         }
@@ -1290,10 +1306,18 @@ export function buildIR(parsed: ParsedFile[]): { ir: IR; diagnostics: Diagnostic
   return { ir, diagnostics };
 }
 
-/** Parse every file of a project into a fresh IR. */
+/**
+ * Parse a project into a fresh IR: the root module, i.e. the files without a
+ * folder in their path — child modules (`modules/net/main.tf`) are modules'
+ * own code, read by src/ir/localModules.ts.
+ */
 export function parseProject(files: Record<string, string>): {
   ir: IR;
   diagnostics: Diagnostic[];
 } {
-  return buildIR(Object.entries(files).map(([file, source]) => ({ file, ...parseFile(file, source) })));
+  return buildIR(
+    Object.entries(files)
+      .filter(([file]) => isRootModuleFile(file))
+      .map(([file, source]) => ({ file, ...parseFile(file, source) })),
+  );
 }

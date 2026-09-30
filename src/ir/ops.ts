@@ -5,7 +5,8 @@
  * blocks keep their object identity, which is how the patcher skips them.
  */
 import { renameInHcl, renameInRecord } from './expr';
-import type { CanvasPosition, Expression, IR, ResourceNode } from './types';
+import { applyModuleOp, isModuleOp } from './moduleOps';
+import type { CanvasPosition, Expression, IR, ModuleNode, ResourceNode } from './types';
 import { resourceAddress } from './types';
 
 export type Op =
@@ -14,7 +15,9 @@ export type Op =
   | { kind: 'set_arg'; nodeId: string; field: string; value: Expression }
   | { kind: 'unset_arg'; nodeId: string; field: string }
   | { kind: 'rename_resource'; nodeId: string; newName: string }
-  | { kind: 'move_node'; nodeId: string; position: CanvasPosition };
+  | { kind: 'move_node'; nodeId: string; position: CanvasPosition }
+  /** a new `module` call (the other kinds act on one through its id, `module.x`: see ./moduleOps.ts) */
+  | { kind: 'add_module'; node: ModuleNode };
 
 export interface ApplyResult {
   ir: IR;
@@ -33,6 +36,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
     variables: [...ir.variables],
     outputs: [...ir.outputs],
     providers: [...ir.providers],
+    modules: [...ir.modules],
     extras: [...ir.extras],
   };
   const touched = new Set<string>();
@@ -43,6 +47,10 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
   const findIndex = (id: string) => next.resources.findIndex((r) => r.id === id);
 
   for (const op of ops) {
+    if (isModuleOp(op)) {
+      applyModuleOp(next, op, { touched, removed, renamed });
+      continue;
+    }
     switch (op.kind) {
       case 'add_resource': {
         next.resources.push(op.node);
@@ -108,6 +116,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
         next.variables = next.variables.map(retarget);
         next.outputs = next.outputs.map(retarget);
         next.providers = next.providers.map(retarget);
+        next.modules = next.modules.map(retarget);
         next.extras = next.extras.map((b) => {
           const text = renameInHcl(b.text, from, to);
           if (text === b.text) return b;

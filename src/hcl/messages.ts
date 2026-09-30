@@ -31,6 +31,8 @@ export const hclMessages = defineMessages(
     missingBlockClose: (keyword: string) => `Missing "}" to close this "${keyword}" block`,
     duplicateResource: (id: string, file: string, line: number) =>
       `Duplicate resource "${id}" (already declared at ${file}:${line}): Terraform requires unique addresses — rename one of them`,
+    duplicateModule: (name: string, file: string, line: number) =>
+      `Duplicate module "${name}" (already declared at ${file}:${line}): Terraform requires unique module names — rename one of them`,
 
     stale: (file: string, reason: StaleReason) =>
       `Canvas edit not applied: ${file} changed since it was last parsed (${
@@ -67,6 +69,8 @@ export const hclMessages = defineMessages(
     missingBlockClose: (keyword) => `Falta "}" para fechar este bloco "${keyword}"`,
     duplicateResource: (id, file, line) =>
       `Recurso duplicado "${id}" (já declarado em ${file}:${line}): o Terraform exige endereços únicos — renomeie um deles`,
+    duplicateModule: (name, file, line) =>
+      `Módulo duplicado "${name}" (já declarado em ${file}:${line}): o Terraform exige nomes de módulo únicos — renomeie um deles`,
 
     stale: (file, reason) =>
       `Edição do canvas não aplicada: ${file} mudou desde a última análise (${

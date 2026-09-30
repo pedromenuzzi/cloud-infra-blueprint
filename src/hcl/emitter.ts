@@ -8,6 +8,7 @@
 import type {
   Expression,
   IR,
+  ModuleNode,
   OutputDecl,
   ProviderBlock,
   RawBlock,
@@ -246,6 +247,10 @@ export function emitResource(node: ResourceNode): string {
   );
 }
 
+export function emitModule(m: ModuleNode): string {
+  return emitTopBlock(`module ${emitLabel(m.name)}`, m.args, m.trivia, m.position);
+}
+
 export function emitVariable(v: VariableDecl): string {
   return emitTopBlock(`variable ${emitLabel(v.name)}`, v.args, v.trivia);
 }
@@ -271,6 +276,7 @@ export const DEFAULT_FILES = {
   output: 'outputs.tf',
   provider: 'providers.tf',
   terraform: 'versions.tf',
+  module: 'main.tf',
 } as const;
 
 interface FileChunk {
@@ -299,6 +305,9 @@ export function emitProject(ir: IR): Record<string, string> {
   }
   for (const r of ir.resources) {
     push(r.trivia.sourceFile ?? DEFAULT_FILES.resource, r.trivia.rawTextRange, emitResource(r));
+  }
+  for (const m of ir.modules) {
+    push(m.trivia.sourceFile ?? DEFAULT_FILES.module, m.trivia.rawTextRange, emitModule(m));
   }
   for (const v of ir.variables) {
     push(v.trivia.sourceFile ?? DEFAULT_FILES.variable, v.trivia.rawTextRange, emitVariable(v));

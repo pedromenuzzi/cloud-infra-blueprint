@@ -143,7 +143,8 @@ data "aws_subnets" "all" {
   it('keeps untouched blocks as the same objects', () => {
     const { ir } = parseProject(files);
     const { ir: next, touched } = applyOps(ir, [{ kind: 'rename_resource', nodeId: 'aws_vpc.main', newName: 'core' }]);
-    expect([...touched].sort()).toEqual(['aws_iam_policy.p', 'aws_vpc.core', 'output.vpc', 'raw.main.tf#0', 'raw.main.tf#1', 'raw.main.tf#2']);
+    // `module "net"` is a module call of its own (not a verbatim block) since modules became first-class
+    expect([...touched].sort()).toEqual(['aws_iam_policy.p', 'aws_vpc.core', 'module.net', 'output.vpc', 'raw.main.tf#0', 'raw.main.tf#1']);
     expect(next.resources.find((r) => r.id === 'aws_iam_policy.p')).not.toBe(ir.resources.find((r) => r.id === 'aws_iam_policy.p'));
   });
 });
