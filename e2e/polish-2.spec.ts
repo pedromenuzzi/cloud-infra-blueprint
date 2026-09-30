@@ -5,10 +5,13 @@
  * Aurora cluster's subnet-group fix.
  */
 import { readFileSync } from 'node:fs';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { strToU8, zipSync } from 'fflate';
-import { expect, test, type Page } from '@playwright/test';
-import { SEED_PROJECT, storedProjects } from './helpers';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { canvasStats, SEED_PROJECT, storedProject, storedProjects } from './helpers';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
 
@@ -267,6 +270,146 @@ test.describe('a backup .zip given to the importer', () => {
       await expect(dialog).toBeVisible();
       await expect(dialog.getByText('billing-api').first()).toBeVisible();
       expect(await seriousAxeViolations(page, '[role="dialog"]')).toEqual([]);
+    });
+  }
+});
+
+/* ------------------------------------------------------------ folder links */
+
+/**
+ * As e2e/folder-sync.spec.ts: a fresh persistent profile, and a picker that
+ * hands back a real directory handle from the Origin Private File System.
+ */
+const folderTest = test.extend<{ context: BrowserContext; page: Page }>({
+  context: async ({ playwright, baseURL, viewport }, provide) => {
+    const dir = await mkdtemp(join(tmpdir(), 'cb-polish-2-'));
+    const context = await playwright.chromium.launchPersistentContext(dir, { channel: 'chromium', baseURL, viewport, serviceWorkers: 'block' });
+    await provide(context);
+    await context.close();
+    await rm(dir, { recursive: true, force: true });
+  },
+  page: async ({ context }, provide) => {
+    await provide(context.pages()[0] ?? (await context.newPage()));
+  },
+});
+
+async function mockPicker(page: Page, { locale = 'en', theme }: { locale?: string; theme?: string } = {}) {
+  await page.addInitScript(
+    ({ locale, theme }) => {
+      localStorage.setItem('cb-tips-dismissed', '1');
+      localStorage.setItem('cb-locale', locale);
+      if (theme) localStorage.setItem('cb-theme', theme);
+      const w = window as unknown as { __pick?: string; showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> };
+      w.showDirectoryPicker = async () => {
+        let dir = await navigator.storage.getDirectory();
+        for (const part of (w.__pick ?? 'infra').split('/')) dir = await dir.getDirectoryHandle(part, { create: true });
+        return dir;
+      };
+    },
+    { locale, theme },
+  );
+}
+
+async function putFiles(page: Page, files: Record<string, string>) {
+  await page.evaluate(async (entries) => {
+    const root = await navigator.storage.getDirectory();
+    for (const [path, text] of Object.entries(entries)) {
+      const parts = path.split('/');
+      let dir = root;
+      for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part, { create: true });
+      const writable = await (await dir.getFileHandle(parts[parts.length - 1]!, { create: true })).createWritable();
+      await writable.write(text);
+      await writable.close();
+    }
+  }, files);
+}
+
+/** the project ids that have a folder link in IndexedDB */
+async function linkedIds(page: Page): Promise<string[]> {
+  return page.evaluate(
+    () =>
+      new Promise<string[]>((resolve, reject) => {
+        const open = indexedDB.open('cloud-blueprint', 1);
+        open.onupgradeneeded = () => open.result.createObjectStore('kv');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const keys = open.result.transaction('kv').objectStore('kv').getAllKeys();
+          keys.onsuccess = () => {
+            resolve((keys.result as string[]).filter((k) => k.startsWith('folder-link:')).map((k) => k.slice('folder-link:'.length)));
+            open.result.close();
+          };
+          keys.onerror = () => reject(keys.error);
+        };
+      }),
+  );
+}
+
+const MAIN_TF = 'resource "aws_vpc" "core" {\n  cidr_block = "10.1.0.0/16"\n}\n';
+
+folderTest.describe('folder-linked projects on the dashboard', () => {
+  folderTest('a linked project’s card names its folder; deleting the project drops the link, not the files', async ({ page }) => {
+    await mockPicker(page);
+    await page.goto('/dashboard');
+    await putFiles(page, { 'infra-prod/main.tf': MAIN_TF });
+    await page.evaluate(() => ((window as unknown as { __pick: string }).__pick = 'infra-prod'));
+    await page.getByRole('button', { name: 'Open folder…' }).first().click();
+    await expect(page).toHaveURL(/\/editor\//);
+    await expect(canvasStats(page)).toHaveText(/^1 resource/);
+    const project = (await storedProject(page, 'infra-prod'))!;
+    await page.goto('/dashboard');
+
+    const card = page.getByRole('article', { name: 'infra-prod' });
+    await expect(card.getByText('Synced with the folder infra-prod')).toBeVisible();
+    await expect(card.getByText('Synced with the folder infra-prod')).toHaveAttribute('title', 'Synced with the folder “infra-prod”');
+    // the seed project isn't linked
+    await expect(page.getByRole('article', { name: SEED_PROJECT }).getByText(/Synced with the folder/)).toHaveCount(0);
+    expect(await linkedIds(page)).toEqual([project.id]);
+
+    await card.hover();
+    await card.getByRole('button', { name: 'Delete project' }).click();
+    const confirm = page.getByRole('alertdialog', { name: 'Delete “infra-prod”?' });
+    await expect(confirm.getByText('the folder “infra-prod” on your disk is left as it is', { exact: false })).toBeVisible();
+    await confirm.getByRole('button', { name: 'Delete project' }).click();
+    await expect(card).toHaveCount(0);
+    await expect.poll(() => linkedIds(page)).toEqual([]);
+
+    // the folder is as it was, and opening it again imports it afresh (not "already linked")
+    await page.evaluate(() => ((window as unknown as { __pick: string }).__pick = 'infra-prod'));
+    await page.getByRole('button', { name: 'Open folder…' }).first().click();
+    await expect(page).toHaveURL(/\/editor\//);
+    await expect(page.getByText(/already linked/)).toHaveCount(0);
+    expect((await storedProject(page, 'infra-prod'))?.files['main.tf']).toBe(MAIN_TF);
+  });
+
+  folderTest('a link left by a project deleted elsewhere is cleaned up when the dashboard loads', async ({ page }) => {
+    await mockPicker(page);
+    await page.goto('/dashboard');
+    await putFiles(page, { 'infra/main.tf': MAIN_TF });
+    await page.getByRole('button', { name: 'Open folder…' }).first().click();
+    await expect(page).toHaveURL(/\/editor\//);
+    const project = (await storedProject(page, 'infra'))!;
+    // another tab deletes it (straight from storage, as that tab's dashboard would)
+    await page.evaluate((id) => {
+      const all = JSON.parse(localStorage.getItem('cb-projects-v1')!);
+      localStorage.setItem('cb-projects-v1', JSON.stringify(all.filter((p: { id: string }) => p.id !== id)));
+    }, project.id);
+    expect(await linkedIds(page)).toEqual([project.id]);
+    await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { name: SEED_PROJECT })).toBeVisible();
+    await expect.poll(() => linkedIds(page)).toEqual([]);
+  });
+
+  for (const theme of ['light', 'dark']) {
+    folderTest(`pt-BR, ${theme}: the card says "Sincronizado com a pasta", and passes axe`, async ({ page }) => {
+      await mockPicker(page, { locale: 'pt-BR', theme });
+      await page.goto('/dashboard');
+      await putFiles(page, { 'infra/main.tf': MAIN_TF });
+      await page.getByRole('button', { name: 'Abrir pasta…' }).first().click();
+      await expect(page).toHaveURL(/\/editor\//);
+      await page.goto('/dashboard');
+      const card = page.getByRole('article', { name: 'infra' });
+      await expect(card.getByText('Sincronizado com a pasta infra')).toBeVisible();
+      expect(await seriousAxeViolations(page, 'article[aria-labelledby]')).toEqual([]);
     });
   }
 });
