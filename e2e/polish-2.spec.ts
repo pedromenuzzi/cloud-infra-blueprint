@@ -473,3 +473,116 @@ test.describe('security lens: port labels over their lines', () => {
     });
   }
 });
+
+/* ------------------------------------------------------------ rules table */
+
+const NSG_TF = `resource "azurerm_network_security_group" "web" {
+  name                = "web"
+  location            = "eastus"
+  resource_group_name = "rg"
+
+  security_rule {
+    name                       = "https"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "443"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  security_rule {
+    name                       = "ssh-from-office"
+    priority                   = 110
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "22"
+    source_address_prefix      = "203.0.113.0/24"
+    destination_address_prefix = "*"
+  }
+}
+`;
+
+/** every control of the rules dialog shows its whole value: selects wide enough for their option, nothing off the dialog */
+async function rulesReadable(page: Page) {
+  return page.getByRole('dialog').evaluate((dialog) => {
+    const box = dialog.getBoundingClientRect();
+    const ctx = document.createElement('canvas').getContext('2d')!;
+    const problems: string[] = [];
+    for (const el of dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement>('tr[data-rule] select, tr[data-rule] input')) {
+      const r = el.getBoundingClientRect();
+      const label = el.getAttribute('aria-label');
+      if (r.left < box.left - 0.5 || r.right > box.right + 0.5) problems.push(`${label}: outside the dialog`);
+      const style = getComputedStyle(el);
+      ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+      const text = el instanceof HTMLSelectElement ? el.selectedOptions[0]?.text ?? '' : el.value || el.placeholder;
+      // a select's arrow takes ~20 px
+      const room = r.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - (el instanceof HTMLSelectElement ? 20 : 0);
+      if (ctx.measureText(text).width > room + 1) problems.push(`${label}: "${text}" cut`);
+    }
+    return problems;
+  });
+}
+
+test.describe('rules editor on narrow screens', () => {
+  for (const [width, locale] of [
+    [768, 'en'],
+    [768, 'pt-BR'],
+    [390, 'en'],
+    [390, 'pt-BR'],
+  ] as const) {
+    test(`Azure NSG at ${width} px, ${locale}: each rule is a card with every control readable`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openProject(page, `nsg-${width}`, NSG_TF, { locale });
+      await page.locator('.react-flow__node[data-id="azurerm_network_security_group.web"]').click();
+      await page.getByRole('button', { name: locale === 'en' ? 'Edit rules' : 'Editar regras' }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.locator('.bp-rules')).toHaveAttribute('data-stacked');
+      await expect(dialog.locator('tr[data-rule]')).toHaveCount(2);
+      expect(await rulesReadable(page)).toEqual([]);
+      // no sideways scrolling in the rules, and the dialog within the screen
+      expect(await dialog.locator('.bp-rules').evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+      expect(await dialog.evaluate((el) => el.getBoundingClientRect().right <= window.innerWidth)).toBe(true);
+      // column names show above the fields
+      const priority = dialog.locator('tr[data-rule]').first().locator('td[data-cell="priority"]');
+      expect(await priority.evaluate((td) => getComputedStyle(td, '::before').content)).toContain(locale === 'en' ? 'Priority' : 'Prioridade');
+    });
+  }
+
+  test('at 1440 px the NSG keeps its table, wide enough for Portuguese', async ({ page }) => {
+    await openProject(page, 'nsg-wide', NSG_TF, { locale: 'pt-BR' });
+    await page.locator('.react-flow__node[data-id="azurerm_network_security_group.web"]').click();
+    await page.getByRole('button', { name: 'Editar regras' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('tr[data-rule]')).toHaveCount(2);
+    await expect(dialog.locator('.bp-rules')).not.toHaveAttribute('data-stacked');
+    expect(await rulesReadable(page)).toEqual([]);
+  });
+
+  test('stacked, a rule is still edited in place: the priority lands in the code', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openProject(page, 'nsg-edit', NSG_TF);
+    await page.locator('.react-flow__node[data-id="azurerm_network_security_group.web"]').click();
+    await page.getByRole('button', { name: 'Edit rules' }).click();
+    const dialog = page.getByRole('dialog');
+    const priority = dialog.getByRole('textbox', { name: 'Priority' }).first();
+    await priority.fill('200');
+    await priority.press('Enter');
+    await expect.poll(async () => (await storedProject(page, 'nsg-edit'))?.files['main.tf']).toMatch(/priority\s*=\s*200/);
+  });
+
+  for (const theme of ['light', 'dark']) {
+    test(`axe, ${theme}, pt-BR at 390 px: the stacked rules`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await openProject(page, `nsg-axe-${theme}`, NSG_TF, { locale: 'pt-BR', theme });
+      await page.locator('.react-flow__node[data-id="azurerm_network_security_group.web"]').click();
+      await page.getByRole('button', { name: 'Editar regras' }).click();
+      await expect(page.getByRole('dialog').locator('.bp-rules')).toHaveAttribute('data-stacked');
+      expect(await seriousAxeViolations(page, '[role="dialog"]')).toEqual([]);
+    });
+  }
+});

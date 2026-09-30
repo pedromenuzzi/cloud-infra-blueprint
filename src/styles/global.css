@@ -406,6 +406,81 @@
 }
 
 /* ---------------------------------------------------------------------------
+ * The rules editor's table (features/security/RulesEditor.tsx). Where it is
+ * narrower than its columns need — an NSG's nine at 768 px, any kind on a
+ * phone — the editor sets `data-stacked` and each rule stacks as a card: its
+ * fields wrap, each under its column's name (the cell's `data-label`; screen
+ * readers have the controls' own labels, so the name is visual only), the
+ * peers and the name on lines of their own, the risk and the actions last.
+ * The table's header stays for assistive tech.
+ * ------------------------------------------------------------------------- */
+.bp-rules[data-stacked] table,
+.bp-rules[data-stacked] tbody {
+  display: block;
+  border: 0;
+  overflow: visible;
+}
+.bp-rules[data-stacked] thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.bp-rules[data-stacked] tbody tr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.bp-rules[data-stacked] tbody tr + tr {
+  margin-top: 0.5rem;
+}
+.bp-rules[data-stacked] td {
+  display: block;
+  width: auto;
+  min-width: 0;
+  padding: 0;
+}
+.bp-rules[data-stacked] td[data-label]::before {
+  content: attr(data-label);
+  content: attr(data-label) / '';
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.bp-rules[data-stacked] td[data-cell='priority'] {
+  flex: 1 1 4.5rem;
+}
+.bp-rules[data-stacked] td[data-cell='action'],
+.bp-rules[data-stacked] td[data-cell='protocol'],
+.bp-rules[data-stacked] td[data-cell='ports'] {
+  flex: 1 1 5.5rem;
+}
+.bp-rules[data-stacked] td[data-cell='service'] {
+  flex: 2 1 9rem;
+}
+.bp-rules[data-stacked] td[data-cell='peer'],
+.bp-rules[data-stacked] td[data-cell='name'] {
+  flex: 1 1 100%;
+}
+.bp-rules[data-stacked] td[data-cell='risk'] {
+  flex: none;
+  margin-left: auto;
+}
+.bp-rules[data-stacked] td[data-cell='actions'] {
+  flex: none;
+}
+
+/* ---------------------------------------------------------------------------
  * Diagram capture (PNG / SVG export). `.bp-exporting` is set on <html> while
  * html-to-image copies the canvas, reading computed styles at once: nothing
  * may be mid-transition (a 160 ms border/shadow fade caught half-way leaks the

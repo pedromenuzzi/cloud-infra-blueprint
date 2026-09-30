@@ -5,7 +5,7 @@
  * with expressions the editor can't represent are read-only.
  */
 import { AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Code2, Info, Plus, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { Modal, tabbables } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
@@ -210,8 +210,17 @@ function PeerEditor({
 
 // ------------------------------------------------------------ rows
 
-function Cell({ children, className }: { children: ReactNode; className?: string }) {
-  return <td className={cn('px-2 py-1.5 align-middle', className)}>{children}</td>;
+/**
+ * A rule's cell. `cell` names its place in the stacked layout of a narrow
+ * editor (global.css, `.bp-rules`), where `label` — the column's header —
+ * is shown above the control.
+ */
+function Cell({ children, className, cell, label }: { children: ReactNode; className?: string; cell: string; label?: string }) {
+  return (
+    <td data-cell={cell} data-label={label} className={cn('px-2 py-1.5 align-middle', className)}>
+      {children}
+    </td>
+  );
 }
 
 function PriorityInput({ rule, kind, owner, disabled, onCommit }: {
@@ -304,12 +313,12 @@ function RuleRow({
       tabIndex={highlighted ? -1 : undefined}
     >
       {kind === 'nacl' || kind === 'nsg' ? (
-        <Cell className="w-16">
+        <Cell className="w-16" cell="priority" label={kind === 'nacl' ? m.ruleNo : m.priority}>
           <PriorityInput rule={rule} kind={kind} owner={node} disabled={readOnly} onCommit={(priority) => update({ priority })} />
         </Cell>
       ) : null}
       {kind !== 'sg' && kind !== 'firewall' ? (
-        <Cell className="w-20">
+        <Cell className="w-28" cell="action" label={m.action}>
           <select
             aria-label={m.action}
             value={draft.action}
@@ -323,7 +332,7 @@ function RuleRow({
           </select>
         </Cell>
       ) : null}
-      <Cell className="w-36">
+      <Cell className="w-36" cell="service" label={m.service}>
         <select
           aria-label={m.service}
           value={presetOf(draft)}
@@ -342,7 +351,7 @@ function RuleRow({
           <option value="custom">{m.custom}</option>
         </select>
       </Cell>
-      <Cell className="w-20">
+      <Cell className="w-24" cell="protocol" label={m.protocol}>
         <select
           aria-label={m.protocol}
           value={draft.protocol}
@@ -360,7 +369,7 @@ function RuleRow({
           <option value="all">{m.allProtocols}</option>
         </select>
       </Cell>
-      <Cell className="w-24">
+      <Cell className="w-24" cell="ports" label={m.ports_}>
         <input
           aria-label={m.portRange}
           value={noPorts ? '' : ports}
@@ -377,7 +386,7 @@ function RuleRow({
         />
       </Cell>
       {kind !== 'firewall' ? (
-        <Cell className="min-w-[160px]">
+        <Cell className="min-w-[160px]" cell="peer" label={rule.direction === 'inbound' ? m.source : m.destination}>
           <PeerEditor
             kind={kind}
             peers={draft.peers}
@@ -390,7 +399,7 @@ function RuleRow({
         </Cell>
       ) : null}
       {kind === 'sg' || kind === 'nsg' ? (
-        <Cell className="min-w-[140px]">
+        <Cell className="min-w-[140px]" cell="name" label={kind === 'nsg' ? m.name : m.description}>
           <input
             aria-label={kind === 'nsg' ? m.name : m.description}
             value={description}
@@ -408,14 +417,14 @@ function RuleRow({
           />
         </Cell>
       ) : null}
-      <Cell className="w-8">
+      <Cell className="w-8" cell="risk">
         {risk ? (
           <span title={risk.title} className="flex h-6 w-6 items-center justify-center rounded-full" style={{ color: SEVERITY_COLORS[risk.severity], background: `color-mix(in srgb, ${SEVERITY_COLORS[risk.severity]} 14%, transparent)` }}>
             <AlertTriangle className="h-3.5 w-3.5" aria-label={risk.title} />
           </span>
         ) : null}
       </Cell>
-      <Cell className="w-10 whitespace-nowrap text-right">
+      <Cell className="w-10 whitespace-nowrap text-right" cell="actions">
         {readOnly ? (
           <button
             type="button"
@@ -539,6 +548,28 @@ function FirewallSettings({ node, apply }: { node: ResourceNode; apply(ops: Op[]
 
 // ------------------------------------------------------------ editor
 
+/** Below this width (px) a kind's table stacks its rules as cards: the widths of its columns (RuleRow). */
+const STACK_BELOW: Record<OwnerKind, number> = { nsg: 890, nacl: 750, sg: 712, firewall: 410 };
+
+/** Is the table's box too narrow for this kind's columns? */
+function useStacked(ref: RefObject<HTMLElement | null>, kind: OwnerKind | undefined): boolean {
+  const [stacked, setStacked] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !kind) return;
+    const check = () => {
+      const style = getComputedStyle(el);
+      const width = el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      setStacked(width < STACK_BELOW[kind]);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref, kind]);
+  return stacked;
+}
+
 function Notice({ tone = 'info', children }: { tone?: 'info' | 'warn'; children: ReactNode }) {
   return (
     <p
@@ -569,6 +600,7 @@ export function RulesEditor() {
   const [highlight, setHighlight] = useState<string | null>(null);
   const focused = useRef<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+  const stacked = useStacked(tableRef, kind);
 
   // opened for one rule (a step of an access path): its direction, its row
   useEffect(() => {
@@ -644,7 +676,8 @@ export function RulesEditor() {
   return (
     <Modal
       open
-      wide
+      // priority and action columns: the room for the table on a laptop
+      wide={kind === 'nsg' || kind === 'nacl' ? 'xl' : true}
       label={m.rulesFor(node.name)}
       onClose={() => openRules(null)}
       title={
@@ -705,7 +738,12 @@ export function RulesEditor() {
             <Plus className="h-3.5 w-3.5" /> {m.addRule}
           </button>
         </div>
-        <div ref={tableRef} className="min-h-0 flex-1 overflow-auto px-5 pb-5 pt-3">
+        {/* too narrow for the table (a phone, an NSG's nine columns at 768 px): each rule stacks as a card */}
+        <div
+          ref={tableRef}
+          data-stacked={stacked || undefined}
+          className="bp-rules min-h-0 flex-1 overflow-auto px-5 pb-5 pt-3 max-sm:px-4"
+        >
           {shown.length === 0 ? (
             <div className="rounded-[12px] border border-dashed px-4 py-8 text-center text-[12.5px] text-muted">
               {hidden.length
