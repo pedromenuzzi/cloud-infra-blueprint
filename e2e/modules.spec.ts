@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { strToU8, zipSync } from 'fflate';
 import { expect, test, type Page } from '@playwright/test';
+import { encodeShare } from '../src/lib/share';
 import { canvasStats, openSeedProject, SEED_PROJECT, storedProject } from './helpers';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -278,6 +279,19 @@ test('Add module… writes a Registry module wired to the network, in one undo s
   await page.keyboard.press('Control+z');
   await expect(node(page, 'module.eks')).toHaveCount(0);
   await expect.poll(async () => (await storedProject(page, SEED_PROJECT))!.files['main.tf']).toBe(before);
+});
+
+test('a view link carries the child module: its node, its inspector read-only, and it opens', async ({ page }) => {
+  const files = { 'main.tf': ROOT, ...Object.fromEntries(Object.entries(NETWORK).map(([f, t]) => [`modules/network/${f}`, t])) };
+  await page.goto(`/#view=${encodeShare({ name: 'stack', files })}`);
+  await expect(node(page, 'module.network')).toBeVisible({ timeout: 15_000 });
+  await select(page, 'module.network');
+  const inspector = page.getByRole('complementary', { name: 'Module inspector' });
+  await expect(inspector).toContainText('Read-only view — make a copy to edit.');
+  await expect(inspector.getByRole('button', { name: 'Remove input cidr' })).toBeDisabled();
+  await expect(inspector.getByRole('button', { name: 'Delete module' })).toHaveCount(0);
+  await inspector.getByRole('button', { name: 'Open module' }).first().click();
+  await expect(page.getByTestId('module-view').locator('.react-flow__node[data-id="aws_vpc.this"]')).toBeVisible();
 });
 
 test('in Portuguese: the import note, the inspector, the opened module and the dialog', async ({ page }) => {

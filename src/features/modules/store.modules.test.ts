@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createProject } from '@/lib/storage';
 import { orderedFiles, useEditor } from '@/features/editor/store';
+import { computeTidyOps } from '@/features/editor/tidy';
+import { withModuleNodes } from '@/ir/modules';
+import { isContainerType } from '@/resources/registry';
 
 const answer = vi.hoisted(() => ({ ok: true, asked: [] as Array<{ title: string; body?: string }> }));
 vi.mock('@/components/Confirm', () => ({
@@ -130,5 +133,26 @@ describe('module calls in the editor', () => {
       'module.net: "cidr" isn\'t an input of modules/net (no variable "cidr")',
       'aws_instance.web: "subnet_id" reads output "subnet_id", which module.net doesn\'t have',
     ]);
+  });
+});
+
+describe('Auto-arrange with module calls', () => {
+  it('places them like resources that hold nothing, clear of everything else, in one undo step', { timeout: 20_000 }, async () => {
+    vi.useRealTimers(); // ELK schedules its own work
+    const { ir, edges } = useEditor.getState();
+    const ops = await computeTidyOps(withModuleNodes(ir), edges, isContainerType);
+    vi.useFakeTimers();
+    const moves = new Map(ops.flatMap((op) => (op.kind === 'move_node' ? [[op.nodeId, op.position] as const] : [])));
+    expect([...moves.keys()].sort()).toEqual(['aws_instance.web', 'module.bucket', 'module.net']);
+    const boxes = [...moves.values()].map((p) => ({ x: p.x, y: p.y, w: 208, h: 76 }));
+    for (const a of boxes) {
+      for (const b of boxes) {
+        if (a === b) continue;
+        expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+      }
+    }
+    useEditor.getState().applyCanvasOps(ops);
+    expect(useEditor.getState().files['main.tf']).toMatch(/# @blueprint:pos=\d+,\d+\nmodule "net"/);
+    expect(useEditor.getState().past).toHaveLength(1);
   });
 });
