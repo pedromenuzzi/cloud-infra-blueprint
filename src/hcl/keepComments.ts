@@ -91,15 +91,15 @@ const lineEnd = (text: string, from: number) => {
 function lex(text: string, onCode: (start: number, end: number) => void, onComment?: (c: Comment) => void): boolean {
   for (let i = 0; i < text.length; ) {
     const c = text[i];
+    const heredoc = c === '<' && text[i + 1] === '<' ? heredocEnd(text, i) : -1;
     if (c === '"') {
       const end = stringEnd(text, i);
       if (end === -1) return false;
       onCode(i, end);
       i = end;
-    } else if (c === '<' && text[i + 1] === '<' && heredocEnd(text, i) !== -1) {
-      const end = heredocEnd(text, i);
-      onCode(i, end);
-      i = end;
+    } else if (heredoc !== -1) {
+      onCode(i, heredoc);
+      i = heredoc;
     } else if (c === '#' || (c === '/' && text[i + 1] === '/')) {
       const end = lineEnd(text, i);
       onComment?.({ start: i, text: text.slice(i, end).trimEnd() });
