@@ -6,6 +6,7 @@
 import type { ResourceDef } from '@/resources/types';
 import type { Diagnostic, IR } from '../types';
 import { cidrChecks } from './cidr';
+import { instanceChecks } from './instances';
 import { nameChecks } from './names';
 import { networkModel } from './network';
 import { regionChecks } from './regions';
@@ -37,5 +38,6 @@ export function runChecks(
   nameChecks(ctx);
   regionChecks(ctx);
   wiringChecks(ctx);
+  instanceChecks(ctx);
   return out;
 }

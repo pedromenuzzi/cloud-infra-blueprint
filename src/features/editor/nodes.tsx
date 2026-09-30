@@ -24,6 +24,8 @@ import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
 import { canvasMessages } from './CanvasPane.messages';
 import { useDropTone } from './dropHint';
+import { RepeatBadge, RepeatStack } from './RepeatBadge';
+import type { RepeatLabel } from './repeatLabel';
 import { useEditor } from './store';
 
 /** security-lens decorations (undefined when the lens is off) */
@@ -87,6 +89,8 @@ function SecurityChip({ security }: { security: NodeSecurity }) {
 
 export interface ResourceNodeData extends Record<string, unknown> {
   security?: NodeSecurity;
+  /** `count` / `for_each`: drawn as a stack with a badge */
+  repeat?: RepeatLabel;
   title: string;
   subtitle: string;
   typeLabel: string;
@@ -98,6 +102,7 @@ export interface ResourceNodeData extends Record<string, unknown> {
 
 export interface ContainerNodeData extends Record<string, unknown> {
   security?: NodeSecurity;
+  repeat?: RepeatLabel;
   title: string;
   subtitle?: string;
   typeLabel: string;
@@ -147,7 +152,19 @@ function WarnBadge() {
   );
 }
 
-export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>) {
+/** a repeated resource (`count` / `for_each`) is one card with the others stacked behind it */
+export function ResourceNodeView(props: NodeProps<ResourceFlowNode>) {
+  const { data } = props;
+  if (!data.repeat?.stack) return <ResourceCard {...props} />;
+  return (
+    <>
+      <RepeatStack dim={data.security?.dim} vars={catVars(data.category)} />
+      <ResourceCard {...props} />
+    </>
+  );
+}
+
+function ResourceCard({ data, selected }: NodeProps<ResourceFlowNode>) {
   return (
     <div
       style={catVars(data.category)}
@@ -173,13 +190,26 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
         <div className="truncate text-[11px] leading-snug text-muted">{data.subtitle}</div>
       </div>
       {data.warn ? <WarnBadge /> : null}
+      {data.repeat ? <RepeatBadge repeat={data.repeat} /> : null}
       {data.security ? <SecurityChip security={data.security} /> : null}
       <Handle type="source" position={Position.Right} />
     </div>
   );
 }
 
-export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlowNode>) {
+/** a repeated container (subnets per AZ): its other instances peek out behind it */
+export function ContainerNodeView(props: NodeProps<ContainerFlowNode>) {
+  const { data } = props;
+  if (!data.repeat?.stack) return <ContainerCard {...props} />;
+  return (
+    <>
+      <RepeatStack container dim={data.security?.dim} vars={catVars(data.category)} />
+      <ContainerCard {...props} />
+    </>
+  );
+}
+
+function ContainerCard({ id, data, selected }: NodeProps<ContainerFlowNode>) {
   const m = useMessages(canvasMessages);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
   const readOnly = useEditor((s) => s.readOnly);
@@ -241,6 +271,7 @@ export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlo
         <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
           {data.typeLabel}
         </span>
+        {data.repeat ? <RepeatBadge repeat={data.repeat} inline /> : null}
         {data.subtitle ? (
           <span className="truncate rounded-[5px] bg-surface-1/70 px-1.5 py-px font-mono text-[10.5px] text-muted ring-1 ring-border">
             {data.subtitle}

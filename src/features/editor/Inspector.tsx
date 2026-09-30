@@ -20,11 +20,13 @@ import { AccessPaths } from '@/features/security/AccessPaths';
 import { ComplianceBadges } from '@/features/security/ComplianceBadges';
 import { SEVERITY_TEXT, useAudit, useSecurityUi } from '@/features/security/securityStore';
 import { OWNER_TYPES, peerLabel, portLabel, portText, serviceName } from '@/security/model';
+import { appliesToEach } from '@/security/instances';
 import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
-import { exprPreview, lit, literalString, ref } from '@/ir/expr';
+import { exprMentions, exprPreview, lit, literalString, pathTargets, ref } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
+import { appendReference, instanceRef, isListValued } from '@/ir/repeat';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import { cn, tfName } from '@/lib/utils';
@@ -39,6 +41,9 @@ import { looksLikeTraversal, removeConnectionOps } from './connections';
 import { inspectorMessages } from './Inspector.messages';
 import { layoutMessages } from './layout.messages';
 import { MultiSelectPanel } from './MultiSelectPanel';
+import { isHistoryMove, keepStateFor, useKeepState } from './movedSession';
+import { renameOps } from './repeatOps';
+import { KeepStateToggle, RepeatSection } from './RepeatSection';
 import { useLayout } from './layoutStore';
 import { SchemaFields } from './SchemaFields';
 import { orderedFiles, useEditor } from './store';
@@ -100,9 +105,7 @@ function StringOrRefField({ node, field }: { node: ResourceNode; field: FieldDef
   if (field.refTo) {
     const candidates = ir.resources.filter((r) => field.refTo!.includes(r.type));
     const attr = field.refAttr ?? 'id';
-    const matched = candidates.find(
-      (c) => expr?.kind === 'ref' && expr.path.startsWith(`${c.id}.`),
-    );
+    const matched = candidates.find((c) => expr?.kind === 'ref' && pathTargets(expr.path, c.id));
     return (
       <Select
         value={matched ? matched.id : currentText ? '__custom' : ''}
@@ -118,7 +121,8 @@ function StringOrRefField({ node, field }: { node: ResourceNode; field: FieldDef
                   kind: 'set_arg',
                   nodeId: node.id,
                   field: field.name,
-                  value: ref(`${v}.${attr}`),
+                  // one instance of a repeated target: `aws_subnet.private[0].id` (ir/repeat.ts)
+                  value: instanceRef(candidates.find((c) => c.id === v)!, attr, { ir, from: node }),
                 };
           if (op) applyOps([op]);
         }}
@@ -251,8 +255,9 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
   const ir = useEditor((s) => s.ir);
   const [draft, setDraft] = useState('');
   const expr = node.args[field.name];
-  if (expr && expr.kind !== 'list') return <RawValueNote expr={expr} />;
-  const items = expr?.kind === 'list' ? expr.items : [];
+  // a splat (`aws_subnet.private[*].id`) is the whole list: shown as one item
+  if (expr && expr.kind !== 'list' && !isListValued(expr)) return <RawValueNote expr={expr} />;
+  const items = expr?.kind === 'list' ? expr.items : expr ? [expr] : [];
 
   const commit = (next: Expression[]) => {
     applyOps([
@@ -261,13 +266,19 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
         : { kind: 'set_arg', nodeId: node.id, field: field.name, value: { kind: 'list', items: next } },
     ]);
   };
+  /** add a value; every instance of a repeated resource is concatenated, not nested */
+  const add = (value: Expression) => {
+    const next = appendReference(expr, value);
+    if (next) applyOps([{ kind: 'set_arg', nodeId: node.id, field: field.name, value: next }]);
+  };
+  const addTyped = (value: Expression) => (expr && expr.kind !== 'list' ? add(value) : commit([...items, value]));
 
   const attr = field.refAttr ?? 'id';
   const candidates = field.refTo
     ? ir.resources.filter(
         (r) =>
           field.refTo!.includes(r.type) &&
-          !items.some((i) => i.kind === 'ref' && i.path.startsWith(`${r.id}.`)),
+          !items.some((i) => (i.kind === 'ref' || i.kind === 'raw') && exprMentions(i, r.id)),
       )
     : [];
 
@@ -294,7 +305,8 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
           <Select
             value=""
             onChange={(e) => {
-              if (e.target.value) commit([...items, ref(`${e.target.value}.${attr}`)]);
+              const target = candidates.find((c) => c.id === e.target.value);
+              if (target) add(instanceRef(target, attr, { ir, from: node, all: true }));
             }}
           >
             <option value="">{m.addReference}</option>
@@ -316,10 +328,7 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && draft.trim()) {
-                commit([
-                  ...items,
-                  looksLikeTraversal(draft.trim(), ir) ? ref(draft.trim()) : lit(draft.trim()),
-                ]);
+                addTyped(looksLikeTraversal(draft.trim(), ir) ? ref(draft.trim()) : lit(draft.trim()));
                 setDraft('');
               }
             }}
@@ -331,10 +340,7 @@ function ListField({ node, field }: { node: ResourceNode; field: FieldDef }) {
             aria-label={m.addValue}
             onClick={() => {
               if (!draft.trim()) return;
-              commit([
-                ...items,
-                looksLikeTraversal(draft.trim(), ir) ? ref(draft.trim()) : lit(draft.trim()),
-              ]);
+              addTyped(looksLikeTraversal(draft.trim(), ir) ? ref(draft.trim()) : lit(draft.trim()));
               setDraft('');
             }}
           >
@@ -473,6 +479,9 @@ function ExposureCard({ node }: { node: ResourceNode }) {
   const exposure = audit.topology.exposure.get(node.id);
   const access = audit.topology.access.get(node.id);
   const findings = audit.findings.filter((f) => f.resource === node.id);
+  // a repeated workload: what's said here holds for every instance
+  const ir = useEditor((s) => s.ir);
+  const each = appliesToEach(node, ir, audit.locale);
   if (!exposure && findings.length === 0) return null;
   // the internet's way in is spelled out per port below
   const inbound = audit.topology.flows.filter((f) => f.to === node.id && !(f.from === 'internet' && access?.open.length));
@@ -498,6 +507,7 @@ function ExposureCard({ node }: { node: ResourceNode }) {
         </div>
       ) : null}
       {exposure?.reason ? <p className="mt-1 text-[11px] leading-snug text-muted">{exposure.reason}</p> : null}
+      {each ? <p className="mt-1 text-[11px] leading-snug text-muted">{each}</p> : null}
       {inbound.length > 0 ? (
         <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted">
           {inbound.map((f) => (
@@ -682,7 +692,8 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
   const applyOps = useOps();
   const ir = useEditor((s) => s.ir);
   const def = getDef(node.type);
-  const knownFields = useMemo(() => new Set(def?.fields.map((f) => f.name) ?? []), [def]);
+  // count / for_each have their own section (RepeatSection)
+  const knownFields = useMemo(() => new Set([...(def?.fields.map((f) => f.name) ?? []), 'count', 'for_each']), [def]);
   const extraArgs = Object.keys(node.args).filter((k) => !knownFields.has(k) && !/[\s"]/.test(k));
 
   return (
@@ -704,11 +715,15 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
               e.target.value = node.name;
               return;
             }
-            applyOps([{ kind: 'rename_resource', nodeId: node.id, newName: next }], `${node.type}.${next}`);
+            // references follow; with the state kept, a `moved {}` block too (repeatOps.ts)
+            const keepState = keepStateFor(useKeepState.getState().byProject, useEditor.getState().projectId, ir);
+            applyOps(renameOps(ir, node, next, { keepState, isHistory: isHistoryMove }), `${node.type}.${next}`);
           }}
           onKeyDown={editKeys(node.name)}
         />
       </Field>
+      <KeepStateToggle className="-mt-2" />
+      <RepeatSection node={node} />
 
       {def?.fields.map((f) => <FieldRow key={f.name} node={node} field={f} />)}
 

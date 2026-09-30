@@ -4,8 +4,10 @@
  * HCL text must be re-emitted (the minimal-patch working set). Untouched
  * blocks keep their object identity, which is how the patcher skips them.
  */
-import { renameInHcl, renameInRecord } from './expr';
-import type { CanvasPosition, Expression, IR, ResourceNode } from './types';
+import { isStateBlockText } from '@/hcl/moved';
+import { renameInExpression, renameInHcl, renameInRecord } from './expr';
+import { rekeyInExpression, rekeyInHcl, rekeyInRecord, type Rekey } from './repeat';
+import type { CanvasPosition, Expression, IR, RawBlock, ResourceNode } from './types';
 import { resourceAddress } from './types';
 
 export type Op =
@@ -14,7 +16,19 @@ export type Op =
   | { kind: 'set_arg'; nodeId: string; field: string; value: Expression }
   | { kind: 'unset_arg'; nodeId: string; field: string }
   | { kind: 'rename_resource'; nodeId: string; newName: string }
-  | { kind: 'move_node'; nodeId: string; position: CanvasPosition };
+  | { kind: 'move_node'; nodeId: string; position: CanvasPosition }
+  /** a verbatim top-level block (`moved {}`), written right after resource `after` when given, else at the end of its file */
+  | { kind: 'add_extra'; block: RawBlock; after?: string }
+  | { kind: 'remove_extra'; blockId: string }
+  | { kind: 'set_extra'; blockId: string; text: string }
+  /** references to `address` change instance key (repetition added / removed), see repeat.ts */
+  | { kind: 'rekey_refs'; address: string; rekey: Rekey };
+
+/** how a value's text follows a rename / re-key — the patcher rewrites those tokens in place */
+export interface TextRewrite {
+  expr(e: Expression): Expression;
+  hcl(text: string): string;
+}
 
 export interface ApplyResult {
   ir: IR;
@@ -24,6 +38,10 @@ export interface ApplyResult {
   removed: Set<string>;
   /** rename map: old id → new id */
   renamed: Map<string, string>;
+  /** renames and re-keys, in op order */
+  rewrites: TextRewrite[];
+  /** new extras placed after a resource: extra id → resource id */
+  placements: Map<string, string>;
 }
 
 export function applyOps(ir: IR, ops: Op[]): ApplyResult {
@@ -38,9 +56,33 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
   const touched = new Set<string>();
   const removed = new Set<string>();
   const renamed = new Map<string, string>();
+  const rewrites: TextRewrite[] = [];
+  const placements = new Map<string, string>();
 
   // Duplicate addresses are a Terraform error (the parser flags them); ops act on the first.
   const findIndex = (id: string) => next.resources.findIndex((r) => r.id === id);
+
+  /** rewrite references in every block; `moved` / `removed` blocks name state and are left alone */
+  const rewriteAll = (rewrite: TextRewrite, inRecord: (r: Record<string, Expression>) => Record<string, Expression>) => {
+    rewrites.push(rewrite);
+    const retarget = <T extends { id: string; args: Record<string, Expression> }>(b: T): T => {
+      const args = inRecord(b.args);
+      if (args === b.args) return b;
+      touched.add(b.id);
+      return { ...b, args };
+    };
+    next.resources = next.resources.map(retarget);
+    next.variables = next.variables.map(retarget);
+    next.outputs = next.outputs.map(retarget);
+    next.providers = next.providers.map(retarget);
+    next.extras = next.extras.map((b) => {
+      if (isStateBlockText(b.text)) return b;
+      const text = rewrite.hcl(b.text);
+      if (text === b.text) return b;
+      touched.add(b.id);
+      return { ...b, text };
+    });
+  };
 
   for (const op of ops) {
     switch (op.kind) {
@@ -93,6 +135,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
 
         const renamedNode: ResourceNode = { ...node, id: to, name: op.newName };
         renamed.set(from, to);
+        rewrites.push({ expr: (e) => renameInExpression(e, from, to), hcl: (t) => renameInHcl(t, from, to) });
         touched.delete(from);
         touched.add(to);
 
@@ -109,6 +152,8 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
         next.outputs = next.outputs.map(retarget);
         next.providers = next.providers.map(retarget);
         next.extras = next.extras.map((b) => {
+          // `moved` / `removed` name addresses in the state: hcl/moved.ts decides about those
+          if (isStateBlockText(b.text)) return b;
           const text = renameInHcl(b.text, from, to);
           if (text === b.text) return b;
           touched.add(b.id);
@@ -116,8 +161,36 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
         });
         break;
       }
+      case 'rekey_refs': {
+        const { address, rekey } = op;
+        rewriteAll(
+          { expr: (e) => rekeyInExpression(e, address, rekey), hcl: (t) => rekeyInHcl(t, address, rekey) },
+          (r) => rekeyInRecord(r, address, rekey),
+        );
+        break;
+      }
+      case 'add_extra': {
+        next.extras.push(op.block);
+        touched.add(op.block.id);
+        if (op.after) placements.set(op.block.id, op.after);
+        break;
+      }
+      case 'remove_extra': {
+        const i = next.extras.findIndex((b) => b.id === op.blockId);
+        if (i === -1) break;
+        next.extras.splice(i, 1);
+        touched.delete(op.blockId);
+        break;
+      }
+      case 'set_extra': {
+        const i = next.extras.findIndex((b) => b.id === op.blockId);
+        if (i === -1 || next.extras[i].text === op.text) break;
+        next.extras[i] = { ...next.extras[i], text: op.text };
+        touched.add(op.blockId);
+        break;
+      }
     }
   }
 
-  return { ir: next, touched, removed, renamed };
+  return { ir: next, touched, removed, renamed, rewrites, placements };
 }

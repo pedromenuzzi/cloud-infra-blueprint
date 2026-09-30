@@ -9,13 +9,14 @@
  */
 import type { Locale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
-import { block, collectRefs, lit, ref, refTargetAddress } from '@/ir/expr';
+import { block, collectRefs, lit, refTargetAddress } from '@/ir/expr';
 import { applyOps, type Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { resourceAddress } from '@/ir/types';
 import { auditMessages, type AuditMessages, type RiskWhat, type RuleTail } from './audit.messages';
 import { controlsFor, type Control, type FindingFacts } from './compliance';
 import { removeElementsOps, restrictRuleOps } from './edit';
+import { chainedTarget, perInstanceArgs, subjectName } from './instances';
 import {
   blocksOf,
   extractRules,
@@ -230,14 +231,14 @@ function mentionedOutsideResources(ir: IR): Set<string> {
   return out;
 }
 
-function imdsFinding(r: ResourceNode, what: 'instance' | 'template', m: AuditMessages): Finding | null {
+function imdsFinding(r: ResourceNode, what: 'instance' | 'template', m: AuditMessages, label?: string): Finding | null {
   const opts = blocksOf(r.args.metadata_options)[0];
   const tokens = opts?.http_tokens;
   const endpoint = opts?.http_endpoint;
   if (isExpr(tokens) || isExpr(endpoint)) return null;
   if (endpoint?.kind === 'literal' && endpoint.value === 'disabled') return null;
   if (tokens?.kind === 'literal' && tokens.value === 'required') return null;
-  const name = r.id.split('.').slice(1).join('.');
+  const name = label ?? r.id.split('.').slice(1).join('.');
   return {
     id: `imdsv2:${r.id}`,
     severity: 'medium',
@@ -291,6 +292,8 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
   const risks = new Map<string, RuleRisk>();
   const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
   const name = (id: string) => id.split('.').slice(1).join('.') || id;
+  /** what a finding is about: a repeated resource is each of its instances (said once) */
+  const subject = (id: string) => subjectName(name(id), byId.get(id), ir, locale);
   const internetFlows = topology.flows.filter((f) => f.from === 'internet');
   /** what the compliance table needs to know about rule findings, by finding id */
   const ruleFacts = new Map<string, Partial<FindingFacts>>();
@@ -339,7 +342,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
         severity: risk.severity,
         ...say((x) => x.ruleTitle(risk.what, v6only)),
         alert: m.ruleAlert(risk.what, v6only),
-        detail: m.ruleDetail(`${name(owner)}${via}`, what, sources, tail),
+        detail: m.ruleDetail(`${subject(owner)}${via}`, what, sources, tail),
         resource: owner,
         related: reachable,
         ruleId: first.id,
@@ -360,7 +363,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
           id: `nacl-open:${owner}`,
           severity: 'low',
           ...say((x) => x.naclOpenTitle),
-          detail: m.naclOpenDetail(name(owner)),
+          detail: m.naclOpenDetail(subject(owner)),
           resource: owner,
           related: [],
         });
@@ -374,7 +377,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
         id: `unverified:${owner}`,
         severity: 'low',
         ...say((x) => x.unverifiedTitle),
-        detail: m.unverifiedDetail(name(owner), hidden.map((h) => h.reason).join(', ')),
+        detail: m.unverifiedDetail(subject(owner), hidden.map((h) => h.reason).join(', ')),
         resource: owner,
         related: [],
         unverified: true,
@@ -385,7 +388,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
   // 2. resource hardening
   const setArg = (id: string, field: string, value: Expression): Op[] => [{ kind: 'set_arg', nodeId: id, field, value }];
   const bucketsBlocked = new Set(
-    ir.resources.filter((r) => r.type === 'aws_s3_bucket_public_access_block').map((r) => refOf(r.args.bucket)),
+    ir.resources.filter((r) => r.type === 'aws_s3_bucket_public_access_block').map((r) => chainedTarget(r, 'bucket') ?? refOf(r.args.bucket)),
   );
   const accountBlock = ir.resources.some(
     (r) =>
@@ -398,7 +401,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
         id: `rds-public:${r.id}`,
         severity: 'high',
         ...say((x) => x.rdsPublicTitle),
-        detail: m.rdsPublicDetail(name(r.id)),
+        detail: m.rdsPublicDetail(subject(r.id)),
         resource: r.id,
         related: [],
         fix: { label: m.rdsPublicFix, ops: () => setArg(r.id, 'publicly_accessible', lit(false)) },
@@ -410,7 +413,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
           id: `rds-encryption:${r.id}`,
           severity: 'medium',
           ...say((x) => x.rdsEncryptionTitle),
-          detail: m.rdsEncryptionDetail(name(r.id)),
+          detail: m.rdsEncryptionDetail(subject(r.id)),
           resource: r.id,
           related: [],
           fix: { label: m.rdsEncryptionFix, ops: () => setArg(r.id, 'storage_encrypted', lit(true)) },
@@ -419,11 +422,11 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
     }
     // instances launched from a template get their metadata options from it (checked below)
     if (r.type === 'aws_instance' && !(r.args.launch_template && !r.args.metadata_options)) {
-      const f = imdsFinding(r, 'instance', m);
+      const f = imdsFinding(r, 'instance', m, subject(r.id));
       if (f) findings.push(f);
     }
     if (r.type === 'aws_launch_template') {
-      const f = imdsFinding(r, 'template', m);
+      const f = imdsFinding(r, 'template', m, subject(r.id));
       if (f) findings.push(f);
     }
     if (r.type === 'aws_lb' && lit_(r, 'internal') !== true) {
@@ -436,7 +439,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
           id: `lb-http:${r.id}`,
           severity: 'low',
           ...say((x) => x.lbHttpTitle),
-          detail: m.lbHttpDetail(name(r.id)),
+          detail: m.lbHttpDetail(subject(r.id)),
           resource: r.id,
           related: listeners.map((l) => l.id),
         });
@@ -449,7 +452,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
       id: `s3-public:${b.id}`,
       severity: 'medium',
       ...say((x) => x.s3PublicTitle),
-      detail: m.s3PublicDetail(name(b.id)),
+      detail: m.s3PublicDetail(subject(b.id)),
       resource: b.id,
       related: [],
       fix: {
@@ -468,7 +471,8 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
                 type: 'aws_s3_bucket_public_access_block',
                 name: n,
                 args: {
-                  bucket: ref(`${b.id}.id`),
+                  // a repeated bucket gets a block per instance (for_each / count chained on it)
+                  ...perInstanceArgs(b, 'bucket', 'id'),
                   block_public_acls: lit(true),
                   block_public_policy: lit(true),
                   ignore_public_acls: lit(true),
@@ -493,7 +497,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
       id: `default-sg:${r.id}`,
       severity: 'low',
       ...say((x) => x.defaultSgTitle),
-      detail: m.defaultSgDetail(name(r.id), count),
+      detail: m.defaultSgDetail(subject(r.id), count),
       resource: r.id,
       related: [],
     });
@@ -511,7 +515,7 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
       id: `unused:${r.id}`,
       severity: 'low',
       ...say((x) => x.unusedTitle),
-      detail: m.unusedDetail(name(r.id)),
+      detail: m.unusedDetail(subject(r.id)),
       resource: r.id,
       related: [],
     });

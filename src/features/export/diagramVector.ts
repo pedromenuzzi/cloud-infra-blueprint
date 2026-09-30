@@ -64,6 +64,9 @@ export interface DiagramNode {
   glyph?: string;
   warn?: boolean;
   security?: NodeSecurity;
+  /** `count` / `for_each` badge ("×3"), and whether the other instances are drawn stacked behind, like the canvas */
+  repeat?: string;
+  repeatStack?: boolean;
 }
 
 export interface DiagramEdge {
@@ -228,6 +231,18 @@ class Painter {
       this.page.save();
       this.page.setOpacity(0.38);
     }
+    if (n.repeat && n.repeatStack) {
+      // the other instances, stacked behind (RepeatStack on the canvas)
+      for (const [offset, opacity] of [[10, 0.55], [5, 0.85]] as const) {
+        this.page.rect(this.X(n.x + offset), this.Y(n.y + offset), this.S(n.w), this.S(n.h), {
+          fill: palette.node,
+          stroke: palette.nodeBorder,
+          lineWidth: this.S(1),
+          radius: this.S(12),
+          opacity,
+        });
+      }
+    }
     this.shadow(n.x, n.y, n.w, n.h, 12);
     if (!dim && (sec?.risk === 'critical' || sec?.risk === 'high')) {
       this.page.rect(this.X(n.x - 1), this.Y(n.y - 1), this.S(n.w + 2), this.S(n.h + 2), {
@@ -263,6 +278,12 @@ class Painter {
       this.text('!', cx, cy + 3.6, 10, '#ffffff', { font: 'bold', align: 'center' });
     }
     if (sec) this.securityChip(sec, n.x + 10, n.y + n.h + 10);
+    if (n.repeat) {
+      const label = fitText(n.repeat, 140, 'mono', 10);
+      const w = textWidth(label, 'mono', 10) + 12;
+      this.pill(n.x + 12, n.y - 8, w, 16, palette.node, 1, { color: cat.solid, opacity: 0.45 });
+      this.text(label, n.x + 18, n.y + 3.4, 10, cat.solid, { font: 'mono' });
+    }
     if (dim) this.page.restore();
   }
 
@@ -327,6 +348,7 @@ class Painter {
       this.text(label, end + 16, mid + 3.3, 9.5, color, { font: 'bold' });
     };
     if (n.security?.nacls) badge('NACL', '#ef4444', '#ef4444', 0.1);
+    if (n.repeat) badge(fitText(n.repeat, 120, 'bold', 9.5), cat.solid, cat.solid, 0.1);
     const words = messagesFor(docMessages, this.locale).subnetBadge;
     if (n.security?.subnet === 'public') badge(words.public.toUpperCase(), '#0284c7', '#0ea5e9', 0.14);
     if (n.security?.subnet === 'private') badge(words.private.toUpperCase(), '#059669', '#10b981', 0.14);

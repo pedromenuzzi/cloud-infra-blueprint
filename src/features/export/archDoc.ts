@@ -15,7 +15,9 @@ import type { CloudProvider, ProjectCost, ResourceCost } from '@/cost/types';
 import { currentLocale, type Locale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
 import { exprPreview, refTargetAddress } from '@/ir/expr';
+import { repeatOf } from '@/ir/repeat';
 import type { Expression, IR, IREdge, Provider, ResourceNode } from '@/ir/types';
+import { repeatLabel } from '@/features/editor/repeatLabel';
 import { providerOfSourceName } from '@/ir/types';
 import { fitText, splitToWidth, textWidth, wrapText, type PdfFont } from '@/lib/pdf/metrics';
 import { PAPER, PdfDocument, tint, type PdfColor, type PdfPage } from '@/lib/pdf/writer';
@@ -927,10 +929,12 @@ function* inventory(c: Cursor, input: ArchDocInput, locale: Locale): Generator<v
     rows.push({ cells: [], group: { label: categoryLabel(k, locale), color: categoryColor(k), note: String(list.length) } });
     for (const r of list) {
       const settings = keySettings(r, 6, locale);
+      // one row per block; a repeated one says how many: "web ×3", "web ×?"
+      const rep = repeatOf(r, ir);
       rows.push({
         cells: [
           [
-            { text: r.name, font: 'bold' },
+            { text: rep ? `${r.name} ${repeatLabel(rep, locale).text}` : r.name, font: 'bold' },
             { text: r.type, font: 'mono', size: 6.6, color: FAINT, url: docsUrl(r.type) },
           ],
           [

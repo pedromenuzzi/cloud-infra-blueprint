@@ -51,7 +51,9 @@ import { messagesFor, useMessages } from '@/i18n/messages';
 import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
+import { exprMentions } from '@/ir/expr';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
+import { repeatOf } from '@/ir/repeat';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
@@ -67,6 +69,7 @@ import { isCanvasDragging } from './canvasDrag';
 import { CanvasToolbar } from './CanvasToolbar';
 import { exportDiagramImage } from './exportImage';
 import { removeReferencesOps } from './connections';
+import { repeatLabel } from './repeatLabel';
 import { ProjectOverview } from './Inspector';
 import { floatingInspectorInset, useFloatingInspectorShown } from './inspectorPlacement';
 import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
@@ -189,17 +192,20 @@ function buildFlow(
     const container = isContainerType(r.type);
     const parent = r.parentId ? byId.get(r.parentId) : undefined;
     const name = def ? resourceName(r.type, locale) : r.type;
+    const rep = repeatOf(r, ir);
+    const repeat = rep ? repeatLabel(rep, locale) : undefined;
     const common = {
       id: r.id,
       position: { x: r.position?.x ?? 0, y: r.position?.y ?? 0 },
       parentId: r.parentId,
       domAttributes: { 'aria-roledescription': m.nodeRole },
-      ariaLabel: m.nodeLabel(
-        name,
-        r.name,
-        parent ? `${getDef(parent.type) ? resourceName(parent.type, locale) : parent.type} ${parent.name}` : null,
-        warned.has(r.id),
-      ),
+      ariaLabel:
+        m.nodeLabel(
+          name,
+          r.name,
+          parent ? `${getDef(parent.type) ? resourceName(parent.type, locale) : parent.type} ${parent.name}` : null,
+          warned.has(r.id),
+        ) + (repeat ? `, ${repeat.aria}` : ''),
     };
     if (container) {
       return {
@@ -214,6 +220,7 @@ function buildFlow(
           category: def?.category ?? 'network',
           warn: warned.has(r.id),
           security: lens?.get(r.id),
+          repeat,
         },
         width: r.position?.w ?? CONTAINER_MIN_W,
         height: r.position?.h ?? CONTAINER_MIN_H,
@@ -237,6 +244,7 @@ function buildFlow(
         category: def?.category ?? 'compute',
         warn: warned.has(r.id),
         security: lens?.get(r.id),
+        repeat,
       },
     } satisfies FlowNode;
   });
@@ -517,11 +525,12 @@ function CanvasInner() {
         } else {
           existing = from.args[rule.arg];
         }
-        const pointsAtTarget = (e: Expression | undefined) => e?.kind === 'ref' && e.path.startsWith(`${to.id}.`);
+        // `aws_subnet.a.id`, `aws_subnet.a[0].id`, `element(aws_subnet.a[*].id, count.index)`…
+        const pointsAtTarget = (e: Expression | undefined) => e !== undefined && (e.kind === 'ref' || e.kind === 'raw') && exprMentions(e, to.id);
         if (rule.mode === 'set' && pointsAtTarget(existing)) return 'connected';
         // appending to an expression we don't model (var.ids, concat(…)) would break its type
         if (rule.mode === 'append' && existing && existing.kind !== 'list' && existing.kind !== 'ref') return 'complex';
-        return connectionOp(from, to, rule) ?? 'connected';
+        return connectionOp(from, to, rule, useEditor.getState().ir) ?? 'connected';
       };
 
       const op = tryRule(source, target) ?? tryRule(target, source);
