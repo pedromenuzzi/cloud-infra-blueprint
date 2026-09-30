@@ -115,7 +115,7 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
       animate();
       state.applyCanvasOps(result.ops, nodeId);
       if (useEditor.getState().filesRevision === before) return;
-      showToast(result.message, result.hint ? 'warning' : 'success', { hint: result.hint ?? m.undoHint(MOD) });
+      showToast(result.message, result.hint ? 'warning' : 'success', { hint: result.hint ?? m.undoHint(MOD), note: result.note });
     },
     [animate],
   );

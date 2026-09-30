@@ -10,6 +10,8 @@ export interface ToastOptions {
   action?: { label: string; onClick(): void };
   /** a quieter second line, e.g. "Ctrl Z to undo" */
   hint?: string;
+  /** a line between the message and the hint: something still worth doing */
+  note?: string;
   /** ms before it goes away: 3200 by default, 8000 with an action */
   duration?: number;
 }
@@ -20,6 +22,7 @@ interface ToastItem {
   kind: ToastKind;
   action?: ToastOptions['action'];
   hint?: string;
+  note?: string;
 }
 
 interface ToastState {
@@ -40,8 +43,10 @@ export const useToasts = create<ToastState>((set, get) => {
     toasts: [],
     push(message, kind = 'info', options = {}) {
       const id = ++seq;
-      const { action, hint } = options;
-      set({ toasts: [...get().toasts, { id, message, kind, ...(action ? { action } : {}), ...(hint ? { hint } : {}) }] });
+      const { action, hint, note } = options;
+      set({
+        toasts: [...get().toasts, { id, message, kind, ...(action ? { action } : {}), ...(hint ? { hint } : {}), ...(note ? { note } : {}) }],
+      });
       schedule(id, options.duration ?? (action ? 8000 : 3200));
     },
     dismiss(id) {
@@ -104,10 +109,11 @@ export function ToastViewport() {
             )}
           >
             <Icon className="h-3.5 w-3.5 shrink-0" />
-            {t.hint ? (
+            {t.hint || t.note ? (
               <span className="min-w-0">
                 <span className="block">{t.message}</span>
-                <span className="block text-[11.5px] text-muted">{t.hint}</span>
+                {t.note ? <span className="mt-0.5 block text-[12px] text-foreground">{t.note}</span> : null}
+                {t.hint ? <span className="block text-[11.5px] text-muted">{t.hint}</span> : null}
               </span>
             ) : (
               t.message

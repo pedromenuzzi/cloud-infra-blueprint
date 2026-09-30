@@ -42,6 +42,11 @@ export const serviceMessages = defineMessages(
       associatePublicIp: 'associate_public_ip_address gives it a public IPv4',
       subnetPublicIp: (subnet: string) => `Subnet ${subnet} gives it a public IPv4 (map_public_ip_on_launch)`,
       aurora: 'Aurora is billed per cluster instance and I/O — not in the price table',
+      auroraStandard: (storage: string, io: string) =>
+        `Billed by use: ${storage} per GB-month of storage and ${io} per million I/O requests (Aurora Standard).`,
+      auroraIoOptimized: (storage: string) => `Billed by use: ${storage} per GB-month of storage, I/O included (Aurora I/O-Optimized).`,
+      auroraInstances: 'Its instances (aws_rds_cluster_instance) are billed per hour on their own',
+      auroraServerless: 'Serverless capacity (ACUs) is billed per hour of use on top',
       deployment: (engine: string, multi: boolean) => `${engine}, ${multi ? 'Multi-AZ (a standby in a second zone)' : 'Single-AZ'}`,
       noStorage: 'No literal allocated_storage — storage not included',
       storageType: 'Storage type',
@@ -227,6 +232,12 @@ export const serviceMessages = defineMessages(
       associatePublicIp: 'associate_public_ip_address atribui um IPv4 público',
       subnetPublicIp: (subnet: string) => `A sub-rede ${subnet} atribui um IPv4 público (map_public_ip_on_launch)`,
       aurora: 'O Aurora é cobrado por instância do cluster e por E/S — fora da tabela de preços',
+      auroraStandard: (storage: string, io: string) =>
+        `Cobrado pelo uso: ${storage} por GB-mês de armazenamento e ${io} por milhão de requisições de E/S (Aurora Standard).`,
+      auroraIoOptimized: (storage: string) =>
+        `Cobrado pelo uso: ${storage} por GB-mês de armazenamento, E/S incluída (Aurora I/O-Optimized).`,
+      auroraInstances: 'As instâncias (aws_rds_cluster_instance) são cobradas por hora, à parte',
+      auroraServerless: 'A capacidade sem servidor (ACUs) é cobrada por hora de uso, à parte',
       deployment: (engine: string, multi: boolean) =>
         `${engine}, ${multi ? 'Multi-AZ (uma réplica de espera em uma segunda zona)' : 'Single-AZ'}`,
       noStorage: 'Sem allocated_storage literal — armazenamento não incluído',

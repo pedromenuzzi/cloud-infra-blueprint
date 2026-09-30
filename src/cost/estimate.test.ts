@@ -209,7 +209,7 @@ describe('network and usage-based services', () => {
     expect(cost(`${AWS}resource "aws_vpc" "v" {}\n`, 'aws_vpc.v').kind).toBe('free');
     expect(cost(`${AWS}resource "aws_iam_policy" "p" {}\n`, 'aws_iam_policy.p').kind).toBe('free');
     expect(cost('resource "random_password" "p" {\n  length = 16\n}\n', 'random_password.p').note).toMatch(/inside Terraform/);
-    const unknownType = cost(`${AWS}resource "aws_rds_cluster" "c" {}\n`, 'aws_rds_cluster.c');
+    const unknownType = cost(`${AWS}resource "aws_rds_cluster_instance" "c" {}\n`, 'aws_rds_cluster_instance.c');
     expect(unknownType).toMatchObject({ kind: 'unknown', note: "This resource type isn't in the price table yet" });
   });
 });

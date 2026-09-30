@@ -681,3 +681,72 @@ test.describe('phone: the security toast’s "Show"', () => {
     });
   }
 });
+
+/* ------------------------------------------------------------ Aurora */
+
+test.describe('Aurora cluster on the canvas', () => {
+  /** press on a node and move it over another one, without letting go (as e2e/canvas-arrange.spec.ts) */
+  async function dragOver(page: Page, id: string, targetId: string) {
+    await page.keyboard.press('Escape');
+    const box = (await page.locator(`.react-flow__node[data-id="${id}"]`).boundingBox())!;
+    const target = (await page.locator(`.react-flow__node[data-id="${targetId}"]`).boundingBox())!;
+    await page.mouse.move(box.x + 60, box.y + 30);
+    await page.mouse.down();
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2 + 10, { steps: 15 });
+  }
+
+  for (const [locale, theme] of [
+    ['en', 'light'],
+    ['pt-BR', 'dark'],
+  ] as const) {
+    test(`${locale}: on a subnet it asks for a DB subnet group; the fix makes one and suggests a security group`, async ({ page }) => {
+      const en = locale === 'en';
+      await page.addInitScript(
+        ({ locale, theme }) => {
+          localStorage.setItem('cb-tips-dismissed', '1');
+          localStorage.setItem('cb-locale', locale);
+          localStorage.setItem('cb-theme', theme);
+        },
+        { locale, theme },
+      );
+      await page.goto('/dashboard');
+      await page.getByRole('button', { name: en ? `Open project ${SEED_PROJECT}` : `Abrir projeto ${SEED_PROJECT}` }).click();
+      await expect(page.locator('.react-flow__node[data-id="aws_subnet.public_a"]')).toBeVisible();
+
+      await page.getByRole('button', { name: en ? /^Add Aurora Cluster/ : /^Adicionar Cluster Aurora/ }).click();
+      const cluster = page.locator('.react-flow__node[data-id="aws_rds_cluster.cluster"]');
+      await expect(cluster).toBeVisible();
+      await expect(cluster.locator('[data-type-label]')).toHaveText('Aurora');
+
+      await dragOver(page, 'aws_rds_cluster.cluster', 'aws_subnet.public_a');
+      const hint = page.getByTestId('drop-hint');
+      await expect(hint).toContainText(
+        en ? "An Aurora cluster isn't placed in one subnet" : 'Um cluster Aurora não fica em uma sub-rede só',
+      );
+      await page.mouse.up();
+      await page.getByRole('button', { name: en ? 'Create a DB subnet group in main' : 'Criar um grupo de sub-redes do banco em main' }).click();
+
+      const toast = page.locator('[data-bp-live]');
+      await expect(
+        toast.getByText(
+          en
+            ? 'Created aws_db_subnet_group.cluster with public_a and public_b — aws_rds_cluster.cluster is drawn inside it'
+            : 'aws_db_subnet_group.cluster criado com public_a e public_b — aws_rds_cluster.cluster aparece dentro dele',
+        ),
+      ).toBeVisible();
+      await expect(
+        toast.getByText(
+          en
+            ? "Tip: connect aws_rds_cluster.cluster to a security group — without one it gets the VPC's default group"
+            : 'Dica: conecte aws_rds_cluster.cluster a um grupo de segurança — sem um, ele fica com o grupo padrão da VPC',
+        ),
+      ).toBeVisible();
+      await expect.poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf']).toMatch(
+        /resource "aws_rds_cluster" "cluster" \{[^}]*db_subnet_group_name\s*=\s*aws_db_subnet_group\.cluster\.name/,
+      );
+      // no security group was added for it
+      expect((await storedProject(page, SEED_PROJECT))!.files['main.tf'].match(/resource "aws_security_group"/g)).toHaveLength(1);
+      expect(await seriousAxeViolations(page, '[data-bp-live]')).toEqual([]);
+    });
+  }
+});

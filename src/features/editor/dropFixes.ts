@@ -24,6 +24,8 @@ export interface FixResult {
   ops: Op[];
   message: string;
   hint?: string;
+  /** one more line: what's still worth doing (it isn't done for the user) */
+  note?: string;
 }
 
 /** the label of the fix's button */
@@ -37,6 +39,14 @@ export function fixLabel(fix: DropFix, locale?: Locale): string {
     case 'connect':
       return m.connectTo(nounOf(fix.target.type), fix.target.name);
   }
+}
+
+/** A database that takes security groups but has none: the VPC's default group applies. */
+function withoutSecurityGroup(node: ResourceNode): boolean {
+  const rule = getDef(node.type)?.connections?.find((c) => c.targetTypes.includes('aws_security_group'));
+  if (!rule) return false;
+  const value = node.args[rule.arg];
+  return value === undefined || (value.kind === 'list' && value.items.length === 0);
 }
 
 const isPublic = (s: ResourceNode) => {
@@ -98,6 +108,8 @@ export function fixOps(ir: IR, nodeId: string, fix: DropFix, locale?: Locale): F
       ],
       message: m.createdGroup(group.id, subnets.map((s) => s.name), node.id),
       hint: subnets.length < 2 || (known && zones.size < 2) ? m.oneZone : undefined,
+      // a nudge, not a change: no security group is created for the user
+      note: withoutSecurityGroup(node) ? m.attachSecurityGroup(node.id) : undefined,
     };
   }
 

@@ -316,6 +316,9 @@ export async function refreshAws(): Promise<AwsPrices> {
       snsPerMillion: perMillion(price(sns, 'SNS requests', usage('Requests-Tier1'))),
       apiGatewayHttpPerMillion: perMillion(price(apigw, 'API Gateway HTTP API', usage('USE1-ApiGatewayHttpRequest'))),
       ecrGbMonth: price(ecr, 'ECR storage', (a) => a.usagetype === 'TimedStorage-ByteHrs' && a.storageType === 'S3'),
+      auroraGbMonth: price(rdsOffer, 'Aurora Standard storage', usage('Aurora:StorageUsage', 'Database Storage')),
+      auroraIoPerMillion: perMillion(price(rdsOffer, 'Aurora Standard I/O', usage('Aurora:StorageIOUsage', 'System Operation'))),
+      auroraIoOptimizedGbMonth: price(rdsOffer, 'Aurora I/O-Optimized storage', usage('Aurora:IO-OptimizedStorageUsage', 'Database Storage')),
     },
   };
 }
