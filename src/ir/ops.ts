@@ -6,8 +6,9 @@
  */
 import { isStateBlockText } from '@/hcl/moved';
 import { renameInExpression, renameInHcl, renameInRecord } from './expr';
+import { applyModuleOp, isModuleOp } from './moduleOps';
 import { rekeyInExpression, rekeyInHcl, rekeyInRecord, type Rekey } from './repeat';
-import type { CanvasPosition, Expression, IR, RawBlock, ResourceNode } from './types';
+import type { CanvasPosition, Expression, IR, ModuleNode, RawBlock, ResourceNode } from './types';
 import { resourceAddress } from './types';
 
 export type Op =
@@ -22,7 +23,9 @@ export type Op =
   | { kind: 'remove_extra'; blockId: string }
   | { kind: 'set_extra'; blockId: string; text: string }
   /** references to `address` change instance key (repetition added / removed), see repeat.ts */
-  | { kind: 'rekey_refs'; address: string; rekey: Rekey };
+  | { kind: 'rekey_refs'; address: string; rekey: Rekey }
+  /** a new `module` call (the other kinds act on one through its id, `module.x`: see ./moduleOps.ts) */
+  | { kind: 'add_module'; node: ModuleNode };
 
 /** how a value's text follows a rename / re-key — the patcher rewrites those tokens in place */
 export interface TextRewrite {
@@ -51,6 +54,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
     variables: [...ir.variables],
     outputs: [...ir.outputs],
     providers: [...ir.providers],
+    modules: [...ir.modules],
     extras: [...ir.extras],
   };
   const touched = new Set<string>();
@@ -75,6 +79,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
     next.variables = next.variables.map(retarget);
     next.outputs = next.outputs.map(retarget);
     next.providers = next.providers.map(retarget);
+    next.modules = next.modules.map(retarget);
     next.extras = next.extras.map((b) => {
       if (isStateBlockText(b.text)) return b;
       const text = rewrite.hcl(b.text);
@@ -85,6 +90,10 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
   };
 
   for (const op of ops) {
+    if (isModuleOp(op)) {
+      applyModuleOp(next, op, { touched, removed, renamed, rewrites });
+      continue;
+    }
     switch (op.kind) {
       case 'add_resource': {
         next.resources.push(op.node);
@@ -151,6 +160,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
         next.variables = next.variables.map(retarget);
         next.outputs = next.outputs.map(retarget);
         next.providers = next.providers.map(retarget);
+        next.modules = next.modules.map(retarget);
         next.extras = next.extras.map((b) => {
           // `moved` / `removed` name addresses in the state: hcl/moved.ts decides about those
           if (isStateBlockText(b.text)) return b;

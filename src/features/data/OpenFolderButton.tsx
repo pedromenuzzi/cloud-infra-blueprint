@@ -82,13 +82,16 @@ export function useOpenFolder() {
       } catch {
         showToast(m.linkNotSaved, 'error');
       }
-      const note = importNote({
-        name: dir.name,
-        files: module.files,
-        rootDir: module.label.slice(dir.name.length + 1),
-        skipped: module.skipped,
-        oversized: module.oversized,
-      });
+      const note = importNote(
+        {
+          name: dir.name,
+          files: module.files,
+          rootDir: module.label.slice(dir.name.length + 1),
+          skipped: module.skipped,
+          oversized: module.oversized,
+        },
+        { linkedFolder: true },
+      );
       showToast(note ?? m.openedFolder(module.label), note ? 'info' : 'success');
       navigate(`/editor/${projectId}`);
     } catch {

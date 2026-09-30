@@ -18,7 +18,7 @@ test('importing several .tf files at once keeps all of them', async ({ page }) =
   expect(Object.keys(imported!.files).sort()).toEqual(['main.tf', 'outputs.tf', 'variables.tf']);
 });
 
-test('a zip with modules imports the root module and says what was skipped', async ({ page }) => {
+test('a zip with modules imports the root module with its child modules, and says so', async ({ page }) => {
   const zip = zipSync({
     'infra/main.tf': strToU8(
       'module "a" {\n  source = "./modules/a"\n}\n\nmodule "b" {\n  source = "./modules/b"\n}\n\nresource "aws_sqs_queue" "jobs" {\n  name = "jobs"\n}\n',
@@ -32,7 +32,9 @@ test('a zip with modules imports the root module and says what was skipped', asy
     { name: 'stack.zip', mimeType: 'application/zip', buffer: Buffer.from(zip) },
   ]);
   await expect(page).toHaveURL(/\/editor\//);
-  await expect(page.getByText(/Imported the root module \(infra\/\); 2 files in modules\/ were skipped/)).toBeVisible();
+  await expect(page.getByText('Imported the root module (infra/) and kept 2 child modules.')).toBeVisible();
   const imported = (await storedProjects(page)).find((p) => p.name === 'stack');
-  expect(Object.keys(imported!.files)).toEqual(['main.tf']);
+  expect(Object.keys(imported!.files).sort()).toEqual(['main.tf', 'modules/a/main.tf', 'modules/b/main.tf']);
+  // the child modules' buckets are not root resources
+  await expect(canvasStats(page)).toHaveText(/^1 resource/);
 });

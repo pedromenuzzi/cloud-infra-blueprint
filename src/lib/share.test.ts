@@ -44,6 +44,13 @@ describe('share links', () => {
     expect(Object.keys(decoded.files).sort()).toEqual(['main.tf', 'ü.tf']);
   });
 
+  it('keeps child modules in their folders, never paths that climb out', () => {
+    const files = { 'main.tf': 'module "net" {\n  source = "./modules/net"\n}\n', 'modules/net/main.tf': 'resource "aws_vpc" "this" {}\n' };
+    expect(decodeShare(encodeShare({ name: 'X', files }))!.files).toEqual(files);
+    const tricky = { 'main.tf': 'a', 'modules/../../evil.tf': 'b', 'modules//x.tf': 'c', '/abs.tf': 'd', 'a/./b.tf': 'e' };
+    expect(Object.keys(decodeShare(encodeShare({ name: 'X', files: tricky }))!.files)).toEqual(['main.tf']);
+  });
+
   it('validates the version and the shape', () => {
     expect(decodeShareResult(pack({ v: 1, n: 'ok', f: { 'main.tf': 'x' } })).ok).toBe(true);
     expect(decodeShareResult(pack({ v: 2, n: 'future', f: {} }))).toEqual({ ok: false, error: 'version' });

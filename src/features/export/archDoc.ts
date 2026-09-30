@@ -30,6 +30,7 @@ import { controlLabel, controlsIn, FRAMEWORKS, frameworkOf } from '@/security/co
 import { portText } from '@/security/model';
 import { docMessages, type DocMessages } from './archDoc.messages';
 import { drawDiagram, type DiagramVector, type Region } from './diagramVector';
+import { modulesSection, pdfModuleMessages } from '@/features/modules/pdfModules';
 
 export type Paper = keyof typeof PAPER;
 
@@ -272,13 +273,13 @@ interface Run {
   maxLines?: number;
 }
 
-interface Column {
+export interface Column {
   title: string;
   /** share of the text width */
   share: number;
 }
 
-interface Row {
+export interface Row {
   cells: Run[][];
   /** full-width group heading instead of cells */
   group?: { label: string; color: PdfColor; note?: string };
@@ -315,7 +316,7 @@ interface Pending {
   draw(): void;
 }
 
-class Cursor {
+export class Cursor {
   page!: PdfPage;
   y = 0;
   /** where each section starts, for the table of contents */
@@ -1475,6 +1476,7 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
     { key: 'overview', title: t.overview },
     ...(input.sections.inventory ? [{ key: 'inventory', title: t.inventory }] : []),
     ...(input.sections.inventory && hasVars ? [{ key: 'variables', title: t.variablesOutputs }] : []),
+    ...(input.sections.inventory && ir.modules.length > 0 ? [{ key: 'modules', title: messagesFor(pdfModuleMessages, locale).title }] : []),
     ...(input.sections.connections ? [{ key: 'connections', title: t.connectionsTitle }] : []),
     ...(input.sections.security ? [{ key: 'security', title: t.securityTitle }] : []),
     ...(input.sections.cost ? [{ key: 'cost', title: t.costTitle }] : []),
@@ -1487,6 +1489,9 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
   yield t.writingOverview;
   const contents = overview(c, input, toc, cost, locale);
   if (input.sections.inventory) yield* step(t.writingInventory, inventory(c, input, locale));
+  if (input.sections.inventory && ir.modules.length > 0) {
+    yield* step(messagesFor(pdfModuleMessages, locale).writing, modulesSection(c, ir, locale));
+  }
   if (input.sections.connections) yield* step(t.writingConnections, connections(c, input, locale));
   if (input.sections.security) yield* step(t.writingSecurity, security(c, input, locale));
   if (cost) yield* step(t.estimating, costEstimate(c, cost, locale));

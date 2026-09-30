@@ -1,11 +1,14 @@
 import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
+import { parseProject } from '@/hcl/parser';
 import {
+  assembleProject,
   importNote,
   isTerraformPath,
   pickRootDir,
   readDroppedTerraform,
   readTerraformFiles,
+  resolveInTree,
 } from './importTf';
 
 const tf = (text: string, name: string) => new File([text], name, { type: 'text/plain' });
@@ -51,7 +54,7 @@ describe('readTerraformFiles', () => {
     expect(Object.keys(result!.files).sort()).toEqual(['réseau-prod.tf', 'ü.tf']);
   });
 
-  it('imports only the root module of a zip and reports the skipped module files', async () => {
+  it('imports the root module of a zip with the child modules it calls', async () => {
     const zip = zipSync({
       'infra/main.tf': strToU8(
         'module "a" {\n  source = "./modules/a"\n}\n\nmodule "b" {\n  source = "./modules/b"\n}\n',
@@ -65,11 +68,46 @@ describe('readTerraformFiles', () => {
     const result = await readTerraformFiles([new File([zip], 'my-stack.zip', { type: 'application/zip' })]);
     expect(result?.name).toBe('my-stack');
     expect(result!.rootDir).toBe('infra');
-    expect(Object.keys(result!.files).sort()).toEqual(['main.tf', 'variables.tf']);
+    expect(Object.keys(result!.files).sort()).toEqual(['main.tf', 'modules/a/main.tf', 'modules/b/main.tf', 'variables.tf']);
+    expect(result!.skipped).toBe(0);
+    expect(result!.modules).toEqual(['modules/a', 'modules/b']);
+    expect(importNote(result!)).toBe('Imported the root module (infra/) and kept 2 child modules.');
+    // the child modules' resources are theirs, not the root module's
+    expect(parseProject(result!.files).ir.resources).toEqual([]);
+    expect(parseProject(result!.files).ir.modules.map((m) => m.id)).toEqual(['module.a', 'module.b']);
+  });
+
+  it('keeps modules called from outside the root folder, and the modules they call; leaves the rest out', async () => {
+    const zip = zipSync({
+      'repo/apps/api/main.tf': strToU8('module "svc" {\n  source = "../../modules/service"\n}\n'),
+      'repo/apps/web/main.tf': strToU8('module "cdn" {\n  source = "../../modules/cdn"\n}\n'),
+      'repo/modules/service/main.tf': strToU8('module "ecr" {\n  source = "../ecr"\n}\n'),
+      'repo/modules/service/variables.tf': strToU8('variable "name" {}\n'),
+      'repo/modules/ecr/main.tf': strToU8('resource "aws_ecr_repository" "this" {\n  name = var.name\n}\n'),
+      'repo/modules/cdn/main.tf': strToU8('resource "aws_cloudfront_distribution" "this" {}\n'),
+    });
+    const result = await readTerraformFiles([new File([zip], 'repo.zip')]);
+    expect(result!.rootDir).toBe('repo/apps/api');
+    expect(Object.keys(result!.files).sort()).toEqual([
+      'main.tf',
+      'modules/ecr/main.tf',
+      'modules/service/main.tf',
+      'modules/service/variables.tf',
+    ]);
+    // the other root (apps/web) and the module only it uses stay out
     expect(result!.skipped).toBe(2);
-    expect(importNote(result!)).toBe(
-      "Imported the root module (infra/); 2 files in modules/ were skipped (modules aren't supported yet).",
-    );
+    expect(importNote(result!)).toBe('Imported the root module (repo/apps/api/) and kept 2 child modules; 2 other files were left out.');
+  });
+
+  it('never climbs out of the imported tree, never keeps the root twice, never an unsafe folder name', () => {
+    expect(resolveInTree('live/prod', '../../modules/vpc')).toBe('modules/vpc');
+    expect(resolveInTree('live', '../../modules/vpc')).toBeNull();
+    const sources = [
+      { path: 'live/main.tf', text: 'module "a" {\n  source = "../../modules/vpc"\n}\nmodule "self" {\n  source = "./"\n}\nmodule "odd" {\n  source = "./my mod"\n}\n' },
+      { path: 'modules/vpc/main.tf', text: '' },
+      { path: 'live/my mod/main.tf', text: '' },
+    ];
+    expect(assembleProject(sources, 'live')).toEqual({ files: { 'main.tf': sources[0].text }, skipped: 2, modules: [] });
   });
 
   it('matches .tf case-insensitively inside zips and never inflates skipped entries', async () => {
@@ -161,7 +199,7 @@ function dropped(entries: FakeEntry[]): DataTransfer {
 }
 
 describe('readDroppedTerraform', () => {
-  it('walks a dropped folder, keeping paths so modules are left out', async () => {
+  it('walks a dropped folder, keeping paths so child modules keep their folders', async () => {
     const folder = dirEntry('/infra', [
       fileEntry('/infra/main.tf', 'module "net" {\n  source = "./modules/net"\n}\n'),
       fileEntry('/infra/outputs.tf', 'output "x" { value = 1 }\n'),
@@ -174,8 +212,9 @@ describe('readDroppedTerraform', () => {
     const result = await readDroppedTerraform(dropped([folder]));
     expect(result?.name).toBe('infra');
     expect(result!.rootDir).toBe('infra');
-    expect(Object.keys(result!.files).sort()).toEqual(['main.tf', 'outputs.tf']);
-    expect(result!.skipped).toBe(1);
+    expect(Object.keys(result!.files).sort()).toEqual(['main.tf', 'modules/net/main.tf', 'outputs.tf']);
+    expect(result!.skipped).toBe(0);
+    expect(result!.modules).toEqual(['modules/net']);
   });
 
   it('falls back to plain files when nothing dropped is a folder', async () => {

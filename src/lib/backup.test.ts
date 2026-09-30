@@ -97,6 +97,18 @@ describe('backup zip', () => {
     );
   });
 
+  it('keeps child module files in their folders (modules/net/main.tf)', async () => {
+    const b = await load();
+    const files = {
+      'main.tf': 'module "net" {\n  source = "./modules/net"\n}\n',
+      'modules/net/main.tf': 'resource "aws_vpc" "this" {}\n',
+      'modules/net/variables.tf': 'variable "cidr" {}\n',
+    };
+    const parsed = b.parseBackup(b.buildBackup([project({ id: 'prj_m', name: 'with modules', files })], NOW));
+    expect(parsed.ok && parsed.backup.invalid).toEqual([]);
+    expect(parsed.ok && parsed.backup.projects[0].files).toEqual(files);
+  });
+
   it('lays out one folder per project with a manifest and a README', async () => {
     const b = await load();
     const zip = b.buildBackup(

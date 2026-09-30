@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS, ProviderChip, ResourceIcon } from '@/resources/icons';
 import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
+import type { ModuleFlowNode } from '@/features/modules/ModuleNode';
 import { canvasMessages } from './CanvasPane.messages';
 import { useDropTone } from './dropHint';
 import { RepeatBadge, RepeatStack } from './RepeatBadge';
@@ -115,7 +116,7 @@ export interface ContainerNodeData extends Record<string, unknown> {
 export type ResourceFlowNode = Node<ResourceNodeData, 'resource'>;
 export type ContainerFlowNode = Node<ContainerNodeData, 'container'>;
 export type InternetFlowNode = Node<Record<string, unknown>, 'internet'>;
-export type FlowNode = ResourceFlowNode | ContainerFlowNode | InternetFlowNode;
+export type FlowNode = ResourceFlowNode | ContainerFlowNode | InternetFlowNode | ModuleFlowNode;
 
 /** The public internet, drawn by the security lens as the origin of inbound traffic. */
 export function InternetNodeView() {

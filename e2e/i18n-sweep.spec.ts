@@ -4,8 +4,9 @@
  * dashboard and its dialogs, tutorials, the editor (seed project and an
  * Azure and a GCP template: palette, inspector tabs, multi-selection,
  * security panel and rules editor, cost, layout presets, ⌘K, context menus,
- * a drop hint, export / PDF / shortcuts dialogs), a share link, the viewer
- * and the 404. At each stop every visible text node is collected, with
+ * a drop hint, export / PDF / shortcuts dialogs), a project with module
+ * calls (module nodes and inspector, an opened local module, "Add module…"),
+ * a share link, the viewer and the 404. At each stop every visible text node is collected, with
  * `aria-label`, `title`, `placeholder`, `alt` and tooltip text. A string
  * that reads the same in both languages is an English leak unless it is
  * one of the tokens that are never translated (see ALLOWED and `untranslated`
@@ -53,6 +54,8 @@ const ALLOWED = new Set([
   'Ln', 'Col',
   // keys
   'Ctrl', 'Esc', 'esc', 'Del', 'Enter', 'Shift', 'Alt', 'Tab',
+  // where a module comes from: the Terraform Registry and git (product names), a local folder ("módulo local")
+  'Registry', 'Git', 'Local',
 ]);
 
 /** a token that is never translated: acronyms, identifiers, numbers, addresses, CIDRs, control IDs, file names */
@@ -82,6 +85,42 @@ function untranslated(text: string, data: Set<string>): boolean {
 
 /* ------------------------------------------------------------------ data */
 
+/** a root module calling a local module (kept by the import) and a Registry one */
+const MODULE_ROOT = `module "network" {
+  source = "./modules/network"
+  cidr   = "10.20.0.0/16"
+  name   = "prod"
+}
+
+module "vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.0.0"
+
+  name = "shared"
+  cidr = "10.0.0.0/16"
+}
+
+resource "aws_instance" "web" {
+  ami           = "ami-0c55b159cbfafe1f0"
+  instance_type = "t3.micro"
+  subnet_id     = module.network.private_subnet_ids[0]
+}
+`;
+const MODULE_NETWORK = {
+  'main.tf': 'resource "aws_vpc" "this" {\n  cidr_block = var.cidr\n}\n\nresource "aws_subnet" "private" {\n  vpc_id     = aws_vpc.this.id\n  cidr_block = var.cidr\n}\n',
+  'variables.tf': 'variable "cidr" {\n  type        = string\n  description = "The VPC address range"\n}\n\nvariable "name" {\n  type = string\n}\n\nvariable "az_count" {\n  type    = number\n  default = 2\n}\n',
+  'outputs.tf': 'output "private_subnet_ids" {\n  value = [aws_subnet.private.id]\n}\n',
+};
+
+function moduleZip(): Buffer {
+  return Buffer.from(
+    zipSync({
+      'stack/main.tf': strToU8(MODULE_ROOT),
+      ...Object.fromEntries(Object.entries(MODULE_NETWORK).map(([f, t]) => [`stack/modules/network/${f}`, strToU8(t)])),
+    }),
+  );
+}
+
 const TEMPLATE_SLUGS = ['aws-web-app', 'azure-web-app', 'gcp-web-app'] as const;
 
 /** everything a project's own code names: ids, types, names, literal values, variables, outputs, files */
@@ -96,6 +135,22 @@ function projectData(): Set<string> {
     if (e.kind === 'block') Object.entries(e.body).forEach(([k, v]) => (out.add(k), literals(v)));
     if (e.kind === 'blocks') e.items.forEach((b) => Object.entries(b).forEach(([k, v]) => (out.add(k), literals(v))));
   };
+  // the module project (named after its zip) and its own code: module calls, the child module's blocks
+  out.add('stack');
+  for (const files of [{ 'main.tf': MODULE_ROOT }, MODULE_NETWORK]) {
+    const { ir } = parseProject(files);
+    for (const m of ir.modules) {
+      out.add(m.id).add(m.name);
+      Object.entries(m.args).forEach(([k, v]) => (out.add(k), literals(v)));
+    }
+    for (const r of ir.resources) out.add(r.id).add(r.name).add(r.type);
+    for (const v of ir.variables) {
+      out.add(v.name);
+      Object.values(v.args).forEach(literals);
+      if (v.args.type?.kind === 'ref') out.add(v.args.type.path);
+    }
+    for (const o of ir.outputs) out.add(o.name);
+  }
   for (const slug of TEMPLATE_SLUGS) {
     const t = TEMPLATES.find((x) => x.slug === slug)!;
     const names = slug === 'aws-web-app' ? [SEED_PROJECT] : [templateName(t, 'en'), templateName(t, 'pt-BR')];
@@ -403,6 +458,56 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
       await stop(`${slug}: security lens`);
       await page.getByRole('button', { name: L('Hide security lens', 'Ocultar lente de segurança') }).click();
     }
+
+    // ------------------------------------------------------------- modules
+    await page.goto('/dashboard');
+    await page.getByLabel(L('Import Terraform files', 'Importar arquivos Terraform')).setInputFiles([
+      { name: 'stack.zip', mimeType: 'application/zip', buffer: moduleZip() },
+    ]);
+    await expect(node('module.network')).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await stop('modules: canvas and import note');
+    const moduleInspector = page.getByRole('complementary', { name: L('Module inspector', 'Inspetor do módulo') });
+    for (const id of ['module.network', 'module.vpc']) {
+      await page.keyboard.press('Escape');
+      await node(id).click({ position: { x: 16, y: 10 } });
+      await expect(moduleInspector.getByTestId('inspector-address')).toHaveText(id);
+      const optional = moduleInspector.locator('details > summary');
+      if (await optional.count()) await optional.first().click();
+      await stop(`modules: inspector ${id}`);
+    }
+    await page.keyboard.press('Escape');
+    await node('module.vpc').click({ button: 'right', position: { x: 16, y: 10 } });
+    await expect(page.getByRole('menu')).toBeVisible();
+    await stop('modules: context menu');
+    await close();
+    await close();
+    await node('module.network').dblclick({ position: { x: 16, y: 10 } });
+    await expect(page.getByTestId('module-view')).toBeVisible();
+    await page.waitForTimeout(600);
+    await stop('modules: an opened module');
+    await close();
+    await expect(page.getByTestId('module-view')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await page.getByTestId('cost-chip').click();
+    await expect(page.getByTestId('modules-note-cost')).toBeVisible();
+    await stop('modules: cost popover');
+    await close();
+    await page.getByRole('button', { name: L('Security lens', 'Lente de segurança') }).click();
+    await stop('modules: security lens');
+    await page.getByRole('button', { name: L('Hide security lens', 'Ocultar lente de segurança') }).click();
+    await page.getByRole('button', { name: L('Security grade', 'Segurança, nota'), exact: false }).first().click();
+    await expect(page.getByTestId('modules-note-security')).toBeVisible();
+    await stop('modules: security panel');
+    await page.getByRole('button', { name: L('Close security panel', 'Fechar painel de segurança') }).click();
+    await page.keyboard.press('Control+k');
+    await page.locator('[cmdk-item][data-value="add-module"]').click();
+    const addModule = page.getByRole('dialog', { name: L('Add module', 'Adicionar módulo') });
+    await expect(addModule).toBeVisible();
+    await stop('modules: Add module dialog');
+    await addModule.getByText(L('Custom source', 'Origem personalizada')).click();
+    await stop('modules: Add module dialog, custom source');
+    await close();
   } finally {
     await context.close();
   }

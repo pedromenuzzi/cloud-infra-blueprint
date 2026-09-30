@@ -43,7 +43,7 @@ test('imports a picked root module from a repository, then offers that copy inst
   await expect(modules.getByRole('radio')).toHaveCount(2);
   await expect(modules).toContainText('Repository root');
   await expect(modules).toContainText('envs/prod');
-  await expect(d).toContainText('2 .tf files in modules/ folders are left out');
+  await expect(d).toContainText('2 .tf files in modules/ folders: the child modules the root module calls');
   await expect(d.getByTestId('gh-rate')).toHaveText('58 of 60 requests left');
   await expect(modules.getByRole('radio').first()).toBeFocused();
 
@@ -52,7 +52,7 @@ test('imports a picked root module from a repository, then offers that copy inst
 
   await expect(page).toHaveURL(/\/editor\//);
   await expect(canvasStats(page)).toHaveText(/^2 resources/);
-  await expect(page.getByText(/Imported the root module \(envs\/prod\/\); 2 files in modules\/ were skipped/)).toBeVisible();
+  await expect(page.getByText('Imported the root module (envs/prod/); 2 other files were left out.')).toBeVisible();
   const imported = (await storedProjects(page)).find((p) => p.name === 'infra/envs/prod') as
     | { files: Record<string, string>; origin?: string }
     | undefined;

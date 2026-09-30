@@ -143,7 +143,23 @@ export interface ProviderBlock {
   trivia: Trivia;
 }
 
-/** Any block we intentionally keep verbatim: terraform {}, locals {}, data, module… */
+/**
+ * A `module "name" { source = … }` call — a node of its own on the canvas.
+ * Every argument is kept as written in `args`: `source`, `version`, the
+ * module's inputs and the meta-arguments (`count`, `for_each`, `depends_on`,
+ * `providers`); src/ir/modules.ts reads them apart.
+ */
+export interface ModuleNode {
+  /** `module.${name}` — the address references to its outputs start with */
+  id: string;
+  name: string;
+  args: Record<string, Expression>;
+  /** canvas position; persisted in HCL via `# @blueprint:pos=x,y` like a resource's */
+  position?: CanvasPosition;
+  trivia: Trivia;
+}
+
+/** Any block we intentionally keep verbatim: terraform {}, locals {}, data, moved… */
 export interface RawBlock {
   id: string;
   text: string;
@@ -156,6 +172,8 @@ export interface IR {
   variables: VariableDecl[];
   outputs: OutputDecl[];
   providers: ProviderBlock[];
+  /** `module` calls of the root module (child module files are not parsed into the IR) */
+  modules: ModuleNode[];
   extras: RawBlock[];
 }
 
@@ -184,6 +202,7 @@ export const emptyIR = (): IR => ({
   variables: [],
   outputs: [],
   providers: [],
+  modules: [],
   extras: [],
 });
 

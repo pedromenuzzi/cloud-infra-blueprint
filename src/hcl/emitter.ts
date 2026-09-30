@@ -8,6 +8,7 @@
 import type {
   Expression,
   IR,
+  ModuleNode,
   OutputDecl,
   ProviderBlock,
   RawBlock,
@@ -246,6 +247,21 @@ export function emitResource(node: ResourceNode): string {
   );
 }
 
+/** `source` and `version` first, then a blank line and the inputs — the way Registry modules are called. */
+export function emitModule(m: ModuleNode): string {
+  const header = `module ${emitLabel(m.name)}`;
+  const head: Record<string, Expression> = {};
+  const rest: Record<string, Expression> = {};
+  for (const [k, v] of Object.entries(m.args)) (k === 'source' || k === 'version' ? head : rest)[k] = v;
+  if (Object.keys(head).length === 0 || Object.keys(rest).length === 0) {
+    return emitTopBlock(header, m.args, m.trivia, m.position);
+  }
+  const lines: string[] = [...m.trivia.leadingComments];
+  if (m.position) lines.push(posComment(m.position));
+  lines.push(`${header} {`, emitEntries(head, '  ', m.trivia), '', emitEntries(rest, '  ', m.trivia), '}');
+  return lines.join('\n') + '\n';
+}
+
 export function emitVariable(v: VariableDecl): string {
   return emitTopBlock(`variable ${emitLabel(v.name)}`, v.args, v.trivia);
 }
@@ -271,6 +287,7 @@ export const DEFAULT_FILES = {
   output: 'outputs.tf',
   provider: 'providers.tf',
   terraform: 'versions.tf',
+  module: 'main.tf',
 } as const;
 
 interface FileChunk {
@@ -299,6 +316,9 @@ export function emitProject(ir: IR): Record<string, string> {
   }
   for (const r of ir.resources) {
     push(r.trivia.sourceFile ?? DEFAULT_FILES.resource, r.trivia.rawTextRange, emitResource(r));
+  }
+  for (const m of ir.modules) {
+    push(m.trivia.sourceFile ?? DEFAULT_FILES.module, m.trivia.rawTextRange, emitModule(m));
   }
   for (const v of ir.variables) {
     push(v.trivia.sourceFile ?? DEFAULT_FILES.variable, v.trivia.rawTextRange, emitVariable(v));

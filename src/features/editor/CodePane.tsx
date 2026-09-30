@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { lineColOf } from '@/hcl/parser';
+import { childFileDiagnostics } from '@/ir/localModules';
+import { findNode } from '@/ir/modules';
 import { useLocale } from '@/i18n/locale';
 import { useMessages } from '@/i18n/messages';
 import { prefersReducedMotion } from '@/lib/motion';
@@ -128,7 +130,8 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
         if (!model) return;
         const state = useEditor.getState();
         const offset = model.getOffsetAt(e.position);
-        const hit = state.ir.resources.find((r) => {
+        // module calls are picked like resources
+        const hit = [...state.ir.resources, ...state.ir.modules].find((r) => {
           const range = r.trivia.rawTextRange;
           return (
             range &&
@@ -223,7 +226,7 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
     const id = pendingRevealRef.current;
     if (!editor || !id) return;
     const state = useEditor.getState();
-    const node = state.ir.resources.find((r) => r.id === id);
+    const node = findNode(state.ir, id);
     const range = node?.trivia.rawTextRange;
     if (!node || !range) {
       pendingRevealRef.current = null;
@@ -269,7 +272,9 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
       const model = modelsRef.current.get(`${projectId}:${file}`);
       if (!model) continue;
       const markers: monaco.editor.IMarkerData[] = [];
-      for (const d of parseDiagnostics) {
+      // a child module's files aren't in the root parse: their own errors
+      const fileDiagnostics = file.includes('/') ? childFileDiagnostics(files, file) : parseDiagnostics;
+      for (const d of fileDiagnostics) {
         if (d.file !== file || !d.start) continue;
         markers.push({
           severity:
@@ -285,7 +290,7 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
       }
       for (const w of warnings) {
         if (!w.nodeId) continue;
-        const node = ir.resources.find((r) => r.id === w.nodeId);
+        const node = findNode(ir, w.nodeId);
         if (!node || (node.trivia.sourceFile ?? 'main.tf') !== file) continue;
         const range = node.trivia.rawTextRange;
         if (!range) continue;
@@ -328,7 +333,7 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
     <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label={m.terraformCode}>
       <div className="flex items-center border-b">
         <div ref={tabsRef} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 pt-1" role="tablist" aria-label={m.files}>
-          {fileList.map((f) => (
+          {fileList.map((f, i) => (
             <button
               key={f}
               type="button"
@@ -341,9 +346,18 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
                 activeFile === f
                   ? 'border-border bg-surface-1 font-semibold text-foreground'
                   : 'border-transparent text-muted hover:text-foreground',
+                // child module files come after the root module's, set apart
+                f.includes('/') && !fileList[i - 1]?.includes('/') && i > 0 && 'ml-2.5 before:absolute before:-left-2 before:top-2 before:h-3.5 before:w-px before:bg-border-strong',
               )}
             >
-              {f}
+              {f.includes('/') ? (
+                <>
+                  <span className="font-normal text-faint">{f.slice(0, f.lastIndexOf('/') + 1)}</span>
+                  {f.slice(f.lastIndexOf('/') + 1)}
+                </>
+              ) : (
+                f
+              )}
               {fileErrors(f) ? (
                 <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-danger" />
               ) : null}

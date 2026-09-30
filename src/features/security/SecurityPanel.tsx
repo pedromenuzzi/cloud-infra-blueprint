@@ -17,6 +17,7 @@ import { portText } from '@/security/model';
 import type { Exposure } from '@/security/topology';
 import { AccessPaths } from './AccessPaths';
 import { ComplianceBadges } from './ComplianceBadges';
+import { ModulesNote } from '@/features/modules/ModulesNote';
 import { securityUiMessages } from './messages';
 import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useAudit, useSecurityUi } from './securityStore';
 
@@ -243,6 +244,7 @@ export function SecurityPanel() {
           </div>
         </section>
 
+        <ModulesNote area="security" onPick={show} className="mx-3.5 mb-3" />
         <label className="mx-3.5 flex cursor-pointer items-center gap-3 rounded-[10px] border bg-surface-2/60 px-3 py-2.5">
           <ScanEye className="h-4 w-4 shrink-0 text-primary" />
           <span className="min-w-0 flex-1">

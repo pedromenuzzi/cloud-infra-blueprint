@@ -118,7 +118,10 @@ test.describe('folder sync', () => {
     await page.getByRole('button', { name: 'Open folder…' }).first().click();
 
     await expect(page).toHaveURL(/\/editor\//);
-    await expect(page.getByText(/Imported the root module \(infra\/\); 1 file in modules\/ was skipped/)).toBeVisible();
+    // a folder link syncs the root module's own files only: the child module stays on disk
+    await expect(
+      page.getByText("Opened the root module (infra/); 1 file in other folders isn't synced (a folder link keeps only the root module)."),
+    ).toBeVisible();
     await expect(canvasStats(page)).toHaveText(/^1 resource/);
     const chip = page.getByRole('button', { name: 'Synced to folder repo/infra' });
     await expect(chip).toBeVisible();
