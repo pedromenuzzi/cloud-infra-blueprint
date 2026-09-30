@@ -226,6 +226,10 @@ test('the module inspector: source, inputs, outputs read elsewhere, what is insi
 test('rename rewrites module.old references and records a moved block', async ({ page }) => {
   await importStack(page);
   await select(page, 'module.network');
+  // a design that has never been applied starts with "keep the state" off (the same choice as resource renames)
+  const keep = page.getByLabel('Keep the state (write a moved block)');
+  await expect(keep).not.toBeChecked();
+  await keep.check();
   const name = page.locator('#inspector-tf-name');
   await name.fill('core');
   await name.press('Enter');
@@ -239,7 +243,7 @@ test('rename rewrites module.old references and records a moved block', async ({
   expect(text).not.toContain('module.network.');
 
   // told not to keep the state: no moved block for that rename
-  await page.getByLabel('Keep the state (write a moved block)').uncheck();
+  await keep.uncheck();
   await name.fill('base');
   await name.press('Enter');
   await expect(node(page, 'module.base')).toBeVisible();
