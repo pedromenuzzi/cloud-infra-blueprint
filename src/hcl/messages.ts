@@ -45,6 +45,11 @@ export const hclMessages = defineMessages(
     wrongBlocks: 'Canvas edit not applied: the patched code would not declare the expected blocks.',
     wouldBreak: (file: string, error: string) => `Canvas edit not applied: it would break ${file} (${error}).`,
     conflicting: 'Canvas edit not applied: conflicting edits.',
+    /** `where`: a resource address or `variable "x"`; `key`: the argument, when the comments are inside one */
+    commentsWouldBeLost: (where: string, key: string | null) =>
+      key
+        ? `Canvas edit not applied: ${key} in ${where} has comments inside that the edit would lose — edit it in the code.`
+        : `Canvas edit not applied: ${where} has comments that the edit would lose — edit it in the code.`,
   },
   {
     unterminatedComment: 'Comentário sem fechamento',
@@ -81,5 +86,9 @@ export const hclMessages = defineMessages(
     wrongBlocks: 'Edição do canvas não aplicada: o código alterado não declararia os blocos esperados.',
     wouldBreak: (file, error) => `Edição do canvas não aplicada: ela quebraria ${file} (${error}).`,
     conflicting: 'Edição do canvas não aplicada: edições conflitantes.',
+    commentsWouldBeLost: (where, key) =>
+      key
+        ? `Edição do canvas não aplicada: ${key} em ${where} tem comentários que a edição perderia — edite no código.`
+        : `Edição do canvas não aplicada: ${where} tem comentários que a edição perderia — edite no código.`,
   },
 );
