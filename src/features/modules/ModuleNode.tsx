@@ -33,6 +33,10 @@ export interface ModuleNodeData extends Record<string, unknown> {
   lens: boolean;
   /** drawn inside an opened module: opening it goes one level deeper */
   nested?: boolean;
+  /** what the PDF export reads off a node (captureDiagram): the kind line, the second line, the glyph key */
+  typeLabel: string;
+  subtitle: string;
+  resourceType: 'module';
 }
 
 export type ModuleFlowNode = Node<ModuleNodeData, 'module'>;
@@ -108,9 +112,13 @@ export function moduleNodeData(
   const target = moduleTarget(files, m);
   const info = target.kind === 'none' ? null : target.info;
   const version = versionLabel(moduleVersion(m)) ?? (info?.ref ? info.ref : undefined);
+  const source = info?.short ?? t.noSource;
   return {
     title: m.name,
-    source: info?.short ?? t.noSource,
+    source,
+    typeLabel: t.typeLabel,
+    subtitle: version ? `${source} · ${version}` : source,
+    resourceType: 'module',
     kind: info?.kind ?? null,
     version,
     inputs: moduleInputs(m).length,

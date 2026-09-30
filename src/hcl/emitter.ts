@@ -247,8 +247,19 @@ export function emitResource(node: ResourceNode): string {
   );
 }
 
+/** `source` and `version` first, then a blank line and the inputs — the way Registry modules are called. */
 export function emitModule(m: ModuleNode): string {
-  return emitTopBlock(`module ${emitLabel(m.name)}`, m.args, m.trivia, m.position);
+  const header = `module ${emitLabel(m.name)}`;
+  const head: Record<string, Expression> = {};
+  const rest: Record<string, Expression> = {};
+  for (const [k, v] of Object.entries(m.args)) (k === 'source' || k === 'version' ? head : rest)[k] = v;
+  if (Object.keys(head).length === 0 || Object.keys(rest).length === 0) {
+    return emitTopBlock(header, m.args, m.trivia, m.position);
+  }
+  const lines: string[] = [...m.trivia.leadingComments];
+  if (m.position) lines.push(posComment(m.position));
+  lines.push(`${header} {`, emitEntries(head, '  ', m.trivia), '', emitEntries(rest, '  ', m.trivia), '}');
+  return lines.join('\n') + '\n';
 }
 
 export function emitVariable(v: VariableDecl): string {

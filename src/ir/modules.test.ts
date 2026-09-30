@@ -181,7 +181,7 @@ describe('patches on module blocks touch only what changes', () => {
     };
     const out = run([{ kind: 'add_module', node }]);
     expect(out.files['main.tf']).toBe(
-      `${MAIN}\n# @blueprint:pos=10,20\nmodule "bucket" {\n  source  = "terraform-aws-modules/s3-bucket/aws"\n  version = "~> 4.0"\n  bucket  = "logs"\n}\n`,
+      `${MAIN}\n# @blueprint:pos=10,20\nmodule "bucket" {\n  source  = "terraform-aws-modules/s3-bucket/aws"\n  version = "~> 4.0"\n\n  bucket = "logs"\n}\n`,
     );
     expect(findNode(out.ir, 'module.bucket')?.position).toEqual({ x: 10, y: 20 });
   });

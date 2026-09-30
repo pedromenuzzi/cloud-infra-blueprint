@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { categoryLabel as catalogCategory, resourceShortName } from '@/resources/i18n';
 import { CATEGORY_COLORS } from '@/resources/icons';
 import type { Category } from '@/resources/types';
+import { ModulesNote } from '@/features/modules/ModulesNote';
 import { costUiMessages } from './messages';
 
 type SortKey = 'cost' | 'name' | 'category';
@@ -214,6 +215,7 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
           {counts.fixed ? m.pricedFor(usd(cost.total), counts.fixed) : m.nothingFixed}
           {m.plus(extras)}.
         </p>
+        <ModulesNote area="cost" className="mt-2" />
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">

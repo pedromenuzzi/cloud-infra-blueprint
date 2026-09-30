@@ -36,6 +36,14 @@ export const modulesMessages = defineMessages(
       `Still read by ${few(ids, (n) => `and ${n} more`, 'en')}. Those references are kept as they are — they'll show as warnings until you point them elsewhere.`,
     deleteConfirm: 'Delete',
 
+    /* what the audit and the estimate leave out */
+    notAudited: (n: number, local: number) =>
+      `${n === 1 ? 'A module call isn’t' : `${n} module calls aren’t`} part of this audit: ` +
+      (local === n ? 'module resources aren’t audited yet.' : local === 0 ? 'their contents come from outside the project.' : `${n - local} come from outside the project, ${local} ${local === 1 ? 'is' : 'are'} not audited yet.`),
+    notEstimated: (n: number, local: number) =>
+      `Not included: ${n} module call${s(n)} — ` +
+      (local === n ? 'module resources aren’t estimated yet.' : local === 0 ? 'their contents come from outside the project.' : `${n - local} from outside the project, ${local} not estimated yet.`),
+
     /* the stats pill */
     stats: (resources: number, modules: number, connections: number) =>
       `${resources} resource${s(resources)}, ${connections} connection${s(connections)}, ${modules} module${s(modules)}`,
@@ -59,6 +67,21 @@ export const modulesMessages = defineMessages(
     deleteBody: (ids) =>
       `Ainda é lido por ${few(ids, (n) => `e mais ${n}`, 'pt-BR')}. Essas referências ficam como estão — aparecem como avisos até você apontá-las para outro lugar.`,
     deleteConfirm: 'Excluir',
+
+    notAudited: (n, local) =>
+      `${n === 1 ? 'Uma chamada de módulo não entra' : `${n} chamadas de módulo não entram`} nesta auditoria: ` +
+      (local === n
+        ? 'os recursos de módulos ainda não são auditados.'
+        : local === 0
+          ? 'o conteúdo delas vem de fora do projeto.'
+          : `${n - local} ${n - local === 1 ? 'vem' : 'vêm'} de fora do projeto, ${local} ainda não ${local === 1 ? 'é auditada' : 'são auditadas'}.`),
+    notEstimated: (n, local) =>
+      `Fora da conta: ${n} chamada${s(n)} de módulo — ` +
+      (local === n
+        ? 'os recursos de módulos ainda não são estimados.'
+        : local === 0
+          ? 'o conteúdo delas vem de fora do projeto.'
+          : `${n - local} de fora do projeto, ${local} ainda sem estimativa.`),
 
     stats: (resources, modules, connections) =>
       `${resources} recurso${s(resources)}, ${connections} ${connections === 1 ? 'conexão' : 'conexões'}, ${modules} módulo${s(modules)}`,
