@@ -64,7 +64,9 @@ export function CostLine({ node }: { node: ResourceNode }) {
           ))}
           {item.count !== 1 && item.kind === 'fixed' ? (
             <li className="flex items-baseline justify-between gap-2 border-t pt-0.5 text-[11.5px]">
-              <span className="text-muted">× {item.count} (count)</span>
+              <span className="text-muted">
+                × {item.count} ({item.repeat ?? 'count'})
+              </span>
               <span className="shrink-0 font-semibold tabular-nums text-foreground">{usd(item.monthly ?? 0)}</span>
             </li>
           ) : null}

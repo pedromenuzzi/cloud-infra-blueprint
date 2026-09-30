@@ -77,7 +77,15 @@ export function estimateResource(r: ResourceNode, ir: IR, book: PriceBook, local
     };
   }
   if (many.n === 0) assumptions.unshift(t.notCreated);
-  return { ...base, kind: 'fixed', monthly: one * many.n, breakdown: result.lines, assumptions, count: many.n };
+  return {
+    ...base,
+    kind: 'fixed',
+    monthly: one * many.n,
+    breakdown: result.lines,
+    assumptions,
+    count: many.n,
+    ...(many.repeat ? { repeat: many.repeat } : {}),
+  };
 }
 
 /** The project's estimate, worded in `locale` (the numbers don't depend on it). */

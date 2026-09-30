@@ -11,6 +11,7 @@
  */
 import { currentLocale, type Locale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
+import { repeatOf, type RepeatKind } from '@/ir/repeat';
 import type { Expression, IR, ProviderBlock, ResourceNode } from '@/ir/types';
 import { costMessages } from './messages';
 
@@ -90,17 +91,21 @@ export function referencing(target: ResourceNode, type: string, field: string, i
   return ir.resources.filter((r) => r.type === type && referenced(r, field, ir) === target);
 }
 
-export type Multiplicity = { n: number } | { unknown: string };
+export type Multiplicity = { n: number; repeat?: RepeatKind } | { unknown: string };
 
-/** how many instances the resource stands for: a literal `count`, else 1; `for_each` / expressions are unknown (why, in `locale`) */
+/**
+ * How many instances the resource stands for (ir/repeat.ts): 1, a known
+ * `count` (a literal, a variable default, `length()` of a literal list) or
+ * the size of a literal `for_each` set / map; anything decided at plan time
+ * is unknown (why, in `locale`).
+ */
 export function multiplicity(r: ResourceNode, ir: IR, locale: Locale = currentLocale()): Multiplicity {
   const m = messagesFor(costMessages, locale);
-  if (r.args.for_each) return { unknown: m.forEach };
-  const count = r.args.count;
-  if (!count) return { n: 1 };
-  const n = resolveNumber(count, ir);
-  if (n === undefined || !Number.isInteger(n) || n < 0) return { unknown: m.countExpr };
-  return { n };
+  const rep = repeatOf(r, ir);
+  if (!rep) return { n: 1 };
+  if (rep.size !== undefined) return { n: rep.size, repeat: rep.kind };
+  if (rep.optional) return { unknown: m.countOptional };
+  return { unknown: rep.kind === 'for_each' ? m.forEach : m.countExpr };
 }
 
 

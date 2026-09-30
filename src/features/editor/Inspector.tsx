@@ -20,6 +20,7 @@ import { AccessPaths } from '@/features/security/AccessPaths';
 import { ComplianceBadges } from '@/features/security/ComplianceBadges';
 import { SEVERITY_TEXT, useAudit, useSecurityUi } from '@/features/security/securityStore';
 import { OWNER_TYPES, peerLabel, portLabel, portText, serviceName } from '@/security/model';
+import { appliesToEach } from '@/security/instances';
 import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
@@ -478,6 +479,9 @@ function ExposureCard({ node }: { node: ResourceNode }) {
   const exposure = audit.topology.exposure.get(node.id);
   const access = audit.topology.access.get(node.id);
   const findings = audit.findings.filter((f) => f.resource === node.id);
+  // a repeated workload: what's said here holds for every instance
+  const ir = useEditor((s) => s.ir);
+  const each = appliesToEach(node, ir, audit.locale);
   if (!exposure && findings.length === 0) return null;
   // the internet's way in is spelled out per port below
   const inbound = audit.topology.flows.filter((f) => f.to === node.id && !(f.from === 'internet' && access?.open.length));
@@ -503,6 +507,7 @@ function ExposureCard({ node }: { node: ResourceNode }) {
         </div>
       ) : null}
       {exposure?.reason ? <p className="mt-1 text-[11px] leading-snug text-muted">{exposure.reason}</p> : null}
+      {each ? <p className="mt-1 text-[11px] leading-snug text-muted">{each}</p> : null}
       {inbound.length > 0 ? (
         <ul className="mt-1.5 space-y-0.5 text-[11px] text-muted">
           {inbound.map((f) => (

@@ -177,6 +177,7 @@ export async function captureDiagram(
       glyph: glyphKey || undefined,
       warn: data.warn,
       security: data.security as NodeSecurity | undefined,
+      repeat: data.repeat?.text,
     };
     nodes.push(entry);
     byId.set(node.id, entry);
