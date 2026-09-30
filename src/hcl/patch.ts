@@ -14,8 +14,8 @@
  * would lose a block or add parse errors is refused too.
  */
 import { messagesFor } from '@/i18n/messages';
-import { exprEquals, renameInExpression, renameInHcl } from '@/ir/expr';
-import type { Op } from '@/ir/ops';
+import { exprEquals } from '@/ir/expr';
+import type { Op, TextRewrite } from '@/ir/ops';
 import { applyOps } from '@/ir/ops';
 import type {
   BlockSpans,
@@ -128,6 +128,8 @@ interface FileCtx {
   eol: string;
   /** renames done by this batch of ops (old address → new) */
   renamed: Map<string, string>;
+  /** renames and re-keys of this batch, in op order (what `renamedInPlace` replays on the text) */
+  rewrites: TextRewrite[];
 }
 
 function eolOf(text: string): string {
@@ -301,6 +303,8 @@ const isAligned = (text: string, run: EntrySpan[]) =>
 // ------------------------------------------------------------ body diff
 
 const isBlockish = (e: Expression) => e.kind === 'block' || e.kind === 'blocks';
+/** resource meta-arguments written at the top of the body */
+const LEADING_META = new Set(['count', 'for_each']);
 /** keys of verbatim sub-blocks (`provisioner "x" #0`), see the parser */
 const RAW_ENTRY_KEY_RE = /[\s"]/;
 const itemsOf = (e: Expression) => (e.kind === 'block' ? [e.body] : e.kind === 'blocks' ? e.items : []);
@@ -312,12 +316,12 @@ const bodiesEqual = (a: Record<string, Expression>, b: Record<string, Expression
  * rewrite those tokens in its original text (keeping layout and comments).
  */
 function renamedInPlace(ctx: FileCtx, o: Expression, n: Expression, previous: string): string | null {
-  if (ctx.renamed.size === 0) return null;
+  if (ctx.rewrites.length === 0) return null;
   let expected = o;
   let text = previous;
-  for (const [from, to] of ctx.renamed) {
-    expected = renameInExpression(expected, from, to);
-    text = renameInHcl(text, from, to);
+  for (const rewrite of ctx.rewrites) {
+    expected = rewrite.expr(expected);
+    text = rewrite.hcl(text);
   }
   return exprEquals(expected, n) ? text : null;
 }
@@ -378,8 +382,10 @@ function renderBlocks(key: string, e: Expression, indent: string): string {
 /**
  * Splice the differences between two argument records into a body: changed
  * values are replaced in place, removed entries lose their lines, new
- * attributes go after the last attribute and new blocks at the end. Returns
- * false when the layout doesn't allow line-level edits (single-line bodies…).
+ * attributes go after the last attribute and new blocks at the end — but a
+ * resource's new `count` / `for_each` opens its body, as Terraform's style
+ * guide has it. Returns false when the layout doesn't allow line-level edits
+ * (single-line bodies…).
  */
 function patchBody(
   ctx: FileCtx,
@@ -388,6 +394,7 @@ function patchBody(
   body: BodySpans,
   parentIndent: string,
   edits: Edit[],
+  resource = false,
 ): boolean {
   const { text, eol } = ctx;
   const byKey = new Map<string, EntrySpan[]>();
@@ -402,6 +409,8 @@ function patchBody(
   const deleted = new Set<EntrySpan>();
   const newAttrs: Array<[string, Expression]> = [];
   const newBlocks: string[] = [];
+  /** meta-arguments that open the body */
+  const leading: Array<[string, Expression]> = [];
 
   for (const key of new Set([...Object.keys(oldArgs), ...Object.keys(newArgs)])) {
     const o = oldArgs[key];
@@ -418,6 +427,7 @@ function patchBody(
       for (const s of spans) deleted.add(s);
       if (isBlockish(n)) newBlocks.push(renderBlocks(key, n, indent));
       else if (RAW_ENTRY_KEY_RE.test(key) && n.kind === 'raw') newBlocks.push(indent + n.hcl);
+      else if (resource && o === undefined && LEADING_META.has(key)) leading.push([key, n]);
       else newAttrs.push([key, n]);
       continue;
     }
@@ -443,9 +453,18 @@ function patchBody(
     edits.push({ start: span.valueStart!, end: span.valueEnd!, text: withEol(value, eol) });
   }
 
-  if (deleted.size === 0 && newAttrs.length === 0 && newBlocks.length === 0) return true;
+  if (deleted.size === 0 && newAttrs.length === 0 && newBlocks.length === 0 && leading.length === 0) return true;
   if ([...deleted].some((e) => e.inline)) return false;
   const inner = bodyInner(text, body);
+
+  if (leading.length > 0) {
+    if (!inner) return false;
+    const lines = leading.map(([key, value]) => `${indent}${quoteKey(key)} = ${emitExpression(value, indent)}\n`).join('');
+    // a blank line between the meta-arguments and the rest, unless there is one (or nothing) already
+    const rest = body.entries.some((e) => !deleted.has(e)) || newAttrs.length > 0 || newBlocks.length > 0;
+    const spacer = rest && lineKindAt(text, inner.lo) !== 'blank' ? '\n' : '';
+    edits.push({ start: inner.lo, end: inner.lo, text: withEol(lines + spacer, eol) });
+  }
 
   if (deleted.size > 0) {
     if (!inner) return false;
@@ -596,7 +615,7 @@ function spliceBlock(ctx: FileCtx, old: Block, next: Block, edits: Edit[]): bool
     return false;
   }
   const indent = indentAt(ctx.text, spans.header);
-  return patchBody(ctx, old.node.args, (next.node as typeof old.node).args, spans.body, indent, edits);
+  return patchBody(ctx, old.node.args, (next.node as typeof old.node).args, spans.body, indent, edits, old.kind === 'resource');
 }
 
 function patchBlock(ctx: FileCtx, old: Block, next: Block): Edit[] {
@@ -649,6 +668,30 @@ function appendBlocks(text: string, blocks: string[], eol: string): string {
   return head + eol + body;
 }
 
+/** Where a new block placed after a resource goes: that resource's file, just past its text. */
+function placedAfter(
+  b: Block,
+  placements: Map<string, string>,
+  nextIR: IR,
+  oldByKey: Map<string, Block>,
+): { file: string; at: number } | undefined {
+  const anchorId = b.kind === 'extra' ? placements.get(b.node.id) : undefined;
+  const anchor = anchorId ? nextIR.resources.find((r) => r.id === anchorId) : undefined;
+  const key = anchor && keyOf({ kind: 'resource', node: anchor });
+  const old = key !== undefined ? oldByKey.get(key) : undefined;
+  if (!old) return undefined;
+  return { file: old.node.trivia.sourceFile!, at: old.node.trivia.rawTextRange!.end };
+}
+
+/** New blocks right after the block ending at `at`: one blank line before them, and after them unless one follows. */
+function insertAfter(ctx: FileCtx, at: number, blocks: string[]): Edit {
+  const { text, eol } = ctx;
+  const lead = at > 0 && text[at - 1] !== '\n' ? eol : '';
+  const body = blocks.map((b) => withEol(b.replace(/\n+$/, ''), eol)).join(eol + eol);
+  const follows = at < text.length && !isBlankLine(text, at, nextLine(text, at));
+  return { start: at, end: at, text: `${lead}${eol}${body}${eol}${follows ? eol : ''}` };
+}
+
 // ------------------------------------------------------------ entry point
 
 interface Plan {
@@ -662,14 +705,14 @@ interface Plan {
   shrunk: Set<string>;
 }
 
-function push<T>(map: Map<string, T[]>, key: string, ...values: T[]) {
+function push<K, T>(map: Map<K, T[]>, key: K, ...values: T[]) {
   const list = map.get(key);
   if (list) list.push(...values);
   else map.set(key, [...values]);
 }
 
 function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale: PatchRefusal } {
-  const { ir: nextIR, renamed } = applyOps(ir, ops);
+  const { ir: nextIR, renamed, rewrites, placements } = applyOps(ir, ops);
 
   const oldBlocks = blocksOf(ir);
   const oldNodes = new Set(oldBlocks.map((b) => b.node));
@@ -683,13 +726,23 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
   }
 
   const appends = new Map<string, string[]>();
+  /** new blocks written right after an existing one (`moved {}` after its resource): file → offset → texts */
+  const inserts = new Map<string, Map<number, string[]>>();
   const changed: Array<[Block, Block]> = [];
   const claimed = new Set<string>();
   for (const b of blocksOf(nextIR)) {
     const key = keyOf(b);
     const old = key !== undefined && !claimed.has(key) ? oldByKey.get(key) : undefined;
     if (!old) {
-      if (!oldNodes.has(b.node)) push(appends, b.node.trivia.sourceFile ?? defaultFile(b), emitBlock(b));
+      if (oldNodes.has(b.node)) continue;
+      const anchor = placedAfter(b, placements, nextIR, oldByKey);
+      if (anchor) {
+        const at = inserts.get(anchor.file) ?? new Map<number, string[]>();
+        push(at, anchor.at, emitBlock(b));
+        inserts.set(anchor.file, at);
+      } else {
+        push(appends, b.node.trivia.sourceFile ?? defaultFile(b), emitBlock(b));
+      }
       continue;
     }
     claimed.add(key!);
@@ -701,6 +754,7 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
     ...changed.map(([old]) => old.node.trivia.sourceFile!),
     ...[...removed].map((b) => b.node.trivia.sourceFile!),
     ...appends.keys(),
+    ...inserts.keys(),
   ]);
   for (const file of touched) {
     const reason = staleness(files[file], oldByFile.get(file) ?? []);
@@ -714,7 +768,7 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
     let ctx = ctxs.get(file);
     if (!ctx) {
       const text = files[file] ?? '';
-      ctx = { text, eol: eolOf(text), renamed };
+      ctx = { text, eol: eolOf(text), renamed, rewrites };
       ctxs.set(file, ctx);
     }
     return ctx;
@@ -724,6 +778,9 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
   for (const [old, next] of changed) {
     const file = old.node.trivia.sourceFile!;
     push(edits, file, ...patchBlock(ctxOf(file), old, next));
+  }
+  for (const [file, at] of inserts) {
+    for (const [offset, texts] of at) push(edits, file, insertAfter(ctxOf(file), offset, texts));
   }
   const shrunk = new Set<string>();
   for (const [file, blocks] of oldByFile) {
