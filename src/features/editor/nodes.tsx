@@ -161,11 +161,17 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
       <Handle type="target" position={Position.Left} />
       <ResourceIcon category={data.category} type={data.resourceType} size={40} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-1">
-          <span className="truncate text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
+        {/* a long type name (Portuguese, mostly) takes a second line instead of being cut — as wide
+            as the text, since the floated provider chip only takes room from the first (its margin box
+            ends with that line's 2 px padding + 12 px); one line sits centered on the chip, as before */}
+        <div className="max-h-[26px] min-h-4 overflow-hidden">
+          {data.provider !== 'other' ? <ProviderChip provider={data.provider} className="float-right -mb-0.5 ml-1" /> : null}
+          <span
+            data-type-label=""
+            className="block break-words pt-0.5 text-[9.5px] font-bold uppercase leading-[12px] tracking-[0.07em] text-(--cat-text)"
+          >
             {data.typeLabel}
           </span>
-          {data.provider !== 'other' ? <ProviderChip provider={data.provider} /> : null}
         </div>
         <div className="mt-px truncate text-[13px] font-semibold leading-tight text-foreground">
           {data.title}
@@ -238,11 +244,13 @@ export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlo
       <div className="flex items-center gap-2 px-3 pt-2.5">
         <ResourceIcon category={data.category} type={data.resourceType} size={24} />
         <span className="truncate text-[12.5px] font-semibold text-foreground">{data.title}</span>
-        <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
+        <span data-type-label="" className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
           {data.typeLabel}
         </span>
         {data.subtitle ? (
-          <span className="truncate rounded-[5px] bg-surface-1/70 px-1.5 py-px font-mono text-[10.5px] text-muted ring-1 ring-border">
+          // short of room, the subtitle gives way first and the name and type stay whole (with a mere
+          // proportional share, a short name would lose a fraction of a pixel — and show an ellipsis)
+          <span className="min-w-0 shrink-[1000] truncate rounded-[5px] bg-surface-1/70 px-1.5 py-px font-mono text-[10.5px] text-muted ring-1 ring-border">
             {data.subtitle}
           </span>
         ) : null}

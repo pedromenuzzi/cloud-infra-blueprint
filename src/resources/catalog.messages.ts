@@ -283,7 +283,8 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
   },
   azurerm_storage_account: {
     name: 'Conta de armazenamento',
-    shortName: 'Armazenamento',
+    // the service's name: "ARMAZENAMENTO" alone is wider than a canvas node's header
+    shortName: 'Storage',
     description: 'Armazenamento de blobs / arquivos / filas',
     fields: { name: { doc: '3–24 letras minúsculas e números, único globalmente' } },
   },
