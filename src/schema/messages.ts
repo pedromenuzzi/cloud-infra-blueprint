@@ -34,6 +34,9 @@ export const schemaMessages = defineMessages(
     unknownType: (type: string, provider: string, version: string, hint: string) =>
       `resource type "${type}" is not in the ${provider} provider ${version}${hint}`,
     typeDeprecated: (type: string, note: string) => `resource type "${type}" is deprecated${note}`,
+    unknownDataType: (type: string, provider: string, version: string, hint: string) =>
+      `data source "${type}" is not in the ${provider} provider ${version}${hint}`,
+    dataTypeDeprecated: (type: string, note: string) => `data source "${type}" is deprecated${note}`,
 
     /* type findings: `expects a number, got "x"`, nested `expects list(number): an item should be a number, got "x"` */
     expects: 'expects',
@@ -61,6 +64,9 @@ export const schemaMessages = defineMessages(
     deprecatedHeading: (note?: string) => (note ? `**Deprecated:** ${note}` : '**Deprecated**'),
     providerVersion: (provider: string, version: string) => `${provider} provider ${version}`,
     argumentCount: (n: number) => `${n} arguments and blocks: type inside the block to see them`,
+    /** data sources: completion detail and hover (`data source · AWS provider 6.66.0`) */
+    dataSource: (providerVersion: string) => `data source · ${providerVersion}`,
+    exposedCount: (n: number) => `exposes ${n} attribute${n === 1 ? '' : 's'}, read as data.<type>.<name>.<attribute>`,
   },
   {
     where: (path) => ` em ${path}`,
@@ -80,6 +86,8 @@ export const schemaMessages = defineMessages(
     missingBlock: (name, where) => `o bloco obrigatório "${name}"${where} está faltando`,
     unknownType: (type, provider, version, hint) => `o tipo de recurso "${type}" não existe no provider ${provider} ${version}${hint}`,
     typeDeprecated: (type, note) => `o tipo de recurso "${type}" está obsoleto${note}`,
+    unknownDataType: (type, provider, version, hint) => `a fonte de dados "${type}" não existe no provider ${provider} ${version}${hint}`,
+    dataTypeDeprecated: (type, note) => `a fonte de dados "${type}" está obsoleta${note}`,
 
     expects: 'espera',
     shouldBe: 'deveria ser',
@@ -102,6 +110,8 @@ export const schemaMessages = defineMessages(
     deprecatedHeading: (note) => (note ? `**Obsoleto:** ${note}` : '**Obsoleto**'),
     providerVersion: (provider, version) => `provider ${provider} ${version}`,
     argumentCount: (n) => `${n} argumentos e blocos: digite dentro do bloco para vê-los`,
+    dataSource: (providerVersion) => `fonte de dados · ${providerVersion}`,
+    exposedCount: (n) => `expõe ${n} atributo${n === 1 ? '' : 's'}, lido${n === 1 ? '' : 's'} como data.<tipo>.<nome>.<atributo>`,
   },
 );
 

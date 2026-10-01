@@ -1,5 +1,5 @@
 /**
- * Schema-aware validation of a resource block: unknown arguments and blocks
+ * Schema-aware validation of a resource or data block: unknown arguments and blocks
  * (with a "did you mean"), missing schema-required arguments the catalog
  * doesn't already flag, deprecated arguments, read-only attributes, and
  * literals whose type can't possibly convert. Anything the IR can't see into
@@ -7,11 +7,11 @@
  * of the doubt: a warning is raised only when Terraform would certainly fail.
  */
 import { messagesFor } from '@/i18n/messages';
-import type { BodySpans, Diagnostic, Expression, IR, ResourceNode } from '@/ir/types';
+import type { BodySpans, DataNode, Diagnostic, Expression, IR, ResourceNode } from '@/ir/types';
 import type { ResourceDef } from '@/resources/types';
 import { acceptsBlockSyntax, closestName, entryOf, isSettable, parseType, type TypeNode } from './lookup';
 import { schemaMessages, type Got, type SchemaText, type Wanted } from './messages';
-import { getProviderSchema, schemaFor, schemaProviderOf } from './store';
+import { dataSchemaFor, getDataSchema, getProviderSchema, schemaFor, schemaProviderOf } from './store';
 import type { SchemaBlock, SchemaProvider } from './types';
 import { constraintAllows, providerConstraints } from './versions';
 
@@ -39,6 +39,9 @@ export interface SchemaIssue {
 
 /** meta-arguments and blocks Terraform handles itself, valid in every resource body */
 export const META_ARGUMENTS = new Set(['count', 'for_each', 'provider', 'depends_on', 'lifecycle', 'connection', 'provisioner']);
+
+/** the ones a `data` block takes (no provisioners or connections: nothing is created) */
+export const DATA_META_ARGUMENTS = new Set(['count', 'for_each', 'provider', 'depends_on', 'lifecycle']);
 
 const IDENT = /^[A-Za-z_][\w-]*$/;
 /** labeled sub-block kept verbatim by the parser: `dynamic "ingress" #0` */
@@ -152,6 +155,8 @@ interface Walk {
   issues: SchemaIssue[];
   /** top-level arguments the catalog already reports as missing */
   catalogRequired: Set<string>;
+  /** meta-arguments of the top-level body (resource or data block) */
+  meta: ReadonlySet<string>;
   /** the messages in effect when the walk started */
   m: SchemaText;
 }
@@ -215,7 +220,7 @@ function checkBody(w: Walk, body: Record<string, Expression>, schema: SchemaBloc
     const named = bodyKeyName(key);
     if (!named) continue; // quoted keys: the parser and Terraform have their say
     const { name, via } = named;
-    if (top && META_ARGUMENTS.has(name)) continue;
+    if (top && w.meta.has(name)) continue;
     const entry = entryOf(schema, name);
 
     if (via === 'verbatim') {
@@ -325,6 +330,7 @@ export function schemaIssues(node: ResourceNode, def?: ResourceDef): SchemaIssue
   const w: Walk = {
     issues: [],
     catalogRequired: new Set(def?.fields.filter((f) => f.required).map((f) => f.name) ?? []),
+    meta: META_ARGUMENTS,
     m,
   };
   const deprecation = schema.resourceDeprecation(node.type);
@@ -335,13 +341,48 @@ export function schemaIssues(node: ResourceNode, def?: ResourceDef): SchemaIssue
   return w.issues;
 }
 
+/**
+ * schema findings for one data block (unknown data source, unknown or
+ * read-only arguments with a "did you mean", missing required ones, type
+ * problems), in the UI language in effect; empty while its provider's data
+ * sources aren't loaded
+ */
+export function dataSchemaIssues(node: DataNode): SchemaIssue[] {
+  const provider = schemaProviderOf(node.type);
+  if (!provider) return [];
+  const m = messagesFor(schemaMessages);
+  const schema = dataSchemaFor(node.type);
+  if (!schema) {
+    const providerSchema = getDataSchema(provider);
+    if (!providerSchema) return []; // not loaded (yet)
+    const suggestion = closestName(node.type, providerSchema.types());
+    return [
+      {
+        kind: 'unknown-type',
+        path: [],
+        suggestion,
+        message: m.unknownDataType(node.type, provider, providerSchema.version, suggestion ? m.didYouMean(suggestion) : ''),
+      },
+    ];
+  }
+  const w: Walk = { issues: [], catalogRequired: new Set(), meta: DATA_META_ARGUMENTS, m };
+  const deprecation = schema.resourceDeprecation(node.type);
+  if (deprecation !== undefined) {
+    w.issues.push({ kind: 'deprecated-type', path: [], message: m.dataTypeDeprecated(node.type, note(w, deprecation)) });
+  }
+  checkBody(w, node.args, schema.resource(node.type)!, []);
+  return w.issues;
+}
+
 /* ---------------------------------------------------------------- markers */
 
 type Marker = Pick<Diagnostic, 'start' | 'end'>;
-export type MarkerAt = (node: ResourceNode, field?: string) => Marker;
+/** a block a warning can point into: a resource or a data block */
+type Located = ResourceNode | DataNode;
+export type MarkerAt = (node: Located, field?: string) => Marker;
 
 /** spans of the body at `path` (block names + item indexes), when the text still matches */
-function bodySpansAt(node: ResourceNode, path: Array<string | number>): BodySpans | undefined {
+function bodySpansAt(node: Located, path: Array<string | number>): BodySpans | undefined {
   let body = node.trivia.spans?.body;
   for (let i = 0; body && i < path.length; i++) {
     const key = path[i];
@@ -357,7 +398,7 @@ function bodySpansAt(node: ResourceNode, path: Array<string | number>): BodySpan
  * keys are looked up in their block's spans; issues about a whole nested
  * block point at that block's key.
  */
-function issueMarker(node: ResourceNode, issue: SchemaIssue, markerAt: MarkerAt): Marker {
+function issueMarker(node: Located, issue: SchemaIssue, markerAt: MarkerAt): Marker {
   const spans = node.trivia.spans;
   if (!spans) return markerAt(node);
   let path = issue.path;
@@ -405,6 +446,18 @@ export function schemaDiagnostics(
 ): Diagnostic[] {
   if (pinMismatch(ir, node.type)) return [];
   return schemaIssues(node, def).map((issue) => ({
+    file,
+    severity: 'warning' as const,
+    message: `${node.id}: ${issue.message}`,
+    nodeId: node.id,
+    ...issueMarker(node, issue, markerAt),
+  }));
+}
+
+/** data-source schema warnings as diagnostics (see src/ir/validate.ts); none when the project pins another version */
+export function dataSchemaDiagnostics(ir: IR, node: DataNode, file: string, markerAt: MarkerAt): Diagnostic[] {
+  if (pinMismatch(ir, node.type)) return [];
+  return dataSchemaIssues(node).map((issue) => ({
     file,
     severity: 'warning' as const,
     message: `${node.id}: ${issue.message}`,
