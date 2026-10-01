@@ -267,6 +267,6 @@ test.describe('a Portuguese browser', () => {
     await expect(page.getByRole('heading', { name: 'Projetos', level: 1 })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
     // the seeded demo is described in the language it was created in
-    await expect(page.getByText(/^Projeto de demonstração — /)).toBeVisible();
+    await expect(page.getByText(/^Projeto de demonstração: /)).toBeVisible();
   });
 });

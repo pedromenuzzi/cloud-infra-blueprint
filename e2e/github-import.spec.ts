@@ -113,7 +113,7 @@ test('private repositories: a clear 404, then a memory-only token opens them', a
   const d = await openFromDashboard(page);
   await d.getByLabel('GitHub link or owner/repo').fill('acme/secret');
   await d.getByRole('button', { name: 'Find Terraform' }).click();
-  await expect(d.getByRole('alert')).toContainText("Couldn't find acme/secret. Check the spelling — if it's private, add a token below.");
+  await expect(d.getByRole('alert')).toContainText("Couldn't find acme/secret. Check the spelling. If it's private, add a token below.");
 
   await d.getByRole('button', { name: 'Add a token' }).click();
   const field = d.getByLabel('Personal access token (optional)');
