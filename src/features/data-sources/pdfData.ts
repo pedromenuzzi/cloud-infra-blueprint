@@ -8,7 +8,7 @@ import { isSecretName, redactSecrets } from '@/features/export/archDoc';
 import type { Locale } from '@/i18n/locale';
 import { defineMessages, messagesFor } from '@/i18n/messages';
 import type { IR } from '@/ir/types';
-import { exprText } from '@/ir/repeat';
+import { argText } from './argText';
 import { dataSourceMessages } from './dataSources.messages';
 import { dataSourceName } from './i18n';
 import { readersByAttribute } from './readers';
@@ -36,8 +36,6 @@ export const pdfDataMessages = defineMessages(
 /** arguments and readers listed per data source, at most (the code section has them all) */
 const MAX_LINES = 8;
 
-const oneLine = (text: string) => text.replace(/\s+/g, ' ');
-
 export function* dataSection(c: Cursor, ir: IR, locale: Locale): Generator<void, void> {
   const t = messagesFor(pdfDataMessages, locale);
   const m = messagesFor(dataSourceMessages, locale);
@@ -45,7 +43,7 @@ export function* dataSection(c: Cursor, ir: IR, locale: Locale): Generator<void,
   const rows: Row[] = ir.data.map((d) => {
     const args = Object.entries(d.args).filter(([k]) => !/[\s"]/.test(k));
     const shown = args.slice(0, MAX_LINES).map(([k, v]) => ({
-      text: `${k} = ${isSecretName(k) ? MASK : redactSecrets(oneLine(exprText(v)))}`,
+      text: `${k} = ${isSecretName(k) ? MASK : redactSecrets(argText(v))}`,
       font: 'mono' as const,
       size: 6.8,
       color: INK,

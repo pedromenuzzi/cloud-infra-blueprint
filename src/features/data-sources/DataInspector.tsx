@@ -23,7 +23,7 @@ import { messagesFor, useMessages } from '@/i18n/messages';
 import { findData, isDataId } from '@/ir/dataSources';
 import { exprMentions, exprPreview, ref } from '@/ir/expr';
 import { hasNode } from '@/ir/modules';
-import { exprText, repeatOf } from '@/ir/repeat';
+import { repeatOf } from '@/ir/repeat';
 import type { DataNode, Expression } from '@/ir/types';
 import { dataAddress } from '@/ir/types';
 import { copyText } from '@/lib/download';
@@ -34,6 +34,7 @@ import { requestDataSchemasFor, useDataSourceSchema } from '@/schema/store';
 import type { SchemaEntry } from '@/schema/types';
 import { dataDocsUrl, typeDef } from './catalog';
 import { DataSourceIcon } from './DataSourceIcon';
+import { argText } from './argText';
 import { dataSourceMessages } from './dataSources.messages';
 import { dataSourceDescription, dataSourceName } from './i18n';
 import { readersByAttribute } from './readers';
@@ -66,13 +67,6 @@ function Section({ title, hint, children, tone }: { title: string; hint?: string
 
 const useApply = () => useEditor((s) => s.applyCanvasOps);
 
-/** `name = "name", values = [...]` for a nested block (read-only: edited in code) */
-function blockSummary(e: Expression): string {
-  const bodies = e.kind === 'block' ? [e.body] : e.kind === 'blocks' ? e.items : [];
-  return bodies
-    .map((body) => `{ ${Object.entries(body).map(([k, v]) => `${k} = ${exprText(v)}`).join(', ')} }`)
-    .join(' ');
-}
 
 /** One argument: an editable literal, or an expression / nested block shown read-only with a way to the code. */
 function ArgRow({ node, name, value, entry }: { node: DataNode; name: string; value: Expression; entry?: SchemaEntry }) {
@@ -80,12 +74,11 @@ function ArgRow({ node, name, value, entry }: { node: DataNode; name: string; va
   const apply = useApply();
   const text = editableText(value);
   const id = `data-arg-${name}`;
-  const nested = value.kind === 'block' || value.kind === 'blocks';
   const commit = (next: Expression | null) => {
     if (next) apply([{ kind: 'set_arg', nodeId: node.id, field: name, value: next }]);
   };
   // code as written (strings quoted): `["099720109477"]`, `{ name = "name", values = [...] }`
-  const preview = nested ? blockSummary(value) : exprText(value);
+  const preview = argText(value);
   return (
     <div className="rounded-[8px] border bg-surface-2/60 px-2.5 py-2">
       <div className="flex items-center gap-1.5">
@@ -447,7 +440,7 @@ export function DataInspector({ docked = false, onMinimize }: { docked?: boolean
                   <div key={k} className="flex items-baseline gap-2 rounded-[7px] bg-surface-2 px-2 py-1">
                     <dt className="font-mono text-[11px] font-semibold" translate="no">{RAW_KEY.test(k) ? k.replace(/ #\d+.*$/, '') : k}</dt>
                     <dd translate="no" className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted" title={exprPreview(v)}>
-                      {v.kind === 'block' || v.kind === 'blocks' ? blockSummary(v) : exprPreview(v)}
+                      {argText(v)}
                     </dd>
                   </div>
                 ))}
