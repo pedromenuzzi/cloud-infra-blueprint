@@ -243,9 +243,9 @@ describe('regions', () => {
   it('keeps default prices, and says so, for a region outside the table', () => {
     const c = cost(instance('ap-east-9'), 'aws_instance.web');
     expect(c.multiplier).toBe(1);
-    expect(c.assumptions[0]).toBe('Prices for us-east-1 — ap-east-9 may differ');
+    expect(c.assumptions[0]).toBe('Prices for us-east-1 (ap-east-9 may differ)');
     const none = cost('resource "aws_instance" "web" {\n  instance_type = "t3.micro"\n}\n', 'aws_instance.web');
-    expect(none.assumptions[0]).toBe('No region in the code — priced at us-east-1');
+    expect(none.assumptions[0]).toBe('No region in the code: priced at us-east-1');
   });
 
   it('reads the region of an aliased provider, a variable, an Azure location or a GCP zone', () => {
