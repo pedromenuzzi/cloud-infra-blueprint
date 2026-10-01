@@ -40,6 +40,8 @@ export const dashboardMessages = defineMessages(
     defaultDescription: 'Cloud architecture blueprint.',
     resources: (n: number) => `${n} resource${s(n)}`,
     updated: (when: string) => `Updated ${when}`,
+    /** before the folder's name on the card of a project linked to a folder on disk */
+    syncedFolder: 'Synced with the folder',
     openProject: (name: string) => `Open project ${name}`,
     actionsFor: (name: string) => `Actions for ${name}`,
     rename: 'Rename',
@@ -52,6 +54,8 @@ export const dashboardMessages = defineMessages(
     deleteLabel: 'Delete project',
     deleteTitle: (name: string) => `Delete “${name}”?`,
     deleteBody: 'The project is removed from this browser. Export it first if you want a copy.',
+    deleteLinkedBody: (folder: string) =>
+      `The project is removed from this browser and stops syncing — the folder “${folder}” on your disk is left as it is.`,
     deleted: 'Project deleted',
     gone: 'That project no longer exists',
   },
@@ -91,6 +95,7 @@ export const dashboardMessages = defineMessages(
     defaultDescription: 'Blueprint de arquitetura em nuvem.',
     resources: (n: number) => `${n} recurso${s(n)}`,
     updated: (when: string) => `Atualizado ${when}`,
+    syncedFolder: 'Sincronizado com a pasta',
     openProject: (name: string) => `Abrir projeto ${name}`,
     actionsFor: (name: string) => `Ações de ${name}`,
     rename: 'Renomear',
@@ -103,6 +108,8 @@ export const dashboardMessages = defineMessages(
     deleteLabel: 'Excluir projeto',
     deleteTitle: (name: string) => `Excluir “${name}”?`,
     deleteBody: 'O projeto será removido deste navegador. Exporte-o antes se quiser uma cópia.',
+    deleteLinkedBody: (folder: string) =>
+      `O projeto será removido deste navegador e deixará de sincronizar — a pasta “${folder}” no seu disco fica como está.`,
     deleted: 'Projeto excluído',
     gone: 'Esse projeto não existe mais',
   },

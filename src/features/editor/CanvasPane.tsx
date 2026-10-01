@@ -51,7 +51,14 @@ import { messagesFor, useMessages } from '@/i18n/messages';
 import { motionMs } from '@/lib/motion';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
+import { exprMentions } from '@/ir/expr';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
+import { isModuleId, withModuleNodes } from '@/ir/modules';
+import { moduleMenuEntries } from '@/features/modules/moduleMenu';
+import { ModuleNodeView, moduleFlowNodes } from '@/features/modules/ModuleNode';
+import { ModulesHost } from '@/features/modules/ModulesHost';
+import { modulesMessages } from '@/features/modules/modules.messages';
+import { repeatOf } from '@/ir/repeat';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
@@ -67,6 +74,7 @@ import { isCanvasDragging } from './canvasDrag';
 import { CanvasToolbar } from './CanvasToolbar';
 import { exportDiagramImage } from './exportImage';
 import { removeReferencesOps } from './connections';
+import { repeatLabel } from './repeatLabel';
 import { ProjectOverview } from './Inspector';
 import { floatingInspectorInset, useFloatingInspectorShown } from './inspectorPlacement';
 import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
@@ -96,7 +104,7 @@ import { ruleRisk } from '@/security/audit';
 import { isRuleResource, portText } from '@/security/model';
 import { useEditor } from './store';
 
-const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, internet: InternetNodeView };
+const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, internet: InternetNodeView, module: ModuleNodeView };
 const edgeTypes = { flow: FlowEdge, secflow: SecFlowEdge };
 
 export const INTERNET_NODE = '__internet__';
@@ -161,7 +169,7 @@ const portWords = (ports: string[], locale: Locale) => ports.map((p) => portText
  * Nodes and edges for the IR. Selection is applied separately (withSelection)
  * so clicking a node doesn't rebuild the whole graph.
  */
-function buildFlow(
+export function buildFlow(
   state: Pick<ReturnType<typeof useEditor.getState>, 'ir' | 'edges' | 'warnings'>,
   audit: AuditResult | null,
   locale: Locale,
@@ -189,17 +197,20 @@ function buildFlow(
     const container = isContainerType(r.type);
     const parent = r.parentId ? byId.get(r.parentId) : undefined;
     const name = def ? resourceName(r.type, locale) : r.type;
+    const rep = repeatOf(r, ir);
+    const repeat = rep ? repeatLabel(rep, locale) : undefined;
     const common = {
       id: r.id,
       position: { x: r.position?.x ?? 0, y: r.position?.y ?? 0 },
       parentId: r.parentId,
       domAttributes: { 'aria-roledescription': m.nodeRole },
-      ariaLabel: m.nodeLabel(
-        name,
-        r.name,
-        parent ? `${getDef(parent.type) ? resourceName(parent.type, locale) : parent.type} ${parent.name}` : null,
-        warned.has(r.id),
-      ),
+      ariaLabel:
+        m.nodeLabel(
+          name,
+          r.name,
+          parent ? `${getDef(parent.type) ? resourceName(parent.type, locale) : parent.type} ${parent.name}` : null,
+          warned.has(r.id),
+        ) + (repeat ? `, ${repeat.aria}` : ''),
     };
     if (container) {
       return {
@@ -214,6 +225,7 @@ function buildFlow(
           category: def?.category ?? 'network',
           warn: warned.has(r.id),
           security: lens?.get(r.id),
+          repeat,
         },
         width: r.position?.w ?? CONTAINER_MIN_W,
         height: r.position?.h ?? CONTAINER_MIN_H,
@@ -237,9 +249,13 @@ function buildFlow(
         category: def?.category ?? 'compute',
         warn: warned.has(r.id),
         security: lens?.get(r.id),
+        repeat,
       },
     } satisfies FlowNode;
   });
+
+  // module calls: top-level nodes of their own (src/features/modules)
+  if (ir.modules.length > 0) nodes.push(...moduleFlowNodes(ir, useEditor.getState().files, warned, audit !== null, locale));
 
   const rfEdges: FlowEdgeType[] = edges.map((e) => ({
     id: e.id,
@@ -419,7 +435,8 @@ function CanvasInner() {
       keyboardTimer.current = setTimeout(() => {
         const moved = [...keyboardMoved.current];
         keyboardMoved.current.clear();
-        const current = new Map(useEditor.getState().ir.resources.map((r) => [r.id, r] as const));
+        const { ir: now } = useEditor.getState();
+        const current = new Map([...now.resources, ...now.modules].map((r) => [r.id, r] as const));
         const ops: Op[] = moved.flatMap((id) => {
           const node = rf.getNode(id);
           const irNode = current.get(id);
@@ -517,11 +534,12 @@ function CanvasInner() {
         } else {
           existing = from.args[rule.arg];
         }
-        const pointsAtTarget = (e: Expression | undefined) => e?.kind === 'ref' && e.path.startsWith(`${to.id}.`);
+        // `aws_subnet.a.id`, `aws_subnet.a[0].id`, `element(aws_subnet.a[*].id, count.index)`…
+        const pointsAtTarget = (e: Expression | undefined) => e !== undefined && (e.kind === 'ref' || e.kind === 'raw') && exprMentions(e, to.id);
         if (rule.mode === 'set' && pointsAtTarget(existing)) return 'connected';
         // appending to an expression we don't model (var.ids, concat(…)) would break its type
         if (rule.mode === 'append' && existing && existing.kind !== 'list' && existing.kind !== 'ref') return 'complex';
-        return connectionOp(from, to, rule) ?? 'connected';
+        return connectionOp(from, to, rule, useEditor.getState().ir) ?? 'connected';
       };
 
       const op = tryRule(source, target) ?? tryRule(target, source);
@@ -611,7 +629,8 @@ function CanvasInner() {
   /** apply layout moves as one undo step, gliding; says so when nothing would move */
   const applyLayout = useCallback(
     (ops: Op[]) => {
-      const current = new Map(useEditor.getState().ir.resources.map((r) => [r.id, r.position] as const));
+      const { ir: now } = useEditor.getState();
+      const current = new Map([...now.resources, ...now.modules].map((r) => [r.id, r.position] as const));
       const moves = ops.filter((op) => {
         if (op.kind !== 'move_node') return true;
         const p = current.get(op.nodeId);
@@ -630,10 +649,11 @@ function CanvasInner() {
 
   const tidy = useCallback(async () => {
     const state = useEditor.getState();
-    if (state.ir.resources.length === 0 || tidying) return;
+    if ((state.ir.resources.length === 0 && state.ir.modules.length === 0) || tidying) return;
     setTidying(true);
     try {
-      const ops = await computeTidyOps(state.ir, state.edges, isContainerType);
+      // module calls are arranged like resources that hold nothing
+      const ops = await computeTidyOps(withModuleNodes(state.ir), state.edges, isContainerType);
       if (applyLayout(ops)) {
         // once containers are re-measured at their new sizes (after the glide)
         setTimeout(() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(400) }), motionMs(480) + 60);
@@ -817,7 +837,7 @@ function CanvasInner() {
     if (!menu) return [];
     if (menu.nodeId) {
       const node = byId.get(menu.nodeId);
-      if (!node) return [];
+      if (!node) return moduleMenuEntries(menu.nodeId, focusRenameInput);
       // right-click inside a multi-selection acts on all of it
       const picked = useEditor.getState().selectedIds;
       if (picked.length > 1 && picked.includes(node.id)) {
@@ -897,7 +917,11 @@ function CanvasInner() {
     ];
   }, [menu, byId, duplicate, rf, tidy, exportImage, applyCanvasOps, am, m, arrangeInside, ir]);
 
-  const stats = m.stats(ir.resources.length, irEdges.length);
+  const mm = useMessages(modulesMessages);
+  const stats =
+    ir.modules.length > 0
+      ? mm.stats(ir.resources.length, ir.modules.length, irEdges.length)
+      : m.stats(ir.resources.length, irEdges.length);
   // the minimap sits bottom-right and slides left of the inspector; hide it
   // rather than cover the toolbar on the bottom-left
   const minimapFits = canvasWidth - (inspectorOpen ? inspectorInset() : 0) >= 176 + 320 + 48;
@@ -1066,7 +1090,7 @@ function CanvasInner() {
           ) : null}
           {!overview && !readOnly ? <EditorTips /> : null}
         </Panel>
-        {ir.resources.length === 0 && !locked ? <EmptyCanvas /> : null}
+        {ir.resources.length === 0 && ir.modules.length === 0 && !locked ? <EmptyCanvas /> : null}
       </ReactFlow>
 
       {menu ? (
@@ -1078,7 +1102,9 @@ function CanvasInner() {
             menu.nodeId
               ? selectedIds.length > 1 && selectedIds.includes(menu.nodeId)
                 ? m.selectionActions
-                : m.resourceActions
+                : isModuleId(menu.nodeId)
+                  ? mm.actions
+                  : m.resourceActions
               : menu.exportOnly
                 ? m.export
                 : m.canvasActions
@@ -1088,6 +1114,7 @@ function CanvasInner() {
       ) : null}
 
       <DropHintCard />
+      <ModulesHost />
 
       {quickAdd ? (
         <QuickAddPopover

@@ -7,6 +7,7 @@ import { Command } from 'cmdk';
 import {
   ArrowLeft,
   BookOpen,
+  Boxes,
   Code2,
   CopyPlus,
   CornerDownLeft,
@@ -45,6 +46,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
 import { focusIsLost, Kbd, restoreFocus, useLayer } from '@/components/ui';
+import { backupAmong, openRestore } from '@/features/data/dataDialogs';
 import { ALIGN_ACTIONS, alignActionBlocker } from '@/features/editor/alignActions';
 import { arrangeMessages } from '@/features/editor/arrange.messages';
 import { canvasApi } from '@/features/editor/canvasApi';
@@ -72,6 +74,11 @@ import { TEMPLATES } from '@/templates';
 import { templateDescription, templateName, templateSearchText } from '@/templates/i18n';
 import { useTheme } from '@/theme/useTheme';
 import { commandMessages } from './messages';
+import { addModuleMessages } from '@/features/modules/AddModuleDialog.messages';
+import { openAddModule } from '@/features/modules/addModuleStore';
+import { isModuleId } from '@/ir/modules';
+import { ModuleIcon } from '@/features/modules/ModuleIcon';
+import { modulesMessages } from '@/features/modules/modules.messages';
 import { MOD, takePaletteReturnFocus, usePalette } from './paletteStore';
 
 function Item({
@@ -147,6 +154,8 @@ export function CommandPalette() {
   const am = useMessages(arrangeMessages);
   const m = useMessages(commandMessages);
   const sm = useMessages(securityUiMessages);
+  const addm = useMessages(addModuleMessages);
+  const modm = useMessages(modulesMessages);
   const locale = useLocale((s) => s.locale);
   const setLocale = useLocale((s) => s.setLocale);
   const arrangeTarget = selection ? ir.resources.find((r) => r.id === selection) : undefined;
@@ -242,6 +251,14 @@ export function CommandPalette() {
                         setPage('add');
                       }}
                     />
+                    <Item
+                      value="add-module"
+                      icon={Boxes}
+                      label={addm.open}
+                      keywords={addm.keywords}
+                      hint={addm.openHint}
+                      onSelect={() => run(openAddModule)}
+                    />
                     <Item value="fit" icon={Maximize} label={m.fitView} shortcut="⇧1" onSelect={() => run(() => canvasApi()?.fitView())} />
                     <Item value="tidy" icon={WandSparkles} label={am.command} keywords={am.keywords} onSelect={() => run(() => void canvasApi()?.tidy())} />
                     {arrangeTarget && isContainerType(arrangeTarget.type) && ir.resources.some((r) => r.parentId === arrangeTarget.id) ? (
@@ -256,7 +273,9 @@ export function CommandPalette() {
                     <Item value="minimap" icon={MapIcon} label={m.toggleMinimap} onSelect={() => run(() => canvasApi()?.toggleMinimap())} />
                     {selection ? (
                       <>
-                        <Item value="duplicate" icon={CopyPlus} label={m.duplicateSelected} shortcut={`${MOD} D`} onSelect={() => run(() => canvasApi()?.duplicate(selection))} />
+                        {isModuleId(selection) ? null : (
+                          <Item value="duplicate" icon={CopyPlus} label={m.duplicateSelected} shortcut={`${MOD} D`} onSelect={() => run(() => canvasApi()?.duplicate(selection))} />
+                        )}
                         <Item value="reveal" icon={Code2} label={m.revealSelected} onSelect={() => run(() => editor().revealInCode(selection))} />
                         <Item
                           value="delete-selected"
@@ -366,7 +385,7 @@ export function CommandPalette() {
                     <LayoutCommands render={(c) => <Item key={c.value} value={c.value} icon={c.icon} label={c.label} keywords={c.keywords} onSelect={() => run(c.run)} />} />
                   </Command.Group>
 
-                  {resources.length > 0 ? (
+                  {resources.length > 0 || ir.modules.length > 0 ? (
                     <Command.Group heading={m.group.goToResource}>
                       {resources.map((r) => {
                         const def = getDef(r.type);
@@ -389,6 +408,23 @@ export function CommandPalette() {
                           </Item>
                         );
                       })}
+                      {ir.modules.map((mod) => (
+                        <Item
+                          key={mod.id}
+                          value={`goto ${mod.id}`}
+                          label={mod.name}
+                          hint={modm.typeLabel}
+                          keywords={[mod.id, modm.typeLabel]}
+                          onSelect={() =>
+                            run(() => {
+                              editor().setSelection(mod.id, 'canvas');
+                              canvasApi()?.focusNode(mod.id);
+                            })
+                          }
+                        >
+                          <ModuleIcon size={26} />
+                        </Item>
+                      ))}
                     </Command.Group>
                   ) : null}
 
@@ -435,6 +471,13 @@ export function CommandPalette() {
                     run(async () => {
                       const picked = await pickTerraformFiles();
                       if (!picked) return;
+                      // one of this app's backups: the dashboard's restore dialog, not an import
+                      const backup = await backupAmong(picked);
+                      if (backup) {
+                        openRestore(backup);
+                        navigate('/dashboard');
+                        return;
+                      }
                       const imported = await readTerraformFiles(picked);
                       const t = messagesFor(commandMessages);
                       if (!imported) {

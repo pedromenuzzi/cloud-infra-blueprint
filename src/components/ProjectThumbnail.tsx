@@ -3,12 +3,15 @@ import { memo, useId, useMemo } from 'react';
 import { parseProject } from '@/hcl/parser';
 import { useMessages } from '@/i18n/messages';
 import { deriveStructure } from '@/ir/graph';
-import { autoLayout, CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
+import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
+import { layoutWithModules } from '@/ir/moduleLayout';
+import { moduleEdges, withModuleNodes } from '@/ir/modules';
 import type { IR, ResourceNode } from '@/ir/types';
 import { resourceName, resourceShortName } from '@/resources/i18n';
 import { CATEGORY_COLORS, CategoryGlyph } from '@/resources/icons';
 import type { Category } from '@/resources/types';
 import { getDef, isContainerType } from '@/resources/registry';
+import { modulesMessages } from '@/features/modules/modules.messages';
 import { shellMessages } from './messages';
 
 export interface AbsRect {
@@ -73,9 +76,10 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
   const data = useMemo(() => {
     try {
       const { ir } = parseProject(files);
-      const edges = deriveStructure(ir, getDef);
-      autoLayout(ir, isContainerType);
-      const rects = computeAbsoluteRects(ir);
+      const edges = [...deriveStructure(ir, getDef), ...moduleEdges(ir)];
+      layoutWithModules(ir, isContainerType);
+      // module calls are drawn as plain nodes (a slate tile)
+      const rects = computeAbsoluteRects(withModuleNodes(ir));
       const all = [...rects.values()];
       if (all.length === 0) return null;
       const minX = Math.min(...all.map((r) => r.x)) - 24;
@@ -95,6 +99,7 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
   const uid = useId().replace(/:/g, '');
   // resource names (detailed renders) and labels follow a language switch
   const m = useMessages(shellMessages);
+  const moduleLabel = useMessages(modulesMessages).typeLabel.toUpperCase();
 
   if (!data) {
     return (
@@ -139,6 +144,10 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
             <stop offset="1" stopColor={CATEGORY_COLORS[c].to} />
           </linearGradient>
         ))}
+        <linearGradient id={`${uid}-tile-module`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#94a3b8" />
+          <stop offset="1" stopColor="#475569" />
+        </linearGradient>
       </defs>
       {data.rects
         .filter((r) => r.isContainer)
@@ -196,6 +205,7 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
         .filter((r) => !r.isContainer)
         .map((r) => {
           const category = getDef(r.node.type)?.category ?? 'compute';
+          const isModule = r.node.type === 'module';
           const tile = 42;
           const tx = r.x + 14;
           const ty = r.y + (r.h - tile) / 2;
@@ -211,14 +221,16 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
                 stroke="var(--node-border, #d5deea)"
                 strokeWidth={2}
               />
-              <rect x={tx} y={ty} width={tile} height={tile} rx={11} fill={`url(#${gradId(category)})`} />
-              <g transform={`translate(${tx + 9} ${ty + 9}) scale(1)`} color="#fff">
-                <CategoryGlyph category={category} type={r.node.type} strokeWidth={2.2} />
-              </g>
+              <rect x={tx} y={ty} width={tile} height={tile} rx={11} fill={`url(#${isModule ? `${uid}-tile-module` : gradId(category)})`} />
+              {isModule ? null : (
+                <g transform={`translate(${tx + 9} ${ty + 9}) scale(1)`} color="#fff">
+                  <CategoryGlyph category={category} type={r.node.type} strokeWidth={2.2} />
+                </g>
+              )}
               {detailed ? (
                 <>
-                  <text x={tx + tile + 12} y={r.y + 27} fontSize={10.5} fontWeight={700} letterSpacing={0.6} fill={CATEGORY_COLORS[category].solid}>
-                    {resourceShortName(r.node.type).toUpperCase()}
+                  <text x={tx + tile + 12} y={r.y + 27} fontSize={10.5} fontWeight={700} letterSpacing={0.6} fill={isModule ? '#64748b' : CATEGORY_COLORS[category].solid}>
+                    {isModule ? moduleLabel : resourceShortName(r.node.type).toUpperCase()}
                   </text>
                   <text x={tx + tile + 12} y={r.y + 46} fontSize={15} fontWeight={600} fill="currentColor">
                     {r.node.name.length > 16 ? `${r.node.name.slice(0, 15)}…` : r.node.name}

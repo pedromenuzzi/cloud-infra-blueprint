@@ -6,6 +6,7 @@ import {
   NodeResizer,
   Position,
   useInternalNode,
+  useStore,
   type Edge,
   type InternalNode,
   type EdgeProps,
@@ -22,8 +23,11 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS, ProviderChip, ResourceIcon } from '@/resources/icons';
 import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
+import type { ModuleFlowNode } from '@/features/modules/ModuleNode';
 import { canvasMessages } from './CanvasPane.messages';
 import { useDropTone } from './dropHint';
+import { RepeatBadge, RepeatStack } from './RepeatBadge';
+import type { RepeatLabel } from './repeatLabel';
 import { useEditor } from './store';
 
 /** security-lens decorations (undefined when the lens is off) */
@@ -87,6 +91,8 @@ function SecurityChip({ security }: { security: NodeSecurity }) {
 
 export interface ResourceNodeData extends Record<string, unknown> {
   security?: NodeSecurity;
+  /** `count` / `for_each`: drawn as a stack with a badge */
+  repeat?: RepeatLabel;
   title: string;
   subtitle: string;
   typeLabel: string;
@@ -98,6 +104,7 @@ export interface ResourceNodeData extends Record<string, unknown> {
 
 export interface ContainerNodeData extends Record<string, unknown> {
   security?: NodeSecurity;
+  repeat?: RepeatLabel;
   title: string;
   subtitle?: string;
   typeLabel: string;
@@ -110,7 +117,7 @@ export interface ContainerNodeData extends Record<string, unknown> {
 export type ResourceFlowNode = Node<ResourceNodeData, 'resource'>;
 export type ContainerFlowNode = Node<ContainerNodeData, 'container'>;
 export type InternetFlowNode = Node<Record<string, unknown>, 'internet'>;
-export type FlowNode = ResourceFlowNode | ContainerFlowNode | InternetFlowNode;
+export type FlowNode = ResourceFlowNode | ContainerFlowNode | InternetFlowNode | ModuleFlowNode;
 
 /** The public internet, drawn by the security lens as the origin of inbound traffic. */
 export function InternetNodeView() {
@@ -147,7 +154,19 @@ function WarnBadge() {
   );
 }
 
-export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>) {
+/** a repeated resource (`count` / `for_each`) is one card with the others stacked behind it */
+export function ResourceNodeView(props: NodeProps<ResourceFlowNode>) {
+  const { data } = props;
+  if (!data.repeat?.stack) return <ResourceCard {...props} />;
+  return (
+    <>
+      <RepeatStack dim={data.security?.dim} vars={catVars(data.category)} />
+      <ResourceCard {...props} />
+    </>
+  );
+}
+
+function ResourceCard({ data, selected }: NodeProps<ResourceFlowNode>) {
   return (
     <div
       style={catVars(data.category)}
@@ -161,11 +180,17 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
       <Handle type="target" position={Position.Left} />
       <ResourceIcon category={data.category} type={data.resourceType} size={40} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-1">
-          <span className="truncate text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
+        {/* a long type name (Portuguese, mostly) takes a second line instead of being cut — as wide
+            as the text, since the floated provider chip only takes room from the first (its margin box
+            ends with that line's 2 px padding + 12 px); one line sits centered on the chip, as before */}
+        <div className="max-h-[26px] min-h-4 overflow-hidden">
+          {data.provider !== 'other' ? <ProviderChip provider={data.provider} className="float-right -mb-0.5 ml-1" /> : null}
+          <span
+            data-type-label=""
+            className="block break-words pt-0.5 text-[9.5px] font-bold uppercase leading-[12px] tracking-[0.07em] text-(--cat-text)"
+          >
             {data.typeLabel}
           </span>
-          {data.provider !== 'other' ? <ProviderChip provider={data.provider} /> : null}
         </div>
         <div className="mt-px truncate text-[13px] font-semibold leading-tight text-foreground">
           {data.title}
@@ -173,13 +198,26 @@ export function ResourceNodeView({ data, selected }: NodeProps<ResourceFlowNode>
         <div className="truncate text-[11px] leading-snug text-muted">{data.subtitle}</div>
       </div>
       {data.warn ? <WarnBadge /> : null}
+      {data.repeat ? <RepeatBadge repeat={data.repeat} /> : null}
       {data.security ? <SecurityChip security={data.security} /> : null}
       <Handle type="source" position={Position.Right} />
     </div>
   );
 }
 
-export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlowNode>) {
+/** a repeated container (subnets per AZ): its other instances peek out behind it */
+export function ContainerNodeView(props: NodeProps<ContainerFlowNode>) {
+  const { data } = props;
+  if (!data.repeat?.stack) return <ContainerCard {...props} />;
+  return (
+    <>
+      <RepeatStack container dim={data.security?.dim} vars={catVars(data.category)} />
+      <ContainerCard {...props} />
+    </>
+  );
+}
+
+function ContainerCard({ id, data, selected }: NodeProps<ContainerFlowNode>) {
   const m = useMessages(canvasMessages);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
   const readOnly = useEditor((s) => s.readOnly);
@@ -238,11 +276,14 @@ export function ContainerNodeView({ id, data, selected }: NodeProps<ContainerFlo
       <div className="flex items-center gap-2 px-3 pt-2.5">
         <ResourceIcon category={data.category} type={data.resourceType} size={24} />
         <span className="truncate text-[12.5px] font-semibold text-foreground">{data.title}</span>
-        <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
+        <span data-type-label="" className="shrink-0 text-[9.5px] font-bold uppercase tracking-[0.07em] text-(--cat-text)">
           {data.typeLabel}
         </span>
+        {data.repeat ? <RepeatBadge repeat={data.repeat} inline /> : null}
         {data.subtitle ? (
-          <span className="truncate rounded-[5px] bg-surface-1/70 px-1.5 py-px font-mono text-[10.5px] text-muted ring-1 ring-border">
+          // short of room, the subtitle gives way first and the name and type stay whole (with a mere
+          // proportional share, a short name would lose a fraction of a pixel — and show an ellipsis)
+          <span className="min-w-0 shrink-[1000] truncate rounded-[5px] bg-surface-1/70 px-1.5 py-px font-mono text-[10.5px] text-muted ring-1 ring-border">
             {data.subtitle}
           </span>
         ) : null}
@@ -305,6 +346,17 @@ function facingSide(node: InternalNode, other: InternalNode): { x: number; y: nu
     : { x: a.x + aw / 2, y: a.y, position: Position.Top };
 }
 
+/**
+ * The stacking order React Flow gives an edge's line (its own zIndex, raised to
+ * its nodes' when they sit in a container): its label takes the same, and comes
+ * later in the page, so it's drawn over its line rather than crossed by it.
+ */
+function useLabelZ(id: string, source: InternalNode | undefined, target: InternalNode | undefined): number {
+  const own = useStore((s) => s.edgeLookup.get(id)?.zIndex ?? 0);
+  const nested = (n: InternalNode | undefined) => (n?.parentId ? n.internals.z : 0);
+  return own + Math.max(nested(source), nested(target));
+}
+
 export function FlowEdge({
   id,
   source,
@@ -335,6 +387,7 @@ export function FlowEdge({
     };
   }
   const [path, labelX, labelY] = getBezierPath(geometry);
+  const labelZ = useLabelZ(id, sourceNode, targetNode);
   const security = data?.kind === 'security';
   const active = selected || data?.active;
   const color = security ? 'var(--edge-security)' : 'var(--edge-ref)';
@@ -362,7 +415,7 @@ export function FlowEdge({
         <EdgeLabelRenderer>
           <div
             className="nodrag nopan pointer-events-none absolute rounded-full border bg-surface-1 px-2 py-0.5 font-mono text-[10px] font-medium text-muted shadow-sm"
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, zIndex: labelZ }}
           >
             {data.field}
           </div>
@@ -405,6 +458,7 @@ export function SecFlowEdge({
     geometry = { sourceX: s.x, sourceY: s.y, sourcePosition: s.position, targetX: t.x, targetY: t.y, targetPosition: t.position };
   }
   const [path, labelX, labelY] = getBezierPath(geometry);
+  const labelZ = useLabelZ(id, sourceNode, targetNode);
   const color = TONE[data?.tone ?? 'internal'];
   const locale = useLocale((s) => s.locale);
   return (
@@ -425,6 +479,7 @@ export function SecFlowEdge({
             color,
             borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            zIndex: labelZ,
           }}
         >
           {(data?.ports ?? []).map((p) => (p === 'all' ? portText(p, locale) : `:${portText(p, locale)}`)).join(' ')}

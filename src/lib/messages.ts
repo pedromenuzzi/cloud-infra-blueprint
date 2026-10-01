@@ -26,9 +26,13 @@ export const libMessages = defineMessages(
       `This link is ${kb} KB — links over 32 KB can get cut off by chat apps and browsers. For big projects, share a Terraform zip.`,
 
     // importing .tf files
-    importedRootModule: (where: string, skipped: number) =>
-      `Imported the root module${where ? ` (${where}/)` : ''}; ${skipped} file${s(skipped)} in modules/ ` +
-      `${skipped === 1 ? 'was' : 'were'} skipped (modules aren't supported yet)`,
+    importedRootModule: (where: string, modules: number, skipped: number) =>
+      `Imported the root module${where ? ` (${where}/)` : ''}` +
+      (modules > 0 ? ` and kept ${modules === 1 ? 'its child module' : `${modules} child modules`}` : '') +
+      (skipped > 0 ? `; ${skipped} other file${s(skipped)} ${skipped === 1 ? 'was' : 'were'} left out` : ''),
+    linkedRootModule: (where: string, skipped: number) =>
+      `Opened the root module${where ? ` (${where}/)` : ''}; ${skipped} file${s(skipped)} in other folders ` +
+      `${skipped === 1 ? "isn't" : "aren't"} synced (a folder link keeps only the root module)`,
     importOversized: (n: number) => `${n} file${n === 1 ? ' was' : 's were'} too large to import`,
 
     // the README inside a Terraform zip
@@ -74,9 +78,15 @@ terraform apply
     shareLong: (kb: number) =>
       `Este link tem ${formatNumber(kb, undefined, 'pt-BR')} KB — links acima de 32 KB podem ser cortados por apps de chat e navegadores. Para projetos grandes, compartilhe um .zip do Terraform.`,
 
-    importedRootModule: (where: string, skipped: number) =>
-      `Módulo raiz importado${where ? ` (${where}/)` : ''}; ${skipped} arquivo${s(skipped)} em modules/ ` +
-      `${skipped === 1 ? 'foi ignorado' : 'foram ignorados'} (módulos ainda não são suportados)`,
+    importedRootModule: (where: string, modules: number, skipped: number) =>
+      `Módulo raiz importado${where ? ` (${where}/)` : ''}` +
+      (modules > 0 ? ` com ${modules === 1 ? 'seu módulo filho' : `${modules} módulos filhos`}` : '') +
+      (skipped > 0
+        ? `; ${skipped === 1 ? '1 outro arquivo ficou' : `${skipped} outros arquivos ficaram`} de fora`
+        : ''),
+    linkedRootModule: (where: string, skipped: number) =>
+      `Módulo raiz aberto${where ? ` (${where}/)` : ''}; ${skipped} arquivo${s(skipped)} em outras pastas ` +
+      `não ${skipped === 1 ? 'é sincronizado' : 'são sincronizados'} (o vínculo com a pasta mantém só o módulo raiz)`,
     importOversized: (n: number) =>
       n === 1 ? '1 arquivo era grande demais para importar' : `${n} arquivos eram grandes demais para importar`,
 

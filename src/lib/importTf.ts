@@ -1,24 +1,33 @@
 /**
  * Import existing Terraform: loose .tf files, a dropped folder, or a .zip.
  *
- * Only the ROOT module is imported — modules aren't supported yet, and
- * flattening them into one project breaks it (duplicate addresses, dangling
- * `source = "./modules/x"`). Module directories are skipped and counted so
- * the caller can say so. The layout is computed on open — no positions needed.
+ * One ROOT module is imported, flat (`main.tf`, `variables.tf`…), with the
+ * child modules it calls from folders of the same tree (`source =
+ * "./modules/net"`, `"../../modules/vpc"`, and the modules those call) as
+ * project files in folders (`modules/net/main.tf`). A module folder's
+ * project path is its `source` resolved from the root with `..` stopping at
+ * the top — the same rule the editor resolves `source` with
+ * (src/ir/modules.ts `resolveModuleDir`). Other folders (other roots,
+ * modules nothing calls) are left out and counted so the caller can say so.
+ * The layout is computed on open — no positions needed.
  */
 import { strFromU8, unzipSync } from 'fflate';
 import { messagesFor } from '@/i18n/messages';
+import { resolveModuleDir } from '@/ir/modules';
 import { libMessages } from './messages';
+import { isProjectFilePath } from './projectPath';
 
 export interface ImportedProject {
   name: string;
   files: Record<string, string>;
   /** directory the root module came from, relative to what was imported ('' = top level) */
   rootDir: string;
-  /** .tf files outside the root module (modules, other roots) that were left out */
+  /** .tf files outside the root module and its child modules (other roots, unused modules) that were left out */
   skipped: number;
   /** .tf files left out because they were over the size caps */
   oversized: number;
+  /** child module folders kept with the project, by project path (`modules/net`) */
+  modules?: string[];
 }
 
 /** One .tf file (a single file is ~KBs; generated monsters are skipped). */
@@ -69,9 +78,27 @@ function resolveDir(base: string, relative: string): string {
   return parts.join('/');
 }
 
-/** Directories referenced as local modules (`source = "./x"`, `"../x"`) from `text` in `dir`. */
+/** Local module sources (`source = "./x"`, `"../x"`) written in `text`. */
+export function localModuleSources(text: string): string[] {
+  return [...text.matchAll(/\bsource\s*=\s*"(\.{1,2}\/[^"]*)"/g)].map((m) => m[1]);
+}
+
+/** Directories referenced as local modules from `text` in `dir`. */
 function localModuleDirs(dir: string, text: string): string[] {
-  return [...text.matchAll(/\bsource\s*=\s*"(\.{1,2}\/[^"]*)"/g)].map((m) => resolveDir(dir, m[1]));
+  return localModuleSources(text).map((source) => resolveDir(dir, source));
+}
+
+/** Where `relative` points from `base` inside the imported tree; null when it climbs out of it. */
+export function resolveInTree(base: string, relative: string): string | null {
+  const parts = base ? base.split('/') : [];
+  for (const seg of relative.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') {
+      if (parts.length === 0) return null;
+      parts.pop();
+    } else parts.push(seg);
+  }
+  return parts.join('/');
 }
 
 /**
@@ -160,19 +187,78 @@ async function readFileSource(file: File, path: string, budget: Budget): Promise
   return [{ path, text: await file.text() }];
 }
 
-function buildProject(sources: Source[], name: string, budget: Budget): ImportedProject | null {
-  if (sources.length === 0) return null;
-  const rootDir = pickRootDir(sources);
+/**
+ * The child module folders the root module at `rootDir` uses, transitively:
+ * project path (`modules/net`) → folder in the tree. A folder is kept once
+ * (the first call wins), never the root itself, and only under a path that
+ * is safe as a project file name.
+ */
+export function childModuleFolders(sources: Array<{ path: string; text: string }>, rootDir: string): Map<string, string> {
+  const byDir = new Map<string, string[]>();
+  for (const { path, text } of sources) {
+    const dir = dirOf(path);
+    byDir.set(dir, [...(byDir.get(dir) ?? []), text]);
+  }
+  const kept = new Map<string, string>();
+  const taken = new Set([rootDir]);
+  const queue: Array<{ real: string; stored: string }> = [{ real: rootDir, stored: '' }];
+  while (queue.length > 0) {
+    const { real, stored } = queue.shift()!;
+    for (const text of byDir.get(real) ?? []) {
+      for (const source of localModuleSources(text)) {
+        const target = resolveInTree(real, source);
+        const at = resolveModuleDir(stored, source);
+        if (target === null || taken.has(target) || !byDir.has(target) || at === '' || kept.has(at)) continue;
+        if (!isProjectFilePath(`${at}/main.tf`)) continue;
+        taken.add(target);
+        kept.set(at, target);
+        queue.push({ real: target, stored: at });
+      }
+    }
+  }
+  return kept;
+}
+
+/**
+ * The project for the root module at `rootDir`: its files flat, the child
+ * modules it uses in their folders; everything else counted as skipped.
+ */
+export function assembleProject(
+  sources: Array<{ path: string; text: string }>,
+  rootDir: string,
+): { files: Record<string, string>; skipped: number; modules: string[] } {
   const files: Record<string, string> = {};
+  const folders = childModuleFolders(sources, rootDir);
+  const storedAt = new Map([...folders].map(([stored, real]) => [real, stored] as const));
+  const perFolder = new Map<string, Record<string, string>>();
   let skipped = 0;
   for (const source of sources) {
-    if (dirOf(source.path) !== rootDir) {
+    const dir = dirOf(source.path);
+    const base = source.path.split('/').pop()!;
+    if (dir === rootDir) {
+      addFile(files, base, source.text);
+      continue;
+    }
+    const stored = storedAt.get(dir);
+    if (stored === undefined) {
       skipped += 1;
       continue;
     }
-    addFile(files, source.path.split('/').pop()!, source.text);
+    const inFolder = perFolder.get(stored) ?? {};
+    addFile(inFolder, base, source.text);
+    perFolder.set(stored, inFolder);
   }
-  return { name, files, rootDir, skipped, oversized: budget.oversized };
+  for (const [stored, inFolder] of perFolder) {
+    for (const [base, text] of Object.entries(inFolder)) files[`${stored}/${base}`] = text;
+  }
+  return { files, skipped, modules: [...perFolder.keys()].sort() };
+}
+
+function buildProject(sources: Source[], name: string, budget: Budget): ImportedProject | null {
+  if (sources.length === 0) return null;
+  const rootDir = pickRootDir(sources);
+  const { files, skipped, modules } = assembleProject(sources, rootDir);
+  return { name, files, rootDir, skipped, oversized: budget.oversized, modules };
 }
 
 /** Loose .tf files and/or .zip archives (e.g. from a file input). */
@@ -260,11 +346,20 @@ export async function readDroppedTerraform(transfer: DataTransfer): Promise<Impo
   return buildProject(sources, name || 'imported-terraform', budget);
 }
 
-/** A follow-up sentence (in the UI language) when parts of the import were left out, else null. */
-export function importNote(imported: ImportedProject): string | null {
+/**
+ * A follow-up sentence (in the UI language) when the import kept child
+ * modules or left parts out, else null. `linkedFolder`: "Open folder…",
+ * where only the root module's own files are synced with the folder.
+ */
+export function importNote(imported: ImportedProject, options: { linkedFolder?: boolean } = {}): string | null {
   const m = messagesFor(libMessages);
   const notes: string[] = [];
-  if (imported.skipped > 0) notes.push(m.importedRootModule(imported.rootDir, imported.skipped));
+  const modules = imported.modules?.length ?? 0;
+  if (options.linkedFolder) {
+    if (imported.skipped > 0) notes.push(m.linkedRootModule(imported.rootDir, imported.skipped));
+  } else if (imported.skipped > 0 || modules > 0) {
+    notes.push(m.importedRootModule(imported.rootDir, modules, imported.skipped));
+  }
   if (imported.oversized > 0) notes.push(m.importOversized(imported.oversized));
   return notes.length > 0 ? `${notes.join('. ')}.` : null;
 }

@@ -5,9 +5,10 @@
  * (`blockConnections`, e.g. EKS `vpc_config { subnet_ids }`) rewrite that
  * block instead of a top-level argument.
  */
-import { block, ref } from '@/ir/expr';
+import { block, pathTargets } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
-import type { Expression, ResourceNode } from '@/ir/types';
+import { appendReference, instanceRef } from '@/ir/repeat';
+import type { Expression, IR, ResourceNode } from '@/ir/types';
 import type { BlockConnectionRule, ConnectionRule, ResourceDef } from './types';
 
 export type AnyConnectionRule = ConnectionRule | BlockConnectionRule;
@@ -25,26 +26,38 @@ export function findConnectionRule(
   return connectionRules(def).find((c) => c.targetTypes.includes(targetType));
 }
 
-function withReference(existing: Expression | undefined, rule: ConnectionRule, path: string, targetId: string) {
-  if (rule.mode === 'set') return ref(path);
-  const items: Expression[] =
-    existing?.kind === 'list' ? [...existing.items] : existing ? [existing] : [];
-  if (items.some((i) => i.kind === 'ref' && i.path.startsWith(`${targetId}.`))) return null;
-  items.push(ref(path));
-  return { kind: 'list', items } as Expression;
+/**
+ * The argument after connecting: a `set` rule points at the target (one
+ * instance of a repeated one), an `append` rule adds it to the list (every
+ * instance of a repeated one: `aws_subnet.private[*].id`) — see ir/repeat.ts.
+ */
+function withReference(
+  existing: Expression | undefined,
+  rule: ConnectionRule,
+  from: ResourceNode,
+  to: ResourceNode,
+  ir: IR | undefined,
+): Expression | null {
+  if (rule.mode === 'set') return instanceRef(to, rule.attr, { ir, from });
+  const items: Expression[] = existing?.kind === 'list' ? existing.items : existing ? [existing] : [];
+  if (items.some((i) => i.kind === 'ref' && pathTargets(i.path, to.id))) return null;
+  return appendReference(existing, instanceRef(to, rule.attr, { ir, from, all: true }));
 }
 
-/** The op that makes `from` reference `to` through `rule`, or null when it already does. */
-export function connectionOp(from: ResourceNode, to: ResourceNode, rule: AnyConnectionRule): Op | null {
-  const path = `${to.id}.${rule.attr}`;
+/**
+ * The op that makes `from` reference `to` through `rule`, or null when it
+ * already does. `ir` resolves a repeated target's keys when they sit in a
+ * variable or local.
+ */
+export function connectionOp(from: ResourceNode, to: ResourceNode, rule: AnyConnectionRule, ir?: IR): Op | null {
   if (!('block' in rule)) {
-    const value = withReference(from.args[rule.arg], rule, path, to.id);
+    const value = withReference(from.args[rule.arg], rule, from, to, ir);
     return value ? { kind: 'set_arg', nodeId: from.id, field: rule.arg, value } : null;
   }
   const current = from.args[rule.block];
   const body =
     current?.kind === 'block' ? current.body : current?.kind === 'blocks' ? current.items[0] ?? {} : {};
-  const value = withReference(body[rule.arg], rule, path, to.id);
+  const value = withReference(body[rule.arg], rule, from, to, ir);
   if (!value) return null;
   const nextBody = { ...body, [rule.arg]: value };
   const next: Expression =

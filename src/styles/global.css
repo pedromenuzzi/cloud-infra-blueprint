@@ -47,6 +47,8 @@
   --cat-text-integration: #be185d;
   --cat-text-identity: #b91c1c;
   --cat-text-edge: #0369a1;
+  /* module calls (a slate "stack of cards") */
+  --module-text: #475569;
 
   /* Blueprint canvas */
   --canvas-bg: #eef4fb;
@@ -106,6 +108,7 @@
   --cat-text-integration: #f472b6;
   --cat-text-identity: #f87171;
   --cat-text-edge: #38bdf8;
+  --module-text: #cbd5e1;
 
   --canvas-bg: #0a1428;
   --canvas-grid: #16294a;
@@ -298,6 +301,34 @@
     0 10px 28px -8px color-mix(in srgb, var(--cat-light) 45%, transparent);
 }
 
+/* a module call: a card with a second one peeking out behind it (it holds other blocks) */
+.bp-module {
+  --cat: #64748b;
+  --cat-light: #94a3b8;
+  --module-stack: 4px 4px 0 -1px var(--node-bg), 4px 4px 0 0 var(--node-border);
+  box-shadow: var(--module-stack), var(--shadow-sm);
+}
+.bp-module.bp-node:hover {
+  box-shadow:
+    var(--module-stack),
+    0 6px 18px -6px rgb(15 23 42 / 0.18),
+    0 2px 4px rgb(15 23 42 / 0.06);
+}
+.bp-module.bp-node-selected,
+.bp-module.bp-node-selected:hover {
+  box-shadow:
+    var(--module-stack),
+    0 0 0 2px var(--cat),
+    0 10px 28px -8px color-mix(in srgb, var(--cat) 55%, transparent);
+}
+.dark .bp-module.bp-node-selected,
+.dark .bp-module.bp-node-selected:hover {
+  box-shadow:
+    var(--module-stack),
+    0 0 0 2px var(--cat-light),
+    0 10px 28px -8px color-mix(in srgb, var(--cat-light) 45%, transparent);
+}
+
 .bp-container {
   animation: bp-node-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
   border: 1.5px dashed color-mix(in srgb, var(--cat) 45%, transparent);
@@ -403,6 +434,81 @@
 }
 .bp-drawer-left {
   animation: bp-slide-left 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* ---------------------------------------------------------------------------
+ * The rules editor's table (features/security/RulesEditor.tsx). Where it is
+ * narrower than its columns need — an NSG's nine at 768 px, any kind on a
+ * phone — the editor sets `data-stacked` and each rule stacks as a card: its
+ * fields wrap, each under its column's name (the cell's `data-label`; screen
+ * readers have the controls' own labels, so the name is visual only), the
+ * peers and the name on lines of their own, the risk and the actions last.
+ * The table's header stays for assistive tech.
+ * ------------------------------------------------------------------------- */
+.bp-rules[data-stacked] table,
+.bp-rules[data-stacked] tbody {
+  display: block;
+  border: 0;
+  overflow: visible;
+}
+.bp-rules[data-stacked] thead {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.bp-rules[data-stacked] tbody tr {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.bp-rules[data-stacked] tbody tr + tr {
+  margin-top: 0.5rem;
+}
+.bp-rules[data-stacked] td {
+  display: block;
+  width: auto;
+  min-width: 0;
+  padding: 0;
+}
+.bp-rules[data-stacked] td[data-label]::before {
+  content: attr(data-label);
+  content: attr(data-label) / '';
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.bp-rules[data-stacked] td[data-cell='priority'] {
+  flex: 1 1 4.5rem;
+}
+.bp-rules[data-stacked] td[data-cell='action'],
+.bp-rules[data-stacked] td[data-cell='protocol'],
+.bp-rules[data-stacked] td[data-cell='ports'] {
+  flex: 1 1 5.5rem;
+}
+.bp-rules[data-stacked] td[data-cell='service'] {
+  flex: 2 1 9rem;
+}
+.bp-rules[data-stacked] td[data-cell='peer'],
+.bp-rules[data-stacked] td[data-cell='name'] {
+  flex: 1 1 100%;
+}
+.bp-rules[data-stacked] td[data-cell='risk'] {
+  flex: none;
+  margin-left: auto;
+}
+.bp-rules[data-stacked] td[data-cell='actions'] {
+  flex: none;
 }
 
 /* ---------------------------------------------------------------------------

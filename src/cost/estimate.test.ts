@@ -115,9 +115,24 @@ describe('count and for_each', () => {
     const computed = cost(instance('count = length(var.names)'), 'aws_instance.web');
     expect(computed).toMatchObject({ kind: 'unknown', monthly: null });
     expect(computed.note).toBe(`count is an expression: how many instances is decided at plan time. One costs about ${usd(one)} a month.`);
-    const each = cost(instance('for_each = toset(["a", "b"])'), 'aws_instance.web');
+    const each = cost(instance('for_each = var.names'), 'aws_instance.web');
     expect(each.kind).toBe('unknown');
     expect(each.note).toMatch(/^for_each/);
+    const optional = cost(instance('count = var.enabled ? 1 : 0'), 'aws_instance.web');
+    expect(optional).toMatchObject({ kind: 'unknown', monthly: null });
+    expect(optional.note).toBe(`count is conditional: 0 or 1 instance, decided at plan time. One costs about ${usd(one)} a month.`);
+  });
+
+  it('multiplies by the size of a literal for_each set or map, or length() of a list', () => {
+    const set = cost(instance('for_each = toset(["a", "b"])'), 'aws_instance.web');
+    expect(set).toMatchObject({ kind: 'fixed', count: 2, repeat: 'for_each' });
+    close(set.monthly, one * 2);
+    const map = cost(instance('for_each = { blue = 1, green = 2, red = 3 }'), 'aws_instance.web');
+    expect(map).toMatchObject({ kind: 'fixed', count: 3, repeat: 'for_each' });
+    const length = cost(instance('count = length(["a", "b", "c", "d"])'), 'aws_instance.web');
+    expect(length).toMatchObject({ kind: 'fixed', count: 4, repeat: 'count' });
+    // the project total follows
+    close(estimateProject(project(instance('for_each = toset(["a", "b"])')), book).total, one * 2);
   });
 
   it('keeps free and usage-based resources as they are', () => {
@@ -129,7 +144,7 @@ describe('count and for_each', () => {
 
   it('reads multiplicity and literals directly', () => {
     const ir = project('variable "n" {\n  default = "4"\n}\nresource "aws_instance" "a" {\n  count = var.n\n}\n');
-    expect(multiplicity(ir.resources[0], ir)).toEqual({ n: 4 });
+    expect(multiplicity(ir.resources[0], ir)).toEqual({ n: 4, repeat: 'count' });
     expect(resolveNumber(ir.resources[0].args.count, ir)).toBe(4);
     expect(resolveString(ir.resources[0].args.count, ir)).toBe('4');
   });
@@ -209,7 +224,7 @@ describe('network and usage-based services', () => {
     expect(cost(`${AWS}resource "aws_vpc" "v" {}\n`, 'aws_vpc.v').kind).toBe('free');
     expect(cost(`${AWS}resource "aws_iam_policy" "p" {}\n`, 'aws_iam_policy.p').kind).toBe('free');
     expect(cost('resource "random_password" "p" {\n  length = 16\n}\n', 'random_password.p').note).toMatch(/inside Terraform/);
-    const unknownType = cost(`${AWS}resource "aws_rds_cluster" "c" {}\n`, 'aws_rds_cluster.c');
+    const unknownType = cost(`${AWS}resource "aws_rds_cluster_instance" "c" {}\n`, 'aws_rds_cluster_instance.c');
     expect(unknownType).toMatchObject({ kind: 'unknown', note: "This resource type isn't in the price table yet" });
   });
 });

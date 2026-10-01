@@ -17,6 +17,7 @@ import { portText } from '@/security/model';
 import type { Exposure } from '@/security/topology';
 import { AccessPaths } from './AccessPaths';
 import { ComplianceBadges } from './ComplianceBadges';
+import { ModulesNote } from '@/features/modules/ModulesNote';
 import { securityUiMessages } from './messages';
 import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useAudit, useSecurityUi } from './securityStore';
 
@@ -163,12 +164,14 @@ export function SecurityPanel() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [setPanel]);
 
-  const reveal = (selector: string) =>
-    requestAnimationFrame(() =>
-      panelRef.current?.querySelector(selector)?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() }),
-    );
+  const reveal = (selector: string, focus = false) =>
+    requestAnimationFrame(() => {
+      const target = panelRef.current?.querySelector(selector);
+      target?.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });
+      if (focus) target?.querySelector<HTMLElement>('button[aria-expanded]')?.focus({ preventScroll: true });
+    });
 
-  // "Show" on a security toast: open the finding it is about
+  // "Show" on a security toast: open the finding it is about — and take focus there (the toast is gone)
   useEffect(() => {
     if (!spotlight) return;
     useSecurityUi.getState().setSpotlight(null);
@@ -176,7 +179,7 @@ export function SecurityPanel() {
     setFramework('all');
     setExpanded(spotlight);
     setFlash(spotlight);
-    reveal(`[data-finding="${CSS.escape(spotlight)}"]`);
+    reveal(`[data-finding="${CSS.escape(spotlight)}"]`, true);
   }, [spotlight, setFramework]);
 
   // the command palette's "Why is … reachable?"
@@ -243,6 +246,7 @@ export function SecurityPanel() {
           </div>
         </section>
 
+        <ModulesNote area="security" onPick={show} className="mx-3.5 mb-3" />
         <label className="mx-3.5 flex cursor-pointer items-center gap-3 rounded-[10px] border bg-surface-2/60 px-3 py-2.5">
           <ScanEye className="h-4 w-4 shrink-0 text-primary" />
           <span className="min-w-0 flex-1">

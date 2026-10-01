@@ -1,4 +1,5 @@
 import { refTargetAddress } from '@/ir/expr';
+import { findNode, hasNode } from '@/ir/modules';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, IREdge } from '@/ir/types';
 
@@ -23,7 +24,8 @@ export function removeReferencesOps(ir: IR, refs: ReferenceToRemove[]): Op[] {
   }
   const ops: Op[] = [];
   for (const { source, field, targets } of groups.values()) {
-    const node = ir.resources.find((n) => n.id === source);
+    // a module call's inputs hold references too (`subnet_ids = [aws_subnet.a.id]`)
+    const node = findNode(ir, source);
     const expr = node?.args[field];
     if (!node || !expr) continue;
     const next = withoutRefs(expr, (path) => targets.has(refTargetAddress(path) ?? ''));
@@ -96,7 +98,7 @@ export function deleteResourcesOps(
   edges: IREdge[],
   ids: string[],
 ): { ops: Op[]; removed: string[] } {
-  const removed = new Set(ids.filter((id) => ir.resources.some((r) => r.id === id)));
+  const removed = new Set(ids.filter((id) => hasNode(ir, id)));
   for (let grew = true; grew; ) {
     grew = false;
     for (const r of ir.resources) {

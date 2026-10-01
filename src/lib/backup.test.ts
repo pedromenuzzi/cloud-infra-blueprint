@@ -97,6 +97,18 @@ describe('backup zip', () => {
     );
   });
 
+  it('keeps child module files in their folders (modules/net/main.tf)', async () => {
+    const b = await load();
+    const files = {
+      'main.tf': 'module "net" {\n  source = "./modules/net"\n}\n',
+      'modules/net/main.tf': 'resource "aws_vpc" "this" {}\n',
+      'modules/net/variables.tf': 'variable "cidr" {}\n',
+    };
+    const parsed = b.parseBackup(b.buildBackup([project({ id: 'prj_m', name: 'with modules', files })], NOW));
+    expect(parsed.ok && parsed.backup.invalid).toEqual([]);
+    expect(parsed.ok && parsed.backup.projects[0].files).toEqual(files);
+  });
+
   it('lays out one folder per project with a manifest and a README', async () => {
     const b = await load();
     const zip = b.buildBackup(
@@ -123,6 +135,45 @@ describe('backup zip', () => {
     const nested = zipSync(Object.fromEntries(Object.entries(inner).map(([k, v]) => [`my-backup/${k}`, v])));
     const parsed = b.parseBackup(nested);
     expect(parsed.ok && parsed.backup.projects.map((p) => p.name)).toEqual(['web']);
+  });
+});
+
+describe('telling a backup from Terraform', () => {
+  it('knows its own backups — at the top or one folder down, of any version — and nothing else', async () => {
+    const b = await load();
+    const zip = b.buildBackup([project({ id: 'prj_a', name: 'web' })], NOW);
+    expect(b.isBackupZip(zip)).toBe(true);
+    const inner = unzipSync(zip);
+    expect(b.isBackupZip(zipSync(Object.fromEntries(Object.entries(inner).map(([k, v]) => [`my-backup/${k}`, v]))))).toBe(true);
+    // a newer app's backup is still one (the restore dialog says it can't read it)
+    const newer = JSON.parse(strFromU8(inner['manifest.json']));
+    expect(b.isBackupZip(zipSync({ ...inner, 'manifest.json': strToU8(JSON.stringify({ ...newer, version: 99 })) }))).toBe(true);
+
+    // Terraform, a manifest of something else, a broken manifest, not a zip at all
+    expect(b.isBackupZip(zipSync({ 'main.tf': strToU8('resource "aws_vpc" "a" {}\n') }))).toBe(false);
+    expect(b.isBackupZip(zipSync({ 'manifest.json': strToU8('{"name":"my-module"}'), 'main.tf': strToU8('') }))).toBe(false);
+    expect(b.isBackupZip(zipSync({ 'manifest.json': strToU8('{not json'), 'main.tf': strToU8('') }))).toBe(false);
+    expect(b.isBackupZip(zipSync({ 'a/b/manifest.json': inner['manifest.json'] }))).toBe(false);
+    expect(b.isBackupZip(strToU8('PK but not really'))).toBe(false);
+  });
+
+  it('routes one backup .zip to the restore dialog, and everything else to the importer', async () => {
+    const b = await load();
+    const { backupAmong, openRestore, useDataDialogs } = await import('@/features/data/dataDialogs');
+    const zip = b.buildBackup([project({ id: 'prj_a', name: 'web' })], NOW);
+    const file = (bytes: Uint8Array, name: string) => new File([bytes.slice().buffer], name, { type: 'application/zip' });
+    const backup = file(zip, 'cloud-blueprint-backup-2026-09-29.zip');
+    expect(await backupAmong([backup])).toBe(backup);
+    // renamed, still ours: it's the content that counts, not the file name
+    expect(await backupAmong([file(zip, 'old stuff.ZIP')])).not.toBeNull();
+    const terraform = file(zipSync({ 'main.tf': strToU8('resource "aws_vpc" "a" {}\n') }), 'infra.zip');
+    expect(await backupAmong([terraform])).toBeNull();
+    expect(await backupAmong([backup, terraform])).toBeNull();
+    expect(await backupAmong([new File(['resource "aws_vpc" "a" {}'], 'main.tf')])).toBeNull();
+    expect(await backupAmong([file(zip, 'backup.tar')])).toBeNull();
+
+    openRestore(backup);
+    expect(useDataDialogs.getState().restore).toBe(backup);
   });
 });
 

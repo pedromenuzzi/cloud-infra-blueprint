@@ -12,7 +12,8 @@ import { showToast } from '@/components/Toast';
 import { MOD } from '@/features/command/paletteStore';
 import { messagesFor } from '@/i18n/messages';
 import type { Op } from '@/ir/ops';
-import type { IR, ResourceNode } from '@/ir/types';
+import { findNode } from '@/ir/modules';
+import type { CanvasPosition, IR, ResourceNode } from '@/ir/types';
 import { connectionOp, findConnectionRule } from '@/resources/connect';
 import { getDef, isContainerType } from '@/resources/registry';
 import type { ResourceDef } from '@/resources/types';
@@ -31,7 +32,7 @@ interface Box {
   h: number;
 }
 
-const keepSize = (r: ResourceNode) => (r.position?.w !== undefined ? { w: r.position.w, h: r.position.h } : {});
+const keepSize = (r: { position?: CanvasPosition }) => (r.position?.w !== undefined ? { w: r.position.w, h: r.position.h } : {});
 
 /** the card shown next to the pointer for a verdict; null when there's nothing to say */
 function hintFor(verdict: DropVerdict, subject: ResourceNode | undefined, at: { x: number; y: number }): DropHint | null {
@@ -115,7 +116,7 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
       animate();
       state.applyCanvasOps(result.ops, nodeId);
       if (useEditor.getState().filesRevision === before) return;
-      showToast(result.message, result.hint ? 'warning' : 'success', { hint: result.hint ?? m.undoHint(MOD) });
+      showToast(result.message, result.hint ? 'warning' : 'success', { hint: result.hint ?? m.undoHint(MOD), note: result.note });
     },
     [animate],
   );
@@ -171,7 +172,8 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
       const byId = new Map(ir.resources.map((r) => [r.id, r] as const));
       const group = dragged.length > 0 ? dragged : [node];
       const plainMove = (n: Node): Op[] => {
-        const r = byId.get(n.id);
+        // module calls move too (they're never inside anything)
+        const r = byId.get(n.id) ?? findNode(ir, n.id);
         return r
           ? [{ kind: 'move_node', nodeId: n.id, position: { x: Math.round(n.position.x), y: Math.round(n.position.y), ...keepSize(r) } }]
           : [];
@@ -183,7 +185,11 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
         return;
       }
       const irNode = byId.get(node.id);
-      if (!irNode) return;
+      if (!irNode) {
+        const ops = plainMove(node);
+        if (ops.length > 0) applyCanvasOps(ops);
+        return;
+      }
       const def = getDef(irNode.type);
       const rects = rectsOf(ir);
       const box = liveBox(node.id, irNode);
@@ -205,7 +211,7 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
             position = slotIn(ir, parent, size, { preferred: { x: box.x - pr.x, y: box.y - pr.y }, except: irNode.id });
             if (!staying) {
               const rule = findConnectionRule(def, parent.type);
-              const link = rule && rule.mode === 'set' ? connectionOp(irNode, parent, rule) : null;
+              const link = rule && rule.mode === 'set' ? connectionOp(irNode, parent, rule, ir) : null;
               if (!link) {
                 snapBack(node.id);
                 return;

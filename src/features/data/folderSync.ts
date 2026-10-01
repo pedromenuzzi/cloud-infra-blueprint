@@ -1,9 +1,11 @@
 /**
  * Folder sync in the editor. A subscriber on the editor store (the store
  * itself is untouched): after each save the change is written through to the
- * linked folder; when the window regains focus the folder is read again —
- * changes made only on disk reload the editor silently, changes on both
- * sides open the conflict dialog. The rules live in src/lib/fsSync.ts.
+ * linked folder; the folder is read again when its .tf files change on disk
+ * (a `FileSystemObserver`, where the browser has one — src/lib/fsWatch.ts)
+ * and whenever the window regains focus — changes made only on disk reload
+ * the editor silently, changes on both sides open the conflict dialog. The
+ * rules live in src/lib/fsSync.ts.
  */
 import { create } from 'zustand';
 import { confirmAction } from '@/components/Confirm';
@@ -34,6 +36,7 @@ import {
   type SyncOptions,
   type SyncResult,
 } from '@/lib/fsSync';
+import { watchFolder, type FolderWatch } from '@/lib/fsWatch';
 import { getProject, updateProject } from '@/lib/storage';
 import { dataMessages } from './messages';
 
@@ -86,6 +89,8 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let lastFiles: Record<string, string> | null = null;
 /** the editor is reloading what a sync just took from disk */
 let loading = false;
+/** live disk changes of the link's folder (null: this browser can't watch, the focus check does it) */
+let watcher: FolderWatch | null = null;
 
 const io: SyncIO = {
   appFiles: () => useEditor.getState().files,
@@ -178,9 +183,27 @@ function schedule(delay = 300) {
   timer = setTimeout(() => void runSync(), delay);
 }
 
+/** Look at the folder while the editor is on screen: a change on disk runs a pass (debounced by the watch). */
+function watch(current: FolderLink) {
+  unwatch();
+  watcher = watchFolder(
+    current.dir,
+    () => {
+      if (mounted > 0 && link === current && useFolderSync.getState().status !== 'permission') schedule(0);
+    },
+    { isActive: () => document.visibilityState === 'visible' },
+  );
+}
+
+function unwatch() {
+  watcher?.stop();
+  watcher = null;
+}
+
 /** Load the link of the project the editor just opened. */
 async function openProject(projectId: string | null) {
   link = null;
+  unwatch();
   clearTimeout(timer);
   useFolderSync.setState({ projectId, ...OFF });
   if (!projectId || !isFolderSyncSupported()) return;
@@ -197,6 +220,7 @@ async function openProject(projectId: string | null) {
     if (link === found) useFolderSync.setState({ status: 'permission' });
     return;
   }
+  if (link === found) watch(found);
   await runSync();
 }
 
@@ -249,8 +273,11 @@ export function syncNow() {
 /** After a reload the browser forgets the permission: ask again (from a click). */
 export async function reconnectFolder() {
   if (!link) return;
-  if (await requestFolderPermission(link.dir)) await runSync();
-  else showToast(text().needsPermission(link.label), 'error');
+  const current = link;
+  if (await requestFolderPermission(current.dir)) {
+    if (link === current) watch(current);
+    await runSync();
+  } else showToast(text().needsPermission(current.label), 'error');
 }
 
 export function resolveFolderConflicts(side: 'app' | 'disk') {
@@ -267,6 +294,7 @@ export async function unlinkFolder() {
   const { projectId } = useFolderSync.getState();
   if (!current || !projectId) return;
   link = null;
+  unwatch();
   clearTimeout(timer);
   useFolderSync.setState({ ...OFF });
   await store.delete(projectId).catch(() => undefined);
@@ -278,6 +306,7 @@ async function finishLink(dir: DirHandleLike, label: string, synced: Record<stri
   if (!projectId) return;
   const next = createLink({ projectId, dir, label, synced });
   link = next;
+  watch(next);
   useFolderSync.setState({ projectId, ...OFF, status: 'synced', label });
   try {
     await store.set(next);

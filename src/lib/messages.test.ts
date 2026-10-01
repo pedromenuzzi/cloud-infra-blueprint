@@ -42,8 +42,13 @@ describe('lib text in Portuguese', () => {
 
   it('import notes and share-link warnings', () => {
     expect(importNote({ name: 'x', files: {}, rootDir: 'infra', skipped: 2, oversized: 1 })).toBe(
-      'Módulo raiz importado (infra/); 2 arquivos em modules/ foram ignorados (módulos ainda não são suportados). ' +
-        '1 arquivo era grande demais para importar.',
+      'Módulo raiz importado (infra/); 2 outros arquivos ficaram de fora. 1 arquivo era grande demais para importar.',
+    );
+    expect(importNote({ name: 'x', files: {}, rootDir: '', skipped: 1, oversized: 0, modules: ['modules/a', 'modules/b', 'modules/c'] })).toBe(
+      'Módulo raiz importado com 3 módulos filhos; 1 outro arquivo ficou de fora.',
+    );
+    expect(importNote({ name: 'x', files: {}, rootDir: 'infra', skipped: 2, oversized: 0 }, { linkedFolder: true })).toBe(
+      'Módulo raiz aberto (infra/); 2 arquivos em outras pastas não são sincronizados (o vínculo com a pasta mantém só o módulo raiz).',
     );
     vi.stubGlobal('location', { origin: 'https://example.test' });
     const big = shareLinkInfo({ name: 'big', files: { 'main.tf': Array.from({ length: 4000 }, (_, i) => `# ${i} ${Math.random()}`).join('\n') } });

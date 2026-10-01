@@ -26,6 +26,9 @@ export const dropMessages = defineMessages(
     createdGroup: (id: string, subnets: string[], member: string) =>
       `Created ${id} with ${formatList(subnets, 'conjunction', 'en')} — ${member} is drawn inside it`,
     oneZone: 'AWS needs subnets in two availability zones — add a subnet in another zone to this group',
+    /** a database in its new subnet group, with no security group of its own */
+    attachSecurityGroup: (id: string) =>
+      `Tip: connect ${id} to a security group — without one it gets the VPC's default group`,
     movedInto: (name: string, group: string) => `${name} is now in ${group}`,
     connected: (name: string, target: string) => `Connected ${name} to ${target}`,
     undoHint: (mod: string) => `${mod} Z to undo`,
@@ -49,6 +52,8 @@ export const dropMessages = defineMessages(
     createdGroup: (id: string, subnets: string[], member: string) =>
       `${id} criado com ${formatList(subnets, 'conjunction', 'pt-BR')} — ${member} aparece dentro dele`,
     oneZone: 'A AWS exige sub-redes em duas zonas de disponibilidade — adicione ao grupo uma sub-rede de outra zona',
+    attachSecurityGroup: (id: string) =>
+      `Dica: conecte ${id} a um grupo de segurança — sem um, ele fica com o grupo padrão da VPC`,
     movedInto: (name: string, group: string) => `${name} agora está em ${group}`,
     connected: (name: string, target: string) => `${name} conectado a ${target}`,
     undoHint: (mod: string) => `${mod} Z para desfazer`,

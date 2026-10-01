@@ -14,8 +14,8 @@
  * would lose a block or add parse errors is refused too.
  */
 import { messagesFor } from '@/i18n/messages';
-import { exprEquals, renameInExpression, renameInHcl } from '@/ir/expr';
-import type { Op } from '@/ir/ops';
+import { exprEquals } from '@/ir/expr';
+import type { Op, TextRewrite } from '@/ir/ops';
 import { applyOps } from '@/ir/ops';
 import type {
   BlockSpans,
@@ -25,6 +25,7 @@ import type {
   EntrySpan,
   Expression,
   IR,
+  ModuleNode,
   OutputDecl,
   ProviderBlock,
   RawBlock,
@@ -35,6 +36,7 @@ import {
   DEFAULT_FILES,
   emitExpression,
   emitLabel,
+  emitModule,
   emitNestedBlock,
   emitOutput,
   emitProvider,
@@ -55,7 +57,9 @@ import {
   posFromComment,
   shiftParsedBlock,
 } from './parser';
+import { CommentsWouldBeLost, keepComments, lostComments } from './keepComments';
 import { hclMessages, type StaleReason } from './messages';
+import { isRootModuleFile } from '@/ir/modules';
 
 interface Edit {
   start: number;
@@ -83,6 +87,7 @@ type Block =
   | { kind: 'variable'; node: VariableDecl }
   | { kind: 'output'; node: OutputDecl }
   | { kind: 'provider'; node: ProviderBlock }
+  | { kind: 'module'; node: ModuleNode }
   | { kind: 'extra'; node: RawBlock };
 
 function blocksOf(ir: IR): Block[] {
@@ -91,6 +96,7 @@ function blocksOf(ir: IR): Block[] {
     ...ir.variables.map((node) => ({ kind: 'variable' as const, node })),
     ...ir.outputs.map((node) => ({ kind: 'output' as const, node })),
     ...ir.providers.map((node) => ({ kind: 'provider' as const, node })),
+    ...ir.modules.map((node) => ({ kind: 'module' as const, node })),
     ...ir.extras.map((node) => ({ kind: 'extra' as const, node })),
   ];
 }
@@ -105,6 +111,8 @@ function emitBlock(b: Block): string {
       return emitOutput(b.node);
     case 'provider':
       return emitProvider(b.node);
+    case 'module':
+      return emitModule(b.node);
     case 'extra':
       return emitRawBlock(b.node);
   }
@@ -128,6 +136,8 @@ interface FileCtx {
   eol: string;
   /** renames done by this batch of ops (old address → new) */
   renamed: Map<string, string>;
+  /** renames and re-keys of this batch, in op order (what `renamedInPlace` replays on the text) */
+  rewrites: TextRewrite[];
 }
 
 function eolOf(text: string): string {
@@ -301,6 +311,8 @@ const isAligned = (text: string, run: EntrySpan[]) =>
 // ------------------------------------------------------------ body diff
 
 const isBlockish = (e: Expression) => e.kind === 'block' || e.kind === 'blocks';
+/** resource meta-arguments written at the top of the body */
+const LEADING_META = new Set(['count', 'for_each']);
 /** keys of verbatim sub-blocks (`provisioner "x" #0`), see the parser */
 const RAW_ENTRY_KEY_RE = /[\s"]/;
 const itemsOf = (e: Expression) => (e.kind === 'block' ? [e.body] : e.kind === 'blocks' ? e.items : []);
@@ -312,12 +324,12 @@ const bodiesEqual = (a: Record<string, Expression>, b: Record<string, Expression
  * rewrite those tokens in its original text (keeping layout and comments).
  */
 function renamedInPlace(ctx: FileCtx, o: Expression, n: Expression, previous: string): string | null {
-  if (ctx.renamed.size === 0) return null;
+  if (ctx.rewrites.length === 0) return null;
   let expected = o;
   let text = previous;
-  for (const [from, to] of ctx.renamed) {
-    expected = renameInExpression(expected, from, to);
-    text = renameInHcl(text, from, to);
+  for (const rewrite of ctx.rewrites) {
+    expected = rewrite.expr(expected);
+    text = rewrite.hcl(text);
   }
   return exprEquals(expected, n) ? text : null;
 }
@@ -378,8 +390,10 @@ function renderBlocks(key: string, e: Expression, indent: string): string {
 /**
  * Splice the differences between two argument records into a body: changed
  * values are replaced in place, removed entries lose their lines, new
- * attributes go after the last attribute and new blocks at the end. Returns
- * false when the layout doesn't allow line-level edits (single-line bodies…).
+ * attributes go after the last attribute and new blocks at the end — but a
+ * resource's new `count` / `for_each` opens its body, as Terraform's style
+ * guide has it. Returns false when the layout doesn't allow line-level edits
+ * (single-line bodies…).
  */
 function patchBody(
   ctx: FileCtx,
@@ -388,6 +402,7 @@ function patchBody(
   body: BodySpans,
   parentIndent: string,
   edits: Edit[],
+  resource = false,
 ): boolean {
   const { text, eol } = ctx;
   const byKey = new Map<string, EntrySpan[]>();
@@ -402,6 +417,8 @@ function patchBody(
   const deleted = new Set<EntrySpan>();
   const newAttrs: Array<[string, Expression]> = [];
   const newBlocks: string[] = [];
+  /** meta-arguments that open the body */
+  const leading: Array<[string, Expression]> = [];
 
   for (const key of new Set([...Object.keys(oldArgs), ...Object.keys(newArgs)])) {
     const o = oldArgs[key];
@@ -418,6 +435,7 @@ function patchBody(
       for (const s of spans) deleted.add(s);
       if (isBlockish(n)) newBlocks.push(renderBlocks(key, n, indent));
       else if (RAW_ENTRY_KEY_RE.test(key) && n.kind === 'raw') newBlocks.push(indent + n.hcl);
+      else if (resource && o === undefined && LEADING_META.has(key)) leading.push([key, n]);
       else newAttrs.push([key, n]);
       continue;
     }
@@ -436,16 +454,28 @@ function patchBody(
     }
     const previous = text.slice(span.valueStart!, span.valueEnd!);
     const at = indentAt(text, span.keyStart);
-    const value =
-      renamedInPlace(ctx, o, n, previous) ??
-      editListLines(o, n, previous, at) ??
-      emitValueLike(n, at, previous);
+    let value = renamedInPlace(ctx, o, n, previous) ?? editListLines(o, n, previous, at);
+    if (value === null) {
+      // comments inside the value aren't in the IR: edit its text around them, or refuse
+      const kept = keepComments(o, n, previous, at);
+      if (kept === null) throw new CommentsWouldBeLost(key);
+      value = kept ?? emitValueLike(n, at, previous);
+    }
     edits.push({ start: span.valueStart!, end: span.valueEnd!, text: withEol(value, eol) });
   }
 
-  if (deleted.size === 0 && newAttrs.length === 0 && newBlocks.length === 0) return true;
+  if (deleted.size === 0 && newAttrs.length === 0 && newBlocks.length === 0 && leading.length === 0) return true;
   if ([...deleted].some((e) => e.inline)) return false;
   const inner = bodyInner(text, body);
+
+  if (leading.length > 0) {
+    if (!inner) return false;
+    const lines = leading.map(([key, value]) => `${indent}${quoteKey(key)} = ${emitExpression(value, indent)}\n`).join('');
+    // a blank line between the meta-arguments and the rest, unless there is one (or nothing) already
+    const rest = body.entries.some((e) => !deleted.has(e)) || newAttrs.length > 0 || newBlocks.length > 0;
+    const spacer = rest && lineKindAt(text, inner.lo) !== 'blank' ? '\n' : '';
+    edits.push({ start: inner.lo, end: inner.lo, text: withEol(lines + spacer, eol) });
+  }
 
   if (deleted.size > 0) {
     if (!inner) return false;
@@ -531,6 +561,7 @@ function patchBlockItems(
     // irregular layout: re-emit just this nested block (its first line starts at the key)
     const block = emitNestedBlock(key, newItems[i], indent).join('\n').slice(indent.length);
     const end = span.body ? span.body.close + 1 : span.contentEnd;
+    if (lostComments(text.slice(span.keyStart, end), block).length > 0) throw new CommentsWouldBeLost(key);
     edits.push({ start: span.keyStart, end, text: withEol(block, eol) });
   }
   for (let i = newItems.length; i < oldItems.length; i++) deleted.add(spans[i]);
@@ -592,19 +623,36 @@ function spliceBlock(ctx: FileCtx, old: Block, next: Block, edits: Edit[]): bool
     if (n.position && n.position !== o.position && !writePosition(ctx, spans, n.position, edits)) {
       return false;
     }
+  } else if (old.kind === 'module') {
+    // a module call's one label is its name; it moves like a resource
+    const n = next.node as ModuleNode;
+    if (old.node.name !== n.name) {
+      const label = spans.labels[0];
+      if (!label) return false;
+      edits.push({ start: label.start, end: label.end, text: emitLabel(n.name, !label.quoted) });
+    }
+    if (n.position && n.position !== old.node.position && !writePosition(ctx, spans, n.position, edits)) {
+      return false;
+    }
   } else if (old.node.name !== (next.node as typeof old.node).name) {
     return false;
   }
   const indent = indentAt(ctx.text, spans.header);
-  return patchBody(ctx, old.node.args, (next.node as typeof old.node).args, spans.body, indent, edits);
+  return patchBody(ctx, old.node.args, (next.node as typeof old.node).args, spans.body, indent, edits, old.kind === 'resource');
 }
 
 function patchBlock(ctx: FileCtx, old: Block, next: Block): Edit[] {
   const edits: Edit[] = [];
   if (spliceBlock(ctx, old, next, edits) && disjoint(edits)) return edits;
-  // too irregular to splice (e.g. a single-line body): re-emit the whole block
+  // too irregular to splice (e.g. a single-line body): re-emit the whole block — unless comments
+  // it holds (inside values or nested blocks: not in the IR) would go, other than a removed entry's
   const range = old.node.trivia.rawTextRange!;
-  return [{ start: range.start, end: range.end, text: withEol(emitBlock(next), ctx.eol) }];
+  const text = withEol(emitBlock(next), ctx.eol);
+  const nextArgs = 'args' in next.node ? next.node.args : {};
+  const gone = (old.node.trivia.spans?.body.entries ?? []).filter((e) => !Object.hasOwn(nextArgs, e.key));
+  const inGone = (at: number) => gone.some((e) => range.start + at >= e.start && range.start + at < e.end);
+  if (lostComments(ctx.text.slice(range.start, range.end), text, inGone).length > 0) throw new CommentsWouldBeLost(null);
+  return [{ start: range.start, end: range.end, text }];
 }
 
 /**
@@ -649,6 +697,31 @@ function appendBlocks(text: string, blocks: string[], eol: string): string {
   return head + eol + body;
 }
 
+/** Where a new block placed after a resource or module call goes: that block's file, just past its text. */
+function placedAfter(
+  b: Block,
+  placements: Map<string, string>,
+  nextIR: IR,
+  oldByKey: Map<string, Block>,
+): { file: string; at: number } | undefined {
+  const anchorId = b.kind === 'extra' ? placements.get(b.node.id) : undefined;
+  const resource = anchorId ? nextIR.resources.find((r) => r.id === anchorId) : undefined;
+  const module = anchorId && !resource ? nextIR.modules.find((m) => m.id === anchorId) : undefined;
+  const key = resource ? keyOf({ kind: 'resource', node: resource }) : module && keyOf({ kind: 'module', node: module });
+  const old = key !== undefined ? oldByKey.get(key) : undefined;
+  if (!old) return undefined;
+  return { file: old.node.trivia.sourceFile!, at: old.node.trivia.rawTextRange!.end };
+}
+
+/** New blocks right after the block ending at `at`: one blank line before them, and after them unless one follows. */
+function insertAfter(ctx: FileCtx, at: number, blocks: string[]): Edit {
+  const { text, eol } = ctx;
+  const lead = at > 0 && text[at - 1] !== '\n' ? eol : '';
+  const body = blocks.map((b) => withEol(b.replace(/\n+$/, ''), eol)).join(eol + eol);
+  const follows = at < text.length && !isBlankLine(text, at, nextLine(text, at));
+  return { start: at, end: at, text: `${lead}${eol}${body}${eol}${follows ? eol : ''}` };
+}
+
 // ------------------------------------------------------------ entry point
 
 interface Plan {
@@ -662,14 +735,14 @@ interface Plan {
   shrunk: Set<string>;
 }
 
-function push<T>(map: Map<string, T[]>, key: string, ...values: T[]) {
+function push<K, T>(map: Map<K, T[]>, key: K, ...values: T[]) {
   const list = map.get(key);
   if (list) list.push(...values);
   else map.set(key, [...values]);
 }
 
 function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale: PatchRefusal } {
-  const { ir: nextIR, renamed } = applyOps(ir, ops);
+  const { ir: nextIR, renamed, rewrites, placements } = applyOps(ir, ops);
 
   const oldBlocks = blocksOf(ir);
   const oldNodes = new Set(oldBlocks.map((b) => b.node));
@@ -683,13 +756,23 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
   }
 
   const appends = new Map<string, string[]>();
+  /** new blocks written right after an existing one (`moved {}` after its resource): file → offset → texts */
+  const inserts = new Map<string, Map<number, string[]>>();
   const changed: Array<[Block, Block]> = [];
   const claimed = new Set<string>();
   for (const b of blocksOf(nextIR)) {
     const key = keyOf(b);
     const old = key !== undefined && !claimed.has(key) ? oldByKey.get(key) : undefined;
     if (!old) {
-      if (!oldNodes.has(b.node)) push(appends, b.node.trivia.sourceFile ?? defaultFile(b), emitBlock(b));
+      if (oldNodes.has(b.node)) continue;
+      const anchor = placedAfter(b, placements, nextIR, oldByKey);
+      if (anchor) {
+        const at = inserts.get(anchor.file) ?? new Map<number, string[]>();
+        push(at, anchor.at, emitBlock(b));
+        inserts.set(anchor.file, at);
+      } else {
+        push(appends, b.node.trivia.sourceFile ?? defaultFile(b), emitBlock(b));
+      }
       continue;
     }
     claimed.add(key!);
@@ -701,6 +784,7 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
     ...changed.map(([old]) => old.node.trivia.sourceFile!),
     ...[...removed].map((b) => b.node.trivia.sourceFile!),
     ...appends.keys(),
+    ...inserts.keys(),
   ]);
   for (const file of touched) {
     const reason = staleness(files[file], oldByFile.get(file) ?? []);
@@ -714,7 +798,7 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
     let ctx = ctxs.get(file);
     if (!ctx) {
       const text = files[file] ?? '';
-      ctx = { text, eol: eolOf(text), renamed };
+      ctx = { text, eol: eolOf(text), renamed, rewrites };
       ctxs.set(file, ctx);
     }
     return ctx;
@@ -723,7 +807,16 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
   const edits = new Map<string, Edit[]>();
   for (const [old, next] of changed) {
     const file = old.node.trivia.sourceFile!;
-    push(edits, file, ...patchBlock(ctxOf(file), old, next));
+    try {
+      push(edits, file, ...patchBlock(ctxOf(file), old, next));
+    } catch (err) {
+      if (!(err instanceof CommentsWouldBeLost)) throw err;
+      const where = old.kind === 'resource' ? old.node.id : old.kind === 'extra' ? file : `${old.kind} "${old.node.name}"`;
+      return { stale: { file, message: messagesFor(hclMessages).commentsWouldBeLost(where, err.key) } };
+    }
+  }
+  for (const [file, at] of inserts) {
+    for (const [offset, texts] of at) push(edits, file, insertAfter(ctxOf(file), offset, texts));
   }
   const shrunk = new Set<string>();
   for (const [file, blocks] of oldByFile) {
@@ -776,6 +869,7 @@ function toParsed(b: Block, text: string): ParsedBlock | null {
     case 'variable':
     case 'output':
     case 'provider':
+    case 'module':
       return { kind: 'labeled', keyword: b.kind, name: b.node.name, args: b.node.args, ...base };
     case 'extra':
       return { kind: 'raw', text: b.node.text, ...base };
@@ -839,6 +933,8 @@ function reparseFile(file: string, before: string, after: string, blocks: Block[
 function reparseProject(files: Record<string, string>, nextFiles: Record<string, string>, planned: Plan) {
   const parsed: ParsedFile[] = [];
   for (const [file, after] of Object.entries(nextFiles)) {
+    // child module files are not part of the root module's IR (parseProject)
+    if (!isRootModuleFile(file)) continue;
     const blocks = planned.oldByFile.get(file) ?? [];
     const edits = planned.edits.get(file) ?? [];
     const reusable =
@@ -867,7 +963,7 @@ function verify(
   fresh: { ir: IR; diagnostics: Diagnostic[] },
   touched: string[],
 ): PatchRefusal | null {
-  const ids = (ir: IR) => ir.resources.map((r) => r.id).sort().join('\n');
+  const ids = (ir: IR) => [...ir.resources, ...ir.modules].map((r) => r.id).sort().join('\n');
   const counts = (ir: IR) =>
     [ir.variables.length, ir.outputs.length, ir.providers.length, ir.extras.length].join();
   if (ids(expected) !== ids(fresh.ir) || counts(expected) !== counts(fresh.ir)) {

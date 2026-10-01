@@ -70,6 +70,10 @@ export interface AwsPrices {
     snsPerMillion: number;
     apiGatewayHttpPerMillion: number;
     ecrGbMonth: number;
+    /** Aurora Standard: storage per GB-month and I/O per million requests; I/O-Optimized: storage only */
+    auroraGbMonth: number;
+    auroraIoPerMillion: number;
+    auroraIoOptimizedGbMonth: number;
   };
 }
 
@@ -180,8 +184,10 @@ export interface ResourceCost {
   assumptions: string[];
   /** usage-based: how it is billed; unknown: why it can't be priced */
   note?: string;
-  /** literal `count` (1 when absent) */
+  /** instances priced: a known `count` or `for_each` size (1 when absent) */
   count: number;
+  /** what `count` comes from when the resource repeats */
+  repeat?: 'count' | 'for_each';
   /** the region priced, and the multiplier applied to the default region's rates */
   region?: string;
   multiplier: number;

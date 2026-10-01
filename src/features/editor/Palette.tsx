@@ -20,6 +20,7 @@ import { paletteMessages } from './Palette.messages';
 import { HidePanelButton, PanelGrip } from './PanelChrome';
 import { buildNewNode } from './newNode';
 import { useEditor } from './store';
+import { AddModuleButton } from '@/features/modules/AddModuleButton';
 
 const PROVIDERS: Provider[] = ['aws', 'azure', 'gcp'];
 
@@ -305,6 +306,7 @@ export function Palette() {
         ) : null}
       </div>
 
+      <AddModuleButton />
       <p className="border-t px-3 py-2 text-[10.5px] leading-relaxed text-faint">
         {m.footer[0]}
         <Kbd>{MOD} K</Kbd>
