@@ -54,8 +54,10 @@ between them.
 - 📊 **Storage meter** on the dashboard: how much of the browser's storage your projects use,
   a "Back up and free space" nudge from 70%, and a one-click request for persistent storage.
 - ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor
-  (Monaco, auto-layout, fonts) open without a connection; a new version shows an
-  "Update available" prompt with a Reload button instead of breaking the open tab.
+  (Monaco, auto-layout, fonts) open without a connection; a new version is applied on its
+  own on the landing page, the dashboard and the tutorials list when nothing is in progress,
+  and the editor shows an "Update available" prompt with a Reload button instead of
+  breaking the open tab.
 - 📁 **Folder sync** (Chrome / Edge): *Open folder…* imports a Terraform root module linked to
   its folder, or *Sync with folder…* links an existing project. Saves write through to the
   `.tf` files, edits made on disk load back when you return to the tab, and changes on both

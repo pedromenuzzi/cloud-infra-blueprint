@@ -8,24 +8,30 @@
  *   the rest of those chunks are fetched when the browser is idle
  *   (`warmOfflineCache`), so the whole editor opens offline afterwards.
  * - A new deploy: the new worker installs and WAITS. The open tab keeps the
- *   version it started with (every chunk it may still ask for stays cached),
- *   and a small "Update available — Reload" prompt appears. Reload = the
- *   waiting worker skips waiting, then the page reloads once it's in control.
+ *   version it started with (every chunk it may still ask for stays cached).
+ *   On a screen where nothing is in progress (landing, dashboard, tutorials
+ *   list, 404: see autoUpdate.ts) it's applied right away, reloading once
+ *   (`autoApplyUpdate`, under chunkReload.ts's loop guard); elsewhere (the
+ *   editor, a lesson, the viewer) a small "Update available, Reload" prompt
+ *   appears. Reload = the waiting worker skips waiting, then the page reloads
+ *   once it's in control.
  * - A chunk that fails anyway: chunkReload.ts asks `activateForRecovery`
  *   first, which switches to the new version instead of reloading into the
  *   same stale one.
  */
 import { create } from 'zustand';
-import { markRecoveryReload, setUpdateActivator } from '@/lib/chunkReload';
+import { canRecoveryReload, markRecoveryReload, recoveryReload, setUpdateActivator } from '@/lib/chunkReload';
 
 interface PwaState {
   /** a new version is installed and waiting for the user to reload */
   updateReady: boolean;
   /** a service worker controls the page: it opens without a connection */
   offlineReady: boolean;
+  /** the waiting version is being applied without asking (the prompt stays away) */
+  autoApplying: boolean;
 }
 
-export const usePwa = create<PwaState>(() => ({ updateReady: false, offlineReady: false }));
+export const usePwa = create<PwaState>(() => ({ updateReady: false, offlineReady: false, autoApplying: false }));
 
 const BASE = import.meta.env.BASE_URL;
 const SKIP_WAITING = { type: 'SKIP_WAITING' };
@@ -107,6 +113,21 @@ export function applyUpdate(): boolean {
   // the new worker takes over → controllerchange → reload; never hang if it doesn't
   setTimeout(reloadOnce, 4000);
   return true;
+}
+
+/**
+ * Apply the waiting version without asking, on a screen where nothing is in
+ * progress (AutoUpdate.tsx), reloading once. It goes through chunkReload.ts's
+ * recovery reload, so its loop guard applies: refused within 30 s of the last
+ * such reload (the prompt stays, nothing reloads again). False when nothing is
+ * waiting or the guard refuses.
+ */
+export function autoApplyUpdate(): boolean {
+  if (!registration?.waiting || !container()?.controller || !canRecoveryReload()) return false;
+  usePwa.setState({ autoApplying: true });
+  if (recoveryReload()) return true;
+  usePwa.setState({ autoApplying: false });
+  return false;
 }
 
 /**
