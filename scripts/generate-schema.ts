@@ -3,7 +3,9 @@
  *
  * For each provider it writes a scratch project with the templates' version
  * pin, runs `terraform init` + `terraform providers schema -json`, and trims
- * the output (src/schema/trim.ts) — see src/schema/README.md.
+ * the output (src/schema/trim.ts) into two lazy chunks: the resources
+ * (`<provider>.json`) and the data sources (`<provider>.data.json`); see
+ * src/schema/README.md.
  *
  *   pnpm schema:generate                  latest versions matching the pins
  *   pnpm schema:generate --check          regenerate at the versions recorded in the
@@ -21,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { providerOfSourceName } from '@/ir/types';
 import { allDefs } from '@/resources/registry';
-import { GOOGLE_WITH_HELP } from '@/schema/popular';
+import { DATA_SOURCES_WITH_HELP, GOOGLE_WITH_HELP } from '@/schema/popular';
 import { serializeSchema } from '@/schema/serialize';
 import { providerEntry, trimProviderSchema, type RawSchemas } from '@/schema/trim';
 import { SCHEMA_PROVIDERS, type SchemaData, type SchemaProvider } from '@/schema/types';
@@ -45,9 +47,12 @@ function templatePin(provider: SchemaProvider): string {
   return pin;
 }
 
-function committedText(provider: SchemaProvider): string | undefined {
+/** `aws.json` (resources) or `aws.data.json` (data sources) */
+const fileName = (provider: SchemaProvider, data: boolean) => `${provider}${data ? '.data' : ''}.json`;
+
+function committedText(provider: SchemaProvider, data = false): string | undefined {
   try {
-    return readFileSync(join(DATA_DIR, `${provider}.json`), 'utf8');
+    return readFileSync(join(DATA_DIR, fileName(provider, data)), 'utf8');
   } catch {
     return undefined;
   }
@@ -105,6 +110,13 @@ function helpFilter(provider: SchemaProvider): ((type: string) => boolean) | und
   return (type) => keep.has(type);
 }
 
+/** which data sources keep their descriptions: all of them, but Google's long tail ships structure only */
+function dataHelpFilter(provider: SchemaProvider): ((type: string) => boolean) | undefined {
+  if (provider !== 'google') return undefined;
+  const keep = new Set(DATA_SOURCES_WITH_HELP);
+  return (type) => keep.has(type);
+}
+
 const kb = (n: number) => `${(n / 1024).toFixed(0)} KB`;
 
 const check = flag('--check');
@@ -133,20 +145,36 @@ for (const provider of providers) {
   if (!entry) throw new Error(`the schema dump has no ${provider} provider`);
   const missing = provider === 'google' ? GOOGLE_WITH_HELP.filter((t) => !entry.resource_schemas?.[t]) : [];
   if (missing.length) say(`warning: not in the google schema any more: ${missing.join(', ')}`);
-  const text = serializeSchema(trimProviderSchema(entry, { provider, version, help: helpFilter(provider) }));
-  const summary = `${provider} ${version}: ${Object.keys(entry.resource_schemas ?? {}).length} resources, ${kb(text.length)} (${kb(gzipSync(text, { level: 9 }).length)} gzip)`;
+  const missingData = DATA_SOURCES_WITH_HELP.filter((t) => t.startsWith(`${provider}_`) && !entry.data_source_schemas?.[t]);
+  if (missingData.length) say(`warning: data sources not in the ${provider} schema any more: ${missingData.join(', ')}`);
 
-  if (check) {
-    if (current !== text) {
-      stale++;
-      say(`${summary} — STALE: src/schema/data/${provider}.json differs from what the generator writes`);
-    } else {
-      say(`${summary} — up to date`);
+  const chunks = [
+    {
+      data: false,
+      count: `${Object.keys(entry.resource_schemas ?? {}).length} resources`,
+      text: serializeSchema(trimProviderSchema(entry, { provider, version, help: helpFilter(provider) })),
+    },
+    {
+      data: true,
+      count: `${Object.keys(entry.data_source_schemas ?? {}).length} data sources`,
+      text: serializeSchema(trimProviderSchema(entry, { provider, version, section: 'data', help: dataHelpFilter(provider) })),
+    },
+  ];
+  for (const { data, count, text } of chunks) {
+    const file = `src/schema/data/${fileName(provider, data)}`;
+    const summary = `${provider} ${version}: ${count}, ${kb(text.length)} (${kb(gzipSync(text, { level: 9 }).length)} gzip)`;
+    if (check) {
+      if (committedText(provider, data) !== text) {
+        stale++;
+        say(`${summary}: STALE, ${file} differs from what the generator writes`);
+      } else {
+        say(`${summary}: up to date`);
+      }
+      continue;
     }
-    continue;
+    writeFileSync(join(DATA_DIR, fileName(provider, data)), text);
+    say(`${summary} → ${file}`);
   }
-  writeFileSync(join(DATA_DIR, `${provider}.json`), text);
-  say(`${summary} → src/schema/data/${provider}.json`);
 }
 
 if (stale) {

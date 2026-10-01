@@ -92,6 +92,11 @@ tokens above — add a word here before adding it to the sweep's allowlist.
 | source (of a module) / version | origem / versão (`source` and `version` stay code) |
 | input / output (of a module) | entrada / output ("entrada obrigatória", "outputs lidos em outros blocos") |
 | meta-arguments | meta-argumentos |
+| data source / `data` block | fonte de dados (feminine: "a fonte de dados", "lida por") / bloco `data` (`data` is code) |
+| read by (a data source's readers) / not read | lida por / não lida |
+| attribute (what a data source or resource exposes) | atributo ("atributos que expõe") |
+| existing (a data source that looks something up) | existente ("VPC existente", "Grupo de recursos existente") |
+| remote state | estado remoto |
 | open module / read-only module view | abrir módulo / visualização somente leitura |
 | root (breadcrumb) | raiz |
 | not analysed / not estimated | não analisado / sem estimativa |

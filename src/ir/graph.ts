@@ -2,6 +2,7 @@
  * Structure derivation: containment (parentId) and edges are *derived* from
  * real HCL references, so the text is always the source of truth.
  */
+import { dataEdges } from './dataSources';
 import { collectRefs, refTargetAddress } from './expr';
 import type { IR, IREdge, ResourceNode } from './types';
 
@@ -124,6 +125,8 @@ export function deriveStructure(ir: IR, lookup: DefLookup): IREdge[] {
       });
     }
   }
+  // data sources: who reads them, and what they are filtered by (./dataSources.ts)
+  if (ir.data.length > 0) edges.push(...dataEdges(ir));
   return edges;
 }
 

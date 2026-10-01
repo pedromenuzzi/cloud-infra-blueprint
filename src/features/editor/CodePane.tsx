@@ -130,8 +130,8 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
         if (!model) return;
         const state = useEditor.getState();
         const offset = model.getOffsetAt(e.position);
-        // module calls are picked like resources
-        const hit = [...state.ir.resources, ...state.ir.modules].find((r) => {
+        // module calls and data sources are picked like resources
+        const hit = [...state.ir.resources, ...state.ir.modules, ...state.ir.data].find((r) => {
           const range = r.trivia.rawTextRange;
           return (
             range &&
@@ -289,15 +289,28 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
         });
       }
       for (const w of warnings) {
-        if (!w.nodeId) continue;
+        if (!w.nodeId) {
+          // no block of its own (a `locals` entry reading a data source): marked where it points
+          if (w.start && w.file === file) {
+            markers.push({
+              severity: monaco.MarkerSeverity.Warning,
+              message: w.message,
+              startLineNumber: w.start.line,
+              startColumn: w.start.col,
+              endLineNumber: w.end?.line ?? w.start.line,
+              endColumn: w.end?.col ?? w.start.col + 4,
+            });
+          }
+          continue;
+        }
         const node = findNode(ir, w.nodeId);
         if (!node || (node.trivia.sourceFile ?? 'main.tf') !== file) continue;
         const range = node.trivia.rawTextRange;
         if (!range) continue;
         // validation points at the argument or block header when it can; otherwise
-        // find the `resource` line (the range starts at the block's leading comments)
+        // find the block's header line (the range starts at the block's leading comments)
         const text = files[file] ?? '';
-        const header = text.slice(range.start, range.end).search(/^[ \t]*resource\b/m);
+        const header = text.slice(range.start, range.end).search(/^[ \t]*(?:resource|data|module)\b/m);
         const pos = w.start ?? lineColOf(text, range.start + Math.max(0, header));
         markers.push({
           severity: monaco.MarkerSeverity.Warning,

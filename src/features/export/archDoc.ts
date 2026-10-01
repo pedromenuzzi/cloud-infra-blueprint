@@ -31,6 +31,8 @@ import { portText } from '@/security/model';
 import { docMessages, type DocMessages } from './archDoc.messages';
 import { drawDiagram, type DiagramVector, type Region } from './diagramVector';
 import { modulesSection, pdfModuleMessages } from '@/features/modules/pdfModules';
+import { dataSection, pdfDataMessages } from '@/features/data-sources/pdfData';
+import { dataSourceMessages } from '@/features/data-sources/dataSources.messages';
 
 export type Paper = keyof typeof PAPER;
 
@@ -1477,6 +1479,7 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
     ...(input.sections.inventory ? [{ key: 'inventory', title: t.inventory }] : []),
     ...(input.sections.inventory && hasVars ? [{ key: 'variables', title: t.variablesOutputs }] : []),
     ...(input.sections.inventory && ir.modules.length > 0 ? [{ key: 'modules', title: messagesFor(pdfModuleMessages, locale).title }] : []),
+    ...(input.sections.inventory && ir.data.length > 0 ? [{ key: 'data', title: messagesFor(dataSourceMessages, locale).pdfTitle }] : []),
     ...(input.sections.connections ? [{ key: 'connections', title: t.connectionsTitle }] : []),
     ...(input.sections.security ? [{ key: 'security', title: t.securityTitle }] : []),
     ...(input.sections.cost ? [{ key: 'cost', title: t.costTitle }] : []),
@@ -1491,6 +1494,9 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
   if (input.sections.inventory) yield* step(t.writingInventory, inventory(c, input, locale));
   if (input.sections.inventory && ir.modules.length > 0) {
     yield* step(messagesFor(pdfModuleMessages, locale).writing, modulesSection(c, ir, locale));
+  }
+  if (input.sections.inventory && ir.data.length > 0) {
+    yield* step(messagesFor(pdfDataMessages, locale).writing, dataSection(c, ir, locale));
   }
   if (input.sections.connections) yield* step(t.writingConnections, connections(c, input, locale));
   if (input.sections.security) yield* step(t.writingSecurity, security(c, input, locale));

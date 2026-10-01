@@ -81,6 +81,12 @@ import { isModuleId } from '@/ir/modules';
 import { ModuleIcon } from '@/features/modules/ModuleIcon';
 import { modulesMessages } from '@/features/modules/modules.messages';
 import { takePaletteReturnFocus, usePalette } from './paletteStore';
+import { addDataSource } from '@/features/data-sources/addData';
+import { DataSourceGroups } from '@/features/data-sources/DataSourceGroups';
+import { DataSourceIcon } from '@/features/data-sources/DataSourceIcon';
+import { dataSourceMessages } from '@/features/data-sources/dataSources.messages';
+import { dataSourceName } from '@/features/data-sources/i18n';
+import { isDataId } from '@/ir/dataSources';
 
 function Item({
   value,
@@ -138,7 +144,7 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState<'root' | 'add'>('root');
+  const [page, setPage] = useState<'root' | 'add' | 'data'>('root');
   const { theme, setTheme } = useTheme();
   const togglePanel = useLayout((s) => s.toggle);
 
@@ -157,6 +163,7 @@ export function CommandPalette() {
   const sm = useMessages(securityUiMessages);
   const addm = useMessages(addModuleMessages);
   const modm = useMessages(modulesMessages);
+  const dsm = useMessages(dataSourceMessages);
   const locale = useLocale((s) => s.locale);
   const setLocale = useLocale((s) => s.setLocale);
   const arrangeTarget = selection ? ir.resources.find((r) => r.id === selection) : undefined;
@@ -202,7 +209,7 @@ export function CommandPalette() {
       overlayClassName="bp-palette-overlay"
       contentClassName="bp-palette"
       onKeyDown={(e) => {
-        if (page === 'add' && e.key === 'Backspace' && search === '') {
+        if (page !== 'root' && e.key === 'Backspace' && search === '') {
           e.preventDefault();
           setPage('root');
         }
@@ -210,19 +217,19 @@ export function CommandPalette() {
     >
       <div className="bp-cmd flex max-h-[min(560px,72vh)] flex-col">
         <div className="flex items-center gap-2 border-b pl-3">
-          {page === 'add' ? (
+          {page !== 'root' ? (
             <button
               type="button"
               onClick={() => setPage('root')}
-              className="flex items-center gap-1 rounded-[6px] bg-primary-soft px-1.5 py-0.5 text-[11.5px] font-semibold text-primary"
+              className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-[6px] bg-primary-soft px-1.5 py-0.5 text-[11.5px] font-semibold text-primary"
             >
-              <ArrowLeft className="h-3 w-3" /> {m.addResourceBack}
+              <ArrowLeft className="h-3 w-3" /> {page === 'data' ? dsm.back : m.addResourceBack}
             </button>
           ) : null}
           <Command.Input
             value={search}
             onValueChange={setSearch}
-            placeholder={page === 'add' ? m.searchResources : m.search}
+            placeholder={page === 'add' ? m.searchResources : page === 'data' ? dsm.search : m.search}
             className="bp-cmd-input !border-0 !px-1"
           />
         </div>
@@ -236,6 +243,8 @@ export function CommandPalette() {
               preferred={preferred}
               onPick={(def) => run(() => canvasApi()?.addResource(def.type))}
             />
+          ) : page === 'data' ? (
+            <DataSourceGroups preferred={preferred} onPick={(preset) => run(() => addDataSource(preset.key))} />
           ) : (
             <>
               {editorReady ? (
@@ -260,6 +269,18 @@ export function CommandPalette() {
                       hint={addm.openHint}
                       onSelect={() => run(openAddModule)}
                     />
+                    <Item
+                      value="add-data-source"
+                      label={dsm.command}
+                      keywords={dsm.commandKeywords}
+                      hint={dsm.commandHint}
+                      onSelect={() => {
+                        setSearch('');
+                        setPage('data');
+                      }}
+                    >
+                      <DataSourceIcon size={26} />
+                    </Item>
                     <Item value="fit" icon={Maximize} label={m.fitView} shortcut={shortcut('shift', '1')} onSelect={() => run(() => canvasApi()?.fitView())} />
                     <Item value="tidy" icon={WandSparkles} label={am.command} keywords={am.keywords} onSelect={() => run(() => void canvasApi()?.tidy())} />
                     {arrangeTarget && isContainerType(arrangeTarget.type) && ir.resources.some((r) => r.parentId === arrangeTarget.id) ? (
@@ -274,7 +295,7 @@ export function CommandPalette() {
                     <Item value="minimap" icon={MapIcon} label={m.toggleMinimap} onSelect={() => run(() => canvasApi()?.toggleMinimap())} />
                     {selection ? (
                       <>
-                        {isModuleId(selection) ? null : (
+                        {isModuleId(selection) || isDataId(selection) ? null : (
                           <Item value="duplicate" icon={CopyPlus} label={m.duplicateSelected} shortcut={shortcut('mod', 'D')} onSelect={() => run(() => canvasApi()?.duplicate(selection))} />
                         )}
                         <Item value="reveal" icon={Code2} label={m.revealSelected} onSelect={() => run(() => editor().revealInCode(selection))} />
@@ -386,7 +407,7 @@ export function CommandPalette() {
                     <LayoutCommands render={(c) => <Item key={c.value} value={c.value} icon={c.icon} label={c.label} keywords={c.keywords} onSelect={() => run(c.run)} />} />
                   </Command.Group>
 
-                  {resources.length > 0 || ir.modules.length > 0 ? (
+                  {resources.length > 0 || ir.modules.length > 0 || ir.data.length > 0 ? (
                     <Command.Group heading={m.group.goToResource}>
                       {resources.map((r) => {
                         const def = getDef(r.type);
@@ -426,6 +447,23 @@ export function CommandPalette() {
                           <ModuleIcon size={26} />
                         </Item>
                       ))}
+                      {ir.data.map((d) => (
+                        <Item
+                          key={d.id}
+                          value={`goto ${d.id}`}
+                          label={d.name}
+                          hint={dataSourceName(d.type, locale)}
+                          keywords={[d.id, d.type, dataSourceName(d.type, locale), dsm.title]}
+                          onSelect={() =>
+                            run(() => {
+                              editor().setSelection(d.id, 'canvas');
+                              canvasApi()?.focusNode(d.id);
+                            })
+                          }
+                        >
+                          <DataSourceIcon size={26} />
+                        </Item>
+                      ))}
                     </Command.Group>
                   ) : null}
 
@@ -442,11 +480,14 @@ export function CommandPalette() {
                   </Command.Group>
 
                   {search ? (
-                    <ResourceGroups
-                      headingPrefix={m.addPrefix}
-                      preferred={preferred}
-                      onPick={(def) => run(() => canvasApi()?.addResource(def.type))}
-                    />
+                    <>
+                      <ResourceGroups
+                        headingPrefix={m.addPrefix}
+                        preferred={preferred}
+                        onPick={(def) => run(() => canvasApi()?.addResource(def.type))}
+                      />
+                      <DataSourceGroups headingPrefix={m.addPrefix} preferred={preferred} onPick={(preset) => run(() => addDataSource(preset.key))} />
+                    </>
                   ) : null}
                 </>
               ) : null}
@@ -579,7 +620,7 @@ export function CommandPalette() {
           <span className="flex items-center gap-1">
             <Kbd>esc</Kbd> {m.close}
           </span>
-          <span className={cn('ml-auto', page === 'add' ? '' : 'hidden')}>
+          <span className={cn('ml-auto', page !== 'root' ? '' : 'hidden')}>
             <Kbd>⌫</Kbd> {m.back}
           </span>
         </div>

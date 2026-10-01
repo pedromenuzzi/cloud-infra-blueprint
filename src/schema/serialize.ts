@@ -8,6 +8,7 @@ export function serializeSchema(data: SchemaData): string {
   const lines: string[] = ['{'];
   lines.push(`  "format": ${JSON.stringify(data.format)},`);
   lines.push(`  "provider": ${JSON.stringify(data.provider)},`);
+  if (data.kind) lines.push(`  "kind": ${JSON.stringify(data.kind)},`);
   lines.push(`  "version": ${JSON.stringify(data.version)},`);
   const record = (name: string, entries: Record<string, unknown>) => {
     const keys = Object.keys(entries);

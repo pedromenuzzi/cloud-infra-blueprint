@@ -132,6 +132,62 @@ describe('trimProviderSchema', () => {
     expect(JSON.parse(text)).toEqual(data);
     expect(serializeSchema(JSON.parse(text))).toBe(text);
     expect(text.split('\n').filter((l) => l.startsWith('    {')).length).toBe(data.blocks.length);
+    expect(text).not.toContain('"kind"');
+  });
+});
+
+describe('trimProviderSchema: data sources', () => {
+  const RAW: RawProviderSchema = {
+    ...FIXTURE,
+    data_source_schemas: {
+      demo_lookup: {
+        version: 0,
+        block: {
+          attributes: {
+            id: { type: 'string', optional: true, computed: true },
+            name: { type: 'string', required: true, description: 'Name to look up.' },
+            most_recent: { type: 'bool', optional: true, description: 'Pick the newest match.' },
+            arn: { type: 'string', computed: true, description: 'ARN of the match: no help shipped for what is only read.' },
+            names: { type: ['list', 'string'], computed: true },
+          },
+          block_types: {
+            filter: {
+              nesting_mode: 'set',
+              block: { attributes: { name: { type: 'string', required: true }, values: { type: ['set', 'string'], required: true } } },
+            },
+          },
+        },
+      },
+    },
+  };
+  const data = trimProviderSchema(RAW, { provider: 'aws', version: '1.2.3', section: 'data' });
+  const schema = new ProviderSchema(data);
+
+  it('reads data_source_schemas, marked as data sources', () => {
+    expect(data.kind).toBe('data');
+    expect(Object.keys(data.resources)).toEqual(['demo_lookup']);
+    expect(schema.has('demo_thing')).toBe(false);
+  });
+
+  it('keeps the help of what one writes, the names and types of what it only exposes', () => {
+    const body = schema.resource('demo_lookup')!;
+    expect(body.attributes.name).toMatchObject({ required: true, description: 'Name to look up.' });
+    expect(body.attributes.most_recent.description).toBe('Pick the newest match.');
+    expect(body.attributes.arn).toMatchObject({ computed: true, optional: false, type: 'string' });
+    expect(body.attributes.arn.description).toBeUndefined();
+    expect(body.attributes.names.type).toBe('list(string)');
+    expect(body.blocks.filter).toMatchObject({ nesting: 'set' });
+  });
+
+  it('serializes the marker and round-trips', () => {
+    const text = serializeSchema(data);
+    expect(text).toContain('"kind": "data",');
+    expect(JSON.parse(text)).toEqual(data);
+    expect(serializeSchema(JSON.parse(text))).toBe(text);
+  });
+
+  it('an empty section ships empty', () => {
+    expect(trimProviderSchema(FIXTURE, { provider: 'aws', version: '1', section: 'data' }).resources).toEqual({});
   });
 });
 

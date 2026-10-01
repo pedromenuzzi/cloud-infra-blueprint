@@ -10,7 +10,7 @@
  * the same subtrees thousands of times.
  */
 
-/** Terraform provider source names we ship a schema for. */
+/** Terraform provider source names we ship a schema for (resources in `<p>.json`, data sources in `<p>.data.json`). */
 export type SchemaProvider = 'aws' | 'azurerm' | 'google';
 
 export const SCHEMA_PROVIDERS: readonly SchemaProvider[] = ['aws', 'azurerm', 'google'];
@@ -52,6 +52,11 @@ export interface SchemaData {
   /** format version of this file */
   format: 1;
   provider: SchemaProvider;
+  /**
+   * `data`: a provider's data sources (`<provider>.data.json`): `resources`
+   * then maps data source types (`aws_ami`) to their bodies. Absent: resources.
+   */
+  kind?: 'data';
   /** exact provider version the schema was read from, e.g. `6.66.0` */
   version: string;
   /** resource type → index of its body in `blocks` */

@@ -124,3 +124,18 @@ export function exportCompletions(block: SchemaBlock, preferred?: string): Schem
     deprecated: entry.deprecated,
   }));
 }
+
+/**
+ * Data source types for `data "…`: the common ones first (`popular`), then
+ * every other one the loaded schemas know, by name. `detail` labels each
+ * (the provider and its version).
+ */
+export function dataTypeCompletions(
+  types: Iterable<string>,
+  popular: readonly string[],
+  detail: (type: string) => string,
+): Array<{ label: string; detail: string; sortText: string }> {
+  const first = new Set(popular);
+  const all = [...new Set([...popular, ...types])].sort();
+  return all.map((type) => ({ label: type, detail: detail(type), sortText: `${first.has(type) ? 0 : 1}${type}` }));
+}

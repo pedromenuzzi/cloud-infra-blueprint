@@ -131,6 +131,9 @@ export const auditMessages = defineMessages(
     unverifiedTitle: "Some inbound rules can't be verified",
     unverifiedDetail: (owner: string, reasons: string) =>
       `${owner} defines inbound rules with ${reasons}, so the audit can't evaluate them. Check what they open in code.`,
+    iamAdminTitle: 'IAM policy allows every action on every resource',
+    iamAdminDetail: (document: string, statement: number, readers: string) =>
+      `Statement ${statement} of ${document} allows "*" on "*", full administrator access, and ${readers} uses it. List the actions it needs (s3:GetObject, for example) and the ARNs they act on instead.`,
     rdsPublicTitle: 'Database is publicly accessible',
     rdsPublicDetail: (name: string) => `${name} gets a public endpoint. Keep databases private and reach them from inside the VPC.`,
     rdsPublicFix: 'Make it private',
@@ -178,6 +181,9 @@ export const auditMessages = defineMessages(
     unverifiedTitle: 'Algumas regras de entrada não podem ser verificadas',
     unverifiedDetail: (owner: string, reasons: string) =>
       `${owner} define regras de entrada com ${reasons}, então a auditoria não consegue avaliá-las. Confira no código o que elas liberam.`,
+    iamAdminTitle: 'Política do IAM permite todas as ações em todos os recursos',
+    iamAdminDetail: (document: string, statement: number, readers: string) =>
+      `A declaração ${statement} de ${document} permite "*" em "*", acesso total de administrador, e ${readers} a usa. Liste as ações de que ela precisa (s3:GetObject, por exemplo) e os ARNs em que elas agem.`,
     rdsPublicTitle: 'Banco de dados com acesso público',
     rdsPublicDetail: (name: string) =>
       `${name} recebe um endpoint público. Mantenha os bancos de dados privados e acesse-os de dentro da VPC.`,

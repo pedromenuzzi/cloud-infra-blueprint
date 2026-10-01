@@ -14,6 +14,7 @@ import type { PathSeg } from '@/lib/pdf/svgPath';
 import { pathEnd, pointOnPath } from '@/lib/pdf/svgPath';
 import type { PdfColor, PdfPage, PathTransform } from '@/lib/pdf/writer';
 import { CATEGORY_COLORS, PROVIDER_COLORS, PROVIDER_LABELS } from '@/resources/icons';
+import { DATA_TILE } from '@/features/data-sources/tile';
 import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
 import { docMessages } from './archDoc.messages';
@@ -67,6 +68,8 @@ export interface DiagramNode {
   /** `count` / `for_each` badge ("×3"), and whether the other instances are drawn stacked behind, like the canvas */
   repeat?: string;
   repeatStack?: boolean;
+  /** a data source: drawn lighter, dashed, on its cyan tile (it is read, never created) */
+  lookup?: boolean;
 }
 
 export interface DiagramEdge {
@@ -243,7 +246,7 @@ class Painter {
         });
       }
     }
-    this.shadow(n.x, n.y, n.w, n.h, 12);
+    if (!n.lookup) this.shadow(n.x, n.y, n.w, n.h, 12);
     if (!dim && (sec?.risk === 'critical' || sec?.risk === 'high')) {
       this.page.rect(this.X(n.x - 1), this.Y(n.y - 1), this.S(n.w + 2), this.S(n.h + 2), {
         stroke: '#ef4444',
@@ -252,20 +255,31 @@ class Painter {
         radius: this.S(13),
       });
     }
-    this.page.rect(this.X(n.x), this.Y(n.y), this.S(n.w), this.S(n.h), {
-      fill: palette.node,
-      stroke: palette.nodeBorder,
-      lineWidth: this.S(1),
-      radius: this.S(12),
-    });
-    this.icon(n, n.x + 10, n.y + (n.h - 40) / 2, 40, dim ? cat.solid : cat.from, dim ? cat.solid : cat.to, 10);
+    if (n.lookup) {
+      this.page.rect(this.X(n.x), this.Y(n.y), this.S(n.w), this.S(n.h), { fill: palette.node, radius: this.S(12) });
+      this.page.rect(this.X(n.x + 0.75), this.Y(n.y + 0.75), this.S(n.w - 1.5), this.S(n.h - 1.5), {
+        stroke: DATA_TILE.border,
+        lineWidth: this.S(1.5),
+        dash: [this.S(4), this.S(2.5)],
+        radius: this.S(11.25),
+      });
+    } else {
+      this.page.rect(this.X(n.x), this.Y(n.y), this.S(n.w), this.S(n.h), {
+        fill: palette.node,
+        stroke: palette.nodeBorder,
+        lineWidth: this.S(1),
+        radius: this.S(12),
+      });
+    }
+    const tile = n.lookup ? DATA_TILE : cat;
+    this.icon(n, n.x + 10, n.y + (n.h - 40) / 2, 40, dim ? tile.solid : tile.from, dim ? tile.solid : tile.to, 10);
 
     const tx = n.x + 60;
     const right = n.x + n.w - 10;
     const top = n.y + (n.h - TEXT_BLOCK_H) / 2;
     const chip = this.providerChip(n.provider, right, top);
     if (n.typeLabel) {
-      this.text(n.typeLabel.toUpperCase(), tx, top + 11.3, 9.5, cat.solid, { font: 'bold', max: right - tx - chip - 4 });
+      this.text(n.typeLabel.toUpperCase(), tx, top + 11.3, 9.5, n.lookup ? DATA_TILE.text : cat.solid, { font: 'bold', max: right - tx - chip - 4 });
     }
     this.text(n.title, tx, top + 28.4, 13, palette.text, { font: 'bold', max: right - tx });
     if (n.subtitle) this.text(n.subtitle, tx, top + 43.6, 11, palette.muted, { max: right - tx });

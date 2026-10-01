@@ -33,6 +33,8 @@ export const hclMessages = defineMessages(
       `Duplicate resource "${id}" (already declared at ${file}:${line}): Terraform requires unique addresses, so rename one of them`,
     duplicateModule: (name: string, file: string, line: number) =>
       `Duplicate module "${name}" (already declared at ${file}:${line}): Terraform requires unique module names, so rename one of them`,
+    duplicateData: (id: string, file: string, line: number) =>
+      `Duplicate data source "${id}" (already declared at ${file}:${line}): Terraform requires unique addresses, so rename one of them`,
 
     stale: (file: string, reason: StaleReason) =>
       `Canvas edit not applied: ${file} changed since it was last parsed (${
@@ -76,6 +78,8 @@ export const hclMessages = defineMessages(
       `Recurso duplicado "${id}" (já declarado em ${file}:${line}): o Terraform exige endereços únicos, então renomeie um deles`,
     duplicateModule: (name, file, line) =>
       `Módulo duplicado "${name}" (já declarado em ${file}:${line}): o Terraform exige nomes de módulo únicos, então renomeie um deles`,
+    duplicateData: (id, file, line) =>
+      `Fonte de dados duplicada "${id}" (já declarada em ${file}:${line}): o Terraform exige endereços únicos, então renomeie uma delas`,
 
     stale: (file, reason) =>
       `Edição do canvas não aplicada: ${file} mudou desde a última análise (${

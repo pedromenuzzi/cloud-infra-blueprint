@@ -4,7 +4,7 @@
  * Hand-rolled, error-tolerant scanner tuned for the Terraform subset the app
  * emits, plus a `raw` escape hatch for everything else (functions, heredocs,
  * interpolations, conditionals, comprehensions, labeled sub-blocks,
- * terraform/locals/data/module blocks). Design rule: the parser must NEVER
+ * terraform/locals/moved blocks). Design rule: the parser must NEVER
  * lose user text — anything it cannot model is captured verbatim and
  * re-emitted untouched.
  *
@@ -26,7 +26,7 @@ import type {
   TextRange,
   Trivia,
 } from '@/ir/types';
-import { emptyIR, providerOfType, resourceAddress } from '@/ir/types';
+import { dataAddress, emptyIR, providerOfType, resourceAddress } from '@/ir/types';
 import { isRootModuleFile, moduleAddress } from '@/ir/modules';
 import { messagesFor } from '@/i18n/messages';
 import { POS_COMMENT_RE } from './emitter';
@@ -103,6 +103,12 @@ interface ParsedBlockBase {
 export type ParsedBlock =
   | ({
       kind: 'resource';
+      type: string;
+      name: string;
+      args: Record<string, Expression>;
+    } & ParsedBlockBase)
+  | ({
+      kind: 'data';
       type: string;
       name: string;
       args: Record<string, Expression>;
@@ -1133,6 +1139,9 @@ function parseTopLevel(s: Scanner, comments: readonly CommentRec[], errStart: nu
   if (!degraded && keyword === 'resource' && labels.length === 2) {
     return { kind: 'resource', type: labels[0], name: labels[1], args: body.args, ...base };
   }
+  if (!degraded && keyword === 'data' && labels.length === 2) {
+    return { kind: 'data', type: labels[0], name: labels[1], args: body.args, ...base };
+  }
   if (
     !degraded &&
     (keyword === 'variable' || keyword === 'output' || keyword === 'provider' || keyword === 'module') &&
@@ -1266,6 +1275,29 @@ export function buildIR(parsed: ParsedFile[]): { ir: IR; diagnostics: Diagnostic
           firstSeen.set(id, { file, line: b.spans.line });
         }
         ir.resources.push({
+          id,
+          provider: providerOfType(b.type),
+          type: b.type,
+          name: b.name,
+          args: b.args,
+          position: b.pos && { ...b.pos },
+          trivia,
+        });
+      } else if (b.kind === 'data') {
+        const id = dataAddress(b.type, b.name);
+        const first = firstSeen.get(id);
+        if (first) {
+          diagnostics.push({
+            file,
+            message: t().duplicateData(id, first.file, first.line),
+            severity: 'error',
+            start: { line: b.spans.line, col: b.spans.col },
+            nodeId: id,
+          });
+        } else {
+          firstSeen.set(id, { file, line: b.spans.line });
+        }
+        ir.data.push({
           id,
           provider: providerOfType(b.type),
           type: b.type,

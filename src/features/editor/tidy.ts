@@ -21,6 +21,7 @@
  * names, references) — so arranging twice changes nothing.
  */
 import type { ElkExtendedEdge, ElkNode } from 'elkjs/lib/elk-api';
+import { isDataId } from '@/ir/dataSources';
 import { literalString } from '@/ir/expr';
 import { ARRANGE, CONTAINER_MIN_H, CONTAINER_MIN_W, leafColumns, NODE_H, NODE_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
@@ -295,12 +296,14 @@ export async function computeTidyOps(
     if (a.isGroup(r)) a.out.set(r.id, { x: 0, y: 0, ...a.interior(r) });
   }
 
-  // edges between the insides of two top-level blocks shape the top-level flow
+  // edges between the insides of two top-level blocks shape the top-level flow; a data source
+  // leads it (the flow runs from it to what reads it), so data sources sit left of their readers
   const lifted = new Map<string, ElkExtendedEdge>();
   for (const e of edges) {
     if (!a.byId.has(e.source) || !a.byId.has(e.target)) continue;
-    const s = a.rootOf(e.source);
-    const t = a.rootOf(e.target);
+    const [from, to] = isDataId(e.target) ? [e.target, e.source] : [e.source, e.target];
+    const s = a.rootOf(from);
+    const t = a.rootOf(to);
     if (s === t || lifted.has(`${s}>${t}`) || lifted.has(`${t}>${s}`)) continue;
     lifted.set(`${s}>${t}`, { id: `${s}>${t}`, sources: [s], targets: [t] });
   }

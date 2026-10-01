@@ -44,10 +44,11 @@ import { motionMs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { getDef, isContainerType } from '@/resources/registry';
 import { ModuleNodeView } from './ModuleNode';
+import { DataNodeView } from '@/features/data-sources/DataNode';
 import { moduleViewMessages } from './ModuleView.messages';
 import { moduleViewBack, moduleViewTo, useModuleView } from './moduleViewStore';
 
-const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, module: ModuleNodeView };
+const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, module: ModuleNodeView, data: DataNodeView };
 const edgeTypes = { flow: FlowEdge };
 
 /** A copy of the module's IR the layout may write positions into (the parsed one is cached and shared). */
@@ -56,6 +57,7 @@ function layoutCopy(ir: IR): IR {
     ...ir,
     resources: ir.resources.map((r) => ({ ...r, parentId: undefined, position: r.position && { ...r.position } })),
     modules: ir.modules.map((m) => ({ ...m, position: m.position && { ...m.position } })),
+    data: ir.data.map((d) => ({ ...d, position: d.position && { ...d.position } })),
   };
 }
 
@@ -71,13 +73,13 @@ function ModuleCanvas({ child, editable }: { child: LocalModule; editable: boole
   const built = useMemo(() => {
     const ir = layoutCopy(child.ir);
     const irEdges = deriveStructure(ir, getDef);
-    for (const b of [...ir.resources, ...ir.modules]) {
+    for (const b of [...ir.resources, ...ir.modules, ...ir.data]) {
       const last = carried.current.get(b.id);
       if (!b.position && last) b.position = { ...last };
     }
     irEdges.push(...moduleEdges(ir));
     layoutWithModules(ir, isContainerType);
-    for (const b of [...ir.resources, ...ir.modules]) if (b.position) carried.current.set(b.id, { ...b.position });
+    for (const b of [...ir.resources, ...ir.modules, ...ir.data]) if (b.position) carried.current.set(b.id, { ...b.position });
     const flow = buildFlow({ ir, edges: irEdges, warnings: [] }, null, locale);
     return {
       ir,

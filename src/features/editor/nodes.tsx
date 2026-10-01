@@ -24,6 +24,7 @@ import { CATEGORY_COLORS, ProviderChip, ResourceIcon } from '@/resources/icons';
 import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
 import type { ModuleFlowNode } from '@/features/modules/ModuleNode';
+import type { DataFlowNode } from '@/features/data-sources/DataNode';
 import { canvasMessages } from './CanvasPane.messages';
 import { useDropTone } from './dropHint';
 import { RepeatBadge, RepeatStack } from './RepeatBadge';
@@ -117,7 +118,7 @@ export interface ContainerNodeData extends Record<string, unknown> {
 export type ResourceFlowNode = Node<ResourceNodeData, 'resource'>;
 export type ContainerFlowNode = Node<ContainerNodeData, 'container'>;
 export type InternetFlowNode = Node<Record<string, unknown>, 'internet'>;
-export type FlowNode = ResourceFlowNode | ContainerFlowNode | InternetFlowNode | ModuleFlowNode;
+export type FlowNode = ResourceFlowNode | ContainerFlowNode | InternetFlowNode | ModuleFlowNode | DataFlowNode;
 
 /** The public internet, drawn by the security lens as the origin of inbound traffic. */
 export function InternetNodeView() {
@@ -416,6 +417,8 @@ export function FlowEdge({
           <div
             className="nodrag nopan pointer-events-none absolute rounded-full border bg-surface-1 px-2 py-0.5 font-mono text-[10px] font-medium text-muted shadow-sm"
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, zIndex: labelZ }}
+            // the argument holding the reference (`policy`, `subnet_id`): code
+            translate="no"
           >
             {data.field}
           </div>
