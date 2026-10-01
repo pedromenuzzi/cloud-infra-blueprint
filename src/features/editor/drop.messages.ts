@@ -24,18 +24,18 @@ export const dropMessages = defineMessages(
     useGroup: (group: Noun, name: string) => `Use ${group.en} ${name}`,
     connectTo: (c: Noun, name: string) => `Connect to ${c.en} ${name}`,
     createdGroup: (id: string, subnets: string[], member: string) =>
-      `Created ${id} with ${formatList(subnets, 'conjunction', 'en')} — ${member} is drawn inside it`,
-    oneZone: 'AWS needs subnets in two availability zones — add a subnet in another zone to this group',
+      `Created ${id} with ${formatList(subnets, 'conjunction', 'en')}. ${member} is drawn inside it`,
+    oneZone: 'AWS needs subnets in two availability zones: add a subnet in another zone to this group',
     /** a database in its new subnet group, with no security group of its own */
     attachSecurityGroup: (id: string) =>
-      `Tip: connect ${id} to a security group — without one it gets the VPC's default group`,
+      `Tip: connect ${id} to a security group. Without one it gets the VPC's default group`,
     movedInto: (name: string, group: string) => `${name} is now in ${group}`,
     connected: (name: string, target: string) => `Connected ${name} to ${target}`,
     undoHint: (mod: string) => `${mod} Z to undo`,
-    fixGone: 'That changed in the meantime — drag it again',
+    fixGone: 'That changed in the meantime. Drag it again',
     /** dragged out of the container its argument pointed at */
     detached: (arg: string, id: string, parent: string, mod: string) =>
-      `Removed ${arg} from ${id} — it's no longer in ${parent} (${mod} Z to undo)`,
+      `Removed ${arg} from ${id}: it's no longer in ${parent} (${mod} Z to undo)`,
   },
   {
     into: (c: Noun, name: string) => `Para ${o(c)} ${name}`,
@@ -50,15 +50,15 @@ export const dropMessages = defineMessages(
     useGroup: (group: Noun, name: string) => `Usar ${o(group)} ${name}`,
     connectTo: (c: Noun, name: string) => `Conectar ${ao(c)} ${name}`,
     createdGroup: (id: string, subnets: string[], member: string) =>
-      `${id} criado com ${formatList(subnets, 'conjunction', 'pt-BR')} — ${member} aparece dentro dele`,
-    oneZone: 'A AWS exige sub-redes em duas zonas de disponibilidade — adicione ao grupo uma sub-rede de outra zona',
+      `${id} criado com ${formatList(subnets, 'conjunction', 'pt-BR')}. ${member} aparece dentro dele`,
+    oneZone: 'A AWS exige sub-redes em duas zonas de disponibilidade: adicione ao grupo uma sub-rede de outra zona',
     attachSecurityGroup: (id: string) =>
-      `Dica: conecte ${id} a um grupo de segurança — sem um, ele fica com o grupo padrão da VPC`,
+      `Dica: conecte ${id} a um grupo de segurança. Sem um, ele fica com o grupo padrão da VPC`,
     movedInto: (name: string, group: string) => `${name} agora está em ${group}`,
     connected: (name: string, target: string) => `${name} conectado a ${target}`,
     undoHint: (mod: string) => `${mod} Z para desfazer`,
-    fixGone: 'Isso mudou nesse meio-tempo — arraste de novo',
+    fixGone: 'Isso mudou nesse meio-tempo. Arraste de novo',
     detached: (arg: string, id: string, parent: string, mod: string) =>
-      `${arg} removido de ${id} — ele não está mais em ${parent} (${mod} Z para desfazer)`,
+      `${arg} removido de ${id}: ele não está mais em ${parent} (${mod} Z para desfazer)`,
   },
 );

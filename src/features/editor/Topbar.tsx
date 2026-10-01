@@ -109,7 +109,7 @@ function SecurityBadge() {
     >
       <ShieldCheck className="h-4 w-4" style={{ color }} />
       <span className="hidden text-muted lg:inline">{m.security}</span>
-      <span style={{ color }}>{audit.grade ?? '—'}</span>
+      {audit.grade ? <span style={{ color }}>{audit.grade}</span> : null}
       {urgent > 0 ? (
         <span className="rounded-full bg-danger-solid px-1.5 text-[10px] font-bold leading-4 text-white">{urgent}</span>
       ) : null}

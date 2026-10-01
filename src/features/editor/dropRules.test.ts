@@ -192,7 +192,7 @@ describe('the DB subnet group fix', () => {
     if (v.kind !== 'refuse' || !v.fix) throw new Error('no fix');
     const result = fixOps(ir, 'aws_db_instance.main', v.fix, 'en')!;
     expect(result.message).toBe(
-      'Created aws_db_subnet_group.main with public_a and public_b — aws_db_instance.main is drawn inside it',
+      'Created aws_db_subnet_group.main with public_a and public_b. aws_db_instance.main is drawn inside it',
     );
     expect(result.hint).toBeUndefined();
     const next = apply(ir, result.ops);

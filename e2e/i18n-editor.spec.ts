@@ -149,7 +149,7 @@ test('the inspector, the canvas and ⌘K in Portuguese', async ({ page }) => {
   await select(page, 'aws_db_instance.main');
   await expect(i.getByRole('heading', { name: 'Instância RDS' })).toBeVisible();
   await i.getByRole('tab', { name: 'Propriedades' }).click();
-  await expect(i.locator('select').first().locator('option').first()).toHaveText(/— nenhum —|— não definido —/);
+  await expect(i.locator('select').first().locator('option').first()).toHaveText(/^(Nenhum|Não definido)$/);
   await select(page, 'aws_subnet.public_a');
   await expect(i.getByText('obrigatório', { exact: true }).first()).toBeVisible();
 

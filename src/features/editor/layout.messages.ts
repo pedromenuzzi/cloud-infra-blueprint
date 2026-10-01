@@ -10,7 +10,7 @@ type Movable = 'palette' | 'code';
 export const layoutMessages = defineMessages(
   {
     layout: 'Layout',
-    layoutTitle: 'Layout — show, hide and arrange the panels',
+    layoutTitle: 'Layout: show, hide and arrange the panels',
     layoutMore: 'Layout…',
     presets: 'Presets',
     preset: {
@@ -59,12 +59,12 @@ export const layoutMessages = defineMessages(
       inspector: 'Show inspector',
     } satisfies Record<SectionId, string>,
     moveTo: (panel: Movable, side: Side) =>
-      `Move ${panel === 'palette' ? 'resource palette' : 'code editor'} to the ${side} — or drag it`,
+      `Move ${panel === 'palette' ? 'resource palette' : 'code editor'} to the ${side}, or drag it`,
     dropHere: (panel: Movable, side: Side) => `${panel === 'palette' ? 'Resources' : 'Code'} on the ${side}`,
     current: 'Current place',
-    focusCanvas: 'Canvas focus — hide resources and code',
+    focusCanvas: 'Canvas focus: hide resources and code',
     exitFocus: 'Show resources and code again',
-    expandCode: 'Expand the code — hide the canvas',
+    expandCode: 'Expand the code and hide the canvas',
     showCanvasAgain: 'Show the canvas again',
     canvasControls: 'Canvas layout',
 
@@ -83,7 +83,7 @@ export const layoutMessages = defineMessages(
   },
   {
     layout: 'Layout',
-    layoutTitle: 'Layout — mostrar, ocultar e organizar os painéis',
+    layoutTitle: 'Layout: mostrar, ocultar e organizar os painéis',
     layoutMore: 'Layout…',
     presets: 'Predefinições',
     preset: {
@@ -130,13 +130,13 @@ export const layoutMessages = defineMessages(
       inspector: 'Mostrar inspetor',
     },
     moveTo: (panel: Movable, side: Side) =>
-      `Mover ${panel === 'palette' ? 'a paleta de recursos' : 'o editor de código'} para a ${side === 'left' ? 'esquerda' : 'direita'} — ou arraste`,
+      `Mover ${panel === 'palette' ? 'a paleta de recursos' : 'o editor de código'} para a ${side === 'left' ? 'esquerda' : 'direita'}, ou arraste`,
     dropHere: (panel: Movable, side: Side) =>
       `${panel === 'palette' ? 'Recursos' : 'Código'} à ${side === 'left' ? 'esquerda' : 'direita'}`,
     current: 'Lugar atual',
-    focusCanvas: 'Foco no canvas — ocultar recursos e código',
+    focusCanvas: 'Foco no canvas: ocultar recursos e código',
     exitFocus: 'Mostrar recursos e código de novo',
-    expandCode: 'Expandir o código — ocultar o canvas',
+    expandCode: 'Expandir o código e ocultar o canvas',
     showCanvasAgain: 'Mostrar o canvas de novo',
     canvasControls: 'Layout do canvas',
 

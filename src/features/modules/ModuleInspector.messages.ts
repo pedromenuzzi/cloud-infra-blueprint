@@ -17,7 +17,7 @@ export const moduleInspectorMessages = defineMessages(
       git: 'A git repository.',
       other: 'A remote archive or storage bucket.',
     },
-    sourceExpression: 'The source is an expression — edit it in code.',
+    sourceExpression: 'The source is an expression: edit it in code.',
     registryPage: 'Registry page',
     version: 'Version',
     versionPlaceholder: 'e.g. ~> 5.0',
@@ -26,8 +26,8 @@ export const moduleInspectorMessages = defineMessages(
 
     folder: 'Folder',
     folderFiles: (dir: string, n: number) => `${dir} · ${n} file${s(n)}`,
-    folderMissing: (dir: string) => `${dir} isn't in this project — import the module's folder with it to see its inputs and resources.`,
-    brokenModule: "The module's code doesn't parse — fix it in the code pane to check its inputs.",
+    folderMissing: (dir: string) => `${dir} isn't in this project. Import the module's folder with it to see its inputs and resources.`,
+    brokenModule: "The module's code doesn't parse. Fix it in the code pane to check its inputs.",
     openModule: 'Open module',
 
     meta: 'Meta-arguments',
@@ -38,7 +38,7 @@ export const moduleInspectorMessages = defineMessages(
     notAnInput: 'not an input of this module',
     removeInput: (key: string) => `Remove input ${key}`,
     editInCode: 'Edit in code',
-    complexValue: 'Expression — edit in code',
+    complexValue: 'Expression: edit in code',
     missingRequired: (n: number) => `Required, not passed (${n})`,
     optionalInputs: (n: number) => `Optional inputs it accepts (${n})`,
     defaultValue: (value: string) => `default ${value}`,
@@ -50,7 +50,7 @@ export const moduleInspectorMessages = defineMessages(
     inputName: 'Input name',
     inputValue: 'Input value',
     badKey: 'An input name is letters, digits and underscores, starting with a letter.',
-    inputExists: (key: string) => `${key} is already set — change it above.`,
+    inputExists: (key: string) => `${key} is already set. Change it above.`,
 
     outputsUsed: 'Outputs read elsewhere',
     noOutputsUsed: 'No block reads its outputs yet.',
@@ -64,7 +64,7 @@ export const moduleInspectorMessages = defineMessages(
 
     opaqueRemote:
       'Contents not analysed: the module comes from outside the project, so the security audit and the cost estimate can’t look inside it.',
-    opaqueLocal: 'Its resources aren’t part of the security audit or the cost estimate yet — open the module to review them.',
+    opaqueLocal: 'Its resources aren’t part of the security audit or the cost estimate yet. Open the module to review them.',
 
     settingsReadOnly: 'Module settings (read-only)',
     deleteModule: 'Delete module',
@@ -82,7 +82,7 @@ export const moduleInspectorMessages = defineMessages(
       git: 'Um repositório git.',
       other: 'Um arquivo ou bucket remoto.',
     },
-    sourceExpression: 'A origem é uma expressão — edite no código.',
+    sourceExpression: 'A origem é uma expressão: edite no código.',
     registryPage: 'Página no Registry',
     version: 'Versão',
     versionPlaceholder: 'ex.: ~> 5.0',
@@ -91,8 +91,8 @@ export const moduleInspectorMessages = defineMessages(
 
     folder: 'Pasta',
     folderFiles: (dir, n) => `${dir} · ${n} arquivo${s(n)}`,
-    folderMissing: (dir) => `${dir} não está neste projeto — importe a pasta do módulo junto para ver as entradas e os recursos dele.`,
-    brokenModule: 'O código do módulo não pode ser lido — corrija-o no painel de código para conferir as entradas.',
+    folderMissing: (dir) => `${dir} não está neste projeto. Importe a pasta do módulo junto para ver as entradas e os recursos dele.`,
+    brokenModule: 'O código do módulo não pode ser lido. Corrija-o no painel de código para conferir as entradas.',
     openModule: 'Abrir módulo',
 
     meta: 'Meta-argumentos',
@@ -103,7 +103,7 @@ export const moduleInspectorMessages = defineMessages(
     notAnInput: 'não é uma entrada deste módulo',
     removeInput: (key) => `Remover a entrada ${key}`,
     editInCode: 'Editar no código',
-    complexValue: 'Expressão — edite no código',
+    complexValue: 'Expressão: edite no código',
     missingRequired: (n) => `Obrigatórias, não passadas (${n})`,
     optionalInputs: (n) => `Entradas opcionais que ele aceita (${n})`,
     defaultValue: (value) => `padrão ${value}`,
@@ -115,7 +115,7 @@ export const moduleInspectorMessages = defineMessages(
     inputName: 'Nome da entrada',
     inputValue: 'Valor da entrada',
     badKey: 'O nome de uma entrada tem letras, dígitos e sublinhados, começando por uma letra.',
-    inputExists: (key) => `${key} já está definida — altere-a acima.`,
+    inputExists: (key) => `${key} já está definida. Altere-a acima.`,
 
     outputsUsed: 'Outputs lidos em outros blocos',
     noOutputsUsed: 'Nenhum bloco lê os outputs dele ainda.',
@@ -129,7 +129,7 @@ export const moduleInspectorMessages = defineMessages(
 
     opaqueRemote:
       'Conteúdo não analisado: o módulo vem de fora do projeto, então a auditoria de segurança e a estimativa de custo não enxergam o que há dentro dele.',
-    opaqueLocal: 'Os recursos dele ainda não entram na auditoria de segurança nem na estimativa de custo — abra o módulo para revisá-los.',
+    opaqueLocal: 'Os recursos dele ainda não entram na auditoria de segurança nem na estimativa de custo. Abra o módulo para revisá-los.',
 
     settingsReadOnly: 'Configurações do módulo (somente leitura)',
     deleteModule: 'Excluir módulo',

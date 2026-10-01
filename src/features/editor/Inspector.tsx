@@ -647,7 +647,7 @@ function RulesTab({ node }: { node: ResourceNode }) {
                           </span>
                           <span className="block truncate text-[11px] text-muted">
                             {direction === 'inbound' ? m.peersFrom : m.peersTo}
-                            {r.peers.map((p) => peerLabel(p, name)).join(', ') || '—'}
+                            {r.peers.map((p) => peerLabel(p, name)).join(', ') || (direction === 'inbound' ? m.noSources : m.noDestinations)}
                           </span>
                         </span>
                         {risk ? <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: RISK_TONE[risk.severity] }} aria-label={risk.title} /> : null}

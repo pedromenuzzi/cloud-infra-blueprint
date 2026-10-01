@@ -106,7 +106,7 @@ test('the CIDR planner speaks Portuguese, with numbers formatted for it', async 
   await expect(card).toContainText('65.024 livres');
   await expect(card).toContainText('2 sub-redes');
   await expect(card.getByLabel('Tamanho da sub-rede')).toBeVisible();
-  await expect(card).toContainText('251 utilizáveis por sub-rede — a AWS reserva 5 endereços em cada uma.');
+  await expect(card).toContainText('251 utilizáveis por sub-rede: a AWS reserva 5 endereços em cada uma.');
   await card.getByRole('button', { name: 'Nova sub-rede' }).click();
   await expect(card).toContainText('3 sub-redes');
   await expect(page.getByText(/^aws_subnet\.subnet · 10\.0\.3\.0\/24 adicionada em us-east-1c$/)).toBeVisible();

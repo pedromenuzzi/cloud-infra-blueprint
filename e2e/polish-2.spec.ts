@@ -730,15 +730,15 @@ test.describe('Aurora cluster on the canvas', () => {
       await expect(
         toast.getByText(
           en
-            ? 'Created aws_db_subnet_group.cluster with public_a and public_b — aws_rds_cluster.cluster is drawn inside it'
-            : 'aws_db_subnet_group.cluster criado com public_a e public_b — aws_rds_cluster.cluster aparece dentro dele',
+            ? 'Created aws_db_subnet_group.cluster with public_a and public_b. aws_rds_cluster.cluster is drawn inside it'
+            : 'aws_db_subnet_group.cluster criado com public_a e public_b. aws_rds_cluster.cluster aparece dentro dele',
         ),
       ).toBeVisible();
       await expect(
         toast.getByText(
           en
-            ? "Tip: connect aws_rds_cluster.cluster to a security group — without one it gets the VPC's default group"
-            : 'Dica: conecte aws_rds_cluster.cluster a um grupo de segurança — sem um, ele fica com o grupo padrão da VPC',
+            ? "Tip: connect aws_rds_cluster.cluster to a security group. Without one it gets the VPC's default group"
+            : 'Dica: conecte aws_rds_cluster.cluster a um grupo de segurança. Sem um, ele fica com o grupo padrão da VPC',
         ),
       ).toBeVisible();
       await expect.poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf']).toMatch(

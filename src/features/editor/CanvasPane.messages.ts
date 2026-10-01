@@ -53,17 +53,17 @@ export const canvasMessages = defineMessages(
 
     /* connecting */
     crossCloud: 'Cross-cloud connections are not allowed',
-    expressionArg: 'That argument is an expression — connect them in code',
+    expressionArg: 'That argument is an expression. Connect them in code',
     alreadyConnected: 'These resources are already connected',
-    roleNeedsProfile: 'An EC2 instance uses a role through an aws_iam_instance_profile — add one in code',
+    roleNeedsProfile: 'An EC2 instance uses a role through an aws_iam_instance_profile. Add one in code',
     noAttribute: 'These resources have no direct attribute to connect',
-    complexConnections: 'Some connections are complex expressions — edit them in code',
+    complexConnections: 'Some connections are complex expressions. Edit them in code',
 
     /* toasts */
-    deletedMany: (n: number, mod: string) => `Deleted ${n} resources — ${mod} Z to undo`,
+    deletedMany: (n: number, mod: string) => `Deleted ${n} resources. ${mod} Z to undo`,
     duplicated: (id: string) => `Duplicated as ${id}`,
     exported: (format: string) => `Diagram exported as ${format}`,
-    nothingToExport: 'Nothing to export yet — add a resource first',
+    nothingToExport: 'Nothing to export yet. Add a resource first',
     exportFailed: (message: string) => `Export failed: ${message}`,
     copied: (text: string) => `Copied ${text}`,
 
@@ -89,10 +89,10 @@ export const canvasMessages = defineMessages(
     /* the stats pill */
     stats: (resources: number, connections: number) =>
       `${resources} resource${s(resources)}, ${connections} connection${s(connections)}`,
-    overviewToggle: (stats: string) => `${stats} — project overview`,
+    overviewToggle: (stats: string) => `${stats}, project overview`,
     showWarnings: 'Show warnings',
     projectOverview: 'Project overview',
-    codeErrored: 'Code has errors — fix them to edit the canvas again',
+    codeErrored: 'Code has errors. Fix them to edit the canvas again',
     quickAdd: 'Quick add resource',
 
     /* first-run tips */
@@ -164,17 +164,17 @@ export const canvasMessages = defineMessages(
     },
 
     crossCloud: 'Não é possível conectar recursos de nuvens diferentes',
-    expressionArg: 'Esse argumento é uma expressão — conecte-os no código',
+    expressionArg: 'Esse argumento é uma expressão. Conecte-os no código',
     alreadyConnected: 'Esses recursos já estão conectados',
     roleNeedsProfile:
-      'Uma instância EC2 usa um perfil do IAM por meio de um aws_iam_instance_profile — adicione um no código',
+      'Uma instância EC2 usa um perfil do IAM por meio de um aws_iam_instance_profile. Adicione um no código',
     noAttribute: 'Esses recursos não têm um atributo para conectá-los diretamente',
-    complexConnections: 'Algumas conexões são expressões complexas — edite-as no código',
+    complexConnections: 'Algumas conexões são expressões complexas. Edite-as no código',
 
-    deletedMany: (n: number, mod: string) => `${n} recursos excluídos — ${mod} Z para desfazer`,
+    deletedMany: (n: number, mod: string) => `${n} recursos excluídos. ${mod} Z para desfazer`,
     duplicated: (id: string) => `Duplicado como ${id}`,
     exported: (format: string) => `Diagrama exportado em ${format}`,
-    nothingToExport: 'Nada para exportar ainda — adicione um recurso primeiro',
+    nothingToExport: 'Nada para exportar ainda. Adicione um recurso primeiro',
     exportFailed: (message: string) => `Falha ao exportar: ${message}`,
     copied: (text: string) => `${text} copiado`,
 
@@ -198,10 +198,10 @@ export const canvasMessages = defineMessages(
 
     stats: (resources: number, connections: number) =>
       `${resources} recurso${s(resources)}, ${connections} ${connections === 1 ? 'conexão' : 'conexões'}`,
-    overviewToggle: (stats: string) => `${stats} — visão geral do projeto`,
+    overviewToggle: (stats: string) => `${stats}, visão geral do projeto`,
     showWarnings: 'Mostrar avisos',
     projectOverview: 'Visão geral do projeto',
-    codeErrored: 'O código tem erros — corrija-os para editar o canvas de novo',
+    codeErrored: 'O código tem erros. Corrija-os para editar o canvas de novo',
     quickAdd: 'Adicionar recurso rapidamente',
 
     tipsLabel: 'Dicas do editor',

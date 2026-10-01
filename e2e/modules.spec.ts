@@ -206,7 +206,7 @@ test('the module inspector: source, inputs, outputs read elsewhere, what is insi
   await inspector.getByRole('button', { name: 'Remove input name' }).click();
   await expect(inspector).toContainText('Required, not passed (1)');
   await expect(inspector).toContainText('required input "name" is missing');
-  await expect(node(page, 'module.network').getByTitle('Has warnings — see the inspector')).toBeVisible();
+  await expect(node(page, 'module.network').getByTitle('Has warnings: see the inspector')).toBeVisible();
   await expect.poll(() => mainTf(page)).not.toContain('name   = "prod"');
 
   // added back from the list, then edited in place: one line each
@@ -312,7 +312,7 @@ test('a view link carries the child module: its node, its inspector read-only, a
   await expect(node(page, 'module.network')).toBeVisible({ timeout: 15_000 });
   await select(page, 'module.network');
   const inspector = page.getByRole('complementary', { name: 'Module inspector' });
-  await expect(inspector).toContainText('Read-only view — make a copy to edit.');
+  await expect(inspector).toContainText('Read-only view: make a copy to edit.');
   await expect(inspector.getByRole('button', { name: 'Remove input cidr' })).toBeDisabled();
   await expect(inspector.getByRole('button', { name: 'Delete module' })).toHaveCount(0);
   await inspector.getByRole('button', { name: 'Open module' }).first().click();

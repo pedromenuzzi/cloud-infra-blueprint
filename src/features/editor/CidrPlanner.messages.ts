@@ -19,7 +19,7 @@ export const cidrPlannerMessages = defineMessages(
     title: 'Address plan',
     gcpNetwork: 'GCP networks have no range of their own: each subnetwork brings one, and they must not overlap.',
     /** after `<field> "<text>"` */
-    invalidRange: " isn't a valid CIDR range — fix it to plan subnets.",
+    invalidRange: " isn't a valid CIDR range. Fix it to plan subnets.",
     /** `what`: VPC / VNet */
     noRange: (what: string) => `This ${what} has no IPv4 range set, so there's nothing to divide yet.`,
     /** around the expression */
@@ -39,20 +39,20 @@ export const cidrPlannerMessages = defineMessages(
     subnetList: (gcp: boolean): string => (gcp ? 'subnetworks' : 'subnets'),
     select: (id: string) => `Select ${id}`,
     unknownRanges: (n: number) =>
-      `${n === 1 ? "One subnet's range is" : `${n} subnets' ranges are`} an expression — new ranges can't account for ${n === 1 ? 'it' : 'them'}.`,
+      `${n === 1 ? "One subnet's range is" : `${n} subnets' ranges are`} an expression. New ranges can't account for ${n === 1 ? 'it' : 'them'}.`,
     added: (id: string, cidr: string, zone?: string) => `Added ${id} · ${cidr}${zone ? ` in ${zone}` : ''}`,
     addedAcross: (n: number, zones: string) => `Added ${n} subnets across ${zones}`,
     setRegion: "Set the AWS provider's region to split across its availability zones.",
-    noRoomSplit: (count: number, prefix: number) => `No room for ${count} × /${prefix} — pick a smaller size.`,
+    noRoomSplit: (count: number, prefix: number) => `No room for ${count} × /${prefix}. Pick a smaller size.`,
     splitPlan: (count: number, prefix: number, zones: string) => `${count} × /${prefix} in ${zones}`,
     subnetSize: 'Subnet size',
     /** the size picker's accessible name */
     subnetSizeLabel: 'Subnet size',
-    noRoom: ' — no room',
+    noRoom: ' (no room)',
     addSubnet: 'Add subnet',
     usablePerSubnet: (usable: string, provider: CloudProvider, reserved: number) =>
-      `${usable} usable per subnet — ${CLOUD[provider]} keeps ${reserved} addresses in each.`,
-    full: (id: string) => `${id} is full — there's no free block left for a new subnet.`,
+      `${usable} usable per subnet: ${CLOUD[provider]} keeps ${reserved} addresses in each.`,
+    full: (id: string) => `${id} is full: there's no free block left for a new subnet.`,
     splitLabel: (count: number) => `Split into ${count} subnets across availability zones`,
     splitAcross: 'Split across',
     zonesLabel: 'Availability zones to split across',
@@ -90,7 +90,7 @@ export const cidrPlannerMessages = defineMessages(
   {
     title: 'Plano de endereços',
     gcpNetwork: 'Redes do GCP não têm intervalo próprio: cada sub-rede traz o seu, e eles não podem se sobrepor.',
-    invalidRange: ' não é um intervalo CIDR válido — corrija-o para planejar sub-redes.',
+    invalidRange: ' não é um intervalo CIDR válido. Corrija-o para planejar sub-redes.',
     noRange: (what) => `Esta ${what} não tem intervalo IPv4 definido, então ainda não há o que dividir.`,
     expressionRange: (what) => ({
       before: `O intervalo da ${what} é uma expressão (`,
@@ -108,20 +108,20 @@ export const cidrPlannerMessages = defineMessages(
     select: (id) => `Selecionar ${id}`,
     unknownRanges: (n) =>
       n === 1
-        ? 'O intervalo de uma sub-rede é uma expressão — os novos intervalos não conseguem levá-lo em conta.'
-        : `Os intervalos de ${n} sub-redes são expressões — os novos intervalos não conseguem levá-los em conta.`,
+        ? 'O intervalo de uma sub-rede é uma expressão. Os novos intervalos não conseguem levá-lo em conta.'
+        : `Os intervalos de ${n} sub-redes são expressões. Os novos intervalos não conseguem levá-los em conta.`,
     added: (id, cidr, zone) => `${id} · ${cidr} adicionada${zone ? ` em ${zone}` : ''}`,
     addedAcross: (n, zones) => `${n} sub-redes adicionadas em ${zones}`,
     setRegion: 'Defina a região do provider AWS para dividir entre as zonas de disponibilidade dela.',
-    noRoomSplit: (count, prefix) => `Não há espaço para ${count} × /${prefix} — escolha um tamanho menor.`,
+    noRoomSplit: (count, prefix) => `Não há espaço para ${count} × /${prefix}. Escolha um tamanho menor.`,
     splitPlan: (count, prefix, zones) => `${count} × /${prefix} em ${zones}`,
     subnetSize: 'Tamanho',
     subnetSizeLabel: 'Tamanho da sub-rede',
-    noRoom: ' — sem espaço',
+    noRoom: ' (sem espaço)',
     addSubnet: 'Nova sub-rede',
     usablePerSubnet: (usable, provider, reserved) =>
-      `${usable} utilizáveis por sub-rede — ${withArticle(provider)} reserva ${reserved} endereços em cada uma.`,
-    full: (id) => `${id} está cheia — não sobrou bloco livre para uma nova sub-rede.`,
+      `${usable} utilizáveis por sub-rede: ${withArticle(provider)} reserva ${reserved} endereços em cada uma.`,
+    full: (id) => `${id} está cheia: não sobrou bloco livre para uma nova sub-rede.`,
     splitLabel: (count) => `Dividir em ${count} sub-redes entre zonas de disponibilidade`,
     splitAcross: 'Dividir entre',
     zonesLabel: 'Zonas de disponibilidade para dividir',
