@@ -203,6 +203,91 @@ describe('subnet plan', () => {
   });
 });
 
+describe('repeated subnets (count, for_each)', () => {
+  it('lists each instance of the "Subnets per AZ" template with its range and zone', () => {
+    const plan = networkPlan(template('aws-subnets-per-az').ir, 'aws_vpc.main')!;
+    expect(plan.rows.map((r) => [r.name, r.instance, r.label, r.zone])).toEqual([
+      ['public[0]', 'aws_subnet.public[0]', '10.0.0.0/24', 'us-east-1a'],
+      ['public[1]', 'aws_subnet.public[1]', '10.0.1.0/24', 'us-east-1b'],
+      ['public[2]', 'aws_subnet.public[2]', '10.0.2.0/24', 'us-east-1c'],
+      ['private[0]', 'aws_subnet.private[0]', '10.0.10.0/24', 'us-east-1a'],
+      ['private[1]', 'aws_subnet.private[1]', '10.0.11.0/24', 'us-east-1b'],
+      ['private[2]', 'aws_subnet.private[2]', '10.0.12.0/24', 'us-east-1c'],
+    ]);
+    expect(plan.unknown).toBe(0);
+    expect([plan.allocated, plan.total]).toEqual([6n * 256n, 65536n]);
+  });
+
+  it('never offers a range an instance will take', () => {
+    const seed = template('aws-subnets-per-az');
+    const one = ok(addSubnetOps(seed.ir, 'aws_vpc.main', 24));
+    // after the last instance (10.0.12.0/24); skipping the counted subnets, it offered 10.0.0.0/24, public[0]'s
+    expect(one.created).toEqual([{ id: 'aws_subnet.subnet', cidr: '10.0.13.0/24', zone: 'us-east-1a' }]);
+    const split = ok(splitAcrossZonesOps(seed.ir, 'aws_vpc.main', 23, 3));
+    expect(split.created.map((c) => c.cidr)).toEqual(['10.0.14.0/23', '10.0.16.0/23', '10.0.18.0/23']);
+    const wide = ok(addSubnetOps(seed.ir, 'aws_vpc.main', 20));
+    expect(wide.created[0].cidr).toBe('10.0.16.0/20');
+    // the gaps between the tiers are used too, once the end of the range is full
+    const tight = project({
+      'main.tf': `resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/22"
+}
+resource "aws_subnet" "s" {
+  count      = 3
+  vpc_id     = aws_vpc.main.id
+  cidr_block = cidrsubnet(aws_vpc.main.cidr_block, 2, count.index + 1)
+}
+`,
+    });
+    expect(ok(addSubnetOps(tight.ir, 'aws_vpc.main', 24)).created[0].cidr).toBe('10.0.0.0/24');
+    expect(addSubnetOps(tight.ir, 'aws_vpc.main', 23)).toEqual({ error: "There's no room left for a /23 in aws_vpc.main" });
+    // and what it adds checks clean next to them
+    const next = apply(seed, split);
+    expect(validateProject(next.ir, getDef)).toEqual([]);
+  });
+
+  it('reads for_each over a literal map, and keeps unknown counts as expressions', () => {
+    const { ir } = project({
+      'providers.tf': 'provider "aws" {\n  region = "us-east-1"\n}\n',
+      'main.tf': `resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+}
+resource "aws_subnet" "tier" {
+  for_each          = { app = { cidr = "10.0.0.0/24", az = "us-east-1a" }, db = { cidr = "10.0.1.0/24", az = "us-east-1b" } }
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = each.value.cidr
+  availability_zone = each.value.az
+}
+resource "aws_subnet" "later" {
+  count      = var.n
+  vpc_id     = aws_vpc.main.id
+  cidr_block = cidrsubnet(aws_vpc.main.cidr_block, 8, count.index + 100)
+}
+`,
+    });
+    const plan = networkPlan(ir, 'aws_vpc.main')!;
+    expect(plan.rows.map((r) => [r.name, r.label.startsWith('cidrsubnet(') ? 'expression' : r.label, r.zone])).toEqual([
+      ['tier["app"]', '10.0.0.0/24', 'us-east-1a'],
+      ['tier["db"]', '10.0.1.0/24', 'us-east-1b'],
+      ['later', 'expression', undefined],
+    ]);
+    expect(plan.unknown).toBe(1);
+    expect(ok(addSubnetOps(ir, 'aws_vpc.main', 24)).created[0].cidr).toBe('10.0.2.0/24');
+  });
+
+  it("a repeated subnet's card: each instance, the size of one, the share of all", () => {
+    const plan = subnetPlan(template('aws-subnets-per-az').ir, 'aws_subnet.private')!;
+    expect(plan.instances?.map((r) => [r.name, r.label, r.zone])).toEqual([
+      ['private[0]', '10.0.10.0/24', 'us-east-1a'],
+      ['private[1]', '10.0.11.0/24', 'us-east-1b'],
+      ['private[2]', '10.0.12.0/24', 'us-east-1c'],
+    ]);
+    expect(plan.usable?.count).toBe(251n);
+    expect(plan.share).toBeCloseTo((3 * 256) / 65536);
+    expect(plan.others).toEqual([]);
+  });
+});
+
 describe('in the editor', () => {
   beforeEach(() => {
     vi.useFakeTimers();

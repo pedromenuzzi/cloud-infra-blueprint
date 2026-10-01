@@ -12,6 +12,7 @@ import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import { applyOps, type Op } from '@/ir/ops';
 import type { CanvasPosition, Expression, IR, ResourceNode } from '@/ir/types';
 import { blocksOf, networkModel, totalSize, type NetworkInfo, type RangeValue, type SubnetInfo } from '@/ir/checks/network';
+import { stringFor } from '@/ir/checks/repeatValues';
 import { providerFor, resolveString } from '@/ir/checks/resolve';
 import { awsRegionOfZone } from '@/ir/checks/regions';
 import {
@@ -38,6 +39,10 @@ const AZ_LETTERS = 'abcdef';
 
 export interface PlanRow {
   node: ResourceNode;
+  /** what the list calls it: the resource name, or `public[0]` for an instance of a repeated subnet */
+  name: string;
+  /** the instance of a repeated subnet the row is: `aws_subnet.public[0]` */
+  instance?: string;
   /** the subnet's IPv4 range, when it is known and valid */
   block?: CidrBlock;
   /** what to show for the range: the CIDR, or the expression it is written as (UI language in effect) */
@@ -75,13 +80,30 @@ export interface SizeChoice {
 /** where a subnet lives, for the list: its AZ (AWS) or region (GCP) */
 const ZONE_ARG: Record<string, string> = { aws_subnet: 'availability_zone', google_compute_subnetwork: 'region' };
 
-function rowOf(subnet: SubnetInfo, ir: IR): PlanRow {
+/** the subnet's rows: one, or one per instance of a repeated subnet whose ranges are known */
+function rowsOf(subnet: SubnetInfo, ir: IR): PlanRow[] {
+  const zoneArg = ZONE_ARG[subnet.node.type];
+  const { node } = subnet;
+  if (subnet.instances) {
+    // `count = 0`: no subnet at all, but it stays in the list
+    if (subnet.instances.length === 0) return [{ node, name: node.name, label: '×0' }];
+    return subnet.instances.map(({ address, instance, ranges }) => {
+      const valid = blocksOf(ranges)[0];
+      return {
+        node,
+        name: `${node.name}${address.slice(node.id.length)}`,
+        instance: address,
+        block: valid,
+        label: valid ? formatCidrBlock(valid) : (ranges[0]?.text ?? messagesFor(cidrPlannerMessages).noRangeRow),
+        zone: zoneArg ? stringFor(node.args[zoneArg], ir, instance) : undefined,
+      };
+    });
+  }
   const valid = blocksOf(subnet.ranges)[0];
   const written =
     subnet.ranges[0]?.text ?? (subnet.unresolved ? exprPreview(subnet.unresolved.expr) : messagesFor(cidrPlannerMessages).noRangeRow);
-  const zoneArg = ZONE_ARG[subnet.node.type];
-  const zone = zoneArg ? resolveString(ir, subnet.node.args[zoneArg])?.value : undefined;
-  return { node: subnet.node, block: valid, label: valid ? formatCidrBlock(valid) : written, zone };
+  const zone = zoneArg ? resolveString(ir, node.args[zoneArg])?.value : undefined;
+  return [{ node, name: node.name, block: valid, label: valid ? formatCidrBlock(valid) : written, zone }];
 }
 
 function awsRegion(ir: IR, node: ResourceNode): string | undefined {
@@ -105,7 +127,7 @@ export function networkPlan(ir: IR, networkId: string): NetworkPlan | undefined 
   const network = networkModel(ir).networks.find((n) => n.node.id === networkId);
   if (!network) return undefined;
   const ranges = blocksOf(network.ranges);
-  const rows = network.subnets.map((s) => rowOf(s, ir));
+  const rows = network.subnets.flatMap((s) => rowsOf(s, ir));
   const inside = rows.flatMap((r) => (r.block && ranges.some((n) => blockContains(n, r.block!)) ? [r.block] : []));
   return {
     network,
@@ -302,8 +324,10 @@ export function splitAcrossZonesOps(ir: IR, networkId: string, prefix: number, c
 export interface SubnetPlan {
   subnet: SubnetInfo;
   provider: CloudProvider;
-  /** the IPv4 range the numbers describe */
+  /** the IPv4 range the numbers describe (a repeated subnet's: its first instance's) */
   block?: CidrBlock;
+  /** a repeated subnet whose instances are known: each one's range and zone, as the network's list shows them */
+  instances?: PlanRow[];
   /** the subnet's other ranges (IPv6, GCP secondary ranges) */
   others: RangeValue[];
   unresolved?: string;
@@ -318,7 +342,8 @@ export interface SubnetPlan {
 export function subnetPlan(ir: IR, subnetId: string): SubnetPlan | undefined {
   const subnet = networkModel(ir).subnets.find((s) => s.node.id === subnetId);
   if (!subnet) return undefined;
-  const block = blocksOf(subnet.ranges)[0];
+  const own = subnet.instances ? (subnet.instances[0]?.ranges ?? []) : subnet.ranges;
+  const block = blocksOf(own)[0];
   const parent = subnet.network ? networkPlan(ir, subnet.network.node.id) : undefined;
   const usableParent = parent && !parent.blocked && parent.ranges.length > 0 ? parent : undefined;
   const container = block && usableParent?.ranges.find((r) => blockContains(r, block));
@@ -326,11 +351,16 @@ export function subnetPlan(ir: IR, subnetId: string): SubnetPlan | undefined {
     subnet,
     provider: subnet.provider,
     block,
-    others: subnet.ranges.filter((r) => r.block !== block),
+    instances: subnet.instances ? rowsOf(subnet, ir) : undefined,
+    others: own.filter((r) => r.block !== block),
     unresolved: subnet.unresolved ? exprPreview(subnet.unresolved.expr) : undefined,
     usable: block ? usableRange(block, subnet.provider) : undefined,
     parent,
-    share: block && usableParent && container ? Number(blockSize(block)) / Number(usableParent.total) : undefined,
+    // a repeated subnet: what all its instances take together
+    share:
+      block && usableParent && container
+        ? Number(subnet.instances ? coveredSize(blocksOf(subnet.ranges)) : blockSize(block)) / Number(usableParent.total)
+        : undefined,
     outside: !!(block && usableParent && !container),
   };
 }

@@ -1,11 +1,13 @@
 /**
  * Polish, round 3: the editor top bar on tablet and small laptop widths,
- * Aurora instances (aws_rds_cluster_instance) inside their cluster and the
- * "Subnets per AZ" template written with count.
+ * Aurora instances (aws_rds_cluster_instance) inside their cluster, the
+ * "Subnets per AZ" template written with count, and the CIDR planner on
+ * repeated subnets.
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { expect, test, type Page } from '@playwright/test';
+import { TEMPLATES } from '../src/templates';
 import { SEED_PROJECT } from './helpers';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
@@ -265,6 +267,55 @@ test.describe('template: subnets per AZ (count)', () => {
       await expect(node('aws_nat_gateway.nat')).toHaveAttribute('aria-label', new RegExp(en ? ', in Subnet public' : ', em Sub-rede public'));
       await expect(node('aws_subnet.private')).toHaveAttribute('aria-label', new RegExp(en ? ', in VPC main' : ', em VPC main'));
       expect(await seriousAxeViolations(page, '.react-flow__nodes')).toEqual([]);
+    });
+  }
+});
+
+/* ------------------------------------------------------------ CIDR planner on repeated subnets */
+
+test.describe('CIDR planner on repeated subnets', () => {
+  const files = TEMPLATES.find((t) => t.slug === 'aws-subnets-per-az')!.build('per-az');
+  const hcl = Object.entries(files)
+    .filter(([name]) => name !== 'versions.tf')
+    .map(([, text]) => text)
+    .join('\n');
+
+  for (const [locale, theme] of [
+    ['en', 'light'],
+    ['pt-BR', 'dark'],
+  ] as const) {
+    test(`${locale}, ${theme}: lists every instance, adds after them, and a counted subnet shows its instances`, async ({ page }) => {
+      const en = locale === 'en';
+      await openProject(page, 'per-az', hcl, { locale, theme });
+      const node = (id: string) => page.locator(`.react-flow__node[data-id="${id}"]`);
+      await node('aws_vpc.main').click({ position: { x: 300, y: 12 } });
+      await expect(page.getByTestId('inspector-address')).toHaveText('aws_vpc.main');
+      const card = page.getByTestId('cidr-planner');
+      await expect(card).toContainText(en ? '6 subnets' : '6 sub-redes');
+      await expect(card).toContainText(en ? '1,536 allocated' : '1.536 alocados');
+      const list = card.getByRole('list', { name: en ? 'subnets' : 'sub-redes' });
+      await expect(list.getByRole('listitem')).toHaveCount(6);
+      await expect(list.getByRole('listitem').nth(0)).toContainText('public[0]');
+      await expect(list.getByRole('listitem').nth(0)).toContainText('10.0.0.0/24 · us-east-1a');
+      await expect(list.getByRole('listitem').nth(5)).toContainText('private[2]');
+      await expect(list.getByRole('listitem').nth(5)).toContainText('10.0.12.0/24 · us-east-1c');
+      expect(await seriousAxeViolations(page, '[data-testid="cidr-planner"]')).toEqual([]);
+
+      // a new subnet goes after the instances, not over public[0]
+      await card.getByRole('button', { name: en ? 'Add subnet' : 'Nova sub-rede' }).click();
+      await expect(page.locator('[data-bp-live]').getByText(/aws_subnet\.subnet · 10\.0\.13\.0\/24/)).toBeVisible();
+      await expect(card).toContainText(en ? '7 subnets' : '7 sub-redes');
+
+      await page.keyboard.press('Escape');
+      await node('aws_subnet.private').click({ position: { x: 200, y: 12 } });
+      await expect(page.getByTestId('inspector-address')).toHaveText('aws_subnet.private');
+      const subnetCard = page.getByTestId('cidr-planner');
+      const instances = subnetCard.getByRole('list', { name: en ? '3 instances (count)' : '3 instâncias (count)' });
+      await expect(instances.getByRole('listitem')).toHaveCount(3);
+      await expect(instances.getByRole('listitem').nth(1)).toContainText('10.0.11.0/24 · us-east-1b');
+      await expect(subnetCard).toContainText(en ? 'addresses each' : 'endereços cada');
+      await expect(subnetCard).toContainText(en ? 'of VPC, all 3' : 'da VPC, as 3');
+      expect(await seriousAxeViolations(page, '[data-testid="cidr-planner"]')).toEqual([]);
     });
   }
 });

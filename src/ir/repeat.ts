@@ -70,7 +70,8 @@ function parseLocals(text: string): Record<string, Expression> {
   return block?.kind === 'labeled' ? block.args : {};
 }
 
-function localValue(ir: IR | undefined, name: string): Expression | undefined {
+/** the value of `local.<name>`, from the project's `locals { … }` blocks */
+export function localValue(ir: IR | undefined, name: string): Expression | undefined {
   if (!ir) return undefined;
   let map = localsCache.get(ir);
   if (!map) {

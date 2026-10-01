@@ -62,6 +62,12 @@ export const cidrPlannerMessages = defineMessages(
     /** share of the parent network */
     statOf: (network: string) => `of ${network}`,
     statPrefix: 'prefix',
+    /* a repeated subnet (count / for_each): its instances */
+    instanceCount: (n: number, kind: 'count' | 'for_each') => `${n} instance${n === 1 ? '' : 's'} (${kind})`,
+    statEachAddresses: 'addresses each',
+    statEachUsable: 'usable each',
+    /** what all the instances take of the parent network */
+    statAllOf: (n: number, network: string) => `of ${network}, all ${n}`,
     usable: 'Usable ',
     keepsEvery: (provider: CloudProvider, reserved: number) => `${CLOUD[provider]} keeps ${reserved} addresses in every subnet.`,
     tooSmall: (provider: CloudProvider, reserved: number) =>
@@ -130,6 +136,10 @@ export const cidrPlannerMessages = defineMessages(
     statUsable: 'utilizáveis',
     statOf: (network) => `da ${network}`,
     statPrefix: 'prefixo',
+    instanceCount: (n, kind) => `${n} ${n === 1 ? 'instância' : 'instâncias'} (${kind})`,
+    statEachAddresses: 'endereços cada',
+    statEachUsable: 'utilizáveis cada',
+    statAllOf: (n, network) => `da ${network}, as ${n}`,
     usable: 'Utilizáveis: ',
     keepsEvery: (provider, reserved) => `${withArticle(provider, true)} reserva ${reserved} endereços em toda sub-rede.`,
     tooSmall: (provider, reserved) => `Pequena demais: ${withArticle(provider)} reserva ${reserved} endereços em toda sub-rede.`,

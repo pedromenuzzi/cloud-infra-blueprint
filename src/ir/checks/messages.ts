@@ -41,6 +41,11 @@ export const checkMessages = defineMessages(
       `${field} ${text} overlaps ${other} (${otherText}), but ${
         provider === 'gcp' ? 'subnetworks of one network' : `subnets in one ${provider === 'azure' ? 'VNet' : 'VPC'}`
       } need ranges of their own`,
+    /** an instance of a repeated subnet (`aws_subnet.public[1]`) on another subnet or instance */
+    instanceOverlaps: (field: string, instance: string, text: string, other: string, otherText: string, provider: CloudProvider) =>
+      `${field} gives ${instance} ${text}, which overlaps ${other} (${otherText}), but ${
+        provider === 'gcp' ? 'subnetworks of one network' : `subnets in one ${provider === 'azure' ? 'VNet' : 'VPC'}`
+      } need ranges of their own`,
     peeringOverlap: (provider: CloudProvider, a: string, aRange: string, b: string, bRange: string) =>
       `${a} (${aRange}) and ${b} (${bRange}) overlap. ${
         provider === 'aws'
@@ -178,6 +183,10 @@ export const checkMessages = defineMessages(
     overlapsOwn: (field, text, first) => `${field} ${text} se sobrepõe a ${first}`,
     overlapsSibling: (field, text, other, otherText, provider) =>
       `${field} ${text} se sobrepõe a ${other} (${otherText}), mas sub-redes de uma mesma ${
+        provider === 'gcp' ? 'rede' : provider === 'azure' ? 'VNet' : 'VPC'
+      } precisam de intervalos próprios`,
+    instanceOverlaps: (field, instance, text, other, otherText, provider) =>
+      `${field} dá a ${instance} o intervalo ${text}, que se sobrepõe a ${other} (${otherText}), mas sub-redes de uma mesma ${
         provider === 'gcp' ? 'rede' : provider === 'azure' ? 'VNet' : 'VPC'
       } precisam de intervalos próprios`,
     peeringOverlap: (provider, a, aRange, b, bRange) =>
