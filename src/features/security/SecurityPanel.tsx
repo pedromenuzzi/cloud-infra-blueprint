@@ -19,7 +19,7 @@ import { AccessPaths } from './AccessPaths';
 import { ComplianceBadges } from './ComplianceBadges';
 import { ModulesNote } from '@/features/modules/ModulesNote';
 import { openModulePath } from '@/features/modules/moduleViewStore';
-import { ModuleFindings } from './ModuleFindings';
+import { ModuleFindings, showModuleResource } from './ModuleFindings';
 import { securityUiMessages } from './messages';
 import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useProjectAudit, useSecurityUi } from './securityStore';
 
@@ -272,13 +272,28 @@ export function SecurityPanel() {
           <h3 className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
             <Globe className="h-3 w-3" /> {m.internetFacing}
           </h3>
-          {exposed.length === 0 ? (
+          {exposed.length === 0 && project.exposed.length === 0 ? (
             <p className="flex items-center gap-1.5 text-[12px] text-muted">
               <Lock className="h-3.5 w-3.5 text-success" />{' '}
               {unknown.length ? m.nothingConfirmed : m.nothingReachable}
             </p>
           ) : (
             <ul className="space-y-1">
+              {project.exposed.map((x) => (
+                <li key={x.key} className="flex items-center gap-2" data-exposed={x.key}>
+                  <button
+                    type="button"
+                    onClick={() => showModuleResource(x.module.steps, x.resource)}
+                    title={m.showOnCanvas(x.label)}
+                    className="inline-flex min-w-0 max-w-[70%] items-center gap-1 rounded-full border bg-surface-2 px-2 py-0.5 font-mono text-[10.5px] font-medium text-foreground transition-colors hover:border-border-strong"
+                  >
+                    <span className="truncate">{x.label}</span>
+                  </button>
+                  <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted" title={portList(x.ports)}>
+                    {portList(x.ports)}
+                  </span>
+                </li>
+              ))}
               {exposed.map(([id, e]) => (
                 <ExposedRow
                   key={id}

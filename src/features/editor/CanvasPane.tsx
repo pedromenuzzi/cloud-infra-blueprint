@@ -1074,7 +1074,6 @@ function CanvasInner() {
           style={pillsStyle}
           data-testid="canvas-pills"
         >
-          <ModuleViewBar />
           <span className="flex flex-wrap items-center justify-center gap-1">
             <button
               type="button"
@@ -1098,6 +1097,8 @@ function CanvasInner() {
               </button>
             ) : null}
           </span>
+          {/* an opened module: its way back, below the stats (clear of the canvas's top-left controls) */}
+          <ModuleViewBar />
           {overview ? <OverviewPopover onClose={() => setOverview(false)} /> : null}
           {codeErrored ? (
             <span

@@ -16,10 +16,15 @@ import { securityUiMessages } from './messages';
 import { moduleFindingsMessages } from './ModuleFindings.messages';
 import { SEVERITY_COLORS, SEVERITY_TEXT } from './securityStore';
 
+/** Open the module reached through `steps`, with `resource` selected and on screen. */
+export function showModuleResource(steps: ModuleFinding['module']['steps'], resource: string) {
+  openModulePath(steps, resource);
+  setTimeout(() => canvasApi()?.focusNode(resource), 220);
+}
+
 /** Open the module where a finding is, with its resource selected. */
 export function showModuleFinding(f: ModuleFinding) {
-  openModulePath(f.module.steps, f.finding.resource);
-  setTimeout(() => canvasApi()?.focusNode(f.finding.resource), 220);
+  showModuleResource(f.module.steps, f.finding.resource);
 }
 
 export function ModuleFindings({ findings }: { findings: ModuleFinding[] }) {

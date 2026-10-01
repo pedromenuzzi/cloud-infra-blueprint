@@ -30,6 +30,17 @@ export interface ModuleFinding {
   inputs: Array<{ name: string; value: string; note: string }>;
 }
 
+/** A resource inside a local module that the internet reaches (as the call makes it). */
+export interface ModuleExposure {
+  key: string;
+  module: ModuleFinding['module'];
+  /** the address inside the module */
+  resource: string;
+  /** `module.edge › aws_instance.bastion` */
+  label: string;
+  ports: string[];
+}
+
 /** The variables a block of the module reads (`var.x`, in raw expressions too). */
 function varsRead(ir: IR, id: string): Set<string> {
   const block = ir.resources.find((r) => r.id === id);
@@ -53,14 +64,20 @@ export function auditModules(
   files: Record<string, string>,
   locale: Locale = currentLocale(),
   steps: Array<{ dir: string; name: string }> = [],
-): { findings: ModuleFinding[]; audited: boolean } {
+): { findings: ModuleFinding[]; exposed: ModuleExposure[]; audited: boolean } {
   const t = messagesFor(moduleAuditMessages, locale);
   const findings: ModuleFinding[] = [];
+  const exposed: ModuleExposure[] = [];
   let audited = false;
   const visit = (list: ModuleInstance[]) => {
     for (const m of list) {
       const audit = auditInstance(m, locale);
       if (audit.score !== null) audited = true;
+      const module = { id: m.id, label: m.label, path: m.path, steps: m.steps, dir: m.dir };
+      for (const [resource, e] of audit.topology.exposure) {
+        if (e.level !== 'internet') continue;
+        exposed.push({ key: `${m.path.join('/')}|${resource}`, module, resource, label: inModuleLabel(m.path, resource), ports: e.ports });
+      }
       const order = (s: Severity) => SEVERITY_ORDER.indexOf(s);
       for (const finding of [...audit.findings].sort((a, b) => order(a.severity) - order(b.severity))) {
         const read = varsRead(m.child.ir, finding.resource);
@@ -69,7 +86,7 @@ export function auditModules(
           .map(([name, value]) => ({ name, value, note: t.fromInput(name, value) }));
         findings.push({
           key: `${m.path.join('/')}|${finding.id}`,
-          module: { id: m.id, label: m.label, path: m.path, steps: m.steps, dir: m.dir },
+          module,
           finding,
           label: inModuleLabel(m.path, finding.resource),
           inputs,
@@ -79,7 +96,7 @@ export function auditModules(
     }
   };
   visit(moduleInstances(ir, files, steps));
-  return { findings, audited };
+  return { findings, exposed, audited };
 }
 
 export interface ProjectAudit {
@@ -87,6 +104,8 @@ export interface ProjectAudit {
   own: AuditResult;
   /** findings inside the local modules it calls */
   modules: ModuleFinding[];
+  /** what the internet reaches inside them */
+  exposed: ModuleExposure[];
   /** counts, score and grade of both together */
   counts: Record<Severity, number>;
   score: number | null;
@@ -100,12 +119,12 @@ export function projectAudit(
   files: Record<string, string>,
   steps: Array<{ dir: string; name: string }> = [],
 ): ProjectAudit {
-  if (ir.modules.length === 0) return { own, modules: [], counts: own.counts, score: own.score, grade: own.grade };
-  const { findings: modules, audited } = auditModules(ir, files, own.locale, steps);
-  if (modules.length === 0 && !audited) return { own, modules, counts: own.counts, score: own.score, grade: own.grade };
+  if (ir.modules.length === 0) return { own, modules: [], exposed: [], counts: own.counts, score: own.score, grade: own.grade };
+  const { findings: modules, exposed, audited } = auditModules(ir, files, own.locale, steps);
+  if (modules.length === 0 && !audited) return { own, modules, exposed, counts: own.counts, score: own.score, grade: own.grade };
   const all = [...own.findings, ...modules.map((m) => m.finding)];
   const counts = { critical: 0, high: 0, medium: 0, low: 0 };
   for (const f of all) counts[f.severity]++;
   const score = own.score === null && !audited ? null : scoreOf(all);
-  return { own, modules, counts, score, grade: score === null ? null : gradeOf(score) };
+  return { own, modules, exposed, counts, score, grade: score === null ? null : gradeOf(score) };
 }

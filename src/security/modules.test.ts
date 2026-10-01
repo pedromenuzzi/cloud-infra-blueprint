@@ -51,6 +51,8 @@ module "private" {
     expect(ssh.label).toBe('module.bastion › aws_security_group.ssh');
     expect(ssh.finding.severity).toBe('critical');
     expect(ssh.module.steps).toEqual([{ dir: 'modules/bastion', name: 'bastion' }]);
+    // what the internet reaches inside it
+    expect(auditModules(ir, files, 'en').exposed.map((e) => [e.label, e.ports])).toEqual([['module.bastion › aws_instance.box', ['22']]]);
     // the private call opens nothing to the internet
     expect(findings.some((f) => f.module.id === 'module.private' && f.finding.id.startsWith('rule:'))).toBe(false);
     // the root has nothing to audit of its own: the grade is the modules'
@@ -77,6 +79,6 @@ module "private" {
 
   it('leaves the plain audit alone without local modules', () => {
     const { files, ir, own } = project(`module "vpc" {\n  source = "terraform-aws-modules/vpc/aws"\n}\n`);
-    expect(projectAudit(own, ir, files)).toEqual({ own, modules: [], counts: own.counts, score: own.score, grade: own.grade });
+    expect(projectAudit(own, ir, files)).toEqual({ own, modules: [], exposed: [], counts: own.counts, score: own.score, grade: own.grade });
   });
 });
