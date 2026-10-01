@@ -117,7 +117,7 @@ test.describe('full storage', () => {
       (window as unknown as { __storageFull?: boolean }).__storageFull = true;
     });
     await page.getByRole('region', { name: 'Quick start' }).getByRole('button', { name: /^AWS/ }).click();
-    await expect(page.getByText('Storage is full — export or delete projects')).toBeVisible();
+    await expect(page.getByText('Storage is full: export or delete projects')).toBeVisible();
     await expect(page).toHaveURL(/\/dashboard$/);
   });
 });

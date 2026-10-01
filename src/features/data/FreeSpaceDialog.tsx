@@ -64,7 +64,6 @@ export default function FreeSpaceDialog({
           <span>
             <span className="font-semibold text-success">{m.backupDone}</span>{' '}
             <span className="text-muted">
-              {m.backupHoldsBefore}
               <span className="break-all font-mono text-[11.5px]">{backupName}</span>
               {m.backupHoldsAfter}
             </span>

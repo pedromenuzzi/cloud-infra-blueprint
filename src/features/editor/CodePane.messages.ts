@@ -15,7 +15,7 @@ export const codeMessages = defineMessages(
     position: (line: number, col: number) => `Ln ${line}, Col ${col}`,
     loading: 'Loading code editor…',
     /* completion and hover */
-    resourceSnippet: 'res — resource block',
+    resourceSnippet: 'res: resource block',
     required: ' · required',
     hoverMeta: (category: Category, provider: string) => `Category: ${category} · Provider: ${provider}`,
   },
@@ -24,7 +24,7 @@ export const codeMessages = defineMessages(
     files: 'Arquivos',
     position: (line: number, col: number) => `Ln ${line}, Col ${col}`,
     loading: 'Carregando o editor de código…',
-    resourceSnippet: 'res — bloco resource',
+    resourceSnippet: 'res: bloco resource',
     required: ' · obrigatório',
     hoverMeta: (category: Category, provider: string) =>
       `Categoria: ${categoryLabel(category, 'pt-BR')} · Provider: ${provider}`,

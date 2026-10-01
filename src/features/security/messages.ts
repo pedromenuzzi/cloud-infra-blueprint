@@ -21,13 +21,13 @@ const COUNT_PT: Record<Severity, [string, string]> = {
 const KIND_PT: Record<OwnerKind, { title: string; note: string; this: string; these: string }> = {
   sg: {
     title: 'Grupo de segurança',
-    note: 'Com estado (stateful) — as respostas ao tráfego permitido saem automaticamente. As regras só permitem; o que não estiver listado é negado.',
+    note: 'Com estado (stateful): as respostas ao tráfego permitido saem automaticamente. As regras só permitem; o que não estiver listado é negado.',
     this: 'Este grupo de segurança',
     these: 'deste grupo de segurança',
   },
   nacl: {
     title: 'ACL de rede',
-    note: 'Sem estado (stateless) — avaliada na ordem dos números de regra; vale a primeira que corresponder. Lembre-se de permitir o tráfego de retorno nas portas efêmeras (1024–65535).',
+    note: 'Sem estado (stateless): avaliada na ordem dos números de regra; vale a primeira que corresponder. Lembre-se de permitir o tráfego de retorno nas portas efêmeras (1024–65535).',
     this: 'Esta ACL de rede',
     these: 'desta ACL de rede',
   },
@@ -48,11 +48,11 @@ const KIND_PT: Record<OwnerKind, { title: string; note: string; this: string; th
 const KIND_EN: Record<OwnerKind, { title: string; note: string }> = {
   sg: {
     title: 'Security group',
-    note: 'Stateful — replies to allowed traffic are let out automatically. Rules only allow; anything not listed is denied.',
+    note: 'Stateful: replies to allowed traffic are let out automatically. Rules only allow; anything not listed is denied.',
   },
   nacl: {
     title: 'Network ACL',
-    note: 'Stateless — evaluated in rule-number order, first match wins. Remember to allow return traffic on ephemeral ports (1024–65535).',
+    note: 'Stateless: evaluated in rule-number order, first match wins. Remember to allow return traffic on ephemeral ports (1024–65535).',
   },
   nsg: {
     title: 'Network security group',
@@ -64,7 +64,7 @@ const KIND_EN: Record<OwnerKind, { title: string; note: string }> = {
   },
 };
 
-/** "Fixed — ssh (port 22) is open…": English lowercases the title; Portuguese only its first letter, never an acronym */
+/** "Fixed: ssh (port 22) is open…": English lowercases the title; Portuguese only its first letter, never an acronym */
 const lowerFirst = (s: string) => (/^[A-ZÀ-Ý]{2}/.test(s) ? s : s.charAt(0).toLowerCase() + s.slice(1));
 
 export const securityUiMessages = defineMessages(
@@ -75,7 +75,7 @@ export const securityUiMessages = defineMessages(
     showOnCanvas: (id: string) => `Show ${id} on the canvas`,
     whyReachable: (name: string) => `Why is ${name} reachable?`,
     why: 'Why',
-    fixed: (title: string) => `Fixed — ${title.toLowerCase()}`,
+    fixed: (title: string) => `Fixed: ${title.toLowerCase()}`,
     security: 'Security',
     closePanel: 'Close security panel',
     nothingToAudit: 'Nothing to audit yet',
@@ -98,7 +98,7 @@ export const securityUiMessages = defineMessages(
     allPassHint: 'Open ports, public databases, encryption, IMDSv2, S3 access, unused groups.',
 
     // ------------------------------------------------------------ toasts
-    fixedCount: (n: number, mod: string) => `Fixed ${n} issue${n === 1 ? '' : 's'} — ${mod} Z to undo`,
+    fixedCount: (n: number, mod: string) => `Fixed ${n} issue${n === 1 ? '' : 's'}. ${mod} Z to undo`,
     nothingFixed: 'Nothing could be fixed automatically',
     undoHint: (mod: string) => `${mod} Z to undo`,
     show: 'Show',
@@ -152,7 +152,7 @@ export const securityUiMessages = defineMessages(
     ruleNumber: 'Rule number',
     priority: 'Priority',
     sharedBy: (count: number) => `Shared by the ${count} port ranges of this rule`,
-    splitInCode: (hint: string) => `${hint} — split them in code to change one`,
+    splitInCode: (hint: string) => `${hint}. Split them in code to change one`,
     action: 'Action',
     allow: 'Allow',
     deny: 'Deny',
@@ -168,8 +168,8 @@ export const securityUiMessages = defineMessages(
     namePlaceholder: 'rule name',
     descriptionPlaceholder: 'what is this for?',
     editInCode: 'Edit in code',
-    writtenWith: (fields: string) => `Written with expressions (${fields}) — edit it in code`,
-    writtenWithShort: 'Written with expressions — edit it in code',
+    writtenWith: (fields: string) => `Written with expressions (${fields}): edit it in code`,
+    writtenWithShort: 'Written with expressions: edit it in code',
     definedIn: (id: string) => `Defined in ${id}`,
     showRuleResource: 'Show rule resource',
     deleteRule: 'Delete rule',
@@ -181,22 +181,22 @@ export const securityUiMessages = defineMessages(
     emptyMeansAny: 'empty = 0.0.0.0/0',
     targetTags: 'Target tags',
     openFirewall: (preset: string) =>
-      `This firewall's source ranges apply to every rule, and they include the internet — ${preset} is now open to it. Narrow the source ranges above.`,
+      `This firewall's source ranges apply to every rule, and they include the internet: ${preset} is now open to it. Narrow the source ranges above.`,
     placeholderRange: (preset: string, cidr: string) =>
-      `${preset} allows ${cidr}, a placeholder private range — change the source to the network that needs it.`,
+      `${preset} allows ${cidr}, a placeholder private range. Change the source to the network that needs it.`,
     addedAsResource: (type: string, k: OwnerKind) => `Added as a ${type} resource, like this ${KIND_EN[k].title.toLowerCase()}'s other rules.`,
-    firewallDisabled: 'This firewall is disabled — its rules have no effect.',
+    firewallDisabled: 'This firewall is disabled: its rules have no effect.',
     mixesStyles: (k: OwnerKind) =>
-      `This ${KIND_EN[k].title.toLowerCase()} mixes inline rules with standalone rule resources — Terraform will keep undoing one with the other. Move them to one style in code.`,
-    hiddenRules: (reasons: string) => `Some rules are built with ${reasons} and aren't listed here — edit them in code.`,
-    greyedBefore: "Greyed-out rows are written with expressions or syntax the editor can't rewrite safely — use",
+      `This ${KIND_EN[k].title.toLowerCase()} mixes inline rules with standalone rule resources. Terraform will keep undoing one with the other. Move them to one style in code.`,
+    hiddenRules: (reasons: string) => `Some rules are built with ${reasons} and aren't listed here: edit them in code.`,
+    greyedBefore: "Greyed-out rows are written with expressions or syntax the editor can't rewrite safely. Use",
     greyedAfter: 'to edit them in code.',
     inbound: 'Inbound',
     outbound: 'Outbound',
     addRule: 'Add rule',
     noRulesShown: 'No rules the editor can show.',
-    noInbound: 'No inbound rules — nothing can connect to resources in this group.',
-    noOutbound: 'No outbound rules — resources in this group cannot start connections.',
+    noInbound: 'No inbound rules: nothing can connect to resources in this group.',
+    noOutbound: 'No outbound rules: resources in this group cannot start connections.',
     noRules: 'No rules yet.',
     usePresetBefore: 'Use',
     usePresetAfter: 'to start from a preset.',
@@ -220,7 +220,7 @@ export const securityUiMessages = defineMessages(
     showOnCanvas: (id: string) => `Mostrar ${id} no canvas`,
     whyReachable: (name: string) => `Por que ${name} está acessível?`,
     why: 'Por quê',
-    fixed: (title: string) => `Corrigido — ${lowerFirst(title)}`,
+    fixed: (title: string) => `Corrigido: ${lowerFirst(title)}`,
     security: 'Segurança',
     closePanel: 'Fechar painel de segurança',
     nothingToAudit: 'Nada para auditar ainda',
@@ -243,7 +243,7 @@ export const securityUiMessages = defineMessages(
     allPassHint: 'Portas abertas, bancos de dados públicos, criptografia, IMDSv2, acesso ao S3, grupos sem uso.',
 
     fixedCount: (n: number, mod: string) =>
-      `${plural(n, 'problema corrigido', 'problemas corrigidos')} — ${mod} Z para desfazer`,
+      `${plural(n, 'problema corrigido', 'problemas corrigidos')}. ${mod} Z para desfazer`,
     nothingFixed: 'Nada pôde ser corrigido automaticamente',
     undoHint: (mod: string) => `${mod} Z para desfazer`,
     show: 'Mostrar',
@@ -295,7 +295,7 @@ export const securityUiMessages = defineMessages(
     ruleNumber: 'Número da regra',
     priority: 'Prioridade',
     sharedBy: (count: number) => `Compartilhado pelos ${count} intervalos de portas desta regra`,
-    splitInCode: (hint: string) => `${hint} — separe-os no código para alterar um deles`,
+    splitInCode: (hint: string) => `${hint}. Separe-os no código para alterar um deles`,
     action: 'Ação',
     allow: 'Permitir',
     deny: 'Negar',
@@ -311,8 +311,8 @@ export const securityUiMessages = defineMessages(
     namePlaceholder: 'nome da regra',
     descriptionPlaceholder: 'para que serve?',
     editInCode: 'Editar no código',
-    writtenWith: (fields: string) => `Escrita com expressões (${fields}) — edite no código`,
-    writtenWithShort: 'Escrito com expressões — edite no código',
+    writtenWith: (fields: string) => `Escrita com expressões (${fields}): edite no código`,
+    writtenWithShort: 'Escrito com expressões: edite no código',
     definedIn: (id: string) => `Definida em ${id}`,
     showRuleResource: 'Mostrar o recurso da regra',
     deleteRule: 'Excluir regra',
@@ -324,22 +324,22 @@ export const securityUiMessages = defineMessages(
     emptyMeansAny: 'vazio = 0.0.0.0/0',
     targetTags: 'Tags de destino',
     openFirewall: (preset: string) =>
-      `Os intervalos de origem deste firewall valem para todas as regras e incluem a internet — ${preset} agora está aberto para ela. Restrinja os intervalos de origem acima.`,
+      `Os intervalos de origem deste firewall valem para todas as regras e incluem a internet: ${preset} agora está aberto para ela. Restrinja os intervalos de origem acima.`,
     placeholderRange: (preset: string, cidr: string) =>
-      `${preset} permite ${cidr}, um intervalo privado provisório — troque a origem pela rede que precisa dele.`,
+      `${preset} permite ${cidr}, um intervalo privado provisório. Troque a origem pela rede que precisa dele.`,
     addedAsResource: (type: string, k: OwnerKind) => `Adicionada como um recurso ${type}, como as outras regras ${KIND_PT[k].these}.`,
-    firewallDisabled: 'Este firewall está desativado — as regras dele não têm efeito.',
+    firewallDisabled: 'Este firewall está desativado: as regras dele não têm efeito.',
     mixesStyles: (k: OwnerKind) =>
-      `${KIND_PT[k].this} mistura regras inline com recursos de regra separados — o Terraform vai ficar desfazendo um com o outro. Passe tudo para um único estilo no código.`,
-    hiddenRules: (reasons: string) => `Algumas regras são criadas com ${reasons} e não aparecem aqui — edite-as no código.`,
-    greyedBefore: 'As linhas em cinza usam expressões ou sintaxe que o editor não consegue reescrever com segurança — use',
+      `${KIND_PT[k].this} mistura regras inline com recursos de regra separados. O Terraform vai ficar desfazendo um com o outro. Passe tudo para um único estilo no código.`,
+    hiddenRules: (reasons: string) => `Algumas regras são criadas com ${reasons} e não aparecem aqui: edite-as no código.`,
+    greyedBefore: 'As linhas em cinza usam expressões ou sintaxe que o editor não consegue reescrever com segurança. Use',
     greyedAfter: 'para editá-las no código.',
     inbound: 'Entrada',
     outbound: 'Saída',
     addRule: 'Nova regra',
     noRulesShown: 'Nenhuma regra que o editor consiga mostrar.',
-    noInbound: 'Nenhuma regra de entrada — nada consegue se conectar aos recursos deste grupo.',
-    noOutbound: 'Nenhuma regra de saída — os recursos deste grupo não conseguem iniciar conexões.',
+    noInbound: 'Nenhuma regra de entrada: nada consegue se conectar aos recursos deste grupo.',
+    noOutbound: 'Nenhuma regra de saída: os recursos deste grupo não conseguem iniciar conexões.',
     noRules: 'Nenhuma regra ainda.',
     usePresetBefore: 'Use',
     usePresetAfter: 'para começar de uma predefinição.',

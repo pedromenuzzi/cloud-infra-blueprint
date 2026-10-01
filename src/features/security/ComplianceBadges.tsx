@@ -55,7 +55,7 @@ function ControlBadge({ framework, controls }: { framework: FrameworkId; control
         <span className="truncate">{label}</span>
         <span className="sr-only">
           {' '}
-          — {f.name} {f.version}: {controls.map((c) => `${c.id}, ${c.title}`).join('; ')}
+          ({f.name} {f.version}): {controls.map((c) => `${c.id}, ${c.title}`).join('; ')}
         </span>
       </button>
       {open && pos

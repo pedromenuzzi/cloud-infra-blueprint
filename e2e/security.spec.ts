@@ -64,7 +64,7 @@ test('deleting the last inbound rule writes `ingress = []`, so the rule really g
 
   const dialog = await openRules(page, 'aws_security_group.web');
   await dialog.locator('tr[data-rule="aws_security_group.web:ingress:0"]').getByRole('button', { name: 'Delete rule' }).click();
-  await expect(dialog.getByText('No inbound rules — nothing can connect to resources in this group.')).toBeVisible();
+  await expect(dialog.getByText('No inbound rules: nothing can connect to resources in this group.')).toBeVisible();
   await expect.poll(() => mainTf(page, 'last-rule')).toMatch(/ingress\s*=\s*\[\]/);
   await expect(page.getByRole('button', { name: /^Security grade A/ })).toBeVisible();
 
@@ -144,7 +144,7 @@ test('fix all applies every fix as one undo step and counts only what it fixed',
   // the IPv4 and IPv6 SSH rules are two distinguishable findings; RDP on an unknown VPC has no fix
   await expect(panel.locator('[data-severity="critical"]')).toHaveCount(3);
   await panel.getByRole('button', { name: 'Fix all 3' }).click();
-  await expect(page.getByText('Fixed 3 issues — Ctrl Z to undo')).toBeVisible();
+  await expect(page.getByText('Fixed 3 issues. Ctrl Z to undo')).toBeVisible();
 
   await expect.poll(() => mainTf(page, 'fix-all')).not.toContain('::/0');
   const text = await mainTf(page, 'fix-all');
