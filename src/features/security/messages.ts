@@ -98,9 +98,9 @@ export const securityUiMessages = defineMessages(
     allPassHint: 'Open ports, public databases, encryption, IMDSv2, S3 access, unused groups.',
 
     // ------------------------------------------------------------ toasts
-    fixedCount: (n: number, mod: string) => `Fixed ${n} issue${n === 1 ? '' : 's'}. ${mod} Z to undo`,
+    fixedCount: (n: number, undo: string) => `Fixed ${n} issue${n === 1 ? '' : 's'}. ${undo} to undo`,
     nothingFixed: 'Nothing could be fixed automatically',
-    undoHint: (mod: string) => `${mod} Z to undo`,
+    undoHint: (undo: string) => `${undo} to undo`,
     show: 'Show',
 
     // ------------------------------------------------------------ why is this reachable?
@@ -242,10 +242,10 @@ export const securityUiMessages = defineMessages(
     allPass: 'Todas as verificações passaram',
     allPassHint: 'Portas abertas, bancos de dados públicos, criptografia, IMDSv2, acesso ao S3, grupos sem uso.',
 
-    fixedCount: (n: number, mod: string) =>
-      `${plural(n, 'problema corrigido', 'problemas corrigidos')}. ${mod} Z para desfazer`,
+    fixedCount: (n: number, undo: string) =>
+      `${plural(n, 'problema corrigido', 'problemas corrigidos')}. ${undo} para desfazer`,
     nothingFixed: 'Nada pôde ser corrigido automaticamente',
-    undoHint: (mod: string) => `${mod} Z para desfazer`,
+    undoHint: (undo: string) => `${undo} para desfazer`,
     show: 'Mostrar',
 
     portWords: {

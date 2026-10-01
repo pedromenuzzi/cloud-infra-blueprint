@@ -37,7 +37,7 @@ export const multiSelectMessages = defineMessages(
     allConnected: (to: string) => `All of them are already connected to ${to}`,
     selected: 'Selected',
     selectOnly: 'Select only this one',
-    deleted: (n: number, mod: string) => `Deleted ${resources(n)}. ${mod} Z to undo`,
+    deleted: (n: number, undo: string) => `Deleted ${resources(n)}. ${undo} to undo`,
     delete: (n: number) => `Delete ${resources(n)}`,
   },
   {
@@ -75,7 +75,7 @@ export const multiSelectMessages = defineMessages(
     allConnected: (to) => `Todos já estão conectados a ${to}`,
     selected: 'Selecionados',
     selectOnly: 'Selecionar só este',
-    deleted: (n, mod) => `${recursos(n)} excluído${n === 1 ? '' : 's'}. ${mod} Z para desfazer`,
+    deleted: (n, undo) => `${recursos(n)} excluído${n === 1 ? '' : 's'}. ${undo} para desfazer`,
     delete: (n) => `Excluir ${recursos(n)}`,
   },
 );

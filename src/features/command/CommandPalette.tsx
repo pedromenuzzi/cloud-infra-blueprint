@@ -66,6 +66,7 @@ import { shareLinkInfo } from '@/lib/share';
 import { importNote, pickTerraformFiles, readTerraformFiles } from '@/lib/importTf';
 import { createProject, detectProviders, listProjects, uniqueProjectName, type Project } from '@/lib/storage';
 import { cn, slugify, timeAgo } from '@/lib/utils';
+import { shortcut } from '@/lib/keys';
 import { ResourceIcon } from '@/resources/icons';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import { resourceName } from '@/resources/i18n';
@@ -79,7 +80,7 @@ import { openAddModule } from '@/features/modules/addModuleStore';
 import { isModuleId } from '@/ir/modules';
 import { ModuleIcon } from '@/features/modules/ModuleIcon';
 import { modulesMessages } from '@/features/modules/modules.messages';
-import { MOD, takePaletteReturnFocus, usePalette } from './paletteStore';
+import { takePaletteReturnFocus, usePalette } from './paletteStore';
 
 function Item({
   value,
@@ -259,7 +260,7 @@ export function CommandPalette() {
                       hint={addm.openHint}
                       onSelect={() => run(openAddModule)}
                     />
-                    <Item value="fit" icon={Maximize} label={m.fitView} shortcut="⇧1" onSelect={() => run(() => canvasApi()?.fitView())} />
+                    <Item value="fit" icon={Maximize} label={m.fitView} shortcut={shortcut('shift', '1')} onSelect={() => run(() => canvasApi()?.fitView())} />
                     <Item value="tidy" icon={WandSparkles} label={am.command} keywords={am.keywords} onSelect={() => run(() => void canvasApi()?.tidy())} />
                     {arrangeTarget && isContainerType(arrangeTarget.type) && ir.resources.some((r) => r.parentId === arrangeTarget.id) ? (
                       <Item
@@ -274,7 +275,7 @@ export function CommandPalette() {
                     {selection ? (
                       <>
                         {isModuleId(selection) ? null : (
-                          <Item value="duplicate" icon={CopyPlus} label={m.duplicateSelected} shortcut={`${MOD} D`} onSelect={() => run(() => canvasApi()?.duplicate(selection))} />
+                          <Item value="duplicate" icon={CopyPlus} label={m.duplicateSelected} shortcut={shortcut('mod', 'D')} onSelect={() => run(() => canvasApi()?.duplicate(selection))} />
                         )}
                         <Item value="reveal" icon={Code2} label={m.revealSelected} onSelect={() => run(() => editor().revealInCode(selection))} />
                         <Item
@@ -341,8 +342,8 @@ export function CommandPalette() {
                   ) : null}
 
                   <Command.Group heading={m.group.edit}>
-                    <Item value="undo" icon={Undo2} label={m.undo} shortcut={`${MOD} Z`} disabled={!canUndo} onSelect={() => run(() => editor().undo())} />
-                    <Item value="redo" icon={Redo2} label={m.redo} shortcut={`${MOD} ⇧ Z`} disabled={!canRedo} onSelect={() => run(() => editor().redo())} />
+                    <Item value="undo" icon={Undo2} label={m.undo} shortcut={shortcut('mod', 'Z')} disabled={!canUndo} onSelect={() => run(() => editor().undo())} />
+                    <Item value="redo" icon={Redo2} label={m.redo} shortcut={shortcut('mod', 'shift', 'Z')} disabled={!canRedo} onSelect={() => run(() => editor().redo())} />
                     <Item
                       value="export-zip"
                       icon={Download}
@@ -379,9 +380,9 @@ export function CommandPalette() {
                   </Command.Group>
 
                   <Command.Group heading={m.group.view}>
-                    <Item value="toggle-palette" icon={PanelLeft} label={m.togglePalette} shortcut={`${MOD} B`} onSelect={() => run(() => togglePanel('palette'))} />
-                    <Item value="toggle-code" icon={Code2} label={m.toggleCode} shortcut={`${MOD} J`} onSelect={() => run(() => togglePanel('code'))} />
-                    <Item value="toggle-inspector" icon={PanelRight} label={m.toggleInspector} shortcut={`${MOD} I`} onSelect={() => run(() => togglePanel('inspector'))} />
+                    <Item value="toggle-palette" icon={PanelLeft} label={m.togglePalette} shortcut={shortcut('mod', 'B')} onSelect={() => run(() => togglePanel('palette'))} />
+                    <Item value="toggle-code" icon={Code2} label={m.toggleCode} shortcut={shortcut('mod', 'J')} onSelect={() => run(() => togglePanel('code'))} />
+                    <Item value="toggle-inspector" icon={PanelRight} label={m.toggleInspector} shortcut={shortcut('mod', 'I')} onSelect={() => run(() => togglePanel('inspector'))} />
                     <LayoutCommands render={(c) => <Item key={c.value} value={c.value} icon={c.icon} label={c.label} keywords={c.keywords} onSelect={() => run(c.run)} />} />
                   </Command.Group>
 

@@ -43,7 +43,7 @@ import { useNavigate } from 'react-router-dom';
 import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { showToast } from '@/components/Toast';
 import { Button, Kbd } from '@/components/ui';
-import { MOD, usePalette } from '@/features/command/paletteStore';
+import { usePalette } from '@/features/command/paletteStore';
 import { CostChip } from '@/features/cost/CostChip';
 import { captureDiagram } from '@/features/export/captureDiagram';
 import { useLocale, type Locale } from '@/i18n/locale';
@@ -64,6 +64,7 @@ import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
 import { detectProviders } from '@/lib/storage';
 import { cn } from '@/lib/utils';
+import { shortcut } from '@/lib/keys';
 import { resourceName, resourceShortName, resourceSubtitle } from '@/resources/i18n';
 import { CATEGORY_COLORS } from '@/resources/icons';
 import { connectionOp, findConnectionRule } from '@/resources/connect';
@@ -579,7 +580,7 @@ function CanvasInner() {
       const state = useEditor.getState();
       if (deletedNodes.length > 0) {
         const count = state.deleteResources(deletedNodes.map((n) => n.id));
-        if (count > 1) showToast(messagesFor(canvasMessages).deletedMany(count, MOD), 'info');
+        if (count > 1) showToast(messagesFor(canvasMessages).deletedMany(count, shortcut('mod', 'Z')), 'info');
         return;
       }
       const refs = deletedEdges.map((e) => ({
@@ -876,7 +877,7 @@ function CanvasInner() {
           shortcut: 'F2',
           onSelect: () => focusRenameInput(),
         },
-        { id: 'duplicate', label: m.duplicate, icon: CopyPlus, shortcut: `${MOD}D`, onSelect: () => duplicate(node.id) },
+        { id: 'duplicate', label: m.duplicate, icon: CopyPlus, shortcut: shortcut('mod', 'D'), onSelect: () => duplicate(node.id) },
         ...(isContainerType(node.type) && ir.resources.some((r) => r.parentId === node.id)
           ? [{ id: 'arrange-inside', label: am.arrangeInside(node.name), icon: WandSparkles, onSelect: () => arrangeInside(node.id) }]
           : []),
@@ -910,7 +911,7 @@ function CanvasInner() {
     return [
       { id: 'add', label: m.addHere, icon: Plus, shortcut: m.doubleClick, onSelect: () => setQuickAdd(at) },
       'separator',
-      { id: 'fit', label: m.fitView, icon: Maximize, shortcut: '⇧1', onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) }) },
+      { id: 'fit', label: m.fitView, icon: Maximize, shortcut: shortcut('shift', '1'), onSelect: () => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) }) },
       { id: 'tidy', label: am.button, icon: WandSparkles, onSelect: () => void tidy() },
       'separator',
       ...exportEntries,
@@ -1178,7 +1179,7 @@ function EditorTips() {
   };
   const tips: Array<[string, string]> = [
     [m.tipKeys.doubleClick, m.tips.doubleClick],
-    [`${MOD} K`, m.tips.palette],
+    [shortcut('mod', 'K'), m.tips.palette],
     [m.tipKeys.rightClick, m.tips.rightClick],
     ['?', m.tips.shortcuts],
   ];

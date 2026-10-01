@@ -52,7 +52,7 @@ describe('security delta toast', () => {
     expect(toasts()).toHaveLength(1);
     const [t] = toasts();
     expect(t.message).toBe('Security grade A → C: SSH (22) is now open to the internet on aws_instance.web');
-    expect(t.hint).toBe('Ctrl Z to undo');
+    expect(t.hint).toBe('Ctrl+Z to undo');
     expect(t.action?.label).toBe('Show');
 
     // Show: select the resource, open the panel on the finding
@@ -126,7 +126,7 @@ describe('in Portuguese', () => {
     useLocale.getState().setLocale('pt-BR');
     settle();
     expect(toasts().map((t) => [t.message, t.hint, t.action?.label])).toEqual([
-      ['Nota de segurança A → C: SSH (22) agora está aberto para a internet em aws_instance.web', 'Ctrl Z para desfazer', 'Mostrar'],
+      ['Nota de segurança A → C: SSH (22) agora está aberto para a internet em aws_instance.web', 'Ctrl+Z para desfazer', 'Mostrar'],
     ]);
   });
 

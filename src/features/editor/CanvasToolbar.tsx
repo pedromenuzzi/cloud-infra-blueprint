@@ -14,6 +14,7 @@ import { useSecurityUi } from '@/features/security/securityStore';
 import { useMessages } from '@/i18n/messages';
 import { motionMs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
+import { shortcut } from '@/lib/keys';
 import { arrangeMessages } from './arrange.messages';
 import { canvasMessages } from './CanvasPane.messages';
 
@@ -147,7 +148,7 @@ export function CanvasToolbar({
         </ToolButton>
         <Divider />
         <ToolButton
-          label={m.fitViewTip}
+          label={m.fitViewTip(shortcut('shift', '1'))}
           onClick={() => void rf.fitView({ padding: 0.15, maxZoom: 1, duration: motionMs(350) })}
         >
           <Maximize className="h-3.5 w-3.5" />

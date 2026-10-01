@@ -47,6 +47,7 @@ import { parseViewHash, shareHash, viewLinkInfo, viewUrl, type ShareError, type 
 import { detectProviders, type Project } from '@/lib/storage';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn } from '@/lib/utils';
+import { shortcut } from '@/lib/keys';
 import { useTheme } from '@/theme/useTheme';
 import { routeMessages } from './messages';
 
@@ -240,7 +241,7 @@ function ViewerTopbar({
         </Badge>
       </div>
 
-      <IconToggle label={m.codeToggle} pressed={codeOpen} onClick={onToggleCode}>
+      <IconToggle label={m.codeToggle(shortcut('mod', 'J'))} pressed={codeOpen} onClick={onToggleCode}>
         <Code2 className="h-4 w-4" />
       </IconToggle>
       <span className="hidden sm:contents">

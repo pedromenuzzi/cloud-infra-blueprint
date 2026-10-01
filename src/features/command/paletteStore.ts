@@ -45,7 +45,5 @@ export function isPaletteShortcut(
   return !target?.closest?.('.monaco-editor');
 }
 
-export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
-
-/** The platform's command key, for shortcut labels: ⌘ on Apple devices, Ctrl elsewhere. */
-export const MOD = IS_MAC ? '⌘' : 'Ctrl';
+/** The platform and its command key (⌘ / Ctrl) live in src/lib/keys.ts, with every shortcut label. */
+export { IS_MAC, MOD } from '@/lib/keys';

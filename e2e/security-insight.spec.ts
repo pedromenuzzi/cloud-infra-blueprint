@@ -154,7 +154,7 @@ test('delta toast: adding SSH from anywhere says what got worse, Show jumps to i
 
   const toast = toasts(page).getByText('Security grade A → C: SSH (22) is now open to the internet on aws_instance.web');
   await expect(toast).toBeVisible();
-  await expect(toasts(page).getByText('Ctrl Z to undo')).toBeVisible();
+  await expect(toasts(page).getByText('Ctrl+Z to undo')).toBeVisible();
   await expect(toasts(page).getByText(/^Security grade/)).toHaveCount(1);
 
   // Show: out of the dialog, onto the resource, the panel open on the finding

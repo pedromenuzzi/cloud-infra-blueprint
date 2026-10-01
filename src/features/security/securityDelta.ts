@@ -9,7 +9,7 @@
  */
 import { useEffect } from 'react';
 import { showToast } from '@/components/Toast';
-import { MOD } from '@/features/command/paletteStore';
+import { shortcut } from '@/lib/keys';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useEditor } from '@/features/editor/store';
 import { messagesFor } from '@/i18n/messages';
@@ -65,7 +65,7 @@ export function startSecurityDelta(): () => void {
     if (!delta) return;
     const m = messagesFor(securityUiMessages);
     showToast(delta.message, 'warning', {
-      hint: m.undoHint(MOD),
+      hint: m.undoHint(shortcut('mod', 'Z')),
       ...(delta.target ? { action: { label: m.show, onClick: () => show(delta) } } : {}),
     });
 

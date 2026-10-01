@@ -155,7 +155,7 @@ test('the inspector, the canvas and ⌘K in Portuguese', async ({ page }) => {
 
   // canvas: node titles, lens chips (the PDF's words), toolbar, menus
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Ajustar à tela  ⇧1' }).click();
+  await page.getByRole('button', { name: 'Ajustar à tela  Shift+1' }).click();
   await page.waitForTimeout(500);
   await expect(node(page, 'aws_subnet.public_a')).toContainText('Sub-rede');
   await page.getByRole('button', { name: 'Lente de segurança' }).click();

@@ -8,7 +8,7 @@ import { Code2, PanelLeft, RotateCcw, SlidersHorizontal, Workflow, type LucideIc
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { focusIsLost, Kbd, restoreFocus, useLayer } from '@/components/ui';
-import { MOD } from '@/features/command/paletteStore';
+import { shortcut } from '@/lib/keys';
 import { useMessages } from '@/i18n/messages';
 import { cn } from '@/lib/utils';
 import { layoutMessages } from './layout.messages';
@@ -16,10 +16,10 @@ import { activePreset, PRESET_IDS, type PresetId, type SectionId } from './layou
 import { useLayout, type InspectorMode, type Side } from './layoutStore';
 
 const SECTIONS: Array<{ id: SectionId; icon: LucideIcon; shortcut?: string }> = [
-  { id: 'palette', icon: PanelLeft, shortcut: `${MOD} B` },
+  { id: 'palette', icon: PanelLeft, shortcut: shortcut('mod', 'B') },
   { id: 'canvas', icon: Workflow },
-  { id: 'code', icon: Code2, shortcut: `${MOD} J` },
-  { id: 'inspector', icon: SlidersHorizontal, shortcut: `${MOD} I` },
+  { id: 'code', icon: Code2, shortcut: shortcut('mod', 'J') },
+  { id: 'inspector', icon: SlidersHorizontal, shortcut: shortcut('mod', 'I') },
 ];
 
 /** a preset drawn as its columns: p(alette), v (the canVas), c(ode) */
