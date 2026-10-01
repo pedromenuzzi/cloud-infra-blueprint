@@ -685,12 +685,15 @@ test.describe('phone: the security toast’s "Show"', () => {
 /* ------------------------------------------------------------ Aurora */
 
 test.describe('Aurora cluster on the canvas', () => {
-  /** press on a node and move it over another one, without letting go (as e2e/canvas-arrange.spec.ts) */
+  /**
+   * press on a node and move it over another one, without letting go (as e2e/canvas-arrange.spec.ts);
+   * the cluster is a container (its instances go inside), so it's held by its center, the point a drop reads
+   */
   async function dragOver(page: Page, id: string, targetId: string) {
     await page.keyboard.press('Escape');
     const box = (await page.locator(`.react-flow__node[data-id="${id}"]`).boundingBox())!;
     const target = (await page.locator(`.react-flow__node[data-id="${targetId}"]`).boundingBox())!;
-    await page.mouse.move(box.x + 60, box.y + 30);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2 + 10, { steps: 15 });
   }

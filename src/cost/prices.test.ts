@@ -33,6 +33,7 @@ function kindOf(resources: ResourceNode[], id = resources[0].id): { kind: CostKi
 const PRICED_AT_DEFAULTS = [
   'aws_instance',
   'aws_db_instance',
+  'aws_rds_cluster_instance',
   'aws_elasticache_cluster',
   'aws_lb',
   'aws_nat_gateway',

@@ -1,5 +1,6 @@
 /**
- * Polish, round 3: the editor top bar on tablet and small laptop widths.
+ * Polish, round 3: the editor top bar on tablet and small laptop widths, and
+ * Aurora instances (aws_rds_cluster_instance) inside their cluster.
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -19,6 +20,28 @@ async function seriousAxeViolations(page: Page, within: string) {
       .filter((v) => v.impact === 'serious' || v.impact === 'critical')
       .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
   }, within);
+}
+
+/** open a project built from this HCL, in `locale` (and `theme`) */
+async function openProject(page: Page, name: string, text: string, { locale = 'en', theme }: { locale?: string; theme?: string } = {}) {
+  const id = `prj_${name}`;
+  await page.addInitScript(
+    ({ id, name, text, locale, theme }) => {
+      localStorage.setItem('cb-locale', locale);
+      if (theme) localStorage.setItem('cb-theme', theme);
+      if (localStorage.getItem('cb-projects-v1')) return;
+      const now = new Date().toISOString();
+      localStorage.setItem('cb-seeded-v1', '1');
+      localStorage.setItem('cb-tips-dismissed', '1');
+      localStorage.setItem(
+        'cb-projects-v1',
+        JSON.stringify([{ id, name, files: { 'main.tf': text }, providers: [], createdAt: now, updatedAt: now }]),
+      );
+    },
+    { id, name, text, locale, theme },
+  );
+  await page.goto(`/editor/${id}`);
+  await expect(page.locator('.react-flow__node').first()).toBeVisible();
 }
 
 /** open the seeded project in `locale` (and `theme`), without waiting for Monaco */
@@ -121,4 +144,85 @@ test.describe('editor top bar from tablet to small laptop widths', () => {
       });
     }
   }
+});
+
+/* ------------------------------------------------------------ Aurora instances */
+
+const AURORA = `provider "aws" {
+  region = "us-east-1"
+}
+
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+}
+
+resource "aws_subnet" "a" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "us-east-1a"
+}
+
+resource "aws_subnet" "b" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+}
+
+resource "aws_db_subnet_group" "db" {
+  subnet_ids = [aws_subnet.a.id, aws_subnet.b.id]
+}
+
+resource "aws_rds_cluster" "orders" {
+  cluster_identifier   = "orders"
+  engine               = "aurora-postgresql"
+  db_subnet_group_name = aws_db_subnet_group.db.name
+  storage_encrypted    = true
+}
+
+resource "aws_rds_cluster_instance" "orders" {
+  count              = 2
+  identifier         = "orders-\${count.index}"
+  cluster_identifier = aws_rds_cluster.orders.id
+  instance_class     = "db.r6g.large"
+  engine             = aws_rds_cluster.orders.engine
+}
+`;
+
+test.describe('Aurora instances inside their cluster', () => {
+  for (const [locale, theme] of [
+    ['en', 'light'],
+    ['pt-BR', 'dark'],
+  ] as const) {
+    test(`${locale}, ${theme}: two instances stack inside the cluster and the estimate prices them`, async ({ page }) => {
+      const en = locale === 'en';
+      await openProject(page, 'aurora', AURORA, { locale, theme });
+      const instance = page.locator('.react-flow__node[data-id="aws_rds_cluster_instance.orders"]');
+      const cluster = page.locator('.react-flow__node[data-id="aws_rds_cluster.orders"]');
+      await expect(instance).toBeVisible();
+      await expect(instance.locator('[data-type-label]')).toHaveText(en ? 'Aurora Instance' : 'Instância Aurora');
+      await expect(instance).toHaveAttribute('aria-label', new RegExp(en ? 'in Aurora Cluster orders' : 'em Cluster Aurora orders'));
+      // drawn inside the cluster, which is inside the DB subnet group
+      const outer = (await cluster.boundingBox())!;
+      const inner = (await instance.boundingBox())!;
+      expect(inner.x).toBeGreaterThanOrEqual(outer.x);
+      expect(inner.y).toBeGreaterThanOrEqual(outer.y);
+      expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width);
+      expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height);
+      // 2 × 730 h × $0.26 (db.r6g.large, Aurora Standard, us-east-1)
+      await expect(page.getByTestId('cost-chip')).toHaveText(en ? /^~\$380\/mo/ : /^~US\$\s?380\/mês/);
+      expect(await seriousAxeViolations(page, '.react-flow__nodes')).toEqual([]);
+    });
+  }
+
+  test('pt-BR: the palette adds an instance into the selected cluster, with its engine by reference', async ({ page }) => {
+    await openProject(page, 'aurora-add', AURORA.replace(/resource "aws_rds_cluster_instance"[\s\S]*$/, ''), { locale: 'pt-BR' });
+    await page.locator('.react-flow__node[data-id="aws_rds_cluster.orders"]').click({ position: { x: 40, y: 12 } });
+    await page.getByRole('button', { name: /^Adicionar Instância Aurora/ }).click();
+    const added = page.locator('.react-flow__node[data-id="aws_rds_cluster_instance.instance"]');
+    await expect(added).toBeVisible();
+    await expect(added).toHaveAttribute('aria-label', /em Cluster Aurora orders/);
+    await expect
+      .poll(async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('cb-projects-v1') ?? '[]')))[0]?.files['main.tf'])
+      .toMatch(/cluster_identifier\s*=\s*aws_rds_cluster\.orders\.id[\s\S]*engine\s*=\s*aws_rds_cluster\.orders\.engine/);
+  });
 });

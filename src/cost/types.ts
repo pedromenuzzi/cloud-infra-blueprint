@@ -43,6 +43,11 @@ export interface AwsPrices {
     instance: Record<string, Record<string, DeploymentRates>>;
     /** storage type (gp2, gp3, io1, standard) → $/GB-month */
     storage: Record<string, DeploymentRates>;
+    /**
+     * Aurora instance class → $/hour per instance, on an Aurora Standard cluster and on an
+     * I/O-Optimized one (`storage_type = "aurora-iopt1"`); the same for Aurora PostgreSQL and MySQL
+     */
+    aurora: Record<string, { standard: number; ioOptimized: number }>;
   };
   /** ElastiCache node type → engine (redis, memcached, valkey) → $/hour */
   elasticache: Record<string, Record<string, number>>;
@@ -74,6 +79,9 @@ export interface AwsPrices {
     auroraGbMonth: number;
     auroraIoPerMillion: number;
     auroraIoOptimizedGbMonth: number;
+    /** Aurora Serverless v2 capacity, per ACU-hour (Standard and I/O-Optimized clusters) */
+    auroraServerlessAcuHour: number;
+    auroraServerlessIoOptimizedAcuHour: number;
   };
 }
 
