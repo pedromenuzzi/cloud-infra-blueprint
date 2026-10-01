@@ -1,27 +1,41 @@
 /**
  * Check data source support against a Terraform codebase on disk:
  *
- *   pnpm exec vite-node scripts/check-data-corpus.ts <dir> [--max=N]
+ *   pnpm exec vite-node scripts/check-data-corpus.ts <dir> [--max=N] [--ignore-pins]
  *
  * Every folder with `data` blocks is read as a root module (its child
  * modules are folders of their own, read the same way). For each data block
  * it checks that the parse is clean and that canvas edits patch only what
  * they change: a move touches its position line, editing a literal argument
  * one value, a rename the label and the `data.type.name` references (no
- * `moved` block), a delete the block alone. Prints a summary (data source
- * types, how they are read); exits 1 when a check fails.
+ * `moved` block), a delete the block alone. It also runs validation with the
+ * shipped provider schemas loaded and lists the data source warnings it
+ * raises (to spot false positives). Prints a summary (data source types, how
+ * they are read, the warnings); exits 1 when a check fails.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseProject } from '@/hcl/parser';
 import { applyOpsWithPatches } from '@/hcl/patch';
 import { dataEdges, dataReferrers } from '@/ir/dataSources';
 import { lit, renameInHcl } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
 import { dataAddress } from '@/ir/types';
+import { validateProject } from '@/ir/validate';
+import { getDef } from '@/resources/registry';
+import { registerSchema } from '@/schema/store';
+import type { SchemaData } from '@/schema/types';
+
+// every shipped schema, resources and data sources, as the editor has them once loaded
+const SCHEMAS = fileURLToPath(new URL('../src/schema/data', import.meta.url));
+for (const f of readdirSync(SCHEMAS)) registerSchema(JSON.parse(readFileSync(join(SCHEMAS, f), 'utf8')) as SchemaData);
+const DATA_WARNING = /data source|data\.[\w-]+\.[\w-]+/;
 
 const root = process.argv[2];
 const max = Number(/--max=(\d+)/.exec(process.argv.join(' '))?.[1] ?? Infinity);
+/** validate as if no `required_providers` pinned another version (schema warnings are off otherwise) */
+const ignorePins = process.argv.includes('--ignore-pins');
 if (!root) {
   process.stderr.write('usage: check-data-corpus.ts <dir> [--max=N]\n');
   process.exit(2);
@@ -57,7 +71,10 @@ const stats = {
   checks: 0,
   failures: 0,
   parseErrors: 0,
+  /** data source warnings validation raises, by kind (addresses and names left out) */
+  warnings: {} as Record<string, number>,
 };
+const shownWarnings: string[] = [];
 const fail = (where: string, what: string) => {
   stats.failures++;
   if (stats.failures <= 40) process.stdout.write(`FAIL ${where}: ${what}\n`);
@@ -93,6 +110,15 @@ for (const dir of dirs) {
   if (ir.data.length !== declared) fail(where, `${declared} data blocks, ${ir.data.length} parsed`);
   const unchanged = applyOpsWithPatches(files, ir, []);
   for (const [f, text] of Object.entries(files)) if (unchanged.files[f] !== text) fail(where, `round-trip changed ${f}`);
+  const checked = ignorePins
+    ? parseProject(Object.fromEntries(Object.entries(files).map(([f, t]) => [f, t.replace(/version\s*=\s*"[^"]*"/g, 'version = ">= 0"')]))).ir
+    : ir;
+  for (const w of validateProject(checked, getDef)) {
+    if (!DATA_WARNING.test(w.message)) continue;
+    const kind = w.message.replace(/^[^:]+: /, '').replace(/"[^"]*"/g, '"…"').replace(/data\.[\w.[\]"-]+/g, 'data.…');
+    stats.warnings[kind] = (stats.warnings[kind] ?? 0) + 1;
+    if (shownWarnings.length < 40) shownWarnings.push(`${where}: ${w.message}`);
+  }
   const edges = dataEdges(ir);
   for (const d of ir.data) {
     stats.dataBlocks++;
@@ -155,5 +181,6 @@ for (const dir of dirs) {
   }
 }
 
+for (const w of shownWarnings) process.stdout.write(`WARN ${w}\n`);
 process.stdout.write(`${JSON.stringify(stats, null, 2)}\n`);
 process.exit(stats.failures > 0 ? 1 : 0);
