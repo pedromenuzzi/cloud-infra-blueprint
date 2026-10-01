@@ -23,6 +23,7 @@ import { lit, renameInHcl } from '@/ir/expr';
 import type { Op } from '@/ir/ops';
 import { dataAddress } from '@/ir/types';
 import { validateProject } from '@/ir/validate';
+import { auditSecurity } from '@/security/audit';
 import { getDef } from '@/resources/registry';
 import { registerSchema } from '@/schema/store';
 import type { SchemaData } from '@/schema/types';
@@ -73,6 +74,8 @@ const stats = {
   parseErrors: 0,
   /** data source warnings validation raises, by kind (addresses and names left out) */
   warnings: {} as Record<string, number>,
+  /** IAM policy documents the security audit flags for "*" on "*" */
+  iamAdmin: 0,
 };
 const shownWarnings: string[] = [];
 const fail = (where: string, what: string) => {
@@ -118,6 +121,12 @@ for (const dir of dirs) {
     const kind = w.message.replace(/^[^:]+: /, '').replace(/"[^"]*"/g, '"…"').replace(/data\.[\w.[\]"-]+/g, 'data.…');
     stats.warnings[kind] = (stats.warnings[kind] ?? 0) + 1;
     if (shownWarnings.length < 40) shownWarnings.push(`${where}: ${w.message}`);
+  }
+  // IAM policy documents granting "*" on "*" (src/security/iamDocuments.ts)
+  for (const f of auditSecurity(ir).findings) {
+    if (!f.id.startsWith('iam-admin:')) continue;
+    stats.iamAdmin++;
+    if (shownWarnings.length < 40) shownWarnings.push(`${where}: ${f.title} (${f.resource})`);
   }
   const edges = dataEdges(ir);
   for (const d of ir.data) {
