@@ -35,7 +35,7 @@ test('backs up every project: a folder of .tf files each, and a manifest', async
   await expect(page.getByText('No backup yet')).toBeVisible();
   const { name, bytes } = await downloadBackup(page);
   expect(name).toMatch(/^cloud-blueprint-backup-\d{4}-\d{2}-\d{2}\.zip$/);
-  await expect(page.getByText('Backup downloaded — 1 project')).toBeVisible();
+  await expect(page.getByText('Backup downloaded: 1 project')).toBeVisible();
   await expect(page.getByText('Last backup just now')).toBeVisible();
 
   const entries = unzipSync(new Uint8Array(bytes));
@@ -145,7 +145,7 @@ test('a restore that does not fit in browser storage says so and changes nothing
   await expect(dialog.getByRole('alert')).toContainText('Nothing was changed');
   expect(await storedProjects(page)).toEqual(before);
   // no "changes aren't being saved" banner: nothing was lost
-  await expect(page.getByText('Storage is full — changes aren’t being saved')).toBeHidden();
+  await expect(page.getByText('Storage is full: changes aren’t being saved')).toBeHidden();
 });
 
 test.describe('storage meter', () => {
@@ -153,7 +153,7 @@ test.describe('storage meter', () => {
     await page.goto('/dashboard');
     const meter = page.getByRole('meter', { name: 'Browser storage used' });
     await expect(meter).toBeVisible();
-    await expect(meter).toHaveAttribute('aria-valuetext', /^\d+% — [\d.]+ KB of 5 MB$/);
+    await expect(meter).toHaveAttribute('aria-valuetext', /^\d+% \([\d.]+ KB of 5 MB\)$/);
     await expect(page.getByText(/^Projects: [\d.]+ KB of ~5 MB this browser allows$/)).toBeVisible();
     await expect(page.getByText(/free on this device/)).toBeVisible();
     // under 70%: no nudge
