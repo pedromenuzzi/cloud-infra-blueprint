@@ -105,16 +105,16 @@ resource "aws_rds_cluster" "orders" {
     const verdict = dropVerdict(ir, computeAbsoluteRects(ir), { id: cluster.id, type: cluster.type }, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 + 20 }, 'en');
     if (verdict.kind !== 'refuse' || !verdict.fix) throw new Error(`expected a refusal with a fix, got ${verdict.kind}`);
     expect(verdict.reason).toBe(
-      "An Aurora cluster isn't placed in one subnet — it runs in a DB subnet group that spans two or more availability zones",
+      "An Aurora cluster isn't placed in one subnet: it runs in a DB subnet group that spans two or more availability zones",
     );
     expect(verdict.fix).toMatchObject({ kind: 'create-group', groupType: 'aws_db_subnet_group' });
 
     const result = fixOps(ir, cluster.id, verdict.fix, 'en')!;
-    expect(result.message).toBe('Created aws_db_subnet_group.orders with private_a and private_b — aws_rds_cluster.orders is drawn inside it');
+    expect(result.message).toBe('Created aws_db_subnet_group.orders with private_a and private_b. aws_rds_cluster.orders is drawn inside it');
     expect(result.hint).toBeUndefined();
-    expect(result.note).toBe("Tip: connect aws_rds_cluster.orders to a security group — without one it gets the VPC's default group");
+    expect(result.note).toBe("Tip: connect aws_rds_cluster.orders to a security group. Without one it gets the VPC's default group");
     expect(fixOps(ir, cluster.id, verdict.fix, 'pt-BR')!.note).toBe(
-      'Dica: conecte aws_rds_cluster.orders a um grupo de segurança — sem um, ele fica com o grupo padrão da VPC',
+      'Dica: conecte aws_rds_cluster.orders a um grupo de segurança. Sem um, ele fica com o grupo padrão da VPC',
     );
     const next = apply(ir, result.ops);
     expect(node(next, 'aws_rds_cluster.orders').parentId).toBe('aws_db_subnet_group.orders');

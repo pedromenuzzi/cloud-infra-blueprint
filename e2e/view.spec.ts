@@ -51,7 +51,7 @@ test('the viewer shows the project read-only: drag, delete, connect and typing c
   await ec2.click();
   const inspector = page.getByRole('complementary', { name: 'Inspector' });
   await expect(inspector).toBeVisible();
-  await expect(inspector).toContainText('Read-only view — make a copy to edit.');
+  await expect(inspector).toContainText('Read-only view: make a copy to edit.');
   await expect(page.locator('#inspector-tf-name')).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Delete resource' })).toHaveCount(0);
 
@@ -183,7 +183,7 @@ test('"Copy view link" in the editor makes a link that opens this viewer', async
     const copied = (window as unknown as { __copied: string[] }).__copied;
     return copied[copied.length - 1]!;
   });
-  expect(snippet).toMatch(/^<iframe src="http:\/\/localhost:\d+\/#view=[A-Za-z0-9_-]+&embed=1" title="production-web — Cloud Blueprint"/);
+  expect(snippet).toMatch(/^<iframe src="http:\/\/localhost:\d+\/#view=[A-Za-z0-9_-]+&embed=1" title="production-web · Cloud Blueprint"/);
 });
 
 test('embed mode: the diagram only, fitted, inside an iframe — no focus taken, no dialogs', async ({ page, baseURL }) => {

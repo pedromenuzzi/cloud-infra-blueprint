@@ -140,7 +140,7 @@ test.describe('folder sync', () => {
     await page.goto('/dashboard');
     await page.evaluate(() => ((window as unknown as { __pick: string }).__pick = 'repo'));
     await page.getByRole('button', { name: 'Open folder…' }).first().click();
-    await expect(page.getByText('“repo/infra” is already linked — opening its project')).toBeVisible();
+    await expect(page.getByText('“repo/infra” is already linked. Opening its project')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Synced to folder repo/infra' })).toBeVisible();
   });
 

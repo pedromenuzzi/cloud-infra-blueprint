@@ -13,10 +13,10 @@ export const numPt = (n: number) => formatNumber(n, { maximumFractionDigits: 4 }
 export const costMessages = defineMessages(
   {
     providers: { aws: 'AWS', azure: 'Azure', gcp: 'Google Cloud', other: 'Other' },
-    noRegion: (region: string) => `No region in the code — priced at ${region}`,
+    noRegion: (region: string) => `No region in the code: priced at ${region}`,
     regional: (region: string, base: string, multiplier: number) =>
       `${region}: ${base} prices × ${multiplier.toFixed(2)} (regional multiplier)`,
-    otherRegion: (base: string, region: string) => `Prices for ${base} — ${region} may differ`,
+    otherRegion: (base: string, region: string) => `Prices for ${base} (${region} may differ)`,
     oneCosts: (reason: string, one: string) => `${reason}. One costs about ${one} a month.`,
     notCreated: 'count = 0: not created',
     onDemand: (hours: number) => `On-demand list prices, ${hours} hours a month.`,
@@ -29,15 +29,15 @@ export const costMessages = defineMessages(
     countOptional: 'count is conditional: 0 or 1 instance, decided at plan time',
     notLiteral: (field: string) => `${field} isn't set to a literal value`,
     notInTable: (field: string, value: string) => `${field} "${value}" isn't in the price table`,
-    insideTerraform: 'Runs inside Terraform — nothing is billed',
+    insideTerraform: 'Runs inside Terraform, so nothing is billed',
     typeNotInTable: "This resource type isn't in the price table yet",
   },
   {
     providers: { aws: 'AWS', azure: 'Azure', gcp: 'Google Cloud', other: 'Outros' },
-    noRegion: (region: string) => `Nenhuma região no código — preços de ${region}`,
+    noRegion: (region: string) => `Nenhuma região no código: preços de ${region}`,
     regional: (region: string, base: string, multiplier: number) =>
       `${region}: preços de ${base} × ${formatNumber(multiplier, { minimumFractionDigits: 2, maximumFractionDigits: 2 }, 'pt-BR')} (multiplicador regional)`,
-    otherRegion: (base: string, region: string) => `Preços de ${base} — em ${region} podem ser diferentes`,
+    otherRegion: (base: string, region: string) => `Preços de ${base} (em ${region} podem ser diferentes)`,
     oneCosts: (reason: string, one: string) => `${reason}. Uma unidade custa cerca de ${one} por mês.`,
     notCreated: 'count = 0: não é criado',
     onDemand: (hours: number) => `Preços de tabela sob demanda, ${hours} horas por mês.`,
@@ -51,7 +51,7 @@ export const costMessages = defineMessages(
     countOptional: 'count é condicional: 0 ou 1 instância, decidido no plan',
     notLiteral: (field: string) => `${field} não está definido com um valor literal`,
     notInTable: (field: string, value: string) => `${field} "${value}" não está na tabela de preços`,
-    insideTerraform: 'Roda dentro do Terraform — nada é cobrado',
+    insideTerraform: 'Roda dentro do Terraform, então nada é cobrado',
     typeNotInTable: 'Este tipo de recurso ainda não está na tabela de preços',
   },
 );

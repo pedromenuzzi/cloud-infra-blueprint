@@ -29,7 +29,7 @@ describe('parse errors and refused edits in Portuguese', () => {
     const twice = 'resource "aws_vpc" "main" {\n}\nresource "aws_vpc" "main" {\n}\n';
     useLocale.getState().setLocale('pt-BR');
     expect(errors(twice)).toEqual([
-      'Recurso duplicado "aws_vpc.main" (já declarado em main.tf:1): o Terraform exige endereços únicos — renomeie um deles',
+      'Recurso duplicado "aws_vpc.main" (já declarado em main.tf:1): o Terraform exige endereços únicos, então renomeie um deles',
     ]);
   });
 

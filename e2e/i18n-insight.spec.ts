@@ -213,7 +213,7 @@ test('the PDF export dialog, and a document written in Portuguese', async ({ pag
   const download = page.waitForEvent('download');
   await dialog.getByRole('button', { name: 'Baixar PDF' }).click();
   const file = await download;
-  await expect(page.getByText('PDF baixado — pronto para compartilhar')).toBeVisible();
+  await expect(page.getByText('PDF baixado, pronto para compartilhar')).toBeVisible();
   expect(file.suggestedFilename()).toBe('plataforma-de-pagamentos-arquitetura.pdf');
   const pdf = await readFile((await file.path())!);
   const out = process.env.I18N_SHOTS;

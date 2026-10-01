@@ -11,9 +11,9 @@ export const repeatMessages = defineMessages(
   {
     /* canvas badge */
     badgeInstances: (n: number) => `${n} instance${s(n)}`,
-    badgeOptional: '0 or 1 instance — created only when the condition holds',
+    badgeOptional: '0 or 1 instance, created only when the condition holds',
     badgeUnknownCount: 'How many instances is decided at plan time',
-    badgeUnknownEach: 'One instance per key — the keys are decided at plan time',
+    badgeUnknownEach: 'One instance per key (the keys are decided at plan time)',
     badgeKeys: (keys: string) => `Keys: ${keys}`,
     /** appended to a node's accessible name */
     ariaInstances: (n: number) => `${n} instance${s(n)}`,
@@ -54,9 +54,9 @@ export const repeatMessages = defineMessages(
   },
   {
     badgeInstances: (n: number) => `${n} instância${s(n)}`,
-    badgeOptional: '0 ou 1 instância — criada só quando a condição vale',
+    badgeOptional: '0 ou 1 instância, criada só quando a condição vale',
     badgeUnknownCount: 'O número de instâncias só é decidido no plan',
-    badgeUnknownEach: 'Uma instância por chave — as chaves só são decididas no plan',
+    badgeUnknownEach: 'Uma instância por chave (as chaves só são decididas no plan)',
     badgeKeys: (keys: string) => `Chaves: ${keys}`,
     ariaInstances: (n: number) => `${n} instância${s(n)}`,
     ariaOptional: 'opcional',

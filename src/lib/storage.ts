@@ -210,6 +210,19 @@ interface Normalized {
   lossy: boolean;
 }
 
+/**
+ * The seeded demo's description as it was first written (with a dash), in
+ * each language: an untouched one reads as today's text, so the dashboard
+ * still recognizes it as ours and shows it in the UI language.
+ */
+const LEGACY_DEMO_DESCRIPTION = new Map<string, string>([
+  ['Demo project — a classic VPC + EC2 + RDS web stack. Safe to edit or delete.', libMessages.en.demoDescription],
+  [
+    'Projeto de demonstração — uma stack web clássica com VPC + EC2 + RDS. Pode editar ou excluir à vontade.',
+    libMessages['pt-BR'].demoDescription,
+  ],
+]);
+
 function normalizeProject(value: unknown): Normalized {
   if (!isRecord(value) || typeof value.id !== 'string' || value.id === '') {
     return { project: null, lossy: true };
@@ -230,11 +243,12 @@ function normalizeProject(value: unknown): Normalized {
       : detectProviders(files);
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
   const createdAt = str(value.createdAt) ?? str(value.updatedAt) ?? new Date(0).toISOString();
+  const description = str(value.description);
   const project: Project = {
     ...value, // keep fields a newer version may have added
     id: value.id,
     name: str(value.name)?.trim() || messagesFor(libMessages).untitledProject,
-    description: str(value.description),
+    description: (value.demo === true && description !== undefined && LEGACY_DEMO_DESCRIPTION.get(description)) || description,
     files,
     providers,
     templateSlug: str(value.templateSlug),

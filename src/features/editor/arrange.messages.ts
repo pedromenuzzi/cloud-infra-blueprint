@@ -8,7 +8,7 @@ export const arrangeMessages = defineMessages(
   {
     button: 'Auto-arrange',
     tooltip: 'Tidy the whole diagram (one undo step)',
-    overlap: 'Some resources overlap — Auto-arrange tidies them',
+    overlap: 'Some resources overlap. Auto-arrange tidies them',
     command: 'Auto-arrange layout',
     keywords: KEYWORDS,
     arrangeInside: (name: string) => `Arrange inside ${name}`,
@@ -18,7 +18,7 @@ export const arrangeMessages = defineMessages(
   {
     button: 'Organizar',
     tooltip: 'Organiza todo o diagrama (desfaz em um passo)',
-    overlap: 'Alguns recursos estão sobrepostos — Organizar resolve isso',
+    overlap: 'Alguns recursos estão sobrepostos. Organizar resolve isso',
     command: 'Organizar layout automaticamente',
     keywords: KEYWORDS,
     arrangeInside: (name: string) => `Organizar dentro de ${name}`,

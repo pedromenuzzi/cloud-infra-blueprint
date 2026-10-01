@@ -1237,7 +1237,8 @@ resource "google_compute_firewall" "app" {
 }`;
     for (const src of [aws, azure, gcp]) {
       const audit = auditSecurity(load(src).ir);
-      expect(audit.findings.map((f) => [f.severity, f.title])).toEqual([['medium', "Port can't be verified (var.port) — open to the internet"]]);
+      expect(audit.findings.map((f) => [f.severity, f.title])).toEqual([['medium', "Port that can't be verified (var.port) is open to the internet"]]);
+      expect(audit.findings[0].alert).toBe("Port that can't be verified (var.port) is now open to the internet");
       expect(audit.grade).toBe('B');
     }
     expect(analyzeSecurity(load(aws).ir).exposure.get('aws_instance.web')).toMatchObject({ level: 'internet', ports: ['var.port'] });
@@ -1820,7 +1821,7 @@ resource "aws_eip" "web" {
     const [path] = portOf(accessOf(src, 'aws_instance.web'), '443').paths;
     expect(kinds(path.steps)).toEqual(['internet', 'gateway', 'route', 'subnet', 'sg', 'address', 'resource']);
     expect(path.steps[2]).toMatchObject({ resource: 'aws_default_route_table.main' });
-    expect(path.steps[2].detail).toMatch(/the VPC's main route table — subnet a has no association of its own/);
+    expect(path.steps[2].detail).toMatch(/the VPC's main route table \(subnet a has no association of its own\)/);
     expect(path.steps[4]).toMatchObject({
       detail: 'rule https allows HTTPS from 0.0.0.0/0',
       rule: { owner: 'aws_security_group.web', id: 'aws_vpc_security_group_ingress_rule.https' },
@@ -2145,7 +2146,7 @@ resource "aws_db_instance" "db2" {
     expect(after.grade).toBe(before.grade);
     const delta = securityDelta(before, after)!;
     expect(delta.gradeDropped).toBe(false);
-    expect(delta.message).toBe('New high security risk: Database is publicly accessible — aws_db_instance.db2');
+    expect(delta.message).toBe('New high security risk: Database is publicly accessible (aws_db_instance.db2)');
     expect(delta.target).toBe('aws_db_instance.db2');
   });
 
@@ -2173,7 +2174,7 @@ describe('in Portuguese', () => {
     expect(ssh.title).toBe('SSH (porta 22) aberto para a internet');
     expect(ssh.key).toBe('SSH (port 22) is open to the internet');
     expect(ssh.detail).toBe(
-      'app permite SSH de qualquer lugar (0.0.0.0/0). Nada público usa esta regra ainda — mas o próximo recurso que usar ficará exposto.',
+      'app permite SSH de qualquer lugar (0.0.0.0/0). Nada público usa esta regra ainda, mas o próximo recurso que usar ficará exposto.',
     );
     expect(ssh.fix?.label).toBe('Restringir a 10.0.0.0/16');
     expect(ssh.controls?.find((c) => c.id === '5.2')?.title).toBe(
@@ -2221,7 +2222,11 @@ resource "google_compute_firewall" "ssh" {
     const v6 = pt(VPC + sshSg('web', 'ipv6_cidr_blocks = ["::/0"]'));
     expect(v6.findings[0].title).toBe('SSH (porta 22) aberto para a internet via IPv6');
     const expr = pt(VPC + sshSg('web').replace(/= 22/g, '= var.port'));
-    expect(expr.findings[0].title).toBe('Porta não verificável (var.port) — aberta para a internet');
+    expect(expr.findings[0].title).toBe('Porta não verificável (var.port) aberta para a internet');
+    expect(expr.findings[0].alert).toBe('A porta não verificável (var.port) agora está aberta para a internet');
+    expect(expr.findings[0].detail).toBe(
+      'web permite portas definidas por uma expressão (var.port, então a auditoria não consegue saber quais estão abertas) de qualquer lugar (0.0.0.0/0). Nada público usa esta regra ainda, mas o próximo recurso que usar ficará exposto.',
+    );
   });
 
   it('access paths: every step of the way in, and what stops the rest', () => {
@@ -2275,7 +2280,7 @@ resource "aws_db_instance" "db2" {
   storage_encrypted      = true
   vpc_security_group_ids = [aws_security_group.db.id]
 }`))!;
-    expect(high.message).toBe('Novo risco de segurança alto: Banco de dados com acesso público — aws_db_instance.db2');
+    expect(high.message).toBe('Novo risco de segurança alto: Banco de dados com acesso público (aws_db_instance.db2)');
   });
 });
 

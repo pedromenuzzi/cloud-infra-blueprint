@@ -26,7 +26,7 @@ test('the canvas is read-only while the code has errors, and nothing gets corrup
   await codeLines(page).click();
   await page.keyboard.press('Control+Home');
   await page.keyboard.insertText('@@@ oops\n');
-  await expect(page.getByText('Code has errors — fix them to edit the canvas again')).toBeVisible();
+  await expect(page.getByText('Code has errors. Fix them to edit the canvas again')).toBeVisible();
   await expect.poll(() => mainTf(page)).toContain('@@@ oops');
   const broken = await mainTf(page);
 
@@ -90,7 +90,7 @@ test('the inspector survives tags turning into an expression', async ({ page }) 
   await page.keyboard.insertText('resource "aws_s3_bucket" "b" { tags = var.common_tags }');
   await expect.poll(() => mainTf(page)).toContain('tags = var.common_tags');
   await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
-  await expect(page.getByText('complex expression — edit in code').first()).toBeVisible();
+  await expect(page.getByText('complex expression: edit in code').first()).toBeVisible();
   expect(errors).toEqual([]);
 });
 

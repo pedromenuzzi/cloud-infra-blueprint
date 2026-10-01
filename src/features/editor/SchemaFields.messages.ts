@@ -4,7 +4,7 @@ import { defineMessages } from '@/i18n/messages';
 export const schemaFieldsMessages = defineMessages(
   {
     loading: (provider: string) => `Loading the ${provider} provider schema…`,
-    failed: (provider: string) => `Couldn't load the ${provider} provider schema — showing the catalog fields only.`,
+    failed: (provider: string) => `Couldn't load the ${provider} provider schema. Showing the catalog fields only.`,
     retry: 'Retry',
     heading: 'All arguments',
     source: (provider: string, version: string) => `Arguments from the ${provider} provider ${version} schema`,
@@ -28,7 +28,7 @@ export const schemaFieldsMessages = defineMessages(
     badgeMeta: 'meta-argument',
     badgeUnknown: 'unknown',
     sensitive: 'sensitive',
-    deprecated: (note?: string) => `Deprecated${note ? ` — ${note}` : ' by the provider'}`,
+    deprecated: (note?: string) => `Deprecated${note ? `: ${note}` : ' by the provider'}`,
     moreLines: (n: number) => `\n… ${n} more lines`,
     addBlockLabel: (name: string) => `Add ${name} block`,
     addBlock: 'Add block',
@@ -39,7 +39,7 @@ export const schemaFieldsMessages = defineMessages(
   },
   {
     loading: (provider) => `Carregando o schema do provider ${provider}…`,
-    failed: (provider) => `Não foi possível carregar o schema do provider ${provider} — mostrando só os campos do catálogo.`,
+    failed: (provider) => `Não foi possível carregar o schema do provider ${provider}. Mostrando só os campos do catálogo.`,
     retry: 'Tentar de novo',
     heading: 'Todos os argumentos',
     source: (provider, version) => `Argumentos do schema do provider ${provider} ${version}`,
@@ -62,7 +62,7 @@ export const schemaFieldsMessages = defineMessages(
     badgeMeta: 'meta-argumento',
     badgeUnknown: 'desconhecido',
     sensitive: 'sensível',
-    deprecated: (note) => (note ? `Obsoleto — ${note}` : 'Marcado como obsoleto pelo provider'),
+    deprecated: (note) => (note ? `Obsoleto: ${note}` : 'Marcado como obsoleto pelo provider'),
     moreLines: (n) => `\n… mais ${n} linhas`,
     addBlockLabel: (name) => `Adicionar bloco ${name}`,
     addBlock: 'Adicionar bloco',

@@ -13,7 +13,7 @@ test('the current step lives in the URL and survives a refresh', async ({ page }
   await expect(page).toHaveURL(/\?step=3$/);
   await page.reload();
   await expect(counter).toHaveText(/^Step 3 of/);
-  await expect(page).toHaveTitle(`${tutorial.title} — Tutorials — Cloud Blueprint`);
+  await expect(page).toHaveTitle(`${tutorial.title} · Tutorials · Cloud Blueprint`);
 });
 
 test('opening the same step in the editor again reuses the copy', async ({ page }) => {
@@ -27,7 +27,7 @@ test('opening the same step in the editor again reuses the copy', async ({ page 
     await expect(page).toHaveURL(/\/tutorials\//);
   }
   expect(ids.size).toBe(1);
-  const copies = (await storedProjects(page)).filter((p) => p.name.startsWith(`${tutorial.title} — step 2`));
+  const copies = (await storedProjects(page)).filter((p) => p.name.startsWith(`${tutorial.title} (step 2`));
   expect(copies).toHaveLength(1);
 });
 

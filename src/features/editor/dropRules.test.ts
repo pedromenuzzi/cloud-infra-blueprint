@@ -119,17 +119,17 @@ describe('refusal reasons', () => {
       'Um grupo de segurança pertence à VPC inteira, não a uma sub-rede',
     );
     expect(refusalReason('aws_instance', vpc, 'en')).toBe(
-      'An EC2 instance goes inside a subnet, not directly in the VPC — drop it on a subnet',
+      'An EC2 instance goes inside a subnet, not directly in the VPC. Drop it on a subnet',
     );
     expect(refusalReason('aws_instance', vpc, 'pt-BR')).toBe(
-      'Uma instância EC2 fica dentro de uma sub-rede, não direto na VPC — solte-a sobre uma sub-rede',
+      'Uma instância EC2 fica dentro de uma sub-rede, não direto na VPC. Solte-a sobre uma sub-rede',
     );
     expect(refusalReason('aws_db_instance', subnet, 'en')).toBe(
-      "An RDS database isn't placed in one subnet — it runs in a DB subnet group that spans two or more availability zones",
+      "An RDS database isn't placed in one subnet: it runs in a DB subnet group that spans two or more availability zones",
     );
     const rg = { id: 'azurerm_resource_group.a', type: 'azurerm_resource_group', name: 'a' } as ResourceNode;
     expect(refusalReason('aws_s3_bucket', rg, 'en')).toBe(
-      "An S3 bucket is an AWS resource — it can't go inside an Azure resource group",
+      "An S3 bucket is an AWS resource, so it can't go inside an Azure resource group",
     );
   });
 });
@@ -192,7 +192,7 @@ describe('the DB subnet group fix', () => {
     if (v.kind !== 'refuse' || !v.fix) throw new Error('no fix');
     const result = fixOps(ir, 'aws_db_instance.main', v.fix, 'en')!;
     expect(result.message).toBe(
-      'Created aws_db_subnet_group.main with public_a and public_b — aws_db_instance.main is drawn inside it',
+      'Created aws_db_subnet_group.main with public_a and public_b. aws_db_instance.main is drawn inside it',
     );
     expect(result.hint).toBeUndefined();
     const next = apply(ir, result.ops);

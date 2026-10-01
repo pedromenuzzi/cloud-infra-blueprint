@@ -22,7 +22,7 @@ export const modulesMessages = defineMessages(
     nodeLabel: (name: string, source: string, warn: boolean) => `Module ${name}, ${source}${warn ? ', has warnings' : ''}`,
     notAnalysed: 'Not analysed',
     openHint: 'Double-click to open',
-    hasWarnings: 'Has warnings — see the inspector',
+    hasWarnings: 'Has warnings: see the inspector',
 
     /* its menu */
     open: 'Open module',
@@ -33,7 +33,7 @@ export const modulesMessages = defineMessages(
     deleteTitle: (id: string) => `Delete ${id}?`,
     deleteManyTitle: (n: number) => `Delete ${n} modules?`,
     deleteBody: (ids: string[]) =>
-      `Still read by ${few(ids, (n) => `and ${n} more`, 'en')}. Those references are kept as they are — they'll show as warnings until you point them elsewhere.`,
+      `Still read by ${few(ids, (n) => `and ${n} more`, 'en')}. Those references are kept as they are. They'll show as warnings until you point them elsewhere.`,
     deleteConfirm: 'Delete',
 
     /* what the audit and the estimate leave out */
@@ -41,7 +41,7 @@ export const modulesMessages = defineMessages(
       `${n === 1 ? 'A module call isn’t' : `${n} module calls aren’t`} part of this audit: ` +
       (local === n ? 'module resources aren’t audited yet.' : local === 0 ? 'their contents come from outside the project.' : `${n - local} come from outside the project, ${local} ${local === 1 ? 'is' : 'are'} not audited yet.`),
     notEstimated: (n: number, local: number) =>
-      `Not included: ${n} module call${s(n)} — ` +
+      `${n} module call${s(n)} not included: ` +
       (local === n ? 'module resources aren’t estimated yet.' : local === 0 ? 'their contents come from outside the project.' : `${n - local} from outside the project, ${local} not estimated yet.`),
 
     /* the stats pill */
@@ -56,7 +56,7 @@ export const modulesMessages = defineMessages(
     nodeLabel: (name, source, warn) => `Módulo ${name}, ${source}${warn ? ', tem avisos' : ''}`,
     notAnalysed: 'Não analisado',
     openHint: 'Clique duas vezes para abrir',
-    hasWarnings: 'Tem avisos — veja o inspetor',
+    hasWarnings: 'Tem avisos: veja o inspetor',
 
     open: 'Abrir módulo',
     registryPage: 'Página no Registry',
@@ -65,7 +65,7 @@ export const modulesMessages = defineMessages(
     deleteTitle: (id) => `Excluir ${id}?`,
     deleteManyTitle: (n) => `Excluir ${n} módulos?`,
     deleteBody: (ids) =>
-      `Ainda é lido por ${few(ids, (n) => `e mais ${n}`, 'pt-BR')}. Essas referências ficam como estão — aparecem como avisos até você apontá-las para outro lugar.`,
+      `Ainda é lido por ${few(ids, (n) => `e mais ${n}`, 'pt-BR')}. Essas referências ficam como estão. Elas aparecem como avisos até você apontá-las para outro lugar.`,
     deleteConfirm: 'Excluir',
 
     notAudited: (n, local) =>
@@ -76,7 +76,7 @@ export const modulesMessages = defineMessages(
           ? 'o conteúdo delas vem de fora do projeto.'
           : `${n - local} ${n - local === 1 ? 'vem' : 'vêm'} de fora do projeto, ${local} ainda não ${local === 1 ? 'é auditada' : 'são auditadas'}.`),
     notEstimated: (n, local) =>
-      `Fora da conta: ${n} chamada${s(n)} de módulo — ` +
+      `${n} chamada${s(n)} de módulo fora da conta: ` +
       (local === n
         ? 'os recursos de módulos ainda não são estimados.'
         : local === 0

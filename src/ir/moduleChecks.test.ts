@@ -82,7 +82,7 @@ describe('module validation', () => {
     expect(warnings.map((w) => [w.nodeId, w.message, w.start?.line])).toEqual([
       ['module.net', 'module.net: required input "name" is missing (modules/net gives it no default)', 1],
       ['module.net', 'module.net: "colour" isn\'t an input of modules/net (no variable "colour")', 4],
-      ['module.nothing', 'module.nothing: "source" is missing — Terraform can\'t find the module without it', 12],
+      ['module.nothing', 'module.nothing: "source" is missing (Terraform can\'t find the module without it)', 12],
       ['aws_instance.web', 'aws_instance.web: "tags.Vpc" reads output "vpc_arn", which module.net doesn\'t have', 19],
       ['aws_instance.web', 'aws_instance.web: "tags.Gone" references unknown module module.ghost', 19],
     ]);

@@ -19,16 +19,16 @@ export const checkMessages = defineMessages(
     /* --------------------------------------------------------------- CIDR */
     /** AWS: a VPC or subnet range outside /16–/28 */
     awsSize: (field: string, text: string, tooLarge: boolean, role: 'network' | 'subnet') =>
-      `${field} ${text} is too ${tooLarge ? 'large' : 'small'} for a ${role === 'subnet' ? 'subnet' : 'VPC'} — AWS allows /16 to /28`,
-    azureSubnetTooSmall: (field: string, text: string) => `${field} ${text} is too small — Azure subnets must be /29 or larger`,
-    azureIpv6Size: (field: string, text: string) => `${field} ${text} can't be used — Azure IPv6 subnets must be exactly /64`,
-    gcpSubnetTooSmall: (field: string, text: string) => `${field} ${text} is too small — GCP subnet ranges must be /29 or larger`,
+      `${field} ${text} is too ${tooLarge ? 'large' : 'small'} for a ${role === 'subnet' ? 'subnet' : 'VPC'} (AWS allows /16 to /28)`,
+    azureSubnetTooSmall: (field: string, text: string) => `${field} ${text} is too small (Azure subnets must be /29 or larger)`,
+    azureIpv6Size: (field: string, text: string) => `${field} ${text} can't be used (Azure IPv6 subnets must be exactly /64)`,
+    gcpSubnetTooSmall: (field: string, text: string) => `${field} ${text} is too small (GCP subnet ranges must be /29 or larger)`,
     /** `quoted`: `cidr_block "10.0.1/24" (from var.x)` */
     invalidCidr: (quoted: string, example: string) => `${quoted} isn't a valid CIDR range (expected something like ${example})`,
-    wrongFamily: (quoted: string, family: IpFamily, fix: string) => `${quoted} is an ${FAMILY[family]} range — ${fix}`,
-    putItIn: (field: string) => `put it in ${field}`,
-    takesFamily: (field: string, family: IpFamily) => `${field} takes ${FAMILY[family]} ranges`,
-    hostBits: (quoted: string, cidr: string) => `${quoted} has host bits set — the range it describes is ${cidr}, write that instead`,
+    wrongFamily: (quoted: string, family: IpFamily, fix: string) => `${quoted} is an ${FAMILY[family]} range, ${fix}`,
+    putItIn: (field: string) => `so put it in ${field}`,
+    takesFamily: (field: string, family: IpFamily) => `but ${field} takes ${FAMILY[family]} ranges`,
+    hostBits: (quoted: string, cidr: string) => `${quoted} has host bits set: the range it describes is ${cidr}, so write that instead`,
     noFamilyRange: (field: string, text: string, family: IpFamily, network: string) =>
       `${field} ${text} is ${FAMILY[family]}, but ${network} has no ${FAMILY[family]} range`,
     outsideNetwork: (field: string, text: string, partly: boolean, network: string, ranges: string[]) =>
@@ -38,11 +38,11 @@ export const checkMessages = defineMessages(
     /** two ranges of one subnet */
     overlapsOwn: (field: string, text: string, first: string) => `${field} ${text} overlaps ${first}`,
     overlapsSibling: (field: string, text: string, other: string, otherText: string, provider: CloudProvider) =>
-      `${field} ${text} overlaps ${other} (${otherText}) — ${
+      `${field} ${text} overlaps ${other} (${otherText}), but ${
         provider === 'gcp' ? 'subnetworks of one network' : `subnets in one ${provider === 'azure' ? 'VNet' : 'VPC'}`
       } need ranges of their own`,
     peeringOverlap: (provider: CloudProvider, a: string, aRange: string, b: string, bRange: string) =>
-      `${a} (${aRange}) and ${b} (${bRange}) overlap — ${
+      `${a} (${aRange}) and ${b} (${bRange}) overlap. ${
         provider === 'aws'
           ? "AWS can't peer VPCs whose ranges overlap"
           : provider === 'azure'
@@ -51,15 +51,15 @@ export const checkMessages = defineMessages(
       }`,
     /** two networks of one project that aren't peered */
     networksOverlap: (range: string, other: string, otherRange: string, provider: CloudProvider) =>
-      `${range} overlaps ${other} (${otherRange}) — fine while the two ${provider === 'azure' ? 'VNet' : provider === 'gcp' ? 'network' : 'VPC'}s stay apart, but they could never be peered`,
+      `${range} overlaps ${other} (${otherRange}). That's fine while the two ${provider === 'azure' ? 'VNet' : provider === 'gcp' ? 'network' : 'VPC'}s stay apart, but they could never be peered`,
 
     /* -------------------------------------------------------------- names */
     /** `problem` follows `name "…"` */
     nameProblem: (arg: string, value: string, problem: string) => `${arg} "${value}" ${problem}`,
-    tooLong: (length: number, resource: string, max: number) => `is ${length} characters — ${resource} names can be at most ${max}`,
+    tooLong: (length: number, resource: string, max: number) => `is ${length} characters, but ${resource} names can be at most ${max}`,
     tooShort: (length: number, resource: string, min: number) =>
-      `is ${length} character${length === 1 ? '' : 's'} — ${resource} names need at least ${min}`,
-    notValid: (resource: string, allowed: string) => `isn't a valid ${resource} name — ${allowed}`,
+      `is ${length} character${length === 1 ? '' : 's'}, but ${resource} names need at least ${min}`,
+    notValid: (resource: string, allowed: string) => `isn't a valid ${resource} name: ${allowed}`,
     allowed: {
       rfc1035: 'use lowercase letters, digits and hyphens, starting with a letter and not ending with a hyphen',
       azureNetwork:
@@ -87,15 +87,15 @@ export const checkMessages = defineMessages(
     },
     doubleHyphen: "can't contain two hyphens in a row",
     endsWithHyphen: "can't end with a hyphen",
-    lbInternalPrefix: 'can\'t start with "internal-" — AWS reserves it',
-    sgPrefix: 'can\'t start with "sg-" — AWS reserves it for group IDs',
-    defaultDbSubnetGroup: 'is reserved — AWS already has a "default" DB subnet group',
+    lbInternalPrefix: 'can\'t start with "internal-" (AWS reserves it)',
+    sgPrefix: 'can\'t start with "sg-" (AWS reserves it for group IDs)',
+    defaultDbSubnetGroup: 'is reserved: AWS already has a "default" DB subnet group',
     googPrefix: 'can\'t start with "goog"',
     s3: {
-      length: (n: number) => `is ${n} characters — S3 bucket names must be 3 to 63`,
-      uppercase: 'has uppercase letters — S3 bucket names must be lowercase',
-      underscore: "has an underscore — S3 bucket names can't contain underscores (use hyphens)",
-      characters: 'has characters S3 refuses — use lowercase letters, digits, dots and hyphens',
+      length: (n: number) => `is ${n} characters, but S3 bucket names must be 3 to 63`,
+      uppercase: 'has uppercase letters, but S3 bucket names must be lowercase',
+      underscore: "has an underscore, but S3 bucket names can't contain underscores (use hyphens)",
+      characters: 'has characters S3 refuses: use lowercase letters, digits, dots and hyphens',
       edges: 'must start and end with a letter or digit',
       doubleDot: "can't contain two dots in a row",
       ipLike: "looks like an IP address, which S3 doesn't allow",
@@ -103,9 +103,9 @@ export const checkMessages = defineMessages(
       suffix: 'ends with a suffix S3 reserves (-s3alias, --ol-s3)',
     },
     gcs: {
-      tooShort: (n: number) => `is ${n} characters — Cloud Storage bucket names need at least 3`,
-      tooLongNoDots: (n: number) => `is ${n} characters — Cloud Storage bucket names can be at most 63 (222 with dots)`,
-      tooLong: 'is too long — at most 222 characters, and 63 between dots',
+      tooShort: (n: number) => `is ${n} characters, but Cloud Storage bucket names need at least 3`,
+      tooLongNoDots: (n: number) => `is ${n} characters, but Cloud Storage bucket names can be at most 63 (222 with dots)`,
+      tooLong: 'is too long: at most 222 characters, and 63 between dots',
       ipLike: "looks like an IP address, which Cloud Storage doesn't allow",
       google: 'can\'t start with "goog" or contain "google"',
     },
@@ -116,7 +116,7 @@ export const checkMessages = defineMessages(
     awsZoneRegion: (zone: string, zoneVia: string, zoneRegion: string, provider: string, region: string, regionVia: string) =>
       `availability_zone "${zone}"${zoneVia} is in ${zoneRegion}, but ${provider} deploys to ${region}${regionVia}`,
     gcpZoneIsRegion: (location: string, via: string) =>
-      `zone "${location}"${via} is a region — instances need a zone such as ${location}-a`,
+      `zone "${location}"${via} is a region, but instances need a zone such as ${location}-a`,
     gcpRegionMismatch: (
       field: string,
       location: string,
@@ -128,11 +128,11 @@ export const checkMessages = defineMessages(
       kind: 'instance' | 'cluster',
     ) =>
       `${field} "${location}"${via} is in ${region}, ` +
-      `but ${subnetwork} is in ${subnetRegion}${subnetVia} — ${kind === 'instance' ? 'an instance' : 'a cluster'} must be in its subnetwork's region`,
+      `but ${subnetwork} is in ${subnetRegion}${subnetVia}. ${kind === 'instance' ? 'An instance' : 'A cluster'} must be in its subnetwork's region`,
 
     /* ------------------------------------------------------------- wiring */
     alreadyUsed: (arg: string, name: string, first: string, scope: string, why: string) =>
-      `${arg} "${name}" is already used by ${first}${scope ? ` ${scope}` : ''} — ${why}`,
+      `${arg} "${name}" is already used by ${first}${scope ? ` ${scope}` : ''} (${why})`,
     sameVpc: 'in the same VPC',
     sameVnet: 'in the same VNet',
     unique: {
@@ -150,25 +150,25 @@ export const checkMessages = defineMessages(
       gcpFirewall: 'firewall rule names are unique per project',
     },
     instanceCrossVpc: (group: string, groupVpc: string, subnet: string, vpc: string) =>
-      `${group} belongs to ${groupVpc}, but ${subnet} is in ${vpc} — an instance can only use security groups of its own VPC`,
+      `${group} belongs to ${groupVpc}, but ${subnet} is in ${vpc}. An instance can only use security groups of its own VPC`,
     routeTableCrossVpc: (table: string, tableVpc: string, subnet: string, vpc: string) =>
-      `${table} belongs to ${tableVpc}, but ${subnet} is in ${vpc} — a subnet can only use a route table of its own VPC`,
-    lbCrossVpc: (vpcs: string[]) => `subnets come from ${vpcs.join(' and ')} — a load balancer's subnets must all be in one VPC`,
+      `${table} belongs to ${tableVpc}, but ${subnet} is in ${vpc}. A subnet can only use a route table of its own VPC`,
+    lbCrossVpc: (vpcs: string[]) => `subnets come from ${vpcs.join(' and ')}, but a load balancer's subnets must all be in one VPC`,
   },
   {
     from: (via) => ` (de ${via})`,
 
     awsSize: (field, text, tooLarge, role) =>
-      `${field} ${text} é ${tooLarge ? 'grande' : 'pequeno'} demais para uma ${role === 'subnet' ? 'sub-rede' : 'VPC'} — a AWS aceita de /16 a /28`,
-    azureSubnetTooSmall: (field, text) => `${field} ${text} é pequeno demais — sub-redes do Azure precisam ser /29 ou maiores`,
-    azureIpv6Size: (field, text) => `${field} ${text} não pode ser usado — sub-redes IPv6 do Azure precisam ser exatamente /64`,
+      `${field} ${text} é ${tooLarge ? 'grande' : 'pequeno'} demais para uma ${role === 'subnet' ? 'sub-rede' : 'VPC'} (a AWS aceita de /16 a /28)`,
+    azureSubnetTooSmall: (field, text) => `${field} ${text} é pequeno demais (sub-redes do Azure precisam ser /29 ou maiores)`,
+    azureIpv6Size: (field, text) => `${field} ${text} não pode ser usado (sub-redes IPv6 do Azure precisam ser exatamente /64)`,
     gcpSubnetTooSmall: (field, text) =>
-      `${field} ${text} é pequeno demais — intervalos de sub-rede do GCP precisam ser /29 ou maiores`,
+      `${field} ${text} é pequeno demais (intervalos de sub-rede do GCP precisam ser /29 ou maiores)`,
     invalidCidr: (quoted, example) => `${quoted} não é um intervalo CIDR válido (esperado algo como ${example})`,
-    wrongFamily: (quoted, family, fix) => `${quoted} é um intervalo ${FAMILY[family]} — ${fix}`,
-    putItIn: (field) => `coloque-o em ${field}`,
-    takesFamily: (field, family) => `${field} aceita intervalos ${FAMILY[family]}`,
-    hostBits: (quoted, cidr) => `${quoted} tem bits de host definidos — o intervalo descrito é ${cidr}; use esse valor`,
+    wrongFamily: (quoted, family, fix) => `${quoted} é um intervalo ${FAMILY[family]}, ${fix}`,
+    putItIn: (field) => `então coloque-o em ${field}`,
+    takesFamily: (field, family) => `mas ${field} aceita intervalos ${FAMILY[family]}`,
+    hostBits: (quoted, cidr) => `${quoted} tem bits de host definidos: o intervalo descrito é ${cidr}, então use esse valor`,
     noFamilyRange: (field, text, family, network) =>
       `${field} ${text} é ${FAMILY[family]}, mas ${network} não tem intervalo ${FAMILY[family]}`,
     outsideNetwork: (field, text, partly, network, ranges) =>
@@ -177,26 +177,26 @@ export const checkMessages = defineMessages(
       }`,
     overlapsOwn: (field, text, first) => `${field} ${text} se sobrepõe a ${first}`,
     overlapsSibling: (field, text, other, otherText, provider) =>
-      `${field} ${text} se sobrepõe a ${other} (${otherText}) — sub-redes de uma mesma ${
+      `${field} ${text} se sobrepõe a ${other} (${otherText}), mas sub-redes de uma mesma ${
         provider === 'gcp' ? 'rede' : provider === 'azure' ? 'VNet' : 'VPC'
       } precisam de intervalos próprios`,
     peeringOverlap: (provider, a, aRange, b, bRange) =>
-      `${a} (${aRange}) e ${b} (${bRange}) se sobrepõem — ${
+      `${a} (${aRange}) e ${b} (${bRange}) se sobrepõem. ${
         provider === 'aws'
-          ? 'a AWS não faz peering entre VPCs com intervalos sobrepostos'
+          ? 'A AWS não faz peering entre VPCs com intervalos sobrepostos'
           : provider === 'azure'
-            ? 'o Azure não faz peering entre redes virtuais com espaços de endereço sobrepostos'
-            : 'o GCP não faz peering entre redes com intervalos de sub-rede sobrepostos'
+            ? 'O Azure não faz peering entre redes virtuais com espaços de endereço sobrepostos'
+            : 'O GCP não faz peering entre redes com intervalos de sub-rede sobrepostos'
       }`,
     networksOverlap: (range, other, otherRange, provider) =>
-      `${range} se sobrepõe a ${other} (${otherRange}) — tudo bem enquanto as duas ${
+      `${range} se sobrepõe a ${other} (${otherRange}). Tudo bem enquanto as duas ${
         provider === 'azure' ? 'VNets' : provider === 'gcp' ? 'redes' : 'VPCs'
       } ficarem separadas, mas nunca será possível fazer peering entre elas`,
 
     nameProblem: (arg, value, problem) => `${arg} "${value}" ${problem}`,
-    tooLong: (length, resource, max) => `tem ${chars(length)} — nomes de ${resource} podem ter no máximo ${max}`,
-    tooShort: (length, resource, min) => `tem ${chars(length)} — nomes de ${resource} precisam de pelo menos ${min}`,
-    notValid: (resource, allowed) => `não é um nome válido de ${resource} — ${allowed}`,
+    tooLong: (length, resource, max) => `tem ${chars(length)}, mas nomes de ${resource} podem ter no máximo ${max}`,
+    tooShort: (length, resource, min) => `tem ${chars(length)}, mas nomes de ${resource} precisam de pelo menos ${min}`,
+    notValid: (resource, allowed) => `não é um nome válido de ${resource}: ${allowed}`,
     allowed: {
       rfc1035: 'use letras minúsculas, dígitos e hifens, começando com uma letra e sem terminar em hífen',
       azureNetwork:
@@ -224,15 +224,15 @@ export const checkMessages = defineMessages(
     },
     doubleHyphen: 'não pode ter dois hifens seguidos',
     endsWithHyphen: 'não pode terminar com hífen',
-    lbInternalPrefix: 'não pode começar com "internal-" — a AWS reserva esse prefixo',
-    sgPrefix: 'não pode começar com "sg-" — a AWS reserva esse prefixo para IDs de grupo',
-    defaultDbSubnetGroup: 'é reservado — a AWS já tem um grupo de sub-redes do banco "default"',
+    lbInternalPrefix: 'não pode começar com "internal-" (a AWS reserva esse prefixo)',
+    sgPrefix: 'não pode começar com "sg-" (a AWS reserva esse prefixo para IDs de grupo)',
+    defaultDbSubnetGroup: 'é reservado: a AWS já tem um grupo de sub-redes do banco "default"',
     googPrefix: 'não pode começar com "goog"',
     s3: {
-      length: (n) => `tem ${chars(n)} — nomes de bucket S3 precisam ter de 3 a 63`,
-      uppercase: 'tem letras maiúsculas — nomes de bucket S3 precisam ser minúsculos',
-      underscore: 'tem sublinhado — nomes de bucket S3 não aceitam sublinhados (use hifens)',
-      characters: 'tem caracteres que o S3 recusa — use letras minúsculas, dígitos, pontos e hifens',
+      length: (n) => `tem ${chars(n)}, mas nomes de bucket S3 precisam ter de 3 a 63`,
+      uppercase: 'tem letras maiúsculas, mas nomes de bucket S3 precisam ser minúsculos',
+      underscore: 'tem sublinhado, mas nomes de bucket S3 não aceitam sublinhados (use hifens)',
+      characters: 'tem caracteres que o S3 recusa: use letras minúsculas, dígitos, pontos e hifens',
       edges: 'precisa começar e terminar com letra ou dígito',
       doubleDot: 'não pode ter dois pontos seguidos',
       ipLike: 'parece um endereço IP, o que o S3 não permite',
@@ -240,9 +240,9 @@ export const checkMessages = defineMessages(
       suffix: 'termina com um sufixo reservado pelo S3 (-s3alias, --ol-s3)',
     },
     gcs: {
-      tooShort: (n) => `tem ${chars(n)} — nomes de bucket do Cloud Storage precisam de pelo menos 3`,
-      tooLongNoDots: (n) => `tem ${chars(n)} — nomes de bucket do Cloud Storage podem ter no máximo 63 (222 com pontos)`,
-      tooLong: 'é longo demais — no máximo 222 caracteres, e 63 entre pontos',
+      tooShort: (n) => `tem ${chars(n)}, mas nomes de bucket do Cloud Storage precisam de pelo menos 3`,
+      tooLongNoDots: (n) => `tem ${chars(n)}, mas nomes de bucket do Cloud Storage podem ter no máximo 63 (222 com pontos)`,
+      tooLong: 'é longo demais: no máximo 222 caracteres, e 63 entre pontos',
       ipLike: 'parece um endereço IP, o que o Cloud Storage não permite',
       google: 'não pode começar com "goog" nem conter "google"',
     },
@@ -250,12 +250,12 @@ export const checkMessages = defineMessages(
     provider: (alias, fallback) => `o provider ${alias ?? fallback}`,
     awsZoneRegion: (zone, zoneVia, zoneRegion, provider, region, regionVia) =>
       `availability_zone "${zone}"${zoneVia} fica em ${zoneRegion}, mas ${provider} implanta em ${region}${regionVia}`,
-    gcpZoneIsRegion: (location, via) => `zone "${location}"${via} é uma região — instâncias precisam de uma zona, como ${location}-a`,
+    gcpZoneIsRegion: (location, via) => `zone "${location}"${via} é uma região, mas instâncias precisam de uma zona, como ${location}-a`,
     gcpRegionMismatch: (field, location, via, region, subnetwork, subnetRegion, subnetVia, kind) =>
       `${field} "${location}"${via} fica em ${region}, ` +
-      `mas ${subnetwork} fica em ${subnetRegion}${subnetVia} — ${kind === 'instance' ? 'uma instância' : 'um cluster'} precisa estar na região da sua sub-rede`,
+      `mas ${subnetwork} fica em ${subnetRegion}${subnetVia}. ${kind === 'instance' ? 'Uma instância' : 'Um cluster'} precisa estar na região da sua sub-rede`,
 
-    alreadyUsed: (arg, name, first, scope, why) => `${arg} "${name}" já é usado por ${first}${scope ? ` ${scope}` : ''} — ${why}`,
+    alreadyUsed: (arg, name, first, scope, why) => `${arg} "${name}" já é usado por ${first}${scope ? ` ${scope}` : ''} (${why})`,
     sameVpc: 'na mesma VPC',
     sameVnet: 'na mesma VNet',
     unique: {
@@ -273,11 +273,11 @@ export const checkMessages = defineMessages(
       gcpFirewall: 'nomes de regra de firewall são únicos por projeto',
     },
     instanceCrossVpc: (group, groupVpc, subnet, vpc) =>
-      `${group} pertence a ${groupVpc}, mas ${subnet} está em ${vpc} — uma instância só pode usar grupos de segurança da própria VPC`,
+      `${group} pertence a ${groupVpc}, mas ${subnet} está em ${vpc}. Uma instância só pode usar grupos de segurança da própria VPC`,
     routeTableCrossVpc: (table, tableVpc, subnet, vpc) =>
-      `${table} pertence a ${tableVpc}, mas ${subnet} está em ${vpc} — uma sub-rede só pode usar uma tabela de rotas da própria VPC`,
+      `${table} pertence a ${tableVpc}, mas ${subnet} está em ${vpc}. Uma sub-rede só pode usar uma tabela de rotas da própria VPC`,
     lbCrossVpc: (vpcs) =>
-      `as sub-redes vêm de ${vpcs.join(' e ')} — as sub-redes de um balanceador de carga precisam estar todas na mesma VPC`,
+      `as sub-redes vêm de ${vpcs.join(' e ')}, mas as sub-redes de um balanceador de carga precisam estar todas na mesma VPC`,
   },
 );
 

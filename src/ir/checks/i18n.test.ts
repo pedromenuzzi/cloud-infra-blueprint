@@ -24,11 +24,11 @@ describe('validation warnings in Portuguese', () => {
   it('a CIDR overlap', () => {
     const main = vpc + subnet('a', '10.0.1.0/24') + subnet('b', '10.0.1.128/25');
     expect(warnings(main)).toEqual([
-      'aws_subnet.b: cidr_block 10.0.1.128/25 overlaps aws_subnet.a (10.0.1.0/24) — subnets in one VPC need ranges of their own',
+      'aws_subnet.b: cidr_block 10.0.1.128/25 overlaps aws_subnet.a (10.0.1.0/24), but subnets in one VPC need ranges of their own',
     ]);
     useLocale.getState().setLocale('pt-BR');
     expect(warnings(main)).toEqual([
-      'aws_subnet.b: cidr_block 10.0.1.128/25 se sobrepõe a aws_subnet.a (10.0.1.0/24) — sub-redes de uma mesma VPC precisam de intervalos próprios',
+      'aws_subnet.b: cidr_block 10.0.1.128/25 se sobrepõe a aws_subnet.a (10.0.1.0/24), mas sub-redes de uma mesma VPC precisam de intervalos próprios',
     ]);
   });
 
@@ -46,17 +46,17 @@ describe('validation warnings in Portuguese', () => {
     const bucket = 'resource "aws_s3_bucket" "b" {\n  bucket = "My-Bucket"\n}\n';
     useLocale.getState().setLocale('pt-BR');
     expect(warnings(bucket)).toEqual([
-      'aws_s3_bucket.b: bucket "My-Bucket" tem letras maiúsculas — nomes de bucket S3 precisam ser minúsculos',
+      'aws_s3_bucket.b: bucket "My-Bucket" tem letras maiúsculas, mas nomes de bucket S3 precisam ser minúsculos',
     ]);
     const def = getDef('aws_lb')!;
-    expect(nameProblem(def, 'a'.repeat(40))).toBe('tem 40 caracteres — nomes de Application Load Balancer podem ter no máximo 32');
+    expect(nameProblem(def, 'a'.repeat(40))).toBe('tem 40 caracteres, mas nomes de Application Load Balancer podem ter no máximo 32');
     expect(nameProblem(def, 'web_lb')).toBe(
-      'não é um nome válido de Application Load Balancer — use letras, dígitos e hifens, começando e terminando com letra ou dígito',
+      'não é um nome válido de Application Load Balancer: use letras, dígitos e hifens, começando e terminando com letra ou dígito',
     );
     expect(nameProblem(getDef('aws_sqs_queue')!, 'jobs!')).toContain('não é um nome válido de Fila SQS');
     useLocale.getState().setLocale('en');
     expect(nameProblem(def, 'web_lb')).toBe(
-      "isn't a valid Application Load Balancer name — use letters, digits and hyphens, starting and ending with a letter or digit",
+      "isn't a valid Application Load Balancer name: use letters, digits and hyphens, starting and ending with a letter or digit",
     );
   });
 
@@ -77,7 +77,7 @@ describe('validation warnings in Portuguese', () => {
     const sg = (n: string) => `resource "aws_security_group" "${n}" {\n  name   = "web"\n  vpc_id = aws_vpc.main.id\n}\n`;
     useLocale.getState().setLocale('pt-BR');
     expect(warnings(vpc + sg('a') + sg('b'))).toEqual([
-      'aws_security_group.b: name "web" já é usado por aws_security_group.a na mesma VPC — a AWS exige nomes de grupo de segurança únicos por VPC',
+      'aws_security_group.b: name "web" já é usado por aws_security_group.a na mesma VPC (a AWS exige nomes de grupo de segurança únicos por VPC)',
     ]);
     const lambda = 'resource "aws_lambda_function" "f" {\n  role = aws_iam_role.gone.arn\n}\n';
     expect(warnings(lambda)).toEqual([

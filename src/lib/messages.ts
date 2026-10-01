@@ -16,14 +16,14 @@ export const libMessages = defineMessages(
     // storage
     untitledProject: 'Untitled project',
     copyOf: (name: string) => `${name} copy`,
-    storageFull: 'Storage is full — export or delete projects',
-    demoDescription: 'Demo project — a classic VPC + EC2 + RDS web stack. Safe to edit or delete.',
+    storageFull: 'Storage is full: export or delete projects',
+    demoDescription: 'Demo project: a classic VPC + EC2 + RDS web stack. Safe to edit or delete.',
 
     // share links
     sharedProject: 'Shared project',
-    shareTooLarge: 'This project is too large to share as a link — export a Terraform zip instead.',
+    shareTooLarge: 'This project is too large to share as a link. Export a Terraform zip instead.',
     shareLong: (kb: number) =>
-      `This link is ${kb} KB — links over 32 KB can get cut off by chat apps and browsers. For big projects, share a Terraform zip.`,
+      `This link is ${kb} KB, and links over 32 KB can get cut off by chat apps and browsers. For big projects, share a Terraform zip.`,
 
     // importing .tf files
     importedRootModule: (where: string, modules: number, skipped: number) =>
@@ -38,7 +38,7 @@ export const libMessages = defineMessages(
     // the README inside a Terraform zip
     exportReadme: (name: string, repo: string, files: string) => `# ${name}
 
-Terraform project exported from [Cloud Blueprint](${repo}) —
+Terraform project exported from [Cloud Blueprint](${repo}),
 the free, in-browser visual editor for cloud architecture.
 
 ## Files
@@ -69,14 +69,14 @@ terraform apply
 
     untitledProject: 'Projeto sem nome',
     copyOf: (name: string) => `${name} (cópia)`,
-    storageFull: 'O armazenamento está cheio — exporte ou exclua projetos',
+    storageFull: 'O armazenamento está cheio: exporte ou exclua projetos',
     demoDescription:
-      'Projeto de demonstração — uma stack web clássica com VPC + EC2 + RDS. Pode editar ou excluir à vontade.',
+      'Projeto de demonstração: uma stack web clássica com VPC + EC2 + RDS. Pode editar ou excluir à vontade.',
 
     sharedProject: 'Projeto compartilhado',
-    shareTooLarge: 'Este projeto é grande demais para compartilhar por link — exporte um .zip do Terraform.',
+    shareTooLarge: 'Este projeto é grande demais para compartilhar por link. Exporte um .zip do Terraform.',
     shareLong: (kb: number) =>
-      `Este link tem ${formatNumber(kb, undefined, 'pt-BR')} KB — links acima de 32 KB podem ser cortados por apps de chat e navegadores. Para projetos grandes, compartilhe um .zip do Terraform.`,
+      `Este link tem ${formatNumber(kb, undefined, 'pt-BR')} KB, e links acima de 32 KB podem ser cortados por apps de chat e navegadores. Para projetos grandes, compartilhe um .zip do Terraform.`,
 
     importedRootModule: (where: string, modules: number, skipped: number) =>
       `Módulo raiz importado${where ? ` (${where}/)` : ''}` +
@@ -92,7 +92,7 @@ terraform apply
 
     exportReadme: (name: string, repo: string, files: string) => `# ${name}
 
-Projeto Terraform exportado do [Cloud Blueprint](${repo}) —
+Projeto Terraform exportado do [Cloud Blueprint](${repo}),
 o editor visual de arquitetura em nuvem, gratuito e no navegador.
 
 ## Arquivos

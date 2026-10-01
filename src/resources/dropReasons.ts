@@ -259,96 +259,96 @@ export const reasonMessages = defineMessages(
   {
     // derived from the containment rules
     wider: (r: Noun, p: Noun, c: Noun) => `${A(r)} belongs to the whole ${p.en}, not to one ${c.en}`,
-    narrower: (r: Noun, p: Noun, c: Noun) => `${A(r)} goes inside ${a(p)}, not directly in the ${c.en} — drop it on ${a(p)}`,
+    narrower: (r: Noun, p: Noun, c: Noun) => `${A(r)} goes inside ${a(p)}, not directly in the ${c.en}. Drop it on ${a(p)}`,
     unrelated: (r: Noun, ps: Noun[], c: Noun) => `${A(r)} goes inside ${formatList(ps.map(a), 'disjunction', 'en')}, not ${a(c)}`,
     otherCloud: (r: Noun, rCloud: Provider, c: Noun, cCloud: Provider) =>
-      `${A(r)} is ${CLOUD_EN[rCloud]} resource — it can't go inside ${CLOUD_EN[cCloud]} ${c.en}`,
-    notInside: (r: Noun, c: Noun) => `${A(r)} isn't placed inside ${a(c)} — none of its settings puts it there`,
+      `${A(r)} is ${CLOUD_EN[rCloud]} resource, so it can't go inside ${CLOUD_EN[cCloud]} ${c.en}`,
+    notInside: (r: Noun, c: Noun) => `${A(r)} isn't placed inside ${a(c)}: none of its settings puts it there`,
     // resources that live in a subnet group
     subnetGroup: (r: Noun, group: Noun) =>
-      `${A(r)} isn't placed in one subnet — it runs in ${a(group)} that spans two or more availability zones`,
+      `${A(r)} isn't placed in one subnet: it runs in ${a(group)} that spans two or more availability zones`,
     subnetGroupVpc: (r: Noun, group: Noun) =>
-      `${A(r)} goes inside ${a(group)}, not directly in the VPC — the group's subnets decide where it runs`,
-    groupSpans: (r: Noun) => `${A(r)} spans subnets instead of sitting in one — connect it to each subnet it should use`,
-    viaStays: (r: Noun, p: Noun) => `${A(r)} is drawn in the ${p.en} of the subnets it lists — change its subnets to move it`,
-    viaConnect: (r: Noun) => `${A(r)} is drawn in the VPC of the subnets it lists — connect it to this VPC's subnets`,
+      `${A(r)} goes inside ${a(group)}, not directly in the VPC. The group's subnets decide where it runs`,
+    groupSpans: (r: Noun) => `${A(r)} spans subnets instead of sitting in one. Connect it to each subnet it should use`,
+    viaStays: (r: Noun, p: Noun) => `${A(r)} is drawn in the ${p.en} of the subnets it lists. Change its subnets to move it`,
+    viaConnect: (r: Noun) => `${A(r)} is drawn in the VPC of the subnets it lists. Connect it to this VPC's subnets`,
     // families
     regional: (r: Noun, c: Noun) =>
-      `${A(r)} is a managed regional service outside your networks — what runs in the ${c.en} reaches it over the network or a private endpoint`,
-    identity: (r: Noun) => `${A(r)} is an identity and permissions setting, not part of a network — connect it to the resources that use it`,
-    edge: (r: Noun, c: Noun) => `${A(r)} is a global edge service — it isn't placed inside ${a(c)}, it points at what it serves`,
-    lambda: () => 'A Lambda function runs outside your VPC by default — to reach private resources, give it subnets in vpc_config (in code)',
+      `${A(r)} is a managed regional service outside your networks. What runs in the ${c.en} reaches it over the network or a private endpoint`,
+    identity: (r: Noun) => `${A(r)} is an identity and permissions setting, not part of a network. Connect it to the resources that use it`,
+    edge: (r: Noun, c: Noun) => `${A(r)} is a global edge service: it isn't placed inside ${a(c)}, it points at what it serves`,
+    lambda: () => 'A Lambda function runs outside your VPC by default. To reach private resources, give it subnets in vpc_config (in code)',
     serverless: (r: Noun) =>
-      `${A(r)} is serverless and runs outside your VPC network — reach private resources through a Serverless VPC Access connector (in code)`,
+      `${A(r)} is serverless and runs outside your VPC network. Reach private resources through a Serverless VPC Access connector (in code)`,
     spans: (r: Noun, inSubnet: boolean) =>
       inSubnet
-        ? `${A(r)} spans several subnets — it's connected to each one instead of being drawn inside`
-        : `${A(r)} isn't drawn inside the VPC — connect it to the subnets it serves`,
-    eks: () => "An EKS cluster spans the subnets listed in vpc_config — it's connected to them, not drawn inside",
-    links: (r: Noun) => `${A(r)} links two resources — it's drawn beside them, with a line to each`,
-    partOf: (r: Noun, owner: Noun, c: Noun) => `${A(r)} is part of its ${owner.en} — it's drawn beside it, not inside ${a(c)}`,
-    eip: (c: Noun) => `An Elastic IP isn't placed inside ${a(c)} — it's attached to an instance or a NAT gateway`,
-    top: (r: Noun, c: Noun) => `${A(r)} is a top-level container — it isn't placed inside ${a(c)}`,
-    ecsCluster: () => 'An ECS cluster is a logical group — its services pick their subnets in network_configuration (in code)',
-    gcpLb: (r: Noun, c: Noun) => `${A(r)} is part of a global load balancer — it isn't placed inside ${a(c)}`,
+        ? `${A(r)} spans several subnets, so it's connected to each one instead of being drawn inside`
+        : `${A(r)} isn't drawn inside the VPC. Connect it to the subnets it serves`,
+    eks: () => "An EKS cluster spans the subnets listed in vpc_config, so it's connected to them, not drawn inside",
+    links: (r: Noun) => `${A(r)} links two resources, so it's drawn beside them, with a line to each`,
+    partOf: (r: Noun, owner: Noun, c: Noun) => `${A(r)} is part of its ${owner.en}, so it's drawn beside it, not inside ${a(c)}`,
+    eip: (c: Noun) => `An Elastic IP isn't placed inside ${a(c)}: it's attached to an instance or a NAT gateway`,
+    top: (r: Noun, c: Noun) => `${A(r)} is a top-level container, so it isn't placed inside ${a(c)}`,
+    ecsCluster: () => 'An ECS cluster is a logical group: its services pick their subnets in network_configuration (in code)',
+    gcpLb: (r: Noun, c: Noun) => `${A(r)} is part of a global load balancer, so it isn't placed inside ${a(c)}`,
     cloudSql: () =>
-      "A Cloud SQL instance runs in Google's network — connect it to your VPC network with a private IP (settings.ip_configuration, in code)",
+      "A Cloud SQL instance runs in Google's network. Connect it to your VPC network with a private IP (settings.ip_configuration, in code)",
     // overrides
-    azureVm: () => 'A virtual machine joins a subnet through its network interface — the VM itself is drawn in its resource group',
-    azureNic: () => "A network interface connects to a subnet through ip_configuration — it's drawn in its resource group",
-    azureApp: (r: Noun) => `${A(r)} runs in its App Service plan — VNet integration is set in code`,
-    ecsService: () => "An ECS service goes inside an ECS cluster — its tasks' subnets are set in network_configuration (in code)",
-    eksNodeGroup: () => 'An EKS node group goes inside its EKS cluster — its subnets are listed in subnet_ids (in code)',
-    natGateway: () => 'A NAT gateway goes inside a public subnet, not directly in the VPC — drop it on one',
+    azureVm: () => 'A virtual machine joins a subnet through its network interface. The VM itself is drawn in its resource group',
+    azureNic: () => "A network interface connects to a subnet through ip_configuration. It's drawn in its resource group",
+    azureApp: (r: Noun) => `${A(r)} runs in its App Service plan. VNet integration is set in code`,
+    ecsService: () => "An ECS service goes inside an ECS cluster. Its tasks' subnets are set in network_configuration (in code)",
+    eksNodeGroup: () => 'An EKS node group goes inside its EKS cluster. Its subnets are listed in subnet_ids (in code)',
+    natGateway: () => 'A NAT gateway goes inside a public subnet, not directly in the VPC. Drop it on one',
   },
   {
     wider: (r: Noun, p: Noun, c: Noun) => `${Um(r)} pertence ${ao(p)} inteir${p.f ? 'a' : 'o'}, não a ${um(c)}`,
     narrower: (r: Noun, p: Noun, c: Noun) =>
-      `${Um(r)} fica dentro de ${um(p)}, não direto ${em(c)} — solte-${lo(r)} sobre ${um(p)}`,
+      `${Um(r)} fica dentro de ${um(p)}, não direto ${em(c)}. Solte-${lo(r)} sobre ${um(p)}`,
     unrelated: (r: Noun, ps: Noun[], c: Noun) => `${Um(r)} fica dentro de ${formatList(ps.map(um), 'disjunction', 'pt-BR')}, não ${em(c)}`,
     otherCloud: (r: Noun, rCloud: Provider, c: Noun, cCloud: Provider) =>
-      `${Um(r)} é um recurso ${CLOUD_PT[rCloud]} — não pode ficar dentro de ${um(c)} ${CLOUD_PT[cCloud]}`,
+      `${Um(r)} é um recurso ${CLOUD_PT[rCloud]}, então não pode ficar dentro de ${um(c)} ${CLOUD_PT[cCloud]}`,
     notInside: (r: Noun, c: Noun) =>
-      `${Um(r)} não fica dentro de ${um(c)} — nenhuma configuração ${r.f ? 'dela' : 'dele'} ${lo(r)} coloca lá`,
+      `${Um(r)} não fica dentro de ${um(c)}: nenhuma configuração ${r.f ? 'dela' : 'dele'} ${lo(r)} coloca lá`,
     subnetGroup: (r: Noun, group: Noun) =>
       // the AWS term on first mention, as the glossary says
-      `${Um(r)} não fica em uma sub-rede só — ${ele(r)} roda em ${um(group)} (${group.en}) que cobre duas ou mais zonas de disponibilidade`,
+      `${Um(r)} não fica em uma sub-rede só: ${ele(r)} roda em ${um(group)} (${group.en}) que cobre duas ou mais zonas de disponibilidade`,
     subnetGroupVpc: (r: Noun, group: Noun) =>
-      `${Um(r)} fica dentro de ${um(group)}, não direto na VPC — as sub-redes do grupo decidem onde ${ele(r)} roda`,
-    groupSpans: (r: Noun) => `${Um(r)} cobre sub-redes em vez de ficar dentro de uma — conecte-${lo(r)} a cada sub-rede que deve usar`,
+      `${Um(r)} fica dentro de ${um(group)}, não direto na VPC. As sub-redes do grupo decidem onde ${ele(r)} roda`,
+    groupSpans: (r: Noun) => `${Um(r)} cobre sub-redes em vez de ficar dentro de uma. Conecte-${lo(r)} a cada sub-rede que deve usar`,
     viaStays: (r: Noun, p: Noun) =>
-      `${Um(r)} aparece ${em(p)} das sub-redes que lista — troque as sub-redes para movê-${r.f ? 'la' : 'lo'}`,
-    viaConnect: (r: Noun) => `${Um(r)} aparece na VPC das sub-redes que lista — conecte-${lo(r)} às sub-redes desta VPC`,
+      `${Um(r)} aparece ${em(p)} das sub-redes que lista. Troque as sub-redes para movê-${r.f ? 'la' : 'lo'}`,
+    viaConnect: (r: Noun) => `${Um(r)} aparece na VPC das sub-redes que lista. Conecte-${lo(r)} às sub-redes desta VPC`,
     regional: (r: Noun, c: Noun) =>
-      `${Um(r)} é um serviço regional gerenciado, fora das suas redes — o que roda ${em(c)} o acessa pela rede ou por um endpoint privado`,
+      `${Um(r)} é um serviço regional gerenciado, fora das suas redes. O que roda ${em(c)} o acessa pela rede ou por um endpoint privado`,
     identity: (r: Noun) =>
-      `${Um(r)} é uma configuração de identidade e permissões, não faz parte de uma rede — conecte-a aos recursos que a usam`,
-    edge: (r: Noun, c: Noun) => `${Um(r)} é um serviço global de borda — não fica dentro de ${um(c)}, só aponta para o que atende`,
+      `${Um(r)} é uma configuração de identidade e permissões, não faz parte de uma rede. Conecte-a aos recursos que a usam`,
+    edge: (r: Noun, c: Noun) => `${Um(r)} é um serviço global de borda: não fica dentro de ${um(c)}, só aponta para o que atende`,
     lambda: () =>
-      'Uma função Lambda roda fora da sua VPC por padrão — para acessar recursos privados, defina sub-redes em vpc_config (no código)',
+      'Uma função Lambda roda fora da sua VPC por padrão. Para acessar recursos privados, defina sub-redes em vpc_config (no código)',
     serverless: (r: Noun) =>
-      `${Um(r)} é sem servidor e roda fora da sua rede VPC — acesse recursos privados por um conector de Acesso VPC sem servidor (no código)`,
+      `${Um(r)} é sem servidor e roda fora da sua rede VPC. Acesse recursos privados por um conector de Acesso VPC sem servidor (no código)`,
     spans: (r: Noun, inSubnet: boolean) =>
       inSubnet
-        ? `${Um(r)} cobre várias sub-redes — ${ele(r)} é conectad${lo(r)} a cada uma em vez de ficar dentro`
-        : `${Um(r)} não fica dentro da VPC — conecte-${lo(r)} às sub-redes que ${ele(r)} atende`,
-    eks: () => 'Um cluster EKS cobre as sub-redes listadas em vpc_config — ele é conectado a elas, não fica dentro',
-    links: (r: Noun) => `${Um(r)} liga dois recursos — fica ao lado deles, com uma linha para cada um`,
+        ? `${Um(r)} cobre várias sub-redes, então ${ele(r)} é conectad${lo(r)} a cada uma em vez de ficar dentro`
+        : `${Um(r)} não fica dentro da VPC. Conecte-${lo(r)} às sub-redes que ${ele(r)} atende`,
+    eks: () => 'Um cluster EKS cobre as sub-redes listadas em vpc_config, então ele é conectado a elas, não fica dentro',
+    links: (r: Noun) => `${Um(r)} liga dois recursos, então fica ao lado deles, com uma linha para cada um`,
     partOf: (r: Noun, owner: Noun, c: Noun) =>
-      `${Um(r)} faz parte ${de(owner)} — fica ao lado ${owner.f ? 'dela' : 'dele'}, não dentro de ${um(c)}`,
-    eip: (c: Noun) => `Um Elastic IP não fica dentro de ${um(c)} — ele é associado a uma instância ou a um NAT gateway`,
-    top: (r: Noun, c: Noun) => `${Um(r)} é um contêiner de nível mais alto — não fica dentro de ${um(c)}`,
+      `${Um(r)} faz parte ${de(owner)}, então fica ao lado ${owner.f ? 'dela' : 'dele'}, não dentro de ${um(c)}`,
+    eip: (c: Noun) => `Um Elastic IP não fica dentro de ${um(c)}: ele é associado a uma instância ou a um NAT gateway`,
+    top: (r: Noun, c: Noun) => `${Um(r)} é um contêiner de nível mais alto, então não fica dentro de ${um(c)}`,
     ecsCluster: () =>
-      'Um cluster ECS é um agrupamento lógico — os serviços dele escolhem as sub-redes em network_configuration (no código)',
-    gcpLb: (r: Noun, c: Noun) => `${Um(r)} faz parte de um balanceador de carga global — não fica dentro de ${um(c)}`,
+      'Um cluster ECS é um agrupamento lógico: os serviços dele escolhem as sub-redes em network_configuration (no código)',
+    gcpLb: (r: Noun, c: Noun) => `${Um(r)} faz parte de um balanceador de carga global, então não fica dentro de ${um(c)}`,
     cloudSql: () =>
-      'Uma instância do Cloud SQL roda na rede do Google — conecte à sua rede VPC com um IP privado (settings.ip_configuration, no código)',
-    azureVm: () => 'Uma máquina virtual entra em uma sub-rede pela interface de rede — a VM fica no grupo de recursos',
-    azureNic: () => 'Uma interface de rede se conecta a uma sub-rede pelo ip_configuration — ela fica no grupo de recursos',
-    azureApp: (r: Noun) => `${Um(r)} roda no seu plano do App Service — a integração com a VNet é configurada no código`,
+      'Uma instância do Cloud SQL roda na rede do Google. Conecte à sua rede VPC com um IP privado (settings.ip_configuration, no código)',
+    azureVm: () => 'Uma máquina virtual entra em uma sub-rede pela interface de rede. A VM fica no grupo de recursos',
+    azureNic: () => 'Uma interface de rede se conecta a uma sub-rede pelo ip_configuration. Ela fica no grupo de recursos',
+    azureApp: (r: Noun) => `${Um(r)} roda no seu plano do App Service. A integração com a VNet é configurada no código`,
     ecsService: () =>
-      'Um serviço ECS fica dentro de um cluster ECS — as sub-redes das tarefas são definidas em network_configuration (no código)',
-    eksNodeGroup: () => 'Um grupo de nós EKS fica dentro do cluster EKS — as sub-redes dele são listadas em subnet_ids (no código)',
-    natGateway: () => 'Um NAT gateway fica dentro de uma sub-rede pública, não direto na VPC — solte-o sobre uma',
+      'Um serviço ECS fica dentro de um cluster ECS. As sub-redes das tarefas são definidas em network_configuration (no código)',
+    eksNodeGroup: () => 'Um grupo de nós EKS fica dentro do cluster EKS. As sub-redes dele são listadas em subnet_ids (no código)',
+    natGateway: () => 'Um NAT gateway fica dentro de uma sub-rede pública, não direto na VPC. Solte-o sobre uma',
   },
 );

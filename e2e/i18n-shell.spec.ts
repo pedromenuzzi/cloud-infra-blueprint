@@ -86,7 +86,7 @@ test('the dashboard switches to Portuguese in place, keeps it after a reload and
   await pickLanguage(page, 'Português (Brasil)');
   await expect(page.getByRole('heading', { name: 'Projetos', level: 1 })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
-  await expect(page).toHaveTitle('Projetos — Cloud Blueprint');
+  await expect(page).toHaveTitle('Projetos · Cloud Blueprint');
   await expect(page.getByRole('searchbox', { name: 'Buscar projetos' })).toHaveValue('prod');
   await expect(page.getByRole('button', { name: `Abrir projeto ${SEED_PROJECT}` })).toBeVisible();
   await expect(page.getByRole('region', { name: 'Início rápido' })).toBeVisible();
@@ -108,7 +108,7 @@ test('the dashboard switches to Portuguese in place, keeps it after a reload and
   await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
   await expect(page.getByText('No backup yet')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await expect(page).toHaveTitle('Projects — Cloud Blueprint');
+  await expect(page).toHaveTitle('Projects · Cloud Blueprint');
 });
 
 test('the landing page switches from its header picker', async ({ page }) => {
@@ -117,12 +117,12 @@ test('the landing page switches from its header picker', async ({ page }) => {
   await pickLanguage(page, 'Português (Brasil)');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Desenhe sua nuvem. Gere o Terraform na hora.');
   await expect(page.getByRole('button', { name: 'Abrir o app' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Comece a criar — é grátis/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Comece a criar, é grátis/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Bidirecional de verdade' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Três passos. Sem enrolação.' })).toBeVisible();
   // template cards in the UI language
   await expect(page.getByRole('heading', { name: 'API sem servidor na AWS' })).toBeVisible();
-  await expect(page).toHaveTitle('Cloud Blueprint — Desenhe sua nuvem. Gere o Terraform na hora.');
+  await expect(page).toHaveTitle('Cloud Blueprint · Desenhe sua nuvem. Gere o Terraform na hora.');
   await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
 });
 
@@ -173,7 +173,7 @@ test('tutorials, a lesson, the viewer and the 404 in Portuguese', async ({ page 
   await expect(page.getByRole('complementary', { name: 'Lição' }).locator('code').first()).toHaveText('provider "aws"');
   await page.getByRole('button', { name: 'Próximo' }).click();
   await expect(page.getByText(/^Passo 2 de 5$/)).toBeVisible();
-  await expect(page).toHaveTitle('Sua primeira VPC + EC2 — Tutoriais — Cloud Blueprint');
+  await expect(page).toHaveTitle('Sua primeira VPC + EC2 · Tutoriais · Cloud Blueprint');
   // switching language keeps the step
   await pickLanguage(page, 'English');
   await expect(page.getByText(/^Step 2 of 5$/)).toBeVisible();
@@ -188,7 +188,7 @@ test('tutorials, a lesson, the viewer and the 404 in Portuguese', async ({ page 
   await page.getByRole('button', { name: 'Compartilhar' }).click();
   await expect(page.getByRole('menuitem', { name: 'Copiar link de visualização' })).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page).toHaveTitle('rede (visualização) — Cloud Blueprint');
+  await expect(page).toHaveTitle('rede (visualização) · Cloud Blueprint');
 
   await page.goto('/#view=AAAA');
   await expect(page.getByRole('heading', { name: 'Não foi possível abrir esta visualização' })).toBeVisible();
@@ -196,7 +196,7 @@ test('tutorials, a lesson, the viewer and the 404 in Portuguese', async ({ page 
   await page.goto('/nada-por-aqui');
   await expect(page.getByRole('heading', { name: 'Página não encontrada' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Voltar aos projetos' })).toBeVisible();
-  await expect(page).toHaveTitle('Página não encontrada — Cloud Blueprint');
+  await expect(page).toHaveTitle('Página não encontrada · Cloud Blueprint');
 });
 
 for (const theme of ['light', 'dark'] as const) {
@@ -267,6 +267,6 @@ test.describe('a Portuguese browser', () => {
     await expect(page.getByRole('heading', { name: 'Projetos', level: 1 })).toBeVisible();
     await expect(page.locator('html')).toHaveAttribute('lang', 'pt-BR');
     // the seeded demo is described in the language it was created in
-    await expect(page.getByText(/^Projeto de demonstração — /)).toBeVisible();
+    await expect(page.getByText(/^Projeto de demonstração: /)).toBeVisible();
   });
 });

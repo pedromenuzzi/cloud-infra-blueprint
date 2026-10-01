@@ -63,7 +63,7 @@ tokens above — add a word here before adding it to the sweep's allowlist.
 | folder link | vínculo com a pasta |
 | browser storage | armazenamento do navegador |
 | offline | offline |
-| update available — reload | atualização disponível — recarregar |
+| update available: reload | atualização disponível: recarregar |
 | dismiss | dispensar |
 | tutorial / lesson / step | tutorial / lição / passo |
 | warning / error | aviso / erro |
