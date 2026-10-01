@@ -45,6 +45,12 @@ between them.
   diagram and the code side by side with the new lines highlighted. Any step opens in
   the editor.
 - 📚 **The real provider schemas**: every argument of every AWS / AzureRM / Google resource: searchable in the inspector; completed, documented and validated ("did you mean…?") in the code; loaded per provider, only when used.
+- 🔎 **Data sources**: `data` blocks are nodes of their own, drawn as dashed lookups with edges
+  to what reads them. Add the common ones (Ubuntu / Amazon Linux AMIs, availability zones,
+  caller identity, IAM policy documents, existing VPCs and subnets, Azure client config,
+  Google zones…) from the palette or `⌘K`, wire `ami = data.aws_ami.ubuntu.id` in one click,
+  rename them with every reference following, and get their arguments and attributes
+  completed and validated from the providers' data-source schemas.
 
 ### Your data, anywhere
 
