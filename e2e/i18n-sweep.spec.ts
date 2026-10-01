@@ -589,19 +589,25 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
     await page.waitForTimeout(600);
     await stop('data sources: canvas');
     const dataInspector = page.getByRole('complementary', { name: L('Data source inspector', 'Inspetor da fonte de dados') });
-    for (const id of ['data.aws_ami.ubuntu', 'data.aws_caller_identity.current', 'data.aws_iam_policy_document.admin']) {
+    // selecting a node pans it clear of the inspector, which can push another one off screen: fit the view first
+    const showAll = async () => {
       await page.keyboard.press('Escape');
+      await page.keyboard.press('Shift+Digit1');
+      await page.waitForTimeout(450);
+    };
+    for (const id of ['data.aws_ami.ubuntu', 'data.aws_caller_identity.current', 'data.aws_iam_policy_document.admin']) {
+      await showAll();
       await node(id).click({ position: { x: 16, y: 10 } });
       await expect(dataInspector.getByTestId('inspector-address')).toHaveText(id);
       const optional = dataInspector.locator('details > summary');
       if (await optional.count()) await optional.first().click();
       await stop(`data sources: inspector ${id}`);
     }
-    await page.keyboard.press('Escape');
+    await showAll();
     await node('aws_instance.web').click({ position: { x: 16, y: 10 } });
     await expect(inspector().getByTestId('inspector-address')).toHaveText('aws_instance.web');
     await stop('data sources: a resource reading them');
-    await page.keyboard.press('Escape');
+    await showAll();
     await node('data.aws_ami.ubuntu').click({ button: 'right', position: { x: 16, y: 10 } });
     await expect(page.getByRole('menu')).toBeVisible();
     await stop('data sources: context menu');
