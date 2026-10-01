@@ -49,6 +49,12 @@
   --cat-text-edge: #0369a1;
   /* module calls (a slate "stack of cards") */
   --module-text: #475569;
+  /* data sources (lookups: a lighter, dashed card) */
+  --data-text: #0e6a80;
+  --data-chip: #ecfeff;
+  --data-ring: #a5e9f5;
+  --data-bg: color-mix(in srgb, #ffffff 82%, #ecfeff);
+  --data-border: #67c7d9;
 
   /* Blueprint canvas */
   --canvas-bg: #eef4fb;
@@ -109,6 +115,11 @@
   --cat-text-identity: #f87171;
   --cat-text-edge: #38bdf8;
   --module-text: #cbd5e1;
+  --data-text: #67e8f9;
+  --data-chip: #083344;
+  --data-ring: #155e75;
+  --data-bg: color-mix(in srgb, #0f1d33 78%, #083344);
+  --data-border: #1f7f94;
 
   --canvas-bg: #0a1428;
   --canvas-grid: #16294a;
@@ -327,6 +338,16 @@
     var(--module-stack),
     0 0 0 2px var(--cat-light),
     0 10px 28px -8px color-mix(in srgb, var(--cat-light) 45%, transparent);
+}
+
+/* a data source: read, never created — lighter, with a dashed outline */
+.bp-data {
+  border: 1.5px dashed var(--data-border);
+  background: var(--data-bg);
+  box-shadow: var(--shadow-xs);
+}
+.bp-data.bp-node-selected {
+  border-color: transparent;
 }
 
 .bp-container {

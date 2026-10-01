@@ -38,6 +38,7 @@ import {
 } from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
 import { confirmModuleDelete } from '@/features/modules/deleteGuard';
+import { confirmDataDelete } from '@/features/data-sources/deleteGuard';
 import { applyOpsInModule } from '@/features/modules/scopedPatch';
 import { deleteResourcesOps } from './connections';
 import { isHistoryMove, startMovedSession } from './movedSession';
@@ -481,8 +482,8 @@ export const useEditor = create<EditorState>((set, get) => {
         if (ops.length > 0) get().applyCanvasOps([...ops, ...dropMovesTo(state.ir, removed, isHistoryMove)], null);
         return removed.length;
       };
-      // a module other blocks still read from: ask first (the deletion then runs on the IR of that moment)
-      if (confirmModuleDelete(ir, ids, () => run(get()))) return 0;
+      // a module or data source other blocks still read from: ask first (the deletion then runs on the IR of that moment)
+      if (confirmModuleDelete(ir, ids, () => run(get())) || confirmDataDelete(ir, ids, () => run(get()))) return 0;
       return run({ ir, edges });
     },
 

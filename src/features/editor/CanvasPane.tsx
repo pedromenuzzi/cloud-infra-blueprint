@@ -54,6 +54,12 @@ import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
 import { exprMentions } from '@/ir/expr';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import { isModuleId, withModuleNodes } from '@/ir/modules';
+import { isDataId } from '@/ir/dataSources';
+import { DataNodeView, dataFlowNodes } from '@/features/data-sources/DataNode';
+import { dataMenuEntries } from '@/features/data-sources/dataMenu';
+import { DATA_MIME, addDataSource } from '@/features/data-sources/addData';
+import { DATA_TILE } from '@/features/data-sources/DataSourceIcon';
+import { dataSourceMessages } from '@/features/data-sources/dataSources.messages';
 import { moduleMenuEntries } from '@/features/modules/moduleMenu';
 import { ModuleNodeView, moduleFlowNodes } from '@/features/modules/ModuleNode';
 import { ModulesHost } from '@/features/modules/ModulesHost';
@@ -105,7 +111,7 @@ import { ruleRisk } from '@/security/audit';
 import { isRuleResource, portText } from '@/security/model';
 import { useEditor } from './store';
 
-const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, internet: InternetNodeView, module: ModuleNodeView };
+const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, internet: InternetNodeView, module: ModuleNodeView, data: DataNodeView };
 const edgeTypes = { flow: FlowEdge, secflow: SecFlowEdge };
 
 export const INTERNET_NODE = '__internet__';
@@ -257,6 +263,8 @@ export function buildFlow(
 
   // module calls: top-level nodes of their own (src/features/modules)
   if (ir.modules.length > 0) nodes.push(...moduleFlowNodes(ir, useEditor.getState().files, warned, audit !== null, locale));
+  // data sources: lookups, top-level too (src/features/data-sources)
+  if (ir.data.length > 0) nodes.push(...dataFlowNodes(ir, warned, audit !== null, locale));
 
   const rfEdges: FlowEdgeType[] = edges.map((e) => ({
     id: e.id,
@@ -437,7 +445,7 @@ function CanvasInner() {
         const moved = [...keyboardMoved.current];
         keyboardMoved.current.clear();
         const { ir: now } = useEditor.getState();
-        const current = new Map([...now.resources, ...now.modules].map((r) => [r.id, r] as const));
+        const current = new Map([...now.resources, ...now.modules, ...now.data].map((r) => [r.id, r] as const));
         const ops: Op[] = moved.flatMap((id) => {
           const node = rf.getNode(id);
           const irNode = current.get(id);
@@ -602,9 +610,16 @@ function CanvasInner() {
   const onDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      const at = rf.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      // a data source from the palette's section
+      const preset = e.dataTransfer.getData(DATA_MIME);
+      if (preset) {
+        addDataSource(preset, { x: Math.round(at.x - NODE_W / 2), y: Math.round(at.y - NODE_H / 2) });
+        return;
+      }
       const def = getDef(e.dataTransfer.getData(PALETTE_MIME));
       if (!def) return;
-      placeResource(def, rf.screenToFlowPosition({ x: e.clientX, y: e.clientY }));
+      placeResource(def, at);
     },
     [placeResource, rf],
   );
@@ -631,7 +646,7 @@ function CanvasInner() {
   const applyLayout = useCallback(
     (ops: Op[]) => {
       const { ir: now } = useEditor.getState();
-      const current = new Map([...now.resources, ...now.modules].map((r) => [r.id, r.position] as const));
+      const current = new Map([...now.resources, ...now.modules, ...now.data].map((r) => [r.id, r.position] as const));
       const moves = ops.filter((op) => {
         if (op.kind !== 'move_node') return true;
         const p = current.get(op.nodeId);
@@ -650,7 +665,7 @@ function CanvasInner() {
 
   const tidy = useCallback(async () => {
     const state = useEditor.getState();
-    if ((state.ir.resources.length === 0 && state.ir.modules.length === 0) || tidying) return;
+    if ((state.ir.resources.length === 0 && state.ir.modules.length === 0 && state.ir.data.length === 0) || tidying) return;
     setTidying(true);
     try {
       // module calls are arranged like resources that hold nothing
@@ -838,7 +853,9 @@ function CanvasInner() {
     if (!menu) return [];
     if (menu.nodeId) {
       const node = byId.get(menu.nodeId);
-      if (!node) return moduleMenuEntries(menu.nodeId, focusRenameInput);
+      if (!node) {
+        return isDataId(menu.nodeId) ? dataMenuEntries(menu.nodeId, focusRenameInput) : moduleMenuEntries(menu.nodeId, focusRenameInput);
+      }
       // right-click inside a multi-selection acts on all of it
       const picked = useEditor.getState().selectedIds;
       if (picked.length > 1 && picked.includes(node.id)) {
@@ -919,10 +936,12 @@ function CanvasInner() {
   }, [menu, byId, duplicate, rf, tidy, exportImage, applyCanvasOps, am, m, arrangeInside, ir]);
 
   const mm = useMessages(modulesMessages);
-  const stats =
+  const dm = useMessages(dataSourceMessages);
+  const baseStats =
     ir.modules.length > 0
       ? mm.stats(ir.resources.length, ir.modules.length, irEdges.length)
       : m.stats(ir.resources.length, irEdges.length);
+  const stats = ir.data.length > 0 ? dm.stats(baseStats, ir.data.length) : baseStats;
   // the minimap sits bottom-right and slides left of the inspector; hide it
   // rather than cover the toolbar on the bottom-left
   const minimapFits = canvasWidth - (inspectorOpen ? inspectorInset() : 0) >= 176 + 320 + 48;
@@ -1039,6 +1058,7 @@ function CanvasInner() {
             maskStrokeColor="var(--border-strong)"
             nodeBorderRadius={6}
             nodeColor={(n) => {
+              if (n.type === 'data') return DATA_TILE.solid;
               const def = getDef(byId.get(n.id)?.type ?? '');
               if (!def) return '#94a3b8';
               const c = CATEGORY_COLORS[def.category].solid;
@@ -1091,7 +1111,7 @@ function CanvasInner() {
           ) : null}
           {!overview && !readOnly ? <EditorTips /> : null}
         </Panel>
-        {ir.resources.length === 0 && ir.modules.length === 0 && !locked ? <EmptyCanvas /> : null}
+        {ir.resources.length === 0 && ir.modules.length === 0 && ir.data.length === 0 && !locked ? <EmptyCanvas /> : null}
       </ReactFlow>
 
       {menu ? (
@@ -1105,7 +1125,9 @@ function CanvasInner() {
                 ? m.selectionActions
                 : isModuleId(menu.nodeId)
                   ? mm.actions
-                  : m.resourceActions
+                  : isDataId(menu.nodeId)
+                    ? dm.actions
+                    : m.resourceActions
               : menu.exportOnly
                 ? m.export
                 : m.canvasActions
