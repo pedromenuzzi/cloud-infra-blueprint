@@ -28,7 +28,9 @@ function useEscapeGoesUp() {
       if ((e.target as HTMLElement).closest?.(EDITABLE)) return;
       if (useEditor.getState().selection || useLayout.getState().drawer || useSecurityUi.getState().panelOpen) return;
       if (document.querySelector('[role="menu"], [data-bp-tooltip]')) return;
+      // the Esc is ours: a focused canvas node would otherwise take it too (React Flow unselects on it)
       e.preventDefault();
+      e.stopPropagation();
       moduleViewBack();
     };
     window.addEventListener('keydown', onKey, true);
