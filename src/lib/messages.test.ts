@@ -31,8 +31,8 @@ describe('lib text in Portuguese', () => {
   });
 
   it('page titles, relative times and slugs', () => {
-    expect(pageTitle('Projetos')).toBe('Projetos — Cloud Blueprint');
-    expect(pageTitle(null)).toBe('Cloud Blueprint — Desenhe sua nuvem. Gere o Terraform na hora.');
+    expect(pageTitle('Projetos')).toBe('Projetos · Cloud Blueprint');
+    expect(pageTitle(null)).toBe('Cloud Blueprint · Desenhe sua nuvem. Gere o Terraform na hora.');
     expect(timeAgo(new Date().toISOString())).toBe('agora');
     expect(timeAgo(new Date(Date.now() - 3 * 3600_000).toISOString())).toBe('há 3 horas');
     expect(timeAgo(new Date(Date.now() - 3 * 3600_000).toISOString(), 'en')).toBe('3h ago');

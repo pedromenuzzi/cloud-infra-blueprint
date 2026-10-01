@@ -50,6 +50,7 @@ import { templateDescription, templateName, templateTagLabel } from '@/templates
 import { TUTORIALS } from '@/tutorials';
 import { tutorialText } from '@/tutorials/i18n';
 import { pdfText } from './pdf/testing';
+import { defaultTitle, pageTitle } from './useDocumentTitle';
 
 const LOCALES: Locale[] = ['en', 'pt-BR'];
 
@@ -225,6 +226,16 @@ describe('sentence dashes: messages', () => {
       }
     }
     expect(offenders(found)).toEqual([]);
+  });
+});
+
+describe('sentence dashes: page titles', () => {
+  it('a page and the app are joined by " · ", as in index.html', () => {
+    for (const locale of LOCALES) {
+      expect(pageTitle('Projects', locale)).toBe('Projects · Cloud Blueprint');
+      expect(defaultTitle(locale)).toMatch(/^Cloud Blueprint · /);
+      expect(offenders([{ path: locale, text: defaultTitle(locale) }])).toEqual([]);
+    }
   });
 });
 

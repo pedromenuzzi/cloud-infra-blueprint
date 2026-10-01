@@ -182,7 +182,7 @@ test.describe('PDF document export', () => {
     expect(longest).toBeLessThan(1_000);
 
     const pages = pageContents(pdf);
-    const areas = pages.filter((c) => textRuns(c).some((t) => /^Diagram \x97 area \d+ of \d+$/.test(t)));
+    const areas = pages.filter((c) => textRuns(c).some((t) => /^Diagram: area \d+ of \d+$/.test(t)));
     expect(areas.length).toBeGreaterThan(1);
     // every instance is on an area page, at a readable size
     const onAreas = new Set(areas.flatMap(textRuns));
