@@ -73,7 +73,7 @@ function htmlAttr(text: string): string {
 
 /** The `<iframe>` snippet for this view. */
 function embedSnippet(payload: SharePayload): string {
-  return `<iframe src="${viewUrl(payload, { embed: true })}" title="${htmlAttr(payload.name)} — Cloud Blueprint" width="100%" height="480" style="border:0;border-radius:12px" loading="lazy"></iframe>`;
+  return `<iframe src="${viewUrl(payload, { embed: true })}" title="${htmlAttr(payload.name)} · Cloud Blueprint" width="100%" height="480" style="border:0;border-radius:12px" loading="lazy"></iframe>`;
 }
 
 function copyViewLink(payload: SharePayload) {

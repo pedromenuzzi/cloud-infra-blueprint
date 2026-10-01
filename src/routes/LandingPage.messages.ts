@@ -19,8 +19,8 @@ export const landingMessages = defineMessages(
     heroTitle: 'Design cloud infrastructure visually.',
     heroAccent: 'Ship Terraform instantly.',
     heroBody:
-      'The blueprint editor that keeps your architecture diagram and your Terraform code in perfect sync — for AWS, Azure and GCP. Free, open source, and it runs entirely in your browser.',
-    startFree: 'Start building — it’s free',
+      'The blueprint editor that keeps your architecture diagram and your Terraform code in perfect sync, for AWS, Azure and GCP. Free, open source, and it runs entirely in your browser.',
+    startFree: 'Start building, it’s free',
     openDemo: 'Open live demo',
     trust: 'No account · No server · MIT licensed',
     // hero demo
@@ -44,7 +44,7 @@ export const landingMessages = defineMessages(
       },
       clouds: {
         title: '80+ services, three clouds',
-        body: 'AWS, Azure and GCP in one palette — from VPCs and Lambdas to AKS, Pub/Sub and Key Vault — with real nesting and connection rules.',
+        body: 'AWS, Azure and GCP in one palette (from VPCs and Lambdas to AKS, Pub/Sub and Key Vault), with real nesting and connection rules.',
       },
       keyboard: {
         title: 'Keyboard-first',
@@ -52,7 +52,7 @@ export const landingMessages = defineMessages(
       },
       layout: {
         title: 'One-click tidy layout',
-        body: 'A layered auto-layout that understands containers — messy imports become a clean, readable architecture in a second.',
+        body: 'A layered auto-layout that understands containers: messy imports become a clean, readable architecture in a second.',
       },
       import: {
         title: 'Bring your own Terraform',
@@ -68,7 +68,7 @@ export const landingMessages = defineMessages(
       },
       diagnostics: {
         title: 'Diagnostics as you type',
-        body: 'Unclosed blocks, missing required arguments and dangling references are flagged instantly — on the canvas and in the code.',
+        body: 'Unclosed blocks, missing required arguments and dangling references are flagged instantly, on the canvas and in the code.',
       },
     } satisfies Record<string, Feature>,
     // how it works
@@ -76,7 +76,7 @@ export const landingMessages = defineMessages(
     howTitle: 'Three steps. No yak shaving.',
     steps: [
       { title: 'Start anywhere', body: 'Pick a template, import your .tf files, or open a blank canvas.' },
-      { title: 'Design both ways', body: 'Drag, connect and nest on the canvas — or just write HCL. Both stay in sync.' },
+      { title: 'Design both ways', body: 'Drag, connect and nest on the canvas, or just write HCL. Both stay in sync.' },
       { title: 'Ship it', body: 'Export the Terraform and run terraform apply. Diagram included.' },
     ] as Feature[],
     // templates
@@ -103,8 +103,8 @@ export const landingMessages = defineMessages(
     heroTitle: 'Desenhe sua nuvem.',
     heroAccent: 'Gere o Terraform na hora.',
     heroBody:
-      'O editor de blueprints que mantém o diagrama da sua arquitetura e o código Terraform em sincronia perfeita — para AWS, Azure e GCP. Gratuito, open source e roda inteiramente no seu navegador.',
-    startFree: 'Comece a criar — é grátis',
+      'O editor de blueprints que mantém o diagrama da sua arquitetura e o código Terraform em sincronia perfeita, para AWS, Azure e GCP. Gratuito, open source e roda inteiramente no seu navegador.',
+    startFree: 'Comece a criar, é grátis',
     openDemo: 'Abrir a demo',
     trust: 'Sem conta · Sem servidor · Licença MIT',
     clickResource: 'Clique em um recurso',
@@ -125,7 +125,7 @@ export const landingMessages = defineMessages(
       },
       clouds: {
         title: '80+ serviços, três nuvens',
-        body: 'AWS, Azure e GCP em uma só paleta — de VPCs e Lambdas a AKS, Pub/Sub e Key Vault — com aninhamento real e regras de conexão.',
+        body: 'AWS, Azure e GCP em uma só paleta (de VPCs e Lambdas a AKS, Pub/Sub e Key Vault), com aninhamento real e regras de conexão.',
       },
       keyboard: {
         title: 'Feito para o teclado',
@@ -133,7 +133,7 @@ export const landingMessages = defineMessages(
       },
       layout: {
         title: 'Layout organizado em um clique',
-        body: 'Um layout automático em camadas que entende contêineres — importações bagunçadas viram uma arquitetura limpa e legível em um segundo.',
+        body: 'Um layout automático em camadas que entende contêineres: importações bagunçadas viram uma arquitetura limpa e legível em um segundo.',
       },
       import: {
         title: 'Traga seu próprio Terraform',
@@ -149,7 +149,7 @@ export const landingMessages = defineMessages(
       },
       diagnostics: {
         title: 'Diagnóstico enquanto você digita',
-        body: 'Blocos não fechados, argumentos obrigatórios ausentes e referências soltas são apontados na hora — no canvas e no código.',
+        body: 'Blocos não fechados, argumentos obrigatórios ausentes e referências soltas são apontados na hora, no canvas e no código.',
       },
     },
     howEyebrow: 'Como funciona',
@@ -158,7 +158,7 @@ export const landingMessages = defineMessages(
       { title: 'Comece de onde quiser', body: 'Escolha um template, importe seus arquivos .tf ou abra um canvas em branco.' },
       {
         title: 'Projete nos dois sentidos',
-        body: 'Arraste, conecte e aninhe no canvas — ou simplesmente escreva HCL. Os dois ficam em sincronia.',
+        body: 'Arraste, conecte e aninhe no canvas, ou simplesmente escreva HCL. Os dois ficam em sincronia.',
       },
       { title: 'Coloque no ar', body: 'Exporte o Terraform e rode terraform apply. Diagrama incluso.' },
     ],

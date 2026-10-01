@@ -117,7 +117,7 @@ test('the landing page switches from its header picker', async ({ page }) => {
   await pickLanguage(page, 'Português (Brasil)');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Desenhe sua nuvem. Gere o Terraform na hora.');
   await expect(page.getByRole('button', { name: 'Abrir o app' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Comece a criar — é grátis/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Comece a criar, é grátis/ })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Bidirecional de verdade' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Três passos. Sem enrolação.' })).toBeVisible();
   // template cards in the UI language
@@ -173,7 +173,7 @@ test('tutorials, a lesson, the viewer and the 404 in Portuguese', async ({ page 
   await expect(page.getByRole('complementary', { name: 'Lição' }).locator('code').first()).toHaveText('provider "aws"');
   await page.getByRole('button', { name: 'Próximo' }).click();
   await expect(page.getByText(/^Passo 2 de 5$/)).toBeVisible();
-  await expect(page).toHaveTitle('Sua primeira VPC + EC2 — Tutoriais — Cloud Blueprint');
+  await expect(page).toHaveTitle('Sua primeira VPC + EC2 · Tutoriais — Cloud Blueprint');
   // switching language keeps the step
   await pickLanguage(page, 'English');
   await expect(page.getByText(/^Step 2 of 5$/)).toBeVisible();

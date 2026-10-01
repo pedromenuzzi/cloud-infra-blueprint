@@ -7,7 +7,7 @@
 <p align="center">
   <b>Design cloud infrastructure visually. Ship Terraform instantly.</b><br/>
   A free, open-source blueprint editor that keeps your architecture diagram and your
-  Terraform code in perfect sync — AWS, Azure and GCP, running entirely in your browser.
+  Terraform code in perfect sync, for AWS, Azure and GCP. It runs entirely in your browser.
 </p>
 
 <p align="center">
@@ -37,25 +37,25 @@ between them.
   cloud names and AZs outside the region, plus an inspector planner that carves new subnets
   (or splits a VPC across AZs) from the free address space.
 - 💵 **Cost estimate**: a live "~$27/mo" on the canvas, a per-resource breakdown in the inspector
-  and the PDF — on-demand list prices shipped with the app (no network calls), every assumption shown.
+  and the PDF. On-demand list prices ship with the app (no network calls), and every assumption is shown.
 - 🧭 **Security explained**: a clickable per-port "Why is this reachable?" path (IGW → route → subnet → rules), CIS / AWS FSBP control IDs on findings, and a toast when an edit lowers the grade.
-- 📄 **PDF export**: a shareable architecture document — the diagram plus a readable summary
-  of resources, connections, security findings and the code — generated in the browser.
+- 📄 **PDF export**: a shareable architecture document (the diagram plus a readable summary
+  of resources, connections, security findings and the code), generated in the browser.
 - 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the
-  diagram and the code side by side with the new lines highlighted — any step opens in
+  diagram and the code side by side with the new lines highlighted. Any step opens in
   the editor.
-- 📚 **The real provider schemas**: every argument of every AWS / AzureRM / Google resource — searchable in the inspector, completed, documented and validated ("did you mean…?") in the code — loaded per provider, only when used.
+- 📚 **The real provider schemas**: every argument of every AWS / AzureRM / Google resource: searchable in the inspector; completed, documented and validated ("did you mean…?") in the code; loaded per provider, only when used.
 
 ### Your data, anywhere
 
 - 🗄️ **Backup & restore**: download every project as one `.zip` (a folder of `.tf` files per
   project + a `manifest.json`); restoring shows what's new, already there or different, and
-  lets you add copies or replace — nothing is overwritten without asking.
+  lets you add copies or replace. Nothing is overwritten without asking.
 - 📊 **Storage meter** on the dashboard: how much of the browser's storage your projects use,
   a "Back up and free space" nudge from 70%, and a one-click request for persistent storage.
-- ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor —
-  Monaco, auto-layout, fonts — open without a connection; a new version shows an
-  "Update available — Reload" prompt instead of breaking the open tab.
+- ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor
+  (Monaco, auto-layout, fonts) open without a connection; a new version shows an
+  "Update available" prompt with a Reload button instead of breaking the open tab.
 - 📁 **Folder sync** (Chrome / Edge): *Open folder…* imports a Terraform root module linked to
   its folder, or *Sync with folder…* links an existing project. Saves write through to the
   `.tf` files, edits made on disk load back when you return to the tab, and changes on both
@@ -67,9 +67,9 @@ between them.
   file, tidy the layout, export, switch theme, start from a template.
 - ✨ **Quick add**: double-click the canvas to drop a service exactly there (nested into the
   VPC / subnet / group under the cursor).
-- 🪄 **Tidy up**: one-click layered auto-layout (ELK) that understands containers — one undo step.
+- 🪄 **Tidy up**: one-click layered auto-layout (ELK) that understands containers, in one undo step.
 - 🧲 **Multi-select** (Shift-drag or `Ctrl`-click): align and distribute, set a shared setting,
-  tag, connect (e.g. one security group to five instances) or delete them all — one undo step each.
+  tag, connect (e.g. one security group to five instances) or delete them all, one undo step each.
 - 🔁 **Selection sync**: pick a node and the code scrolls to its block; click inside a block and
   the node is selected.
 - 🖱️ **Right-click actions**: show in code, rename (`F2`), duplicate (`⌘D`), copy address,
@@ -79,10 +79,10 @@ between them.
   supported yet), and so are `.terraform/`, state files and the lock file.
 - 🐙 **Import from GitHub**: paste `owner/repo`, a repository, folder (`…/tree/<ref>/<path>`),
   `.tf` file or gist link and pick one of the root modules found. It talks to GitHub's public
-  API straight from your browser — no token needed for public repos; an optional token (kept in
+  API straight from your browser: no token needed for public repos; an optional token (kept in
   memory only, never stored or put in a link) opens private repos and raises the 60 requests/hour limit.
-- 👁️ **Read-only view links**: *Copy view link* shares a project that opens in a viewer —
-  pan, zoom, inspect, read the code, export PDF/PNG — without editing or saving anything;
+- 👁️ **Read-only view links**: *Copy view link* shares a project that opens in a viewer
+  (pan, zoom, inspect, read the code, export PDF/PNG) without editing or saving anything;
   *Make a copy to edit* imports it. Add `&embed=1` for an iframe.
 - 🖼️ **Export** the diagram as PNG or SVG, alongside the Terraform zip.
 - 🎨 **A real icon system**: every service has its own glyph on a category-colored tile;
@@ -99,16 +99,16 @@ canvas op ──▶ IR ops ──▶ minimal text patch ──▶ re-parse ─�
 keystrokes ──▶ debounced parse ──▶ new IR (positions carried over) ──▶ canvas
 ```
 
-- **Your formatting survives.** Canvas edits patch only the touched block — comments,
+- **Your formatting survives.** Canvas edits patch only the touched block: comments,
   blank lines, heredocs, functions and conditionals round-trip byte-for-byte.
 - **Layout lives in the code** as a managed comment (`# @blueprint:pos=x,y`), so the
-  file itself is the complete source of truth — git-diff friendly.
+  file itself is the complete source of truth (git-diff friendly).
 - **Anything the parser can't model** (complex expressions, `dynamic` blocks, `locals`,
   `data` sources) is preserved verbatim and shown as-is.
 
 ## Open in Cloud Blueprint & embed
 
-Put a badge in your Terraform repo's README — it opens the GitHub import prefilled with your
+Put a badge in your Terraform repo's README. It opens the GitHub import prefilled with your
 repo (`#gh=owner/repo[/path][@ref]`; nothing is fetched until the visitor confirms):
 
 ```md
@@ -117,12 +117,12 @@ repo (`#gh=owner/repo[/path][@ref]`; nothing is fetched until the visitor confir
 
 Embed a live, read-only diagram in docs or a wiki: in the editor, *Copy view link*, then in
 the viewer *Share → Copy embed code* (or add `&embed=1` to a view link yourself). The embed
-shows only the diagram — pan, zoom, select — with an "Open" link; it never takes focus or
+shows only the diagram (pan, zoom, select) with an "Open" link; it never takes focus or
 opens a dialog on load, and never writes to the visitor's storage.
 
 ```html
 <iframe src="https://pedromenuzzi.github.io/cloud-infra-blueprint/#view=<payload>&embed=1"
-        title="My architecture — Cloud Blueprint" width="100%" height="480"
+        title="My architecture · Cloud Blueprint" width="100%" height="480"
         style="border:0;border-radius:12px" loading="lazy"></iframe>
 ```
 
@@ -156,7 +156,7 @@ First E2E run on a new machine: `pnpm exec playwright install --with-deps chromi
 The service worker is blocked in every E2E spec (it would serve cached files past `page.route()`
 mocks) except `e2e/pwa.spec.ts`, which opts in to test the offline app and the update prompt.
 
-That's it — there is no database, no API keys, no backend to configure.
+That's it: there is no database, no API keys, no backend to configure.
 
 ## Deploy for free
 
@@ -211,8 +211,8 @@ e2e/             # Playwright specs (editor, navigation, share links, import, pe
 
 ## Extending
 
-- **Add a resource**: one `defineResource({...})` entry in `src/resources/{aws,azure,gcp}.ts`
-  — schema fields drive the inspector form, autocomplete, validation and node rendering.
+- **Add a resource**: one `defineResource({...})` entry in `src/resources/{aws,azure,gcp}.ts`.
+  Schema fields drive the inspector form, autocomplete, validation and node rendering.
   `src/resources/catalog.test.ts` checks every entry automatically (refs point at real types,
   a palette drop round-trips through the parser).
 - **Add a template**: build an IR in `src/templates/index.ts` and register it.
@@ -221,20 +221,20 @@ e2e/             # Playwright specs (editor, navigation, share links, import, pe
 
 ## Roadmap
 
-- [x] **F1** — IR + HCL round-trip engine (byte-preserving patches)
-- [x] **F1.5** — Design system, landing, dashboard, templates
-- [x] **F2** — Canvas + palette + inspector
-- [x] **F3 (solo)** — Bidirectional sync, undo/redo, diagnostics
-- [ ] **F4** — Optional sync backend (NestJS + Postgres + Yjs) for teams & realtime collab
-- [ ] **F5** — GitHub/GitLab push, org template libraries
-- [x] **F3.5** — Premium UX: command palette, quick add, tidy layout, selection sync,
+- [x] **F1**: IR + HCL round-trip engine (byte-preserving patches)
+- [x] **F1.5**: Design system, landing, dashboard, templates
+- [x] **F2**: Canvas + palette + inspector
+- [x] **F3 (solo)**: Bidirectional sync, undo/redo, diagnostics
+- [ ] **F4**: Optional sync backend (NestJS + Postgres + Yjs) for teams & realtime collab
+- [ ] **F5**: GitHub/GitLab push, org template libraries
+- [x] **F3.5**: Premium UX: command palette, quick add, tidy layout, selection sync,
   import/export, per-service icons, first-run tips
-- [ ] **F6** — ~~PWA offline install~~ (done), guided onboarding tour, community template gallery
+- [ ] **F6**: ~~PWA offline install~~ (done), guided onboarding tour, community template gallery
 
 The client-only architecture is deliberate: parsing/emitting runs in the browser, so a
-future backend only needs to store snapshots and relay WebSockets — exactly as specified
+future backend only needs to store snapshots and relay WebSockets, exactly as specified
 in the original master spec.
 
 ## License
 
-[MIT](LICENSE) — free forever, for everyone.
+[MIT](LICENSE). Free forever, for everyone.
