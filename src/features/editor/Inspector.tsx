@@ -48,6 +48,9 @@ import { useLayout } from './layoutStore';
 import { SchemaFields } from './SchemaFields';
 import { isModuleId } from '@/ir/modules';
 import { ModuleInspector } from '@/features/modules/ModuleInspector';
+import { isDataId } from '@/ir/dataSources';
+import { DataInspector } from '@/features/data-sources/DataInspector';
+import { DataSourceHint } from '@/features/data-sources/DataSourceHint';
 import { orderedFiles, useEditor } from './store';
 
 type Tab = 'rules' | 'properties' | 'connections';
@@ -457,6 +460,8 @@ function FieldRow({ node, field }: { node: ResourceNode; field: FieldDef }) {
   return (
     <Field label={label} hint={fieldHelp(node.type, field.name).doc ?? field.doc}>
       {fieldControl(node, field)}
+      {/* a data source of the project that usually fills it (`ami` ← data.aws_ami.x.id) */}
+      <DataSourceHint node={node} field={field.name} />
     </Field>
   );
 }
@@ -944,8 +949,11 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
       <MultiSelectPanel ids={selectedIds} />
     );
   }
-  // a module call has an inspector of its own
-  if (!node) return selection && isModuleId(selection) ? <ModuleInspector docked={docked} onMinimize={onMinimize} /> : null;
+  // a module call and a data source have an inspector of their own
+  if (!node) {
+    if (selection && isModuleId(selection)) return <ModuleInspector docked={docked} onMinimize={onMinimize} />;
+    return selection && isDataId(selection) ? <DataInspector docked={docked} onMinimize={onMinimize} /> : null;
+  }
   return (
     <aside
       className={cn(

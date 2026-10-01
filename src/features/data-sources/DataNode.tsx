@@ -60,13 +60,17 @@ export function DataNodeView({ data, selected }: NodeProps<DataFlowNode>) {
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <DataSourceIcon size={40} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-1">
-          <span className="min-w-0 truncate text-[9.5px] font-bold uppercase leading-[12px] tracking-[0.07em] text-(--data-text)">
-            {data.typeLabel}
-          </span>
-          <code className="shrink-0 rounded-[4px] bg-(--data-chip) px-1 font-mono text-[9.5px] font-bold leading-[14px] text-(--data-text) ring-1 ring-(--data-ring)">
+        {/* a long type name takes a second line instead of being cut, like a resource's (nodes.tsx) */}
+        <div className="max-h-[26px] min-h-4 overflow-hidden">
+          <code className="float-right -mb-0.5 ml-1 rounded-[4px] bg-(--data-chip) px-1 font-mono text-[9.5px] font-bold leading-[14px] text-(--data-text) ring-1 ring-(--data-ring)">
             data
           </code>
+          <span
+            data-type-label=""
+            className="block break-words pt-0.5 text-[9.5px] font-bold uppercase leading-[12px] tracking-[0.07em] text-(--data-text)"
+          >
+            {data.typeLabel}
+          </span>
         </div>
         <div className="mt-px truncate text-[13px] font-semibold leading-tight text-foreground">{data.title}</div>
         <div className="truncate font-mono text-[10.5px] leading-snug text-muted" translate="no">
