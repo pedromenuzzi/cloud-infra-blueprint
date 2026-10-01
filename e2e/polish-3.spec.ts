@@ -1,6 +1,7 @@
 /**
- * Polish, round 3: the editor top bar on tablet and small laptop widths, and
- * Aurora instances (aws_rds_cluster_instance) inside their cluster.
+ * Polish, round 3: the editor top bar on tablet and small laptop widths,
+ * Aurora instances (aws_rds_cluster_instance) inside their cluster and the
+ * "Subnets per AZ" template written with count.
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -225,4 +226,45 @@ test.describe('Aurora instances inside their cluster', () => {
       .poll(async () => (await page.evaluate(() => JSON.parse(localStorage.getItem('cb-projects-v1') ?? '[]')))[0]?.files['main.tf'])
       .toMatch(/cluster_identifier\s*=\s*aws_rds_cluster\.orders\.id[\s\S]*engine\s*=\s*aws_rds_cluster\.orders\.engine/);
   });
+});
+
+/* ------------------------------------------------------------ template with count */
+
+test.describe('template: subnets per AZ (count)', () => {
+  for (const [locale, theme] of [
+    ['en', 'light'],
+    ['pt-BR', 'dark'],
+  ] as const) {
+    test(`${locale}, ${theme}: listed under Networking, it opens with each repeated block drawn once, as a stack of 3`, async ({ page }) => {
+      const en = locale === 'en';
+      await page.addInitScript(
+        ({ locale, theme }) => {
+          localStorage.setItem('cb-tips-dismissed', '1');
+          localStorage.setItem('cb-locale', locale);
+          localStorage.setItem('cb-theme', theme);
+        },
+        { locale, theme },
+      );
+      await page.goto('/dashboard');
+      await page.getByRole('button', { name: en ? /^New Project/ : /^Novo projeto/ }).first().click();
+      const dialog = page.getByRole('dialog', { name: en ? 'Start from a template' : 'Começar com um template' });
+      await dialog.getByRole('button', { name: en ? 'Networking' : 'Redes', exact: true }).click();
+      const title = en ? 'Subnets per AZ on AWS' : 'Sub-redes por AZ na AWS';
+      const card = dialog.locator('div.group', { has: page.getByRole('heading', { name: title }) });
+      await expect(card).toHaveCount(1);
+      await expect(card).toContainText(en ? 'written with count and cidrsubnet' : 'escrita com count e cidrsubnet');
+      await card.getByRole('button', { name: en ? 'Use template' : 'Usar template' }).click();
+      await expect(page).toHaveURL(/\/editor\//);
+
+      const node = (id: string) => page.locator(`.react-flow__node[data-id="${id}"]`);
+      await expect(node('aws_subnet.public')).toBeVisible();
+      for (const id of ['aws_subnet.public', 'aws_subnet.private', 'aws_route_table_association.public', 'aws_route_table_association.private']) {
+        await expect(node(id).getByTestId('repeat-badge'), id).toHaveText('×3');
+      }
+      // the NAT gateway sits in the first public subnet, the subnets in the VPC
+      await expect(node('aws_nat_gateway.nat')).toHaveAttribute('aria-label', new RegExp(en ? ', in Subnet public' : ', em Sub-rede public'));
+      await expect(node('aws_subnet.private')).toHaveAttribute('aria-label', new RegExp(en ? ', in VPC main' : ', em VPC main'));
+      expect(await seriousAxeViolations(page, '.react-flow__nodes')).toEqual([]);
+    });
+  }
 });
