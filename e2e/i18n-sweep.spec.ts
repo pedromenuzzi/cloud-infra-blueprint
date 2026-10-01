@@ -6,7 +6,8 @@
  * security panel and rules editor, cost, layout presets, ⌘K, context menus,
  * a drop hint, export / PDF / shortcuts dialogs), a project with module
  * calls (module nodes and inspector, an opened local module, "Add module…"),
- * a share link, the viewer and the 404. At each stop every visible text node is collected, with
+ * a project with data sources (data nodes, their inspector and menu, ⌘K
+ * "Add data source…", an IAM finding), a share link, the viewer and the 404. At each stop every visible text node is collected, with
  * `aria-label`, `title`, `placeholder`, `alt` and tooltip text. A string
  * that reads the same in both languages is an English leak unless it is
  * one of the tokens that are never translated (see ALLOWED and `untranslated`
@@ -24,6 +25,8 @@ import { parseProject } from '../src/hcl/parser';
 import { sentenceDash } from '../src/i18n/dashes';
 import type { Expression } from '../src/ir/types';
 import { resourceName, resourceShortName, categoryLabel } from '../src/resources/i18n';
+import { DATA_SOURCE_PRESETS, DATA_SOURCE_TYPES } from '../src/features/data-sources/catalog';
+import { dataSourceName, dataSourceShortName, presetName } from '../src/features/data-sources/i18n';
 import { allDefs } from '../src/resources/registry';
 import { FRAMEWORKS } from '../src/security/compliance';
 import { CATEGORY_ORDER } from '../src/resources/types';
@@ -135,6 +138,50 @@ function moduleZip(): Buffer {
   );
 }
 
+/** data sources read by resources and locals, one of them an IAM policy granting "*" on "*" */
+const DATA_ROOT = `data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"]
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+data "aws_caller_identity" "current" {}
+
+data "aws_iam_policy_document" "admin" {
+  statement {
+    actions   = ["*"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_instance" "web" {
+  ami               = data.aws_ami.ubuntu.id
+  instance_type     = "t3.micro"
+  availability_zone = data.aws_availability_zones.available.names[0]
+}
+
+resource "aws_iam_policy" "admin" {
+  name   = "admin"
+  policy = data.aws_iam_policy_document.admin.json
+}
+
+locals {
+  account = data.aws_caller_identity.current.account_id
+}
+`;
+
+function dataZip(): Buffer {
+  return Buffer.from(zipSync({ 'lookups/main.tf': strToU8(DATA_ROOT) }));
+}
+
 const TEMPLATE_SLUGS = ['aws-web-app', 'azure-web-app', 'gcp-web-app'] as const;
 
 /** everything a project's own code names: ids, types, names, literal values, variables, outputs, files */
@@ -151,8 +198,13 @@ function projectData(): Set<string> {
   };
   // the module project (named after its zip) and its own code: module calls, the child module's blocks
   out.add('stack');
-  for (const files of [{ 'main.tf': MODULE_ROOT }, MODULE_NETWORK]) {
+  out.add('lookups');
+  for (const files of [{ 'main.tf': MODULE_ROOT }, MODULE_NETWORK, { 'main.tf': DATA_ROOT }]) {
     const { ir } = parseProject(files);
+    for (const d of ir.data) {
+      out.add(d.id).add(d.name).add(d.type);
+      Object.entries(d.args).forEach(([k, v]) => (out.add(k), literals(v)));
+    }
     for (const m of ir.modules) {
       out.add(m.id).add(m.name);
       Object.entries(m.args).forEach(([k, v]) => (out.add(k), literals(v)));
@@ -188,6 +240,11 @@ function projectData(): Set<string> {
     }
     for (const f of def.fields) f.options?.forEach((o) => out.add(o));
   }
+  // data sources whose name is a product's in both languages ("AMI")
+  for (const t of DATA_SOURCE_TYPES) {
+    for (const pick of [dataSourceName, dataSourceShortName]) if (pick(t.type, 'en') === pick(t.type, 'pt-BR')) out.add(pick(t.type, 'en'));
+  }
+  for (const p of DATA_SOURCE_PRESETS) if (presetName(p, 'en') === presetName(p, 'pt-BR')) out.add(presetName(p, 'en'));
   // compliance frameworks are named by their publishers
   for (const f of FRAMEWORKS) for (const v of Object.values(f)) if (typeof v === 'string') out.add(v);
   for (const c of CATEGORY_ORDER) if (categoryLabel(c, 'en') === categoryLabel(c, 'pt-BR')) out.add(categoryLabel(c, 'en'));
@@ -521,6 +578,47 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
     await stop('modules: Add module dialog');
     await addModule.getByText(L('Custom source', 'Origem personalizada')).click();
     await stop('modules: Add module dialog, custom source');
+    await close();
+
+    // -------------------------------------------------------- data sources
+    await page.goto('/dashboard');
+    await page.getByLabel(L('Import Terraform files', 'Importar arquivos Terraform')).setInputFiles([
+      { name: 'lookups.zip', mimeType: 'application/zip', buffer: dataZip() },
+    ]);
+    await expect(node('data.aws_ami.ubuntu')).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await stop('data sources: canvas');
+    const dataInspector = page.getByRole('complementary', { name: L('Data source inspector', 'Inspetor da fonte de dados') });
+    for (const id of ['data.aws_ami.ubuntu', 'data.aws_caller_identity.current', 'data.aws_iam_policy_document.admin']) {
+      await page.keyboard.press('Escape');
+      await node(id).click({ position: { x: 16, y: 10 } });
+      await expect(dataInspector.getByTestId('inspector-address')).toHaveText(id);
+      const optional = dataInspector.locator('details > summary');
+      if (await optional.count()) await optional.first().click();
+      await stop(`data sources: inspector ${id}`);
+    }
+    await page.keyboard.press('Escape');
+    await node('aws_instance.web').click({ position: { x: 16, y: 10 } });
+    await expect(inspector().getByTestId('inspector-address')).toHaveText('aws_instance.web');
+    await stop('data sources: a resource reading them');
+    await page.keyboard.press('Escape');
+    await node('data.aws_ami.ubuntu').click({ button: 'right', position: { x: 16, y: 10 } });
+    await expect(page.getByRole('menu')).toBeVisible();
+    await stop('data sources: context menu');
+    await close();
+    await close();
+    await page.getByRole('button', { name: L('Security grade', 'Segurança, nota'), exact: false }).first().click();
+    await expect(page.locator('[data-finding]').first()).toBeVisible();
+    await page.locator('[data-finding] button[aria-expanded]').first().click();
+    await stop('data sources: security panel');
+    await page.getByRole('button', { name: L('Close security panel', 'Fechar painel de segurança') }).click();
+    await page.getByRole('button', { name: L('Security lens', 'Lente de segurança') }).click();
+    await stop('data sources: security lens');
+    await page.getByRole('button', { name: L('Hide security lens', 'Ocultar lente de segurança') }).click();
+    await page.keyboard.press('Control+k');
+    await page.locator('[cmdk-item][data-value="add-data-source"]').click();
+    await expect(page.locator('[cmdk-item][data-value="data aws_ami.ubuntu"]')).toBeVisible();
+    await stop('data sources: command palette');
     await close();
   } finally {
     await context.close();

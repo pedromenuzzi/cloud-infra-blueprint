@@ -138,7 +138,12 @@ function ArgRow({ node, name, value, entry }: { node: DataNode; name: string; va
           />
         )}
       </div>
-      {entry?.description ? <p className="mt-1 text-[10.5px] leading-snug text-faint">{entry.description}</p> : null}
+      {/* the provider's own help, in English */}
+      {entry?.description ? (
+        <p className="mt-1 text-[10.5px] leading-snug text-faint" lang="en">
+          {entry.description}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -281,8 +286,8 @@ function Attributes({ node, entries, status }: { node: DataNode; entries: Schema
           {names.slice(0, 40).map((a) => {
             const reference = `${node.id}.${a.name}`;
             return (
-              <li key={a.name} className="flex items-center gap-2 rounded-[7px] bg-surface-2 px-2 py-1" title={a.description}>
-                <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]" translate="no">
+              <li key={a.name} className="flex items-center gap-2 rounded-[7px] bg-surface-2 px-2 py-1">
+                <span className="min-w-0 flex-1 truncate font-mono text-[11.5px]" translate="no" lang="en" title={a.description}>
                   {a.name}
                   {a.detail ? <span className="ml-1.5 text-[10px] text-faint">{a.detail}</span> : null}
                 </span>
@@ -440,8 +445,8 @@ export function DataInspector({ docked = false, onMinimize }: { docked?: boolean
               <dl className="space-y-1">
                 {meta.map(([k, v]) => (
                   <div key={k} className="flex items-baseline gap-2 rounded-[7px] bg-surface-2 px-2 py-1">
-                    <dt className="font-mono text-[11px] font-semibold">{RAW_KEY.test(k) ? k.replace(/ #\d+.*$/, '') : k}</dt>
-                    <dd className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted" title={exprPreview(v)}>
+                    <dt className="font-mono text-[11px] font-semibold" translate="no">{RAW_KEY.test(k) ? k.replace(/ #\d+.*$/, '') : k}</dt>
+                    <dd translate="no" className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted" title={exprPreview(v)}>
                       {v.kind === 'block' || v.kind === 'blocks' ? blockSummary(v) : exprPreview(v)}
                     </dd>
                   </div>
@@ -465,8 +470,12 @@ export function DataInspector({ docked = false, onMinimize }: { docked?: boolean
                 {missing.map((e) => (
                   <li key={e.name} className="flex items-center gap-2 rounded-[7px] border border-warning/30 bg-warning/8 px-2 py-1">
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[11.5px] font-semibold">{e.name}</span>
-                      {e.description ? <span className="block truncate text-[10.5px] text-faint">{e.description}</span> : null}
+                      <span className="block truncate font-mono text-[11.5px] font-semibold" translate="no">{e.name}</span>
+                      {e.description ? (
+                        <span className="block truncate text-[10.5px] text-faint" lang="en">
+                          {e.description}
+                        </span>
+                      ) : null}
                     </span>
                     <Button
                       size="sm"
@@ -489,10 +498,10 @@ export function DataInspector({ docked = false, onMinimize }: { docked?: boolean
               </summary>
               <ul className="mt-2 space-y-1">
                 {optional.map((e) => (
-                  <li key={e.name} className="flex items-center gap-2 rounded-[7px] bg-surface-2 px-2 py-1" title={e.description}>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-mono text-[11.5px]">{e.name}</span>
-                      <span className="block truncate font-mono text-[10px] text-faint">{e.kind === 'attribute' ? e.type : e.nesting}</span>
+                  <li key={e.name} className="flex items-center gap-2 rounded-[7px] bg-surface-2 px-2 py-1">
+                    <span className="min-w-0 flex-1" lang="en" title={e.description}>
+                      <span className="block truncate font-mono text-[11.5px]" translate="no">{e.name}</span>
+                      <span className="block truncate font-mono text-[10px] text-faint" translate="no">{e.kind === 'attribute' ? e.type : e.nesting}</span>
                     </span>
                     <button
                       type="button"
@@ -532,6 +541,7 @@ export function DataInspector({ docked = false, onMinimize }: { docked?: boolean
                             key={r.id}
                             type="button"
                             className="font-mono text-primary hover:underline"
+                            translate="no"
                             onClick={() => {
                               useEditor.getState().setSelection(r.id, 'canvas');
                               canvasApi()?.focusNode(r.id);

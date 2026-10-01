@@ -55,7 +55,7 @@ export function DataSourceGroups({
               <DataSourceIcon size={26} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13px] font-medium text-foreground">{presetName(p, locale)}</span>
-                <span className="block truncate font-mono text-[10.5px] text-faint">data.{p.type}</span>
+                <span className="block truncate font-mono text-[10.5px] text-faint" translate="no">{`data.${p.type}`}</span>
               </span>
             </Command.Item>
           ))}

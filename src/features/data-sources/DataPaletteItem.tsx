@@ -44,7 +44,7 @@ export function DataPaletteItem({ preset, active, roveKey }: { preset: DataSourc
       <DataSourceIcon size={28} />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[12.5px] font-medium leading-tight">{name}</span>
-        <span className="block truncate font-mono text-[10px] leading-tight text-faint">data.{preset.type}</span>
+        <span className="block truncate font-mono text-[10px] leading-tight text-faint" translate="no">{`data.${preset.type}`}</span>
       </span>
       <Plus className="h-3.5 w-3.5 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
     </button>

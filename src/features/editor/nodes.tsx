@@ -417,6 +417,8 @@ export function FlowEdge({
           <div
             className="nodrag nopan pointer-events-none absolute rounded-full border bg-surface-1 px-2 py-0.5 font-mono text-[10px] font-medium text-muted shadow-sm"
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`, zIndex: labelZ }}
+            // the argument holding the reference (`policy`, `subnet_id`): code
+            translate="no"
           >
             {data.field}
           </div>
