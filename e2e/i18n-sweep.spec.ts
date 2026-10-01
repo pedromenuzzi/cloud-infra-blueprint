@@ -10,7 +10,9 @@
  * `aria-label`, `title`, `placeholder`, `alt` and tooltip text. A string
  * that reads the same in both languages is an English leak unless it is
  * one of the tokens that are never translated (see ALLOWED and `untranslated`
- * below, and src/i18n/GLOSSARY.md).
+ * below, and src/i18n/GLOSSARY.md). In either language, a string with a dash
+ * used as punctuation ("A — B", "A - B") fails too (src/i18n/dashes.ts): the
+ * project's own data (names, values from its code) is left out of that check.
  *
  * Not collected: Monaco (Terraform code, and Monaco's own widgets, which only
  * localize at load) and `<pre>` / `<code>` (code and addresses).
@@ -19,6 +21,7 @@ import { readFileSync } from 'node:fs';
 import { strToU8, zipSync } from 'fflate';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { parseProject } from '../src/hcl/parser';
+import { sentenceDash } from '../src/i18n/dashes';
 import type { Expression } from '../src/ir/types';
 import { resourceName, resourceShortName, categoryLabel } from '../src/resources/i18n';
 import { allDefs } from '../src/resources/registry';
@@ -81,6 +84,16 @@ function untranslated(text: string, data: Set<string>): boolean {
   for (const phrase of phrases) if (rest.includes(phrase)) rest = rest.split(phrase).join(' ');
   const tokens = rest.split(/[\s,;·•—–→←↔…()[\]{}"'“”‘’=+×|<>!?*~]+|[:/](?=\s|$)|(?<=\s|^)[:/]/).filter(Boolean);
   return tokens.every((t) => untranslatedToken(t, data));
+}
+
+/** the project's own strings that hold a dash ("prod — eu", "ami-0c55…"): theirs to word, taken out before the dash check */
+let dashedData: string[] = [];
+
+/** a dash used as punctuation in the app's words, or null */
+function dashIn(text: string): string | null {
+  let rest = text;
+  for (const d of dashedData) if (rest.includes(d)) rest = rest.split(d).join(' ');
+  return sentenceDash(rest);
 }
 
 /* ------------------------------------------------------------------ data */
@@ -514,11 +527,12 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
   return stops;
 }
 
-test('no English is left on screen in Portuguese (every string differs, or is never translated)', async ({ browser }) => {
+test('no English is left on screen in Portuguese, and no dash as punctuation in either language', async ({ browser }) => {
   test.setTimeout(420_000);
   const [pt, en] = await Promise.all([crawl(browser, 'pt-BR'), crawl(browser, 'en')]);
   const data = projectData();
   phrases = [...data, ...ALLOWED].filter((p) => p.includes(' ')).sort((a, b) => b.length - a.length);
+  dashedData = [...data].filter((d) => d.length > 1 && /[—–-]/.test(d)).sort((a, b) => b.length - a.length);
   const leaks: string[] = [];
   const kept = new Set<string>();
   for (const [name, strings] of pt) {
@@ -533,8 +547,24 @@ test('no English is left on screen in Portuguese (every string differs, or is ne
   if (process.env.SWEEP_DEBUG) {
     await test.info().attach('same-in-both.json', { body: JSON.stringify([...kept].sort(), null, 1), contentType: 'application/json' });
   }
+  // a dash as punctuation, per language: the string once, with the first screen it was seen on
+  const dashes = new Map<string, string[]>();
+  for (const [lang, crawled] of [['pt-BR', pt], ['en', en]] as const) {
+    for (const [name, strings] of crawled) {
+      for (const s of strings) {
+        if (!dashIn(s)) continue;
+        const key = `${lang} ${JSON.stringify(s)}`;
+        dashes.set(key, [...(dashes.get(key) ?? []), name]);
+      }
+    }
+  }
+  const dashLines = [...dashes].map(([key, stops]) => {
+    const [lang, ...text] = key.split(' ');
+    return `${lang} · ${stops[0]}${stops.length > 1 ? ` (+${stops.length - 1} more)` : ''}: ${text.join(' ')}`;
+  });
   expect([...pt.keys()]).toEqual([...en.keys()]);
-  expect([...new Set(leaks)], 'strings that read the same in English and Portuguese').toEqual([]);
+  expect.soft([...new Set(leaks)], 'strings that read the same in English and Portuguese').toEqual([]);
+  expect.soft(dashLines, 'a dash used as punctuation (use a comma, colon, period or parentheses)').toEqual([]);
 });
 
 test('the sweep would catch a leak', () => {
@@ -551,4 +581,13 @@ test('the sweep would catch a leak', () => {
   expect(untranslated(':80, :443', data)).toBe(true);
   expect(untranslated('HTTPS 443', data)).toBe(true);
   expect(readFileSync(new URL('../src/i18n/GLOSSARY.md', import.meta.url), 'utf8')).toContain('i18n-sweep');
+});
+
+test('the sweep would catch a dash, and leaves the project’s own data alone', () => {
+  dashedData = ['prod — eu'];
+  expect(dashIn('Deleted 3 resources — Ctrl Z to undo')).not.toBeNull();
+  expect(dashIn('Não salvo - armazenamento cheio')).not.toBeNull();
+  expect(dashIn('Rename prod — eu')).toBeNull();
+  expect(dashIn('Deleted 3 resources. Ctrl Z to undo')).toBeNull();
+  expect(dashIn('Ports 1024–65535 · ×0–1 · us-east-1a · sub-rede')).toBeNull();
 });
