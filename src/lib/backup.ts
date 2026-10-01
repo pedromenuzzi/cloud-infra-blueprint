@@ -11,6 +11,7 @@
  * content), and the user decides whether conflicts become copies or replace
  * what's here. Everything lands in one storage write (all or nothing).
  */
+import { safeRootPath } from './projectPath';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { messagesFor } from '@/i18n/messages';
 import { backupMessages } from './backup.messages';
@@ -45,6 +46,8 @@ export interface ManifestProject {
   name: string;
   description?: string;
   templateSlug?: string;
+  /** where its root module was imported from (`envs/prod`) */
+  rootPath?: string;
   createdAt: string;
   updatedAt: string;
   /** filesHash() of the files */
@@ -66,6 +69,7 @@ export interface BackupProject {
   name: string;
   description?: string;
   templateSlug?: string;
+  rootPath?: string;
   createdAt: string;
   updatedAt: string;
   files: Record<string, string>;
@@ -148,6 +152,7 @@ export function validateManifest(value: unknown): ManifestCheck {
       name: label,
       description: typeof entry.description === 'string' ? entry.description : undefined,
       templateSlug: typeof entry.templateSlug === 'string' ? entry.templateSlug : undefined,
+      rootPath: safeRootPath(entry.rootPath),
       createdAt,
       updatedAt: isIsoDate(entry.updatedAt) ? entry.updatedAt : createdAt,
       hash: typeof entry.hash === 'string' ? entry.hash : '',
@@ -210,6 +215,7 @@ export function buildBackup(projects: Project[], now = new Date()): Uint8Array {
         name: project.name,
         ...(project.description !== undefined ? { description: project.description } : {}),
         ...(project.templateSlug !== undefined ? { templateSlug: project.templateSlug } : {}),
+        ...(project.rootPath !== undefined ? { rootPath: project.rootPath } : {}),
         createdAt: project.createdAt,
         updatedAt: project.updatedAt,
         hash: filesHash(project.files),
@@ -349,6 +355,7 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
       name: entry.name,
       description: entry.description,
       templateSlug: entry.templateSlug,
+      rootPath: entry.rootPath,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
       files,
@@ -482,6 +489,7 @@ export function resolveRestore(
       files: project.files,
       providers: [],
       templateSlug: project.templateSlug,
+      rootPath: project.rootPath,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
     } satisfies Partial<Project>;

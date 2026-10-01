@@ -50,7 +50,7 @@ import { canvasApi } from './canvasApi';
 import { layoutMessages } from './layout.messages';
 import { LayoutMenu } from './LayoutMenu';
 import { useLayout, type PanelId } from './layoutStore';
-import { useEditor } from './store';
+import { openProjectRootPath, useEditor } from './store';
 import { topbarMessages } from './Topbar.messages';
 
 function IconToggle({
@@ -146,7 +146,7 @@ export function Topbar() {
 
   const doExportZip = () => {
     const { projectName: name, files } = useEditor.getState();
-    exportZip(name, files);
+    exportZip(name, files, { rootPath: openProjectRootPath() });
     showToast(m.zipDownloaded, 'success');
   };
 

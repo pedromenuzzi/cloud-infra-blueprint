@@ -56,7 +56,7 @@ import { useLayout } from '@/features/editor/layoutStore';
 import { openGithubImport } from '@/features/import/githubImportStore';
 import { fixAllFindings, getAudit, useSecurityUi } from '@/features/security/securityStore';
 import { ResourceGroups, wordFilter } from '@/features/editor/ResourcePicker';
-import { orderedFiles, useEditor } from '@/features/editor/store';
+import { openProjectRootPath, orderedFiles, useEditor } from '@/features/editor/store';
 import { securityUiMessages } from '@/features/security/messages';
 import { BrazilFlag, UsFlag } from '@/components/flags';
 import { LOCALES, useLocale } from '@/i18n/locale';
@@ -348,7 +348,7 @@ export function CommandPalette() {
                       keywords={m.kw.download}
                       onSelect={() =>
                         run(() => {
-                          exportZip(editor().projectName, editor().files);
+                          exportZip(editor().projectName, editor().files, { rootPath: openProjectRootPath() });
                           showToast(messagesFor(commandMessages).zipDownloaded, 'success');
                         })
                       }
@@ -486,6 +486,7 @@ export function CommandPalette() {
                         name: imported.name,
                         files: imported.files,
                         description: t.importedDescription(Object.keys(imported.files).length),
+                        rootPath: imported.rootDir,
                       });
                       if (!project) return;
                       showToast(importNote(imported) ?? t.importedToast(imported.name), 'success');

@@ -695,6 +695,11 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
   (window as unknown as { __editorStore: unknown }).__editorStore = useEditor;
 }
 
+/** Where the open project's root module was imported from (`envs/prod`), for the Terraform zip. */
+export function openProjectRootPath(): string | undefined {
+  return stored?.rootPath;
+}
+
 /** Write the pending (debounced) save right away. True when nothing is left unsaved. */
 export function flushPendingSave(): boolean {
   return saveNow();

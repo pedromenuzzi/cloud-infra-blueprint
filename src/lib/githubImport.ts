@@ -778,19 +778,36 @@ async function pool<T>(items: T[], limit: number, fn: (item: T) => Promise<void>
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
 }
 
+/** Texts already downloaded, per listing (planning an import downloads what the import then reuses). */
+const fetched = new WeakMap<Listing, Map<string, string>>();
+
+async function fetchOnce(listing: Listing, file: TreeFile, opts: GithubOptions): Promise<string> {
+  let cache = fetched.get(listing);
+  if (!cache) fetched.set(listing, (cache = new Map()));
+  const key = `${file.path}\u0000${file.sha ?? ''}`;
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const text = await fetchText(listing, file, opts);
+  cache.set(key, text);
+  return text;
+}
+
+interface Gathered {
+  texts: Map<string, string>;
+  /** files the caps left out: too large, past MAX_FILES */
+  oversized: number;
+  overCount: number;
+  /** files of the child modules it calls, and how many such folders */
+  moduleFiles: number;
+  moduleDirs: number;
+}
+
 /**
- * Step 2: download one root module — and the child modules it calls from
- * the same listing, folder by folder — and turn it into an import. The size
- * caps are checked against the listing first (oversized files are never
- * fetched), then the texts go through importTf's own assembly — same names,
- * same folders.
+ * Download one root module and the child modules it calls from the same
+ * listing (and the ones those call), folder level by folder level, within
+ * the size caps.
  */
-export async function fetchRootModule(
-  listing: Listing,
-  module: RootModule,
-  childModuleFiles: number,
-  opts: GithubOptions = {},
-): Promise<GithubImport> {
+async function gather(listing: Listing, module: RootModule, opts: GithubOptions): Promise<Gathered> {
   let used = 0;
   let oversized = 0;
   let overCount = 0;
@@ -824,7 +841,7 @@ export async function fetchRootModule(
       files,
       PARALLEL,
       async (file) => {
-        texts.set(file.path, await fetchText(listing, file, opts));
+        texts.set(file.path, await fetchOnce(listing, file, opts));
         done += 1;
         opts.onProgress?.({ phase: 'files', done, total });
       },
@@ -848,6 +865,7 @@ export async function fetchRootModule(
   }
   const visited = new Set([module.dir]);
   let frontier = [module.dir];
+  let moduleFiles = 0;
   while (frontier.length > 0) {
     const next: string[] = [];
     for (const dir of frontier) {
@@ -861,9 +879,41 @@ export async function fetchRootModule(
       }
     }
     const wanted = take(next.flatMap((dir) => [...byDir.get(dir)!].sort((a, b) => a.path.localeCompare(b.path))));
+    moduleFiles += wanted.length;
     if (wanted.length > 0) await download(wanted);
     frontier = next;
   }
+  return { texts, oversized, overCount, moduleFiles, moduleDirs: visited.size - 1 };
+}
+
+/**
+ * What importing `module` takes: its own files and those of the child
+ * modules it calls, as the import would download them — the texts are
+ * kept, so the import that follows doesn't fetch them again.
+ */
+export async function planRootModule(
+  listing: Listing,
+  module: RootModule,
+  opts: GithubOptions = {},
+): Promise<{ files: number; moduleFiles: number; moduleDirs: number }> {
+  const { texts, moduleFiles, moduleDirs } = await gather(listing, module, { ...opts, onProgress: undefined });
+  return { files: texts.size, moduleFiles, moduleDirs };
+}
+
+/**
+ * Step 2: download one root module — and the child modules it calls from
+ * the same listing, folder by folder — and turn it into an import. The size
+ * caps are checked against the listing first (oversized files are never
+ * fetched), then the texts go through importTf's own assembly — same names,
+ * same folders.
+ */
+export async function fetchRootModule(
+  listing: Listing,
+  module: RootModule,
+  childModuleFiles: number,
+  opts: GithubOptions = {},
+): Promise<GithubImport> {
+  const { texts, oversized, overCount } = await gather(listing, module, opts);
 
   const sources = [...texts].map(([path, text]) => ({ path, text }));
   const assembled = assembleProject(sources, module.dir);

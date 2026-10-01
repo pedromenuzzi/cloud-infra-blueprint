@@ -41,6 +41,9 @@ export const importMessages = defineMessages(
     listingFiles: 'Listing the files',
     back: 'Back',
     importFiles: (n: number) => `Import ${n} file${s(n)}`,
+    countingModules: 'Counting the files of the child modules it calls…',
+    withModules: (files: number, dirs: number) =>
+      `Includes ${files} file${s(files)} of the ${dirs === 1 ? 'child module' : `${dirs} child modules`} it calls.`,
     importing: 'Importing…',
     importAnotherCopy: 'Import another copy',
     openExistingCopy: 'Open existing copy',
@@ -96,6 +99,9 @@ export const importMessages = defineMessages(
     listingFiles: 'Listando os arquivos',
     back: 'Voltar',
     importFiles: (n: number) => `Importar ${n} arquivo${s(n)}`,
+    countingModules: 'Contando os arquivos dos módulos filhos que ele chama…',
+    withModules: (files: number, dirs: number) =>
+      `Inclui ${files} arquivo${s(files)} ${dirs === 1 ? 'do módulo filho' : `dos ${dirs} módulos filhos`} que ele chama.`,
     importing: 'Importando…',
     importAnotherCopy: 'Importar outra cópia',
     openExistingCopy: 'Abrir a cópia existente',

@@ -31,6 +31,7 @@ import {
   listGithub,
   listingLabel,
   parseGithubInput,
+  planRootModule,
   resetTime,
   type GithubErrorCode,
   type GithubImport,
@@ -202,6 +203,29 @@ export default function GithubImportDialog() {
   const errorId = useId();
   const hintId = useId();
   const m = useMessages(importMessages);
+  /** what importing the picked root module takes: its files and those of the child modules it calls */
+  const [plan, setPlan] = useState<{ dir: string; files: number; moduleFiles: number; moduleDirs: number } | 'counting' | null>(null);
+
+  // counting what the pick takes reads its files (and its modules'): the import then reuses them
+  const picking = step.name === 'pick' ? step : null;
+  useEffect(() => {
+    if (!picking) return;
+    const module = picking.scan.modules.find((mod) => mod.dir === picking.selected);
+    if (!module) return;
+    const controller = new AbortController();
+    setPlan('counting');
+    const timer = setTimeout(() => {
+      planRootModule(picking.listing, module, options(controller.signal))
+        .then((p) => !controller.signal.aborted && setPlan({ dir: module.dir, ...p }))
+        .catch(() => !controller.signal.aborted && setPlan(null));
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picking?.listing, picking?.selected]);
+  const pickedPlan = picking && plan !== 'counting' && plan?.dir === picking.selected ? plan : null;
 
   // closing the dialog stops whatever is in flight
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -292,6 +316,7 @@ export default function GithubImportDialog() {
         files: result.imported.files,
         description: result.description,
         origin: result.origin,
+        rootPath: result.imported.rootDir,
       });
     } catch {
       setError({ message: messagesFor(importMessages).storageFull, code: 'storage' });
@@ -448,6 +473,8 @@ export default function GithubImportDialog() {
           errorActions={errorActions}
           onSelect={(dir) => step.name === 'pick' && setStep({ ...step, selected: dir })}
           onSubmit={(e) => void importSelected(e)}
+          plan={step.name === 'pick' ? (plan === 'counting' ? 'counting' : pickedPlan) : null}
+          planId={`${hintId}-modules`}
         />
       ) : null}
 
@@ -463,8 +490,8 @@ export default function GithubImportDialog() {
           >
             <ArrowLeft className="h-3.5 w-3.5" /> {m.back}
           </Button>
-          <Button type="submit" form="gh-import-pick">
-            {m.importFiles(step.scan.modules.find((mod) => mod.dir === step.selected)?.files.length ?? 0)}
+          <Button type="submit" form="gh-import-pick" aria-describedby={pickedPlan?.moduleFiles ? `${hintId}-modules` : undefined}>
+            {m.importFiles(pickedPlan?.files ?? step.scan.modules.find((mod) => mod.dir === step.selected)?.files.length ?? 0)}
           </Button>
         </Footer>
       ) : null}
@@ -517,7 +544,11 @@ function PickStep({
   errorActions,
   onSelect,
   onSubmit,
+  plan,
+  planId,
 }: {
+  plan: { moduleFiles: number; moduleDirs: number } | 'counting' | null;
+  planId: string;
   step: PickLike;
   filter: string;
   onFilter(value: string): void;
@@ -614,6 +645,17 @@ function PickStep({
           ) : null}
         </div>
       </fieldset>
+      {plan === 'counting' ? (
+        <p role="status" className="flex items-center gap-1.5 text-[11.5px] leading-snug text-faint">
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden="true" />
+          <span>{m.countingModules}</span>
+        </p>
+      ) : plan && plan.moduleFiles > 0 ? (
+        <p id={planId} role="status" className="flex gap-1.5 text-[11.5px] leading-snug text-muted">
+          <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{m.withModules(plan.moduleFiles, plan.moduleDirs)}</span>
+        </p>
+      ) : null}
       {scan.childModuleFiles > 0 ? (
         <p className="flex gap-1.5 text-[11.5px] leading-snug text-faint">
           <Info className="mt-px h-3.5 w-3.5 shrink-0" />

@@ -58,12 +58,15 @@ test('imports a picked root module from a repository, then offers that copy inst
     | undefined;
   expect(Object.keys(imported!.files).sort()).toEqual(['main.tf', 'variables.tf']);
   expect(imported!.origin).toBe('github:acme/infra/envs/prod@main');
-  // state, the lock file and .terraform/ were never downloaded
-  const fetched = gh.requests.map((r) => r.url());
-  expect(fetched.filter((u) => u.startsWith('https://raw.githubusercontent.com/')).sort()).toEqual([
-    'https://raw.githubusercontent.com/acme/infra/main/envs/prod/main.tf',
-    'https://raw.githubusercontent.com/acme/infra/main/envs/prod/variables.tf',
-  ]);
+  // state, the lock file and .terraform/ were never downloaded (counting a pick reads its .tf files only)
+  const fetched = gh.requests.map((r) => r.url()).filter((u) => u.startsWith('https://raw.githubusercontent.com/'));
+  expect(fetched).toEqual(
+    expect.arrayContaining([
+      'https://raw.githubusercontent.com/acme/infra/main/envs/prod/main.tf',
+      'https://raw.githubusercontent.com/acme/infra/main/envs/prod/variables.tf',
+    ]),
+  );
+  expect(fetched.every((u) => u.endsWith('.tf') && !u.includes('/.terraform/'))).toBe(true);
 
   // the same version again: open the copy instead of making another
   const again = await openFromDashboard(page);
