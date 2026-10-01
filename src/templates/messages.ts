@@ -34,6 +34,11 @@ export const TEMPLATE_TEXT_PT: Record<TemplateSlug, TemplateText> = {
     description:
       'Arquitetura de referência com nota A: ALB só com HTTPS, camadas de aplicação e de dados privadas, grupos de segurança encadeados, NACLs, NAT e RDS criptografado.',
   },
+  'aws-subnets-per-az': {
+    name: 'Sub-redes por AZ na AWS',
+    description:
+      'Uma VPC com uma sub-rede pública e uma privada em cada zona de disponibilidade, escrita com count e cidrsubnet: um internet gateway, um NAT gateway e uma tabela de rotas por camada.',
+  },
   'azure-web-app': {
     name: 'App web no Azure',
     description: 'Grupo de recursos com VNet, VM Linux, NSG e banco de dados Azure SQL.',
@@ -67,5 +72,6 @@ export const TEMPLATE_TAGS_PT: Record<TemplateTag, string> = {
   Containers: 'Contêineres',
   Serverless: 'Sem servidor',
   Security: 'Segurança',
+  Networking: 'Redes',
   Data: 'Dados',
 };

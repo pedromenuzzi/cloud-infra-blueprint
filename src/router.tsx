@@ -6,6 +6,7 @@ import { ConfirmHost } from '@/components/Confirm';
 import { ShareLinkHost } from '@/components/ShareLinkHost';
 import { StorageNotices } from '@/components/StorageNotices';
 import { CommandHost } from '@/features/command/CommandHost';
+import { AutoUpdate } from '@/features/data/AutoUpdate';
 import { GithubImportHost } from '@/features/import/GithubImportHost';
 import { lazyWithReload } from '@/lib/chunkReload';
 import { isEmbedHash, isViewHash } from '@/lib/share';
@@ -56,6 +57,8 @@ function Root() {
       )}
       <ConfirmHost />
       <ShareLinkHost />
+      {/* a new version on a screen with nothing in progress: applied without asking */}
+      <AutoUpdate />
       {inEditor ? (
         <Suspense fallback={null}>
           <ProjectConflictHost />

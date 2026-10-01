@@ -221,11 +221,11 @@ function SubnetList({ plan }: { plan: NetworkPlan }) {
       <h4 className="mb-1 text-[10.5px] font-semibold text-muted">{m.subnetCount(plan.rows.length, gcp)}</h4>
       <ul className="max-h-56 space-y-1 overflow-y-auto" aria-label={m.subnetList(gcp)}>
         {plan.rows.map((row) => (
-          <li key={row.node.id}>
+          <li key={row.instance ?? row.node.id}>
             <button
               type="button"
               onClick={() => select(row.node.id)}
-              title={m.select(row.node.id)}
+              title={m.select(row.instance ?? row.node.id)}
               className={cn(
                 'flex w-full items-center gap-2 rounded-[8px] border bg-surface-2/60 px-2 py-1.5 text-left transition-colors',
                 'hover:border-border-strong hover:bg-surface-2',
@@ -233,7 +233,7 @@ function SubnetList({ plan }: { plan: NetworkPlan }) {
               )}
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] font-semibold text-foreground">{row.node.name}</span>
+                <span className="block truncate text-[12px] font-semibold text-foreground">{row.name}</span>
                 <span className={cn('block truncate font-mono text-[10.5px]', row.block ? 'text-muted' : 'italic text-faint')}>
                   {row.label}
                   {row.zone ? <span className="text-faint"> · {row.zone}</span> : null}
@@ -365,25 +365,33 @@ function SubnetCard({ node }: { node: ResourceNode }) {
   const locale = useLocale((s) => s.locale);
   const plan = useMemo(() => subnetPlan(ir, node.id), [ir, node.id, locale]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!plan) return null;
-  const { block, usable, parent } = plan;
+  const { block, usable, parent, instances } = plan;
   const reserved = RESERVED_IPS[plan.provider];
+  const networkWord = parent?.provider === 'azure' ? 'VNet' : 'VPC';
   return (
     <Card>
       <div className="space-y-2">
+        {instances ? <InstanceList rows={instances} kind={plan.subnet.node.args.count ? 'count' : 'for_each'} /> : null}
         {block ? (
           <>
-            <code className="block truncate font-mono text-[13px] font-semibold text-foreground">{formatCidrBlock(block)}</code>
+            {instances ? null : (
+              <code className="block truncate font-mono text-[13px] font-semibold text-foreground">{formatCidrBlock(block)}</code>
+            )}
             <div className="grid grid-cols-3 gap-1.5 text-center">
-              <Stat value={fmt(blockSize(block))} label={m.statAddresses} />
-              <Stat value={usable ? fmt(usable.count) : '0'} label={m.statUsable} />
+              <Stat value={fmt(blockSize(block))} label={instances ? m.statEachAddresses : m.statAddresses} />
+              <Stat value={usable ? fmt(usable.count) : '0'} label={instances ? m.statEachUsable : m.statUsable} />
               {plan.share !== undefined ? (
-                <Stat value={percent(blockSize(block), parent!.total)} label={m.statOf(parent!.provider === 'azure' ? 'VNet' : 'VPC')} />
+                <Stat
+                  value={percent(BigInt(Math.round(plan.share * 1e6)), 1_000_000n)}
+                  label={instances ? m.statAllOf(instances.length, networkWord) : m.statOf(networkWord)}
+                />
               ) : (
                 <Stat value={`/${block.prefix}`} label={m.statPrefix} />
               )}
             </div>
             {usable ? (
               <p className="text-[11px] text-muted">
+                {instances ? <span className="font-mono text-foreground">{instances[0].name} · </span> : null}
                 {m.usable}
                 <span className="font-mono text-foreground">{formatAddress(usable.first, block.family)}</span> –{' '}
                 <span className="font-mono text-foreground">{formatAddress(usable.last, block.family)}</span>
@@ -437,6 +445,27 @@ function SubnetCard({ node }: { node: ResourceNode }) {
         ) : null}
       </div>
     </Card>
+  );
+}
+
+/** the instances of a repeated subnet: each one's range and zone */
+function InstanceList({ rows, kind }: { rows: NetworkPlan['rows']; kind: 'count' | 'for_each' }) {
+  const m = useMessages(cidrPlannerMessages);
+  return (
+    <div>
+      <h4 className="mb-1 text-[10.5px] font-semibold text-muted">{m.instanceCount(rows.length, kind)}</h4>
+      <ul className="max-h-40 space-y-0.5 overflow-y-auto" aria-label={m.instanceCount(rows.length, kind)}>
+        {rows.map((row) => (
+          <li key={row.instance ?? row.name} className="flex items-baseline justify-between gap-2 text-[11.5px]">
+            <span className="min-w-0 truncate font-mono font-semibold text-foreground">{row.name}</span>
+            <span className="shrink-0 font-mono text-[11px] text-muted">
+              {row.label}
+              {row.zone ? <span className="text-faint"> · {row.zone}</span> : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

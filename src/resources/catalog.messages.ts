@@ -67,6 +67,17 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
       vpc_security_group_ids: SECURITY_GROUPS,
     },
   },
+  aws_rds_cluster_instance: {
+    name: 'Instância Aurora',
+    shortName: 'Instância Aurora',
+    description: 'Uma instância de banco de dados de um cluster Aurora (a de escrita ou uma de leitura)',
+    fields: {
+      identifier: { doc: 'Letras minúsculas, dígitos e hifens, até 63' },
+      cluster_identifier: { label: 'Cluster Aurora', doc: 'O cluster ao qual pertence: armazenamento, rede e mecanismo dele' },
+      instance_class: { doc: 'db.serverless: Aurora Serverless v2, dimensionada pelo cluster' },
+      engine: { doc: 'O mecanismo do cluster' },
+    },
+  },
   aws_s3_bucket: {
     name: 'Bucket S3',
     shortName: 'S3',

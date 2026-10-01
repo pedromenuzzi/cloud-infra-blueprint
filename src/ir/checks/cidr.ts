@@ -1,7 +1,8 @@
 /**
  * CIDR checks: ranges that don't parse, sit outside their network, overlap a
  * sibling or a peer, or break a cloud's size limits. Only values that are
- * certain (literals, variable defaults) are compared.
+ * certain (literals, variable defaults) are compared; for a repeated subnet,
+ * the range of each instance when every one of them is known (./network.ts).
  */
 import { messagesFor } from '@/i18n/messages';
 import {
@@ -76,10 +77,21 @@ function usable(ranges: RangeValue[]): Array<RangeValue & { block: CidrBlock }> 
   return ranges.filter((r): r is RangeValue & { block: CidrBlock } => !!r.block && (!r.expects || r.block.family === r.expects));
 }
 
+/**
+ * The ranges to check one by one: a repeated subnet's first instance stands
+ * for the others (they share how the range is written: one warning, not one
+ * per instance); its instances are compared with each other in checkSiblings.
+ */
+function writtenRanges(subnet: SubnetInfo): RangeValue[] {
+  return subnet.instances ? (subnet.instances[0]?.ranges ?? []) : subnet.ranges;
+}
+
 /** A subnet range must sit inside one of its network's ranges of the same family. */
 function checkInside(ctx: CheckContext, subnet: SubnetInfo, net: NetworkInfo) {
   if (!net.ranges.every((r) => r.block)) return; // the network's own range is broken — reported there
+  const warned = new Set<string>();
   for (const r of usable(subnet.ranges)) {
+    if (warned.has(r.field)) continue;
     const family = r.block.family;
     if (!net.known.has(family)) continue;
     const parents = net.ranges.filter((p) => p.block!.family === family);
@@ -89,6 +101,7 @@ function checkInside(ctx: CheckContext, subnet: SubnetInfo, net: NetworkInfo) {
       continue;
     }
     const partly = parents.some((p) => blocksOverlap(p.block!, r.block));
+    warned.add(r.field);
     ctx.warn(subnet.node, r.field, t().outsideNetwork(r.field, r.text, partly, net.node.id, parents.map((p) => p.text)));
   }
 }
@@ -98,10 +111,17 @@ interface Owned {
   range: RangeValue & { block: CidrBlock };
 }
 
-/** Pairwise overlaps between the ranges of different subnets, and within one subnet. */
+/** subnets whose ranges are all known: plain ones, and repeated ones with every instance's */
+const comparable = (s: SubnetInfo) => s.instances !== undefined || !isRepeated(s.node);
+
+/**
+ * Pairwise overlaps between the ranges of different subnets, within one
+ * subnet, and between the instances of a repeated one (the same literal
+ * range for every `count` instance, two tiers whose `cidrsubnet` numbers meet).
+ */
 function checkSiblings(ctx: CheckContext, net: NetworkInfo) {
   const owned: Owned[] = net.subnets
-    .filter((s) => !isRepeated(s.node))
+    .filter(comparable)
     .flatMap((s) => usable(s.ranges).map((range) => ({ node: s.node, range })));
   const reported = new Set<string>();
   for (let j = 1; j < owned.length; j++) {
@@ -112,11 +132,14 @@ function checkSiblings(ctx: CheckContext, net: NetworkInfo) {
       const key = `${b.node.id}|${a.node.id}`;
       if (reported.has(key)) continue;
       reported.add(key);
-      if (a.node === b.node) {
+      const other = a.range.instance ?? a.node.id;
+      if (a.node === b.node && a.range.instance === b.range.instance) {
         const first = a.range.field === b.range.field ? a.range.text : `${a.range.field} ${a.range.text}`;
         ctx.warn(b.node, b.range.field, t().overlapsOwn(b.range.field, b.range.text, first));
+      } else if (b.range.instance) {
+        ctx.warn(b.node, b.range.field, t().instanceOverlaps(b.range.field, b.range.instance, b.range.text, other, a.range.text, net.provider));
       } else {
-        ctx.warn(b.node, b.range.field, t().overlapsSibling(b.range.field, b.range.text, a.node.id, a.range.text, net.provider));
+        ctx.warn(b.node, b.range.field, t().overlapsSibling(b.range.field, b.range.text, other, a.range.text, net.provider));
       }
     }
   }
@@ -134,7 +157,7 @@ function ownBlocks(net: NetworkInfo): CidrBlock[] {
 
 /** GCP networks have no range: what peering compares is their subnetworks' ranges. */
 function gcpBlocks(net: NetworkInfo): CidrBlock[] {
-  return net.subnets.filter((s) => !isRepeated(s.node)).flatMap((s) => usable(s.ranges).map((r) => r.block));
+  return net.subnets.filter(comparable).flatMap((s) => usable(s.ranges).map((r) => r.block));
 }
 
 const PEERINGS: Record<string, { a: string; b: string; cloud: CloudProvider }> = {
@@ -197,7 +220,7 @@ export function cidrChecks(ctx: CheckContext, model: NetworkModel) {
     checkSiblings(ctx, net);
   }
   for (const subnet of model.subnets) {
-    checkRanges(ctx, subnet.node, subnet.ranges, subnet.provider, 'subnet');
+    checkRanges(ctx, subnet.node, writtenRanges(subnet), subnet.provider, 'subnet');
     if (subnet.network) checkInside(ctx, subnet, subnet.network);
   }
   checkAssociations(ctx);

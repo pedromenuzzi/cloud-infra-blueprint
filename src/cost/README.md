@@ -5,7 +5,7 @@ The app never fetches prices at runtime.
 
 | File | Default region | What it holds |
 | --- | --- | --- |
-| [`prices/aws.json`](prices/aws.json) | `us-east-1` | EC2, EBS, RDS, ElastiCache, EKS, Fargate, ALB/NLB, public IPv4, NAT gateway, Route 53, KMS, Secrets Manager, plus headline usage rates |
+| [`prices/aws.json`](prices/aws.json) | `us-east-1` | EC2, EBS, RDS, Aurora instances, ElastiCache, EKS, Fargate, ALB/NLB, public IPv4, NAT gateway, Route 53, KMS, Secrets Manager, plus headline usage rates |
 | [`prices/azure.json`](prices/azure.json) | `eastus` | Linux VMs, managed disks, App Service plans, SQL Database (DTU), PostgreSQL flexible server, public IP, Azure Cache for Redis, Container Registry, Service Bus, AKS, plus usage rates |
 | [`prices/gcp.json`](prices/gcp.json) | `us-central1` | machine types, persistent disks, external IP, Cloud SQL, GKE, Memorystore, forwarding rules, Cloud DNS, Cloud NAT, plus usage rates |
 
@@ -78,6 +78,10 @@ and embed every other region's tables:
 - **RDS**: `single` = Single-AZ, `multi` = Multi-AZ with one standby (not the readable-standbys
   cluster), license "No license required". Storage is the same for PostgreSQL, MySQL and MariaDB
   (the script checks); `gp2` is Terraform's default `storage_type`.
+- **Aurora instances**: per class, on an Aurora Standard cluster (`InstanceUsage:`) and on an
+  I/O-Optimized one (`InstanceUsageIOOptimized:`); Aurora PostgreSQL and MySQL cost the same (the
+  script checks). Serverless v2 (`db.serverless`) is quoted per ACU-hour. Storage and I/O are on the
+  cluster (`usage.aurora*`).
 - **ElastiCache**: node-based on-demand, `redis` (Redis OSS), `memcached`, `valkey`.
 - **Azure PostgreSQL flexible server**: burstable sizes have their own meter; the D/E series are
   priced per vCore, so `GP_Standard_D2s_v3` = 2 × the Dsv3 vCore rate (checked against the
@@ -131,7 +135,7 @@ Then:
 
 ### Adding a SKU
 
-Add it to the list in the provider's module — `EC2_TYPES`, `RDS_CLASSES`, `CACHE_NODES`
+Add it to the list in the provider's module — `EC2_TYPES`, `RDS_CLASSES`, `AURORA_CLASSES`, `CACHE_NODES`
 ([`refresh/aws.ts`](refresh/aws.ts)), `VM_SIZES`, `APP_SERVICE_PLANS`, `SQL_DTU`, `PG_SKUS`, `REDIS`
 ([`refresh/azure.ts`](refresh/azure.ts)), `MACHINE_TYPES` ([`refresh/gcp.ts`](refresh/gcp.ts)) —
 and run the refresh. Google machine types must appear on the general-purpose compute page (other

@@ -57,17 +57,21 @@ resource "aws_lb" "web" {
     ]);
   });
 
-  it('cidrsubnet(…, count.index) and for_each ranges raise no overlap', () => {
-    const each = `resource "aws_subnet" "keyed" {
+  it('cidrsubnet(…, count.index) and for_each ranges raise no overlap when they are apart', () => {
+    const each = (fixed: string) => `resource "aws_subnet" "keyed" {
   for_each   = { a = "10.0.100.0/24", b = "10.0.101.0/24" }
   vpc_id     = aws_vpc.main.id
   cidr_block = each.value
 }
 resource "aws_subnet" "fixed" {
   vpc_id     = aws_vpc.main.id
-  cidr_block = "10.0.0.0/24"
+  cidr_block = "${fixed}"
 }
 `;
-    expect(warnings(SUBNETS + each)).toEqual([]);
+    expect(warnings(SUBNETS + each('10.0.50.0/24'))).toEqual([]);
+    // …and do when they meet: aws_subnet.private[0] is cidrsubnet(10.0.0.0/16, 8, 0)
+    expect(warnings(SUBNETS + each('10.0.0.0/24'))).toEqual([
+      'aws_subnet.fixed: cidr_block 10.0.0.0/24 overlaps aws_subnet.private[0] (10.0.0.0/24), but subnets in one VPC need ranges of their own',
+    ]);
   });
 });

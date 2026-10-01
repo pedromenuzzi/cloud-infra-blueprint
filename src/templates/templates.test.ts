@@ -3,6 +3,7 @@ import { parseProject } from '@/hcl/parser';
 import { deriveStructure } from '@/ir/graph';
 import { CONTAINER_MIN_H, CONTAINER_MIN_W, NODE_H, NODE_W } from '@/ir/layout';
 import type { Expression, ResourceNode } from '@/ir/types';
+import { repeatOf } from '@/ir/repeat';
 import { validateProject } from '@/ir/validate';
 import { cloudName } from '@/resources/naming';
 import { getDef } from '@/resources/registry';
@@ -108,7 +109,9 @@ describe('templates', () => {
   for (const t of TEMPLATES) {
     it(`${t.slug}: public subnets route 0.0.0.0/0 to an internet gateway`, () => {
       const { ir } = parseProject(t.build('demo'));
-      const target = (e: Expression | undefined) => (e?.kind === 'ref' ? e.path.split('.').slice(0, 2).join('.') : undefined);
+      // the resource a reference points at, without its instance key (`aws_subnet.public[count.index].id`)
+      const target = (e: Expression | undefined) =>
+        e?.kind === 'ref' ? e.path.replace(/\[[^\]]*\]/g, '').split('.').slice(0, 2).join('.') : undefined;
       const publicSubnets = ir.resources.filter(
         (r) =>
           r.type === 'aws_subnet' &&
@@ -170,5 +173,22 @@ describe('templates', () => {
     expect(byId.get('aws_security_group.web')?.parentId).toBe('aws_vpc.main');
     expect(byId.get('aws_internet_gateway.igw')?.parentId).toBe('aws_vpc.main');
     expect(byId.get('aws_route_table.public')?.parentId).toBe('aws_vpc.main');
+  });
+
+  it('subnets per AZ: one block per tier, repeated with count over var.azs, drawn as stacks', () => {
+    const { ir } = parseProject(TEMPLATES.find((t) => t.slug === 'aws-subnets-per-az')!.build('demo'));
+    deriveStructure(ir, getDef);
+    const byId = new Map(ir.resources.map((r) => [r.id, r]));
+    for (const id of ['aws_subnet.public', 'aws_subnet.private', 'aws_route_table_association.public', 'aws_route_table_association.private']) {
+      expect(repeatOf(byId.get(id)!, ir), id).toMatchObject({ kind: 'count', size: 3, via: 'var.azs' });
+    }
+    expect(byId.get('aws_subnet.public')!.args.cidr_block).toEqual({ kind: 'raw', hcl: 'cidrsubnet(aws_vpc.main.cidr_block, 8, count.index)' });
+    expect(byId.get('aws_subnet.private')!.args.cidr_block).toEqual({ kind: 'raw', hcl: 'cidrsubnet(aws_vpc.main.cidr_block, 8, count.index + 10)' });
+    // nested where its references put it: subnets in the VPC, the NAT gateway in the first public subnet
+    expect(byId.get('aws_subnet.public')?.parentId).toBe('aws_vpc.main');
+    expect(byId.get('aws_subnet.private')?.parentId).toBe('aws_vpc.main');
+    expect(byId.get('aws_nat_gateway.nat')?.parentId).toBe('aws_subnet.public');
+    expect(byId.get('aws_route_table.private')?.parentId).toBe('aws_vpc.main');
+    expect(byId.get('aws_vpc.main')?.args.cidr_block).toEqual(expect.objectContaining({ value: '10.0.0.0/16' }));
   });
 });

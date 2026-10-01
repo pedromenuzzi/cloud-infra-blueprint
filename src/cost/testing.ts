@@ -14,6 +14,7 @@ export const TEST_BOOK: PriceBook = {
         'db.t3.micro': { postgres: { single: 0.018, multi: 0.036 }, mysql: { single: 0.017, multi: 0.034 } },
       },
       storage: { gp2: { single: 0.115, multi: 0.23 }, gp3: { single: 0.115, multi: 0.23 } },
+      aurora: { 'db.t4g.medium': { standard: 0.073, ioOptimized: 0.095 }, 'db.r6g.large': { standard: 0.26, ioOptimized: 0.338 } },
     },
     elasticache: { 'cache.t4g.micro': { redis: 0.016, memcached: 0.016 } },
     eks: { clusterHour: 0.1 },
@@ -40,6 +41,8 @@ export const TEST_BOOK: PriceBook = {
       auroraGbMonth: 0.1,
       auroraIoPerMillion: 0.2,
       auroraIoOptimizedGbMonth: 0.225,
+      auroraServerlessAcuHour: 0.12,
+      auroraServerlessIoOptimizedAcuHour: 0.16,
     },
   },
   azure: {

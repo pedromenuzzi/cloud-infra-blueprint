@@ -96,6 +96,7 @@ const RULES: Record<string, NameRule> = {
   aws_elasticache_cluster: { arg: 'cluster_id', ...LOWER_IDENTIFIER },
   aws_db_instance: { arg: 'identifier', ...LOWER_IDENTIFIER },
   aws_rds_cluster: { arg: 'cluster_identifier', ...LOWER_IDENTIFIER },
+  aws_rds_cluster_instance: { arg: 'identifier', ...LOWER_IDENTIFIER },
   aws_db_subnet_group: {
     pattern: /^[a-z0-9 ._-]+$/,
     allowed: (m) => m.allowed.dbSubnetGroup,

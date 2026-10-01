@@ -15,12 +15,13 @@ import { VitePWA } from 'vite-plugin-pwa';
  */
 const LAZY_HEAVY = ['CodePane-', 'codicon-', 'editor.worker-', 'elk.bundled-'];
 /**
- * The provider schemas (src/schema/data/*.json, ~3.7 MB together) are kept out
- * of the precache too: a project only needs its own provider's, which is
+ * The provider schemas (src/schema/data/*.json: resources, and data sources in
+ * `<provider>.data.json`) are kept out of the precache too: a project only
+ * needs its own provider's, which is
  * runtime-cached when first loaded. Offline without it the editor falls back
  * to the catalog (src/schema/store.ts).
  */
-const SCHEMA_CHUNKS = ['aws-', 'azurerm-', 'google-'];
+const SCHEMA_CHUNKS = ['aws-', 'azurerm-', 'google-', 'aws.data-', 'azurerm.data-', 'google.data-'];
 /** Font subsets for scripts other than Latin: cached when a page first needs them. */
 const RARE_FONT_SUBSETS = ['cyrillic', 'greek', 'vietnamese'];
 

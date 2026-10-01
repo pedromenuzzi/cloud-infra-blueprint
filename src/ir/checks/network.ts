@@ -1,11 +1,15 @@
 /**
  * The address plan of a project: every network (VPC, VNet, GCP network) with
  * its ranges and its subnets with theirs, values resolved where that is
- * certain. The CIDR checks and the inspector's CIDR planner both read it.
+ * certain. A repeated subnet (`count`, `for_each`) stands for the ranges of
+ * all its instances when each one's is known (`cidrsubnet(…, count.index)`,
+ * `each.value` of a literal map). The CIDR checks and the inspector's CIDR
+ * planner both read it.
  */
 import { blockSize, parseCidrBlock, type CidrBlock, type CloudProvider, type IpFamily } from '@/resources/cidr';
 import type { Expression, IR, ResourceNode } from '../types';
-import { refTarget, resolveString, resolveStringList } from './resolve';
+import { evaluateFor, instancesOf, type Instance } from './repeatValues';
+import { isRepeated, refTarget, resolveString, resolveStringList } from './resolve';
 
 export interface RangeValue {
   /** the argument that holds it, for markers (`cidr_block`, `address_prefixes`…) */
@@ -21,6 +25,8 @@ export interface RangeValue {
   hostBits: boolean;
   /** the family the argument takes (Azure lists take both) */
   expects?: IpFamily;
+  /** the instance of a repeated subnet it belongs to: `aws_subnet.public[0]` */
+  instance?: string;
 }
 
 export interface NetworkInfo {
@@ -38,9 +44,24 @@ export interface SubnetInfo {
   node: ResourceNode;
   provider: CloudProvider;
   network?: NetworkInfo;
+  /** for a repeated subnet with known `instances`: every instance's ranges */
   ranges: RangeValue[];
   /** a range argument that is an expression we can't read */
   unresolved?: { field: string; expr: Expression };
+  /**
+   * a repeated subnet (`count`, `for_each`) whose instances and their ranges
+   * are known, in instance order; undefined for a plain subnet, or when how
+   * many there are or what each gets is decided at plan time
+   */
+  instances?: SubnetInstance[];
+}
+
+export interface SubnetInstance {
+  /** `aws_subnet.public[0]`, `aws_subnet.public["a"]` */
+  address: string;
+  /** what `count.index` / `each.*` are for it (to evaluate its other arguments) */
+  instance: Instance;
+  ranges: RangeValue[];
 }
 
 export interface NetworkModel {
@@ -153,8 +174,37 @@ function buildNetwork(ir: IR, node: ResourceNode): NetworkInfo {
   return { node, provider: spec.provider, ranges, known, unresolved, subnets: [] };
 }
 
+/**
+ * The ranges of each instance of a repeated subnet, or undefined when some
+ * instance's can't be known here (an unknown count, a range written with
+ * functions or values the evaluator doesn't follow).
+ */
+function instanceRanges(ir: IR, node: ResourceNode, args: RangeArg[]): SubnetInstance[] | undefined {
+  const instances = instancesOf(node, ir);
+  if (!instances) return undefined;
+  const out: SubnetInstance[] = [];
+  for (const instance of instances) {
+    const ranges: RangeValue[] = [];
+    for (const arg of args) {
+      const expr = node.args[arg.field];
+      if (!expr) continue;
+      const value = evaluateFor(expr, ir, instance);
+      const texts = arg.list ? value : [value];
+      if (!Array.isArray(texts) || !texts.every((t): t is string => typeof t === 'string')) return undefined;
+      ranges.push(...texts.map((text) => ({ ...rangeValue(arg.field, text, undefined, arg.expects), instance: instance.address })));
+    }
+    out.push({ address: instance.address, instance, ranges });
+  }
+  return out;
+}
+
 function buildSubnet(ir: IR, node: ResourceNode): SubnetInfo {
   const spec = SUBNET_TYPES[node.type];
+  // GCP secondary ranges of a repeated subnetwork aren't expanded: such a plan stays unknown
+  if (isRepeated(node) && !node.args.secondary_ip_range) {
+    const instances = instanceRanges(ir, node, spec.ranges);
+    if (instances) return { node, provider: spec.provider, ranges: instances.flatMap((i) => i.ranges), instances };
+  }
   const ranges: RangeValue[] = [];
   let unresolved: SubnetInfo['unresolved'];
   for (const arg of spec.ranges) {
