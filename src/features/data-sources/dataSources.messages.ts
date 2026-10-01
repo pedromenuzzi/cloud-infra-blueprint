@@ -154,7 +154,7 @@ export const dataSourceMessages = defineMessages(
     connected: 'Conectado',
     connectTitle: (target, value) => `Definir ${target} = ${value}`,
     deleteDataSource: 'Excluir fonte de dados',
-    docs: 'Documentação do Terraform',
+    docs: 'Documentação',
 
     useData: (ref) => `Usar ${ref}`,
     useDataTitle: (ref) => `Ler o valor da fonte de dados: ${ref}`,
