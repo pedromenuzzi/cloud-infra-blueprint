@@ -18,10 +18,13 @@ import type { Exposure } from '@/security/topology';
 import { AccessPaths } from './AccessPaths';
 import { ComplianceBadges } from './ComplianceBadges';
 import { ModulesNote } from '@/features/modules/ModulesNote';
+import { DataSourceIcon } from '@/features/data-sources/DataSourceIcon';
 import { securityUiMessages } from './messages';
 import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useAudit, useSecurityUi } from './securityStore';
 
 function nameOf(id: string) {
+  // a data source (an IAM policy document) keeps its `data.` address
+  if (id.startsWith('data.')) return id.split('.').slice(2).join('.') || id;
   return id.split('.').slice(1).join('.') || id;
 }
 
@@ -39,7 +42,7 @@ function ResourceChip({ id, onClick }: { id: string; onClick(): void }) {
       title={m.showOnCanvas(id)}
       className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border bg-surface-2 py-0.5 pl-0.5 pr-2 text-[11px] font-medium text-foreground transition-colors hover:border-border-strong"
     >
-      <ResourceIcon category={def?.category ?? 'compute'} type={type} size={18} />
+      {type === 'data' ? <DataSourceIcon size={18} /> : <ResourceIcon category={def?.category ?? 'compute'} type={type} size={18} />}
       <span className="truncate">{nameOf(id)}</span>
     </button>
   );

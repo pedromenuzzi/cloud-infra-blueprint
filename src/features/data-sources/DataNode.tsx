@@ -31,8 +31,10 @@ export interface DataNodeData extends Record<string, unknown> {
   /** who reads it (ids), for the badge and its tooltip */
   readers: string[];
   warn: boolean;
-  /** the security lens is on: a lookup has nothing to analyse, it fades */
+  /** the security lens is on: a lookup has nothing to analyse, it fades (unless a finding is about it) */
   lens: boolean;
+  /** a high or critical finding is about it (an IAM policy document granting "*" on "*") */
+  risky?: boolean;
   repeat?: RepeatLabel;
   /** what the PDF export reads off a node (captureDiagram): the kind line, the second line, the glyph key, the tile */
   typeLabel: string;
@@ -55,7 +57,8 @@ export function DataNodeView({ data, selected }: NodeProps<DataFlowNode>) {
       className={cn(
         'bp-node bp-data group relative flex h-[76px] w-[208px] items-center gap-2.5 rounded-[12px] pl-2.5 pr-2.5',
         selected && 'bp-node-selected',
-        data.lens && 'bp-dim',
+        data.lens && !data.risky && 'bp-dim',
+        data.lens && data.risky && !selected && 'bp-risk',
       )}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} />
@@ -102,7 +105,13 @@ export function DataNodeView({ data, selected }: NodeProps<DataFlowNode>) {
 }
 
 /** React Flow nodes for the data blocks of `ir` (top level, like module calls). */
-export function dataFlowNodes(ir: IR, warned: Set<string | undefined>, lens: boolean, locale?: Locale): DataFlowNode[] {
+export function dataFlowNodes(
+  ir: IR,
+  warned: Set<string | undefined>,
+  lens: boolean,
+  locale?: Locale,
+  risky: Set<string> = new Set(),
+): DataFlowNode[] {
   const m = messagesFor(dataSourceMessages, locale);
   const cm = messagesFor(canvasMessages, locale);
   return ir.data.map((d) => {
@@ -125,6 +134,7 @@ export function dataFlowNodes(ir: IR, warned: Set<string | undefined>, lens: boo
         readers,
         warn: warned.has(d.id),
         lens,
+        risky: risky.has(d.id),
         repeat,
         typeLabel,
         subtitle: d.type,

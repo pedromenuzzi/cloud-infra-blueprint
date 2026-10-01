@@ -264,7 +264,10 @@ export function buildFlow(
   // module calls: top-level nodes of their own (src/features/modules)
   if (ir.modules.length > 0) nodes.push(...moduleFlowNodes(ir, useEditor.getState().files, warned, audit !== null, locale));
   // data sources: lookups, top-level too (src/features/data-sources)
-  if (ir.data.length > 0) nodes.push(...dataFlowNodes(ir, warned, audit !== null, locale));
+  if (ir.data.length > 0) {
+    const risky = new Set(audit?.findings.filter((f) => f.severity === 'critical' || f.severity === 'high').map((f) => f.resource));
+    nodes.push(...dataFlowNodes(ir, warned, audit !== null, locale, risky));
+  }
 
   const rfEdges: FlowEdgeType[] = edges.map((e) => ({
     id: e.id,
