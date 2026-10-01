@@ -21,12 +21,15 @@ import { getAudit, useSecurityUi } from './securityStore';
 /** how long the edits have to settle before they are judged */
 export const DELTA_SETTLE_MS = 900;
 
-type EditorSlice = Pick<ReturnType<typeof useEditor.getState>, 'ir' | 'files' | 'past' | 'future' | 'projectId'>;
+type EditorSlice = Pick<ReturnType<typeof useEditor.getState>, 'ir' | 'files' | 'past' | 'future' | 'projectId'> &
+  Partial<Pick<ReturnType<typeof useEditor.getState>, 'scope'>>;
 
 /** What moved the IR from `prev` to `next` (the store's own bookkeeping tells them apart). */
 export function editKind(prev: EditorSlice, next: EditorSlice): 'edit' | 'undo' | 'redo' | 'load' | 'none' {
   if (next.ir === prev.ir) return 'none';
   if (next.projectId !== prev.projectId) return 'load';
+  // a module opened or closed: other blocks on the canvas, nothing edited
+  if ((next.scope ?? null) !== (prev.scope ?? null)) return 'load';
   // undo / redo put back the very snapshot they took off the stack
   if (prev.past.length > 0 && next.files === prev.past[prev.past.length - 1]) return 'undo';
   if (prev.future.length > 0 && next.files === prev.future[0]) return 'redo';

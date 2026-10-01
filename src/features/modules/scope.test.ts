@@ -7,6 +7,7 @@ import { createProject } from '@/lib/storage';
 import { duplicateModuleOps } from './duplicateModule';
 import { moduleViewBack, moduleViewTo, openModuleView, openModulePath, useModuleView } from './moduleViewStore';
 import { analysisIr } from './viewAnalysis';
+import { getAudit } from '@/features/security/securityStore';
 
 const MAIN = `module "net" {
   source = "./modules/net"
@@ -224,5 +225,54 @@ describe('duplicating a module call', () => {
     expect(duplicateModuleOps(editor().ir, 'module.net_copy')!.node.name).toBe('net_copy_2');
     editor().undo();
     expect(editor().files).toEqual(FILES);
+  });
+});
+
+describe('the security of an opened module', () => {
+  it('reads it as its call makes it, and offers only the fixes its own code takes', () => {
+    const files = {
+      'main.tf': 'module "data" {\n  source = "./modules/data"\n  public = true\n  cidr   = "0.0.0.0/0"\n}\n',
+      'modules/data/main.tf': `resource "aws_db_instance" "main" {
+  engine              = "postgres"
+  instance_class      = "db.t3.micro"
+  storage_encrypted   = true
+  publicly_accessible = var.public
+}
+
+resource "aws_db_instance" "replica" {
+  engine              = "postgres"
+  instance_class      = "db.t3.micro"
+  storage_encrypted   = true
+  publicly_accessible = true
+}
+
+resource "aws_security_group" "ssh" {
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.cidr]
+  }
+}
+
+variable "public" {}
+variable "cidr" {}
+`,
+    };
+    editor().load(createProject({ name: 'data', files }));
+    openModuleView('modules/data', 'data');
+    const audit = getAudit(editor().ir, 'en');
+    const ids = audit.findings.map((f) => f.id);
+    // what the call gives makes these: the SSH rule open to the internet, the public database
+    expect(ids).toContain('rule:aws_security_group.ssh:ingress:0');
+    const main = audit.findings.find((f) => f.id === 'rds-public:aws_db_instance.main')!;
+    const replica = audit.findings.find((f) => f.id === 'rds-public:aws_db_instance.replica')!;
+    // no fix that would write a literal over var.public…
+    expect(main.fix).toBeUndefined();
+    // …while what's in the module's own code is fixed there
+    expect(replica.fix).toBeDefined();
+    editor().applyCanvasOps(replica.fix!.ops(editor().ir));
+    expect(editor().files['modules/data/main.tf']).toBe(files['modules/data/main.tf'].replace('publicly_accessible = true', 'publicly_accessible = false'));
+    expect(editor().files['main.tf']).toBe(files['main.tf']);
   });
 });
