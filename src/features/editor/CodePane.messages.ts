@@ -18,6 +18,7 @@ export const codeMessages = defineMessages(
     resourceSnippet: 'res: resource block',
     required: ' · required',
     hoverMeta: (category: Category, provider: string) => `Category: ${category} · Provider: ${provider}`,
+    moduleOutput: (dir: string) => `output of ${dir}`,
   },
   {
     terraformCode: 'Código Terraform',
@@ -28,5 +29,6 @@ export const codeMessages = defineMessages(
     required: ' · obrigatório',
     hoverMeta: (category: Category, provider: string) =>
       `Categoria: ${categoryLabel(category, 'pt-BR')} · Provider: ${provider}`,
+    moduleOutput: (dir: string) => `output de ${dir}`,
   },
 );
