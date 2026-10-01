@@ -76,7 +76,7 @@ test('an unknown argument warns with a did-you-mean, and the inspector fixes it'
   await insertCode(page, 'resource "aws_s3_bucket" "e2e" { force_destory = true }');
   await expect(canvasStats(page)).toHaveText(/^12 resources/);
 
-  const message = 'aws_s3_bucket.e2e: unknown argument "force_destory" — did you mean "force_destroy"?';
+  const message = 'aws_s3_bucket.e2e: unknown argument "force_destory". Did you mean "force_destroy"?';
   // a Monaco marker on the argument …
   await expect(page.locator('[data-testid="monaco"] .squiggly-warning').first()).toBeAttached();
   // … and the canvas warnings chip

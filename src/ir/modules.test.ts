@@ -95,7 +95,7 @@ describe('module blocks in the IR', () => {
   it('flags a duplicate module name', () => {
     const { diagnostics } = parseProject({ 'main.tf': 'module "a" {\n  source = "./a"\n}\n\nmodule "a" {\n  source = "./b"\n}\n' });
     expect(diagnostics.map((d) => d.message)).toEqual([
-      'Duplicate module "a" (already declared at main.tf:1): Terraform requires unique module names — rename one of them',
+      'Duplicate module "a" (already declared at main.tf:1): Terraform requires unique module names, so rename one of them',
     ]);
   });
 

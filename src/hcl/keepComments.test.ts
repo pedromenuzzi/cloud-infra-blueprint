@@ -200,7 +200,7 @@ describe('when the comments can’t be kept, nothing is written', () => {
   it('a list with comments turned into an expression', () => {
     const out = patch(CIDRS, [set('aws_security_group.web', 'cidr_blocks', raw('var.cidrs'))]);
     expect(out.refused?.message).toBe(
-      'Canvas edit not applied: cidr_blocks in aws_security_group.web has comments inside that the edit would lose — edit it in the code.',
+      'Canvas edit not applied: cidr_blocks in aws_security_group.web has comments inside that the edit would lose. Edit it in the code.',
     );
     expect(out.text).toBe(CIDRS);
   });
@@ -217,7 +217,7 @@ describe('when the comments can’t be kept, nothing is written', () => {
   it('a single-line block re-emitted whole, with a comment inside a value', () => {
     const src = 'resource "aws_s3_bucket" "logs" { tags = { Team = "a" /* owner */ } }\n';
     const out = patch(src, [set('aws_s3_bucket.logs', 'acl', lit('private'))]);
-    expect(out.refused?.message).toBe('Canvas edit not applied: aws_s3_bucket.logs has comments that the edit would lose — edit it in the code.');
+    expect(out.refused?.message).toBe('Canvas edit not applied: aws_s3_bucket.logs has comments that the edit would lose. Edit it in the code.');
     expect(out.text).toBe(src);
   });
 
@@ -234,7 +234,7 @@ describe('when the comments can’t be kept, nothing is written', () => {
     try {
       const out = patch(CIDRS, [set('aws_security_group.web', 'cidr_blocks', raw('var.cidrs'))]);
       expect(out.refused?.message).toBe(
-        'Edição do canvas não aplicada: cidr_blocks em aws_security_group.web tem comentários que a edição perderia — edite no código.',
+        'Edição do canvas não aplicada: cidr_blocks em aws_security_group.web tem comentários que a edição perderia. Edite no código.',
       );
     } finally {
       useLocale.getState().setLocale('en');

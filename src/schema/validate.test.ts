@@ -130,7 +130,7 @@ describe('schema validation: findings', () => {
 }
 `);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0].message).toBe('aws_s3_bucket.logs: unknown argument "force_destory" — did you mean "force_destroy"?');
+    expect(warnings[0].message).toBe('aws_s3_bucket.logs: unknown argument "force_destory". Did you mean "force_destroy"?');
     expect(warnings[0].start).toEqual({ line: 3, col: 3 });
     expect(warnings[0].end).toEqual({ line: 3, col: 16 });
   });
@@ -146,7 +146,7 @@ describe('schema validation: findings', () => {
 }
 `);
     expect(warnings.map((w) => w.message)).toEqual([
-      'aws_instance.web: unknown argument "volum_type" in root_block_device — did you mean "volume_type"?',
+      'aws_instance.web: unknown argument "volum_type" in root_block_device. Did you mean "volume_type"?',
     ]);
     expect(warnings[0].start).toEqual({ line: 6, col: 5 });
   });
@@ -165,8 +165,8 @@ describe('schema validation: findings', () => {
 }
 `);
     expect(warnings.map((w) => w.message)).toEqual([
-      'aws_instance.web: unknown block "root_block_devic" — did you mean "root_block_device"?',
-      'aws_instance.web: unknown block type "ebs_block_devices" — did you mean "ebs_block_device"?',
+      'aws_instance.web: unknown block "root_block_devic". Did you mean "root_block_device"?',
+      'aws_instance.web: unknown block type "ebs_block_devices". Did you mean "ebs_block_device"?',
     ]);
   });
 
@@ -215,12 +215,12 @@ resource "aws_iam_role_policy" "p" {
 }
 `);
     expect(warnings.map((w) => w.message.replace('aws_instance.web: ', ''))).toEqual([
-      '"arn" is read-only — the provider computes it',
+      '"arn" is read-only: the provider computes it',
       '"monitoring" expects a bool, got "yes"',
       '"ipv6_address_count" expects a number, got true',
       '"security_groups" expects set(string), got "sg-1"',
       'block "network_interface" is deprecated',
-      '"credit_specification" is a block — write credit_specification { … }, not credit_specification = …',
+      '"credit_specification" is a block: write credit_specification { … }, not credit_specification = …',
     ]);
   });
 
@@ -247,7 +247,7 @@ resource "aws_iam_role_policy" "p" {
 }
 `);
     expect(warnings.map((w) => w.message)).toEqual([
-      'aws_s3_buckett.x: resource type "aws_s3_buckett" is not in the aws provider 6.66.0 — did you mean "aws_s3_bucket"?',
+      'aws_s3_buckett.x: resource type "aws_s3_buckett" is not in the aws provider 6.66.0. Did you mean "aws_s3_bucket"?',
     ]);
   });
 });
