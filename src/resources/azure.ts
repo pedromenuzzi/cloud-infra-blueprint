@@ -608,7 +608,7 @@ export const AZURE_RESOURCES = [
         type: 'string',
         required: true,
         placeholder: KEY_VAULT_TENANT_PLACEHOLDER,
-        doc: 'Placeholder — use your tenant id, usually data.azurerm_client_config.current.tenant_id (add `data "azurerm_client_config" "current" {}`)',
+        doc: 'Placeholder: use your tenant id, usually data.azurerm_client_config.current.tenant_id (add `data "azurerm_client_config" "current" {}`)',
       },
       { name: 'sku_name', type: 'select', options: ['standard', 'premium'], required: true },
       {

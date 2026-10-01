@@ -324,7 +324,7 @@ export const AWS_RESOURCES = [
       { name: 'load_balancer_arn', type: 'string', refTo: ['aws_lb'], refAttr: 'arn', required: true },
       { name: 'port', type: 'number', min: 1, max: 65535 },
       { name: 'protocol', type: 'select', options: ['HTTP', 'HTTPS'] },
-      { name: 'certificate_arn', type: 'string', doc: 'ACM certificate — required for HTTPS' },
+      { name: 'certificate_arn', type: 'string', doc: 'ACM certificate (required for HTTPS)' },
       {
         name: 'ssl_policy',
         type: 'select',
@@ -1060,7 +1060,7 @@ export const AWS_RESOURCES = [
     category: 'network',
     displayName: 'Route Table',
     shortName: 'Route Table',
-    description: 'Routes for subnets — a 0.0.0.0/0 route to an internet gateway makes them public',
+    description: 'Routes for subnets: a 0.0.0.0/0 route to an internet gateway makes them public',
     containment: [{ arg: 'vpc_id', parentTypes: ['aws_vpc'] }],
     fields: [
       { name: 'vpc_id', type: 'string', required: true, refTo: ['aws_vpc'] },
