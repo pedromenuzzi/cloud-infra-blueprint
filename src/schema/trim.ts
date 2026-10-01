@@ -40,6 +40,7 @@ export interface RawBlockType {
 
 export interface RawProviderSchema {
   resource_schemas?: Record<string, { version?: number; block: RawBlock }>;
+  data_source_schemas?: Record<string, { version?: number; block: RawBlock }>;
 }
 
 export interface RawSchemas {
@@ -50,6 +51,13 @@ export interface RawSchemas {
 export interface TrimOptions {
   provider: SchemaProvider;
   version: string;
+  /**
+   * `resources` (default) or `data`: the provider's data sources, for the
+   * separate `<provider>.data.json` chunk. Data sources keep no help text
+   * for the attributes they only expose (completion lists their names and
+   * types; a description is only worth its bytes on what one writes).
+   */
+  section?: 'resources' | 'data';
   /** longest description kept (characters, before the ellipsis) */
   descriptionLength?: number;
   /** only these resource types (default: all of them) */
@@ -182,6 +190,7 @@ export function trimProviderSchema(raw: RawProviderSchema, options: TrimOptions)
     return i;
   };
 
+  const dataSources = options.section === 'data';
   let help = true;
   const trimBlock = (block: RawBlock, nested: boolean): number => {
     const body: BlockData = {};
@@ -191,7 +200,8 @@ export function trimProviderSchema(raw: RawProviderSchema, options: TrimOptions)
       for (const [name, a] of attrs) {
         const type = a.nested_type ? nestedTypeExpression(a.nested_type) : typeExpression(a.type);
         // read-only values inside blocks are noise for editing; their help isn't worth the bytes
-        const readOnlyNested = nested && a.computed && !a.optional && !a.required;
+        const readOnly = a.computed && !a.optional && !a.required;
+        const readOnlyNested = (nested || dataSources) && readOnly;
         const description = readOnlyNested || !help ? undefined : shortDescription(a.description, max);
         const note = a.deprecated ? deprecationNote(a.description, max) : '';
         body.a[name] = compact<AttrData>([type, attrFlags(a), note ? (description ?? '') : description, note || undefined]);
@@ -219,11 +229,12 @@ export function trimProviderSchema(raw: RawProviderSchema, options: TrimOptions)
 
   const resources: Record<string, number> = {};
   const deprecatedResources: Record<string, string> = {};
-  const types = Object.keys(raw.resource_schemas ?? {})
+  const source = (dataSources ? raw.data_source_schemas : raw.resource_schemas) ?? {};
+  const types = Object.keys(source)
     .filter((t) => options.include?.(t) ?? true)
     .sort();
   for (const type of types) {
-    const { block } = raw.resource_schemas![type];
+    const { block } = source[type];
     help = options.help?.(type) ?? true;
     resources[type] = trimBlock(block, false);
     if (block.deprecated) deprecatedResources[type] = deprecationNote(block.description, max);
@@ -232,6 +243,7 @@ export function trimProviderSchema(raw: RawProviderSchema, options: TrimOptions)
   return {
     format: 1,
     provider: options.provider,
+    ...(dataSources ? { kind: 'data' as const } : {}),
     version: options.version,
     resources,
     ...(Object.keys(deprecatedResources).length ? { deprecatedResources } : {}),

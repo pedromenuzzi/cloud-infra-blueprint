@@ -3,12 +3,15 @@
  * blocks (skipping strings, interpolations, heredocs, comments and
  * expression brackets) so completion and hover know the resource type and
  * the nested block path at any offset — `resource "aws_instance" … {
- * root_block_device { | }` → aws_instance, ['root_block_device'].
+ * root_block_device { | }` → aws_instance, ['root_block_device'] — or the
+ * data source type in a `data "aws_ami" … { filter { | } }` block.
  */
 
 export interface CursorContext {
   /** type of the enclosing `resource` block */
   resourceType?: string;
+  /** type of the enclosing `data` block (`aws_ami`); `resourceType` is then unset */
+  dataType?: string;
   /** schema path from the resource body to the caret's block (dynamic blocks resolve to their label) */
   path: string[];
   /**
@@ -188,34 +191,33 @@ export function cursorContext(text: string, offset: number): CursorContext {
   return ctx;
 }
 
-/** map the block stack to a resource type + schema path */
+/** map the block stack to a resource (or data source) type + schema path */
 function resolve(stack: Frame[]): CursorContext {
   const blocks = stack.filter((f): f is BlockFrame => f.kind === 'block');
   const innermost = blocks[blocks.length - 1];
-  const base = { path: [] as string[], keys: innermost.keys };
-  const resource = blocks[1];
-  if (!resource || resource.header[0] !== 'resource' || !resource.header[1]) {
-    return { ...base, where: 'meta' };
+  const top = blocks[1];
+  const keyword = top?.header[0];
+  if (!top || (keyword !== 'resource' && keyword !== 'data') || !top.header[1]) {
+    return { path: [], keys: innermost.keys, where: 'meta' };
   }
+  const base = { ...(keyword === 'data' ? { dataType: top.header[1] } : { resourceType: top.header[1] }), keys: innermost.keys };
   const path: string[] = [];
-  let where: CursorContext['where'] = 'body';
+  const where: CursorContext['where'] = 'body';
   for (let d = 2; d < blocks.length; d++) {
     const [name, label] = blocks[d].header;
-    if (!name) return { ...base, resourceType: resource.header[1], path, where: 'meta' };
-    if (d === 2 && META_BLOCKS.has(name)) return { ...base, resourceType: resource.header[1], path, where: 'meta' };
+    if (!name) return { ...base, path, where: 'meta' };
+    if (d === 2 && META_BLOCKS.has(name)) return { ...base, path, where: 'meta' };
     if (name === 'dynamic') {
       // `dynamic "x" { for_each … content { <x's body> } }`
       const content = blocks[d + 1];
-      if (!label || !content || content.header[0] !== 'content') {
-        return { ...base, resourceType: resource.header[1], path, where: 'meta' };
-      }
+      if (!label || !content || content.header[0] !== 'content') return { ...base, path, where: 'meta' };
       path.push(label);
       d++;
       continue;
     }
     path.push(name);
   }
-  return { ...base, resourceType: resource.header[1], path, where };
+  return { ...base, path, where };
 }
 
 /**
@@ -229,4 +231,21 @@ export function referenceBefore(textBefore: string): { type: string; name: strin
   const [, , type, name, partial] = m;
   if (!/^(aws|azurerm|google)_/.test(type)) return undefined;
   return { type, name, partial };
+}
+
+/**
+ * A data source attribute reference being typed right before the caret:
+ * `data.aws_ami.ubuntu.ar` → { type: 'aws_ami', name: 'ubuntu', partial: 'ar' }
+ * (instance keys allowed: `data.aws_vpc.x[0].`).
+ */
+export function dataReferenceBefore(textBefore: string): { type: string; name: string; partial: string } | undefined {
+  const m = /(^|[^\w.-])data\.([A-Za-z][\w-]*)\.([A-Za-z_][\w-]*)(?:\[[^\]\n]*\])?\.([\w-]*)$/.exec(textBefore);
+  if (!m) return undefined;
+  const [, , type, name, partial] = m;
+  return { type, name, partial };
+}
+
+/** `data "aws_am` → the data source type label being typed (`aws_am`) */
+export function dataTypeLabelBefore(textBefore: string): string | undefined {
+  return /^\s*data\s+"([\w-]*)$/.exec(textBefore)?.[1];
 }
