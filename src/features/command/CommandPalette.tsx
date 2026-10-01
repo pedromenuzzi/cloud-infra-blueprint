@@ -77,7 +77,6 @@ import { useTheme } from '@/theme/useTheme';
 import { commandMessages } from './messages';
 import { addModuleMessages } from '@/features/modules/AddModuleDialog.messages';
 import { openAddModule } from '@/features/modules/addModuleStore';
-import { isModuleId } from '@/ir/modules';
 import { ModuleIcon } from '@/features/modules/ModuleIcon';
 import { modulesMessages } from '@/features/modules/modules.messages';
 import { takePaletteReturnFocus, usePalette } from './paletteStore';
@@ -274,9 +273,7 @@ export function CommandPalette() {
                     <Item value="minimap" icon={MapIcon} label={m.toggleMinimap} onSelect={() => run(() => canvasApi()?.toggleMinimap())} />
                     {selection ? (
                       <>
-                        {isModuleId(selection) ? null : (
-                          <Item value="duplicate" icon={CopyPlus} label={m.duplicateSelected} shortcut={shortcut('mod', 'D')} onSelect={() => run(() => canvasApi()?.duplicate(selection))} />
-                        )}
+                        <Item value="duplicate" icon={CopyPlus} label={m.duplicateSelected} shortcut={shortcut('mod', 'D')} onSelect={() => run(() => canvasApi()?.duplicate(selection))} />
                         <Item value="reveal" icon={Code2} label={m.revealSelected} onSelect={() => run(() => editor().revealInCode(selection))} />
                         <Item
                           value="delete-selected"

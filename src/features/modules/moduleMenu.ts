@@ -2,7 +2,7 @@
  * The canvas context menu of a module call. Entry ids follow the resource
  * menu's (`rename`, `delete`…) so a read-only view drops the same ones.
  */
-import { ArrowUpRight, Code2, Copy, FolderOpen, PencilLine, Trash2 } from 'lucide-react';
+import { ArrowUpRight, Code2, Copy, CopyPlus, FolderOpen, PencilLine, Trash2 } from 'lucide-react';
 import type { MenuEntry } from '@/components/ContextMenu';
 import { showToast } from '@/components/Toast';
 import { canvasMessages } from '@/features/editor/CanvasPane.messages';
@@ -12,6 +12,8 @@ import { moduleTarget } from '@/ir/localModules';
 import { findNode, isModuleId, moduleVersion, registryUrl } from '@/ir/modules';
 import type { ModuleNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
+import { shortcut } from '@/lib/keys';
+import { duplicateModuleCall } from './duplicateModule';
 import { modulesMessages } from './modules.messages';
 import { openModuleView } from './moduleViewStore';
 
@@ -31,6 +33,7 @@ export function moduleMenuEntries(id: string, rename: () => void): MenuEntry[] {
       : []),
     { id: 'code', label: cm.showInCode, icon: Code2, onSelect: () => useEditor.getState().revealInCode(id) },
     { id: 'rename', label: cm.rename, icon: PencilLine, shortcut: 'F2', onSelect: rename },
+    { id: 'duplicate', label: cm.duplicate, icon: CopyPlus, shortcut: shortcut('mod', 'D'), onSelect: () => duplicateModuleCall(id) },
     {
       id: 'copy',
       label: cm.copyAddress,

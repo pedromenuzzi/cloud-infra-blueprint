@@ -11,13 +11,27 @@
  */
 import { create } from 'zustand';
 import { looksDeployed, movedBlocks, movedKey, type MovedStatement } from '@/hcl/moved';
+import { readLocalModule } from '@/ir/localModules';
+import { moduleDirs } from '@/ir/modules';
 import type { IR } from '@/ir/types';
 
 let baseline = new Set<string>();
+/** the root module while one of its local modules is open on the canvas (whether it looks deployed counts there too) */
+let openedFrom: IR | null = null;
 
-/** called when a project is loaded: its moved blocks become history */
-export function startMovedSession(ir: IR) {
-  baseline = new Set(movedBlocks(ir).map(movedKey));
+/** called when a project is loaded: its moved blocks become history, its local modules' included */
+export function startMovedSession(ir: IR, files: Record<string, string> = {}) {
+  const keys = movedBlocks(ir).map(movedKey);
+  for (const dir of moduleDirs(files)) {
+    const child = readLocalModule(files, dir);
+    if (child) keys.push(...movedBlocks(child.ir).map(movedKey));
+  }
+  baseline = new Set(keys);
+}
+
+/** the root module's IR while a local module is open (null: the root module is on the canvas) */
+export function noteRootIr(root: IR | null) {
+  openedFrom = root;
 }
 
 export const isHistoryMove = (m: MovedStatement) => baseline.has(movedKey(m));
@@ -34,5 +48,6 @@ export const useKeepState = create<KeepState>((set) => ({
 
 /** the keep-state choice for a project: the user's, else what the project looks like */
 export function keepStateFor(byProject: Record<string, boolean>, projectId: string | null, ir: IR): boolean {
-  return (projectId !== null ? byProject[projectId] : undefined) ?? looksDeployed(ir);
+  // inside an opened module, a deployed root (a remote backend…) deploys the module too
+  return (projectId !== null ? byProject[projectId] : undefined) ?? (looksDeployed(ir) || (openedFrom !== null && openedFrom !== ir && looksDeployed(openedFrom)));
 }

@@ -21,7 +21,7 @@ import { messagesFor } from '@/i18n/messages';
 import { deriveStructure } from '@/ir/graph';
 import { moduleDiagnostics } from '@/ir/moduleChecks';
 import { carryModulePositions, layoutWithModules } from '@/ir/moduleLayout';
-import { findNode, hasNode, moduleEdges, nodeIds } from '@/ir/modules';
+import { dirOfPath, findNode, hasNode, moduleEdges, nodeIds } from '@/ir/modules';
 import type { Op } from '@/ir/ops';
 import type { Diagnostic, IR, IREdge } from '@/ir/types';
 import { emptyIR } from '@/ir/types';
@@ -38,9 +38,10 @@ import {
 } from '@/lib/storage';
 import { getDef, isContainerType } from '@/resources/registry';
 import { confirmModuleDelete } from '@/features/modules/deleteGuard';
-import { applyOpsInModule } from '@/features/modules/scopedPatch';
+import { applyOpsInModule, applyOpsInScope, parseFolder, type ModuleScope } from '@/features/modules/scopedPatch';
+import { noteScopeView } from '@/features/modules/viewAnalysis';
 import { deleteResourcesOps } from './connections';
-import { isHistoryMove, startMovedSession } from './movedSession';
+import { isHistoryMove, noteRootIr, startMovedSession } from './movedSession';
 import { storeMessages } from './store.messages';
 
 const FILE_ORDER = ['main.tf', 'variables.tf', 'outputs.tf', 'providers.tf', 'versions.tf'];
@@ -86,13 +87,47 @@ function derive(ir: IR, prev: IR | undefined, files: Record<string, string>): De
   return { ir, edges, warnings: validateAll(ir, files) };
 }
 
+/** the last view of each opened module folder: blocks the text doesn't place keep their spot when it opens again */
+const lastViews = new Map<string, IR>();
+
+/**
+ * An opened module's view, derived like the root's from its own files; null
+ * when the project no longer has its folder. `errored`: its code doesn't
+ * parse (the caller keeps the last good view then, when there is one).
+ */
+function deriveScope(
+  files: Record<string, string>,
+  scope: ModuleScope,
+  prev: IR | undefined,
+  root: IR,
+): { view: Derived; errored: boolean } | null {
+  const parsed = parseFolder(files, scope.dir);
+  if (!parsed) return null;
+  const view = derive(parsed.ir, prev ?? lastViews.get(scope.dir), files);
+  lastViews.set(scope.dir, view.ir);
+  noteScopeView(view.ir, scope, files, root);
+  return { view, errored: hasErrors(parsed.diagnostics) };
+}
+
 interface EditorState {
   projectId: string | null;
   projectName: string;
   files: Record<string, string>;
   /** bumped whenever file text changed OUTSIDE Monaco (ops, undo, load) */
   filesRevision: number;
+  /**
+   * What the canvas, the inspector and ⌘K work on: the root module's blocks,
+   * or the opened module's (see `scope`) with project paths in `sourceFile`.
+   */
   ir: IR;
+  /** the root module's blocks, whatever is open (the project's cost, security and PDF read them) */
+  rootIr: IR;
+  /**
+   * The local module opened on the canvas; null: the root module. `ir`,
+   * `edges`, `warnings` and `codeErrored` are then the module's, and ops
+   * patch its own files (one undo history for the whole project).
+   */
+  scope: ModuleScope | null;
   edges: IREdge[];
   parseDiagnostics: Diagnostic[];
   warnings: Diagnostic[];
@@ -134,6 +169,8 @@ interface EditorState {
   applyCanvasOps(ops: Op[], select?: string | null): void;
   /** ops on the blocks of the child module in folder `dir` (an opened module), patched into its own files — one undo step */
   applyModuleOps(dir: string, ops: Op[]): void;
+  /** open a local module on the canvas (null: back to the root module); the selection is cleared */
+  setScope(scope: ModuleScope | null): void;
   onCodeChange(file: string, text: string): void;
   setActiveFile(file: string): void;
   setSelection(id: string | null, origin?: 'canvas' | 'code'): void;
@@ -153,6 +190,14 @@ let parseTimer: ReturnType<typeof setTimeout> | undefined;
 let codeBurstBase: Record<string, string> | null = null;
 
 const hasErrors = (diagnostics: Diagnostic[]) => diagnostics.some((d) => d.severity === 'error');
+
+/** a derived view as store fields, the selection kept while it's still on it */
+const viewState = (view: Derived, selection: string | null) => ({
+  ir: view.ir,
+  edges: view.edges,
+  warnings: view.warnings,
+  selection: selection && hasNode(view.ir, selection) ? selection : null,
+});
 
 /** what a read-only view says to an edit (a toast, Monaco's read-only tooltip), in the language in effect */
 export const readOnlyHint = () => messagesFor(storeMessages).readOnlyHint;
@@ -210,24 +255,58 @@ export const useEditor = create<EditorState>((set, get) => {
   const commitCode = (): boolean => {
     clearTimeout(parseTimer);
     parseTimer = undefined;
-    const { ir: prev, files } = get();
+    const { ir: prev, rootIr: prevRoot, files, scope } = get();
     const { ir, diagnostics } = parseProject(files);
-    if (hasErrors(diagnostics)) {
-      set({ parseDiagnostics: diagnostics, codeErrored: true });
+    const rootErrored = hasErrors(diagnostics);
+    // an opened module: the canvas follows its own files; the root's IR still follows its code when it parses
+    const nextRoot = scope && !rootErrored ? derive(ir, prevRoot, files).ir : prevRoot;
+    const opened = scope ? deriveScope(files, scope, prev, nextRoot) : null;
+    if (opened) {
+      const root = rootErrored ? {} : { rootIr: nextRoot };
+      if (opened.errored) {
+        set({ ...root, parseDiagnostics: diagnostics, codeErrored: true });
+        return false;
+      }
+      codeBurstBase = null;
+      set({ ...root, ...viewState(opened.view, get().selection), parseDiagnostics: diagnostics, codeErrored: false });
+      return true;
+    }
+    if (rootErrored) {
+      // an opened module whose folder went away: back on the root's last good view
+      const back = scope ? { scope: null, ...viewState(derive(prevRoot, undefined, files), null) } : {};
+      set({ ...back, parseDiagnostics: diagnostics, codeErrored: true });
       return false;
     }
     codeBurstBase = null;
-    const derived = derive(ir, prev, files);
-    const selection = get().selection;
-    set({
-      ir: derived.ir,
-      edges: derived.edges,
-      warnings: derived.warnings,
-      parseDiagnostics: diagnostics,
-      codeErrored: false,
-      selection: selection && hasNode(derived.ir, selection) ? selection : null,
-    });
+    const derived = derive(ir, scope ? prevRoot : prev, files);
+    set({ ...viewState(derived, scope ? null : get().selection), rootIr: derived.ir, scope: null, parseDiagnostics: diagnostics, codeErrored: false });
     return true;
+  };
+
+  /**
+   * The store fields for files put back by undo / redo: the opened module's
+   * view while its folder is still there (one history for root and modules),
+   * else the root's; what's selected stays when it still exists (undoing an
+   * align keeps the selection).
+   */
+  const restore = (snapshot: Record<string, string>) => {
+    const { scope, rootIr, ir: view, selection } = get();
+    const { ir, diagnostics } = parseProject(snapshot);
+    const derived = derive(ir, scope ? rootIr : view, snapshot);
+    const opened = scope ? deriveScope(snapshot, scope, view, derived.ir) : null;
+    const shown = opened?.view ?? derived;
+    return {
+      files: snapshot,
+      filesRevision: get().filesRevision + 1,
+      ir: shown.ir,
+      rootIr: derived.ir,
+      scope: opened ? scope : null,
+      edges: shown.edges,
+      warnings: shown.warnings,
+      parseDiagnostics: diagnostics,
+      codeErrored: opened ? opened.errored : hasErrors(diagnostics),
+      selection: scope && !opened ? null : keptSelection(selection, shown.ir),
+    };
   };
 
   return {
@@ -236,6 +315,8 @@ export const useEditor = create<EditorState>((set, get) => {
     files: {},
     filesRevision: 0,
     ir: emptyIR(),
+    rootIr: emptyIR(),
+    scope: null,
     edges: [],
     parseDiagnostics: [],
     warnings: [],
@@ -275,7 +356,12 @@ export const useEditor = create<EditorState>((set, get) => {
       const { ir, diagnostics } = parseProject(project.files);
       const errored = diagnostics.some((d) => d.severity === 'error');
       const derived = derive(ir, undefined, project.files);
-      startMovedSession(ir);
+      startMovedSession(ir, project.files);
+      if (!keep) lastViews.clear();
+      // a reload (another tab wrote the project) keeps an opened module open while its folder is there
+      const scope = keep ? get().scope : null;
+      const opened = scope ? deriveScope(project.files, scope, get().ir, derived.ir) : null;
+      const view = opened?.view ?? derived;
       const fileList = orderedFiles(project.files);
       const { selection, activeFile } = get();
       set({
@@ -283,13 +369,15 @@ export const useEditor = create<EditorState>((set, get) => {
         projectName: project.name,
         files: { ...project.files },
         filesRevision: get().filesRevision + 1,
-        ir: derived.ir,
-        edges: derived.edges,
-        warnings: derived.warnings,
+        ir: view.ir,
+        rootIr: derived.ir,
+        scope: opened ? scope : null,
+        edges: view.edges,
+        warnings: view.warnings,
         parseDiagnostics: diagnostics,
-        codeErrored: errored,
+        codeErrored: opened ? opened.errored : errored,
         readOnly,
-        selection: keep && selection && hasNode(derived.ir, selection) ? selection : null,
+        selection: keep && selection && hasNode(view.ir, selection) ? selection : null,
         activeFile:
           keep && fileList.includes(activeFile)
             ? activeFile
@@ -379,15 +467,34 @@ export const useEditor = create<EditorState>((set, get) => {
         showToast(messagesFor(storeMessages).fixCodeFirst, 'error');
         return;
       }
-      const { files, ir } = get();
-      const outcome = applyOpsWithPatches(files, ir, ops);
-      // never trade the user's text for a broken (or wrongly spliced) one
-      if (outcome.refused || hasErrors(outcome.diagnostics)) {
-        showToast(outcome.refused?.message ?? messagesFor(storeMessages).cantApply, 'error');
-        return;
+      const { files, ir, scope } = get();
+      let outcome: { files: Record<string, string>; ir: IR; renamed: Map<string, string> };
+      /** the root module's fresh parse diagnostics (an opened module's patch leaves the root's alone) */
+      let rootDiagnostics: Diagnostic[] | undefined;
+      if (scope) {
+        // an opened module: the ops patch its own files, nothing else
+        const scoped = applyOpsInScope(files, scope.dir, ir, ops);
+        if (!scoped.ok) {
+          showToast(scoped.message ?? messagesFor(storeMessages).cantApply, 'error');
+          return;
+        }
+        outcome = scoped;
+      } else {
+        const patched = applyOpsWithPatches(files, ir, ops);
+        // never trade the user's text for a broken (or wrongly spliced) one
+        if (patched.refused || hasErrors(patched.diagnostics)) {
+          showToast(patched.refused?.message ?? messagesFor(storeMessages).cantApply, 'error');
+          return;
+        }
+        outcome = patched;
+        rootDiagnostics = patched.diagnostics;
       }
       pushHistory({ ...files });
       const derived = derive(outcome.ir, ir, outcome.files);
+      if (scope) {
+        lastViews.set(scope.dir, derived.ir);
+        noteScopeView(derived.ir, scope, outcome.files, get().rootIr);
+      }
 
       let selection = select !== undefined ? select : get().selection;
       if (selection) {
@@ -399,9 +506,9 @@ export const useEditor = create<EditorState>((set, get) => {
         files: outcome.files,
         filesRevision: get().filesRevision + 1,
         ir: derived.ir,
+        ...(rootDiagnostics ? { rootIr: derived.ir, parseDiagnostics: rootDiagnostics } : {}),
         edges: derived.edges,
         warnings: derived.warnings,
-        parseDiagnostics: outcome.diagnostics,
         codeErrored: false,
         selection,
         ...(select !== undefined ? { selectionOrigin: 'canvas' as const } : {}),
@@ -411,6 +518,11 @@ export const useEditor = create<EditorState>((set, get) => {
 
     applyModuleOps(dir, ops) {
       if (ops.length === 0) return;
+      // the module on the canvas: its view follows
+      if (get().scope?.dir === dir) {
+        get().applyCanvasOps(ops);
+        return;
+      }
       if (get().readOnly) {
         showToast(readOnlyHint(), 'info');
         return;
@@ -442,6 +554,25 @@ export const useEditor = create<EditorState>((set, get) => {
       persist();
       clearTimeout(parseTimer);
       parseTimer = setTimeout(commitCode, 350);
+    },
+
+    setScope(next) {
+      const { files, scope, rootIr, ir, activeFile, parseDiagnostics } = get();
+      if (next?.dir === scope?.dir && next?.path.join('/') === scope?.path.join('/')) return;
+      // the code pane follows: a file of the module (or of the root) opens when the one shown isn't
+      const fileIn = (dir: string) => {
+        const list = orderedFiles(files).filter((f) => dirOfPath(f) === dir);
+        return list.includes(activeFile) ? activeFile : (list.find((f) => /(^|\/)main\.tf$/.test(f)) ?? list[0] ?? activeFile);
+      };
+      if (!next) {
+        // positions are on the root's IR already: it comes back as it was left
+        const view = derive(rootIr, undefined, files);
+        set({ scope: null, ...viewState(view, null), rootIr: view.ir, codeErrored: hasErrors(parseDiagnostics), activeFile: fileIn('') });
+        return;
+      }
+      const opened = deriveScope(files, next, scope?.dir === next.dir ? ir : undefined, rootIr);
+      if (!opened) return;
+      set({ scope: next, ...viewState(opened.view, null), codeErrored: opened.errored, activeFile: fileIn(next.dir) });
     },
 
     setActiveFile(file) {
@@ -504,22 +635,7 @@ export const useEditor = create<EditorState>((set, get) => {
       clearTimeout(parseTimer);
       parseTimer = undefined;
       codeBurstBase = null;
-      const previous = past[past.length - 1];
-      const { ir, diagnostics } = parseProject(previous);
-      const derived = derive(ir, get().ir, previous);
-      set({
-        past: past.slice(0, -1),
-        future: [{ ...files }, ...get().future],
-        files: previous,
-        filesRevision: get().filesRevision + 1,
-        ir: derived.ir,
-        edges: derived.edges,
-        warnings: derived.warnings,
-        parseDiagnostics: diagnostics,
-        codeErrored: hasErrors(diagnostics),
-        // keep what's selected when it still exists (undoing an align keeps the selection)
-        selection: keptSelection(get().selection, derived.ir),
-      });
+      set({ ...restore(past[past.length - 1]), past: past.slice(0, -1), future: [{ ...files }, ...get().future] });
       persist();
     },
 
@@ -529,28 +645,18 @@ export const useEditor = create<EditorState>((set, get) => {
       clearTimeout(parseTimer);
       parseTimer = undefined;
       codeBurstBase = null;
-      const next = future[0];
-      const { ir, diagnostics } = parseProject(next);
-      const derived = derive(ir, get().ir, next);
-      set({
-        future: future.slice(1),
-        past: [...get().past, { ...files }],
-        files: next,
-        filesRevision: get().filesRevision + 1,
-        ir: derived.ir,
-        edges: derived.edges,
-        warnings: derived.warnings,
-        parseDiagnostics: diagnostics,
-        codeErrored: hasErrors(diagnostics),
-        // keep what's selected when it still exists (undoing an align keeps the selection)
-        selection: keptSelection(get().selection, derived.ir),
-      });
+      set({ ...restore(future[0]), future: future.slice(1), past: [...get().past, { ...files }] });
       persist();
     },
   };
 });
 
 const keptSelection = (id: string | null, ir: IR) => (id && hasNode(ir, id) ? id : null);
+
+// renames inside an opened module keep the state by default when the root looks deployed
+useEditor.subscribe((state, prev) => {
+  if (state.scope !== prev.scope || state.rootIr !== prev.rootIr) noteRootIr(state.scope ? state.rootIr : null);
+});
 
 const sameIds = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
 
