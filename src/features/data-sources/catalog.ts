@@ -307,7 +307,7 @@ export type DataSourceType = (typeof DATA_SOURCE_TYPES)[number]['type'];
 
 /* -------------------------------------------------------------- presets */
 
-const remoteState = (key: string, backend: string, config: Record<string, Expression>) =>
+const remoteState = <const K extends string>(key: K, backend: string, config: Record<string, Expression>) =>
   definePreset({
     key,
     type: 'terraform_remote_state',

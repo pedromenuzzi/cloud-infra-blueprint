@@ -1,9 +1,7 @@
 /** The data source glyph on its tile (the canvas node, the inspector, the palette, ⌘K). Light: no React Flow here. */
 import { ScanSearch } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-/** the tile's colors: a cyan that reads as "looked up", apart from every resource category */
-export const DATA_TILE = { from: '#22d3ee', to: '#0e7490', solid: '#0891b2' } as const;
+import { DATA_TILE } from './tile';
 
 export function DataSourceIcon({ size = 40, className }: { size?: number; className?: string }) {
   return (

@@ -99,5 +99,5 @@ export const DATA_PRESETS_PT_BR: Partial<Record<DataSourcePresetKey, { name?: st
   'aws_ami.ubuntu': { name: 'AMI Ubuntu', description: 'A imagem Ubuntu 24.04 LTS mais recente, publicada pela Canonical' },
   'aws_ami.al2023': { name: 'AMI Amazon Linux', description: 'A imagem Amazon Linux 2023 mais recente, publicada pela AWS' },
   aws_iam_policy_document: { description: 'Uma política de confiança que permite ao EC2 assumir um perfil, lida como JSON' },
-  'google_compute_image.debian': { name: 'Imagem Debian', description: 'A imagem Debian 12 mais recente, publicada pelo Google' },
+  google_compute_image: { name: 'Imagem Debian', description: 'A imagem Debian 12 mais recente, publicada pelo Google' },
 };

@@ -289,7 +289,20 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
         });
       }
       for (const w of warnings) {
-        if (!w.nodeId) continue;
+        if (!w.nodeId) {
+          // no block of its own (a `locals` entry reading a data source): marked where it points
+          if (w.start && w.file === file) {
+            markers.push({
+              severity: monaco.MarkerSeverity.Warning,
+              message: w.message,
+              startLineNumber: w.start.line,
+              startColumn: w.start.col,
+              endLineNumber: w.end?.line ?? w.start.line,
+              endColumn: w.end?.col ?? w.start.col + 4,
+            });
+          }
+          continue;
+        }
         const node = findNode(ir, w.nodeId);
         if (!node || (node.trivia.sourceFile ?? 'main.tf') !== file) continue;
         const range = node.trivia.rawTextRange;

@@ -18,7 +18,8 @@ import { NODE_H, NODE_W } from '@/ir/layout';
 import { repeatOf } from '@/ir/repeat';
 import type { IR, Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
-import { DATA_TILE, DataSourceIcon } from './DataSourceIcon';
+import { DataSourceIcon } from './DataSourceIcon';
+import { DATA_TILE } from './tile';
 import { dataSourceMessages } from './dataSources.messages';
 import { dataSourceShortName } from './i18n';
 

@@ -58,7 +58,7 @@ import { isDataId } from '@/ir/dataSources';
 import { DataNodeView, dataFlowNodes } from '@/features/data-sources/DataNode';
 import { dataMenuEntries } from '@/features/data-sources/dataMenu';
 import { DATA_MIME, addDataSource } from '@/features/data-sources/addData';
-import { DATA_TILE } from '@/features/data-sources/DataSourceIcon';
+import { DATA_TILE } from '@/features/data-sources/tile';
 import { dataSourceMessages } from '@/features/data-sources/dataSources.messages';
 import { moduleMenuEntries } from '@/features/modules/moduleMenu';
 import { ModuleNodeView, moduleFlowNodes } from '@/features/modules/ModuleNode';
