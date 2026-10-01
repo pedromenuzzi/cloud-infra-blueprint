@@ -227,8 +227,8 @@ e2e/             # Playwright specs (editor, navigation, share links, import, pe
 - [x] **F3 (solo)**: Bidirectional sync, undo/redo, diagnostics
 - [ ] **F4**: Optional sync backend (NestJS + Postgres + Yjs) for teams & realtime collab
 - [ ] **F5**: GitHub/GitLab push, org template libraries
-- [x] **F3.5**: Premium UX: command palette, quick add, tidy layout, selection sync,
-  import/export, per-service icons, first-run tips
+- [x] **F3.5**: Premium UX (command palette, quick add, tidy layout, selection sync,
+  import/export, per-service icons, first-run tips)
 - [ ] **F6**: ~~PWA offline install~~ (done), guided onboarding tour, community template gallery
 
 The client-only architecture is deliberate: parsing/emitting runs in the browser, so a
