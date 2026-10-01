@@ -11,11 +11,11 @@ import type { ResourceNode } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { KindBadge } from './CostPopover';
 import { costUiMessages } from './messages';
-import { useProjectCost } from './useCost';
+import { useViewCost } from './useCost';
 
 export function CostLine({ node }: { node: ResourceNode }) {
   const m = useMessages(costUiMessages);
-  const { cost } = useProjectCost();
+  const cost = useViewCost();
   const [more, setMore] = useState(false);
   const item = cost?.items.find((i) => i.id === node.id);
 

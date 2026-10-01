@@ -1,7 +1,7 @@
 /**
  * Module calls: a zip with a local module imports with it (a module node on
- * the canvas, its files in the code pane), the module opens (its layout can
- * change, patched into its own files) and Esc comes back; "Add module…"
+ * the canvas, its files in the code pane), the module opens on the canvas
+ * (its blocks edited there, patched into its own files) and Esc comes back; "Add module…"
  * writes a Registry module in one undo step; rename rewrites references and
  * records a `moved` block unless told not to; deleting a module other blocks
  * read asks first; the module inspector, the dialog and the opened module
@@ -165,15 +165,22 @@ test('a zip with a local module: a module node, its files, open it and come back
   const view = page.getByRole('region', { name: 'Module network', exact: true });
   await expect(view).toBeVisible();
   await expect(view.getByRole('navigation', { name: 'Module path' })).toHaveText(/root.*network/);
+  // the canvas shows the module's blocks now, not the root's
   for (const id of ['aws_vpc.this', 'aws_subnet.private', 'aws_internet_gateway.this']) {
-    await expect(view.locator(`.react-flow__node[data-id="${id}"]`)).toBeVisible();
+    await expect(node(page, id)).toBeVisible();
   }
-  await expect(view.getByText('3 resources')).toBeVisible();
+  await expect(node(page, 'module.network')).toHaveCount(0);
+  await expect(canvasStats(page)).toHaveText(/^3 resources/);
   // its interface: required and optional inputs, outputs
-  await expect(view.getByText('cidr', { exact: true })).toBeVisible();
-  await expect(view.getByText('optional')).toBeVisible();
-  // its layout can change: a drag is patched into the module's own file, one undo step
-  const igw = view.locator('.react-flow__node[data-id="aws_internet_gateway.this"]');
+  await view.getByRole('button', { name: '3 inputs, 2 outputs' }).click();
+  const iface = page.getByRole('dialog', { name: 'Inputs and outputs' });
+  await expect(iface.getByText('cidr', { exact: true })).toBeVisible();
+  await expect(iface.getByText('optional')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(iface).toBeHidden();
+  await expect(view).toBeVisible();
+  // a drag is patched into the module's own file (the container it lands in may grow), one undo step
+  const igw = node(page, 'aws_internet_gateway.this');
   const b = (await igw.boundingBox())!;
   await page.mouse.move(b.x + 40, b.y + 20);
   await page.mouse.down();
@@ -182,7 +189,7 @@ test('a zip with a local module: a module node, its files, open it and come back
   await expect
     .poll(() => mainTf(page, 'modules/network/main.tf'))
     .toMatch(/# @blueprint:pos=-?\d+,-?\d+\nresource "aws_internet_gateway" "this" \{/);
-  expect((await mainTf(page, 'modules/network/main.tf')).replace(/# @blueprint:pos=-?\d+,-?\d+\n/, '')).toBe(NETWORK['main.tf']);
+  expect((await mainTf(page, 'modules/network/main.tf')).replace(/# @blueprint:pos=[\d,-]+\n/g, '')).toBe(NETWORK['main.tf']);
   expect(await mainTf(page)).toBe(ROOT);
   await page.keyboard.press('Control+z');
   await expect.poll(() => mainTf(page, 'modules/network/main.tf')).toBe(NETWORK['main.tf']);
@@ -317,11 +324,13 @@ test('a view link carries the child module: its node, its inspector read-only, a
   await expect(inspector.getByRole('button', { name: 'Delete module' })).toHaveCount(0);
   await inspector.getByRole('button', { name: 'Open module' }).first().click();
   const view = page.getByTestId('module-view');
-  await expect(view.locator('.react-flow__node[data-id="aws_vpc.this"]')).toBeVisible();
-  // a view link changes nothing, the module's layout included
+  await expect(node(page, 'aws_vpc.this')).toBeVisible();
+  // a view link changes nothing inside the module either
   await expect(view).toContainText('Read-only');
-  await expect(view.locator('.react-flow__node.draggable')).toHaveCount(0);
-  await expect(view.getByRole('button', { name: 'Auto-arrange' })).toHaveCount(0);
+  await expect(page.locator('.react-flow__node.draggable')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Auto-arrange' })).toHaveCount(0);
+  await select(page, 'aws_vpc.this');
+  await expect(page.getByText('Read-only view: make a copy to edit.')).toBeVisible();
 });
 
 test('in Portuguese: the import note, the inspector, the opened module and the dialog', async ({ page }) => {
@@ -335,7 +344,9 @@ test('in Portuguese: the import note, the inspector, the opened module and the d
   await inspector.getByRole('button', { name: 'Abrir módulo' }).first().click();
   const view = page.getByRole('region', { name: 'Módulo network', exact: true });
   await expect(view.getByRole('navigation', { name: 'Caminho do módulo' })).toHaveText(/raiz.*network/);
-  await expect(view).toContainText('obrigatória');
+  await view.getByRole('button', { name: '3 entradas, 2 outputs' }).click();
+  await expect(page.getByRole('dialog', { name: 'Entradas e outputs' })).toContainText('obrigatória');
+  await page.keyboard.press('Escape');
   await view.getByRole('button', { name: 'Voltar' }).click();
   await expect(view).toBeHidden();
 

@@ -3,7 +3,7 @@
  * small stack (it holds other blocks), with the module's name, where it
  * comes from (`terraform-aws-modules/vpc` + `v5.0.0`, `./modules/network`)
  * and how many inputs it's given. A module of this project opens on a
- * double-click (./ModuleView.tsx).
+ * double-click (one level deeper when it's drawn inside an opened module).
  */
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { AlertTriangle, ShieldQuestion } from 'lucide-react';
@@ -29,10 +29,8 @@ export interface ModuleNodeData extends Record<string, unknown> {
   warn: boolean;
   /** project folder of a local module the project holds (it can be opened) */
   dir?: string;
-  /** the security lens is on: modules aren't analysed */
+  /** the security lens is on: Registry / git modules aren't analysed */
   lens: boolean;
-  /** drawn inside an opened module: opening it goes one level deeper */
-  nested?: boolean;
   /** what the PDF export reads off a node (captureDiagram): the kind line, the second line, the glyph key */
   typeLabel: string;
   subtitle: string;
@@ -54,7 +52,7 @@ export function ModuleNodeView({ data, selected }: NodeProps<ModuleFlowNode>) {
       onDoubleClick={(e) => {
         if (!data.dir) return;
         e.stopPropagation();
-        openModuleView(data.dir, data.title, { nested: data.nested });
+        openModuleView(data.dir, data.title);
       }}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} />
@@ -90,7 +88,7 @@ export function ModuleNodeView({ data, selected }: NodeProps<ModuleFlowNode>) {
           {m.inputs(data.inputs)}
         </span>
       ) : null}
-      {data.lens ? (
+      {data.lens && !data.dir ? (
         <span className="bp-sec-chip absolute -bottom-2.5 left-2.5 inline-flex items-center gap-1 rounded-full border bg-node px-1.5 py-px text-[9.5px] font-bold uppercase tracking-wide text-muted shadow-xs">
           <ShieldQuestion className="h-2.5 w-2.5" />
           {m.notAnalysed}
@@ -144,12 +142,11 @@ export function moduleFlowNodes(
   warned: Set<string | undefined>,
   lens: boolean,
   locale?: Locale,
-  nested = false,
 ): ModuleFlowNode[] {
   const t = messagesFor(modulesMessages, locale);
   const cm = messagesFor(canvasMessages, locale);
   return ir.modules.map((m) => {
-    const data = { ...moduleNodeData(m, files, warned.has(m.id), lens, locale), nested };
+    const data = moduleNodeData(m, files, warned.has(m.id), lens, locale);
     return {
       id: m.id,
       type: 'module',

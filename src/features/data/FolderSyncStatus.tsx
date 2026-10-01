@@ -18,7 +18,7 @@ import { useEffect, useId, useState } from 'react';
 import { ContextMenu } from '@/components/ContextMenu';
 import { showToast } from '@/components/Toast';
 import { Button, Modal } from '@/components/ui';
-import { useEditor } from '@/features/editor/store';
+import { openProjectRootPath, useEditor } from '@/features/editor/store';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import { exportZip } from '@/lib/download';
 import { folderProblemText, type ConflictInfo, type Side } from '@/lib/fsSync';
@@ -189,7 +189,7 @@ function UnsupportedDialog() {
           <Button
             onClick={() => {
               const { projectName, files } = useEditor.getState();
-              exportZip(projectName, files);
+              exportZip(projectName, files, { rootPath: openProjectRootPath() });
               closeUnsupported();
               showToast(messagesFor(dataMessages).zipDownloaded, 'success');
             }}

@@ -19,8 +19,10 @@ import { AccessPaths } from './AccessPaths';
 import { ComplianceBadges } from './ComplianceBadges';
 import { ModulesNote } from '@/features/modules/ModulesNote';
 import { DataSourceIcon } from '@/features/data-sources/DataSourceIcon';
+import { openModulePath } from '@/features/modules/moduleViewStore';
+import { ModuleFindings, showModuleResource } from './ModuleFindings';
 import { securityUiMessages } from './messages';
-import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useAudit, useSecurityUi } from './securityStore';
+import { fixAllFindings, GRADE_COLORS, SEVERITY_COLORS, SEVERITY_TEXT, getAudit, useProjectAudit, useSecurityUi } from './securityStore';
 
 function nameOf(id: string) {
   // a data source (an IAM policy document) keeps its `data.` address
@@ -137,7 +139,10 @@ export function SecurityPanel() {
   const [why, setWhy] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
-  const audit = useAudit();
+  // the canvas's own findings, and the ones inside the local modules it calls (one grade for both)
+  const project = useProjectAudit();
+  const audit = project.own;
+  const total = audit.findings.length + project.modules.length;
   const exposed = [...audit.topology.exposure].filter(([, e]) => e.level === 'internet');
   const unknown = [...audit.topology.exposure].filter(([, e]) => e.level === 'unknown');
   const fixable = audit.findings.filter((f) => f.fix);
@@ -227,29 +232,29 @@ export function SecurityPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="flex items-center gap-3.5 px-3.5 py-3.5">
-          <GradeRing grade={audit.grade} score={audit.score} />
+          <GradeRing grade={project.grade} score={project.score} />
           <div className="min-w-0 flex-1">
             <div className="text-[13px] font-semibold">
-              {audit.grade === null ? m.nothingToAudit : audit.findings.length === 0 ? m.noIssues : m.issuesToReview(audit.findings.length)}
+              {project.grade === null ? m.nothingToAudit : total === 0 ? m.noIssues : m.issuesToReview(total)}
             </div>
             <div className="mt-0.5 text-[11.5px] text-faint">
-              {audit.score !== null ? m.score(audit.score) : m.addSomething}
+              {project.score !== null ? m.score(project.score) : m.addSomething}
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1">
-              {SEVERITY_ORDER.filter((s) => audit.counts[s] > 0).map((s) => (
+              {SEVERITY_ORDER.filter((s) => project.counts[s] > 0).map((s) => (
                 <span
                   key={s}
                   className={cn('rounded-full px-1.5 py-px text-[10.5px] font-semibold', SEVERITY_TEXT[s])}
                   style={{ background: `color-mix(in srgb, ${SEVERITY_COLORS[s]} 12%, transparent)` }}
                 >
-                  {m.severityCount(audit.counts[s], s)}
+                  {m.severityCount(project.counts[s], s)}
                 </span>
               ))}
             </div>
           </div>
         </section>
 
-        <ModulesNote area="security" onPick={show} className="mx-3.5 mb-3" />
+        <ModulesNote area="security" onPick={(id) => (useEditor.getState().scope ? openModulePath([], id) : show(id))} className="mx-3.5 mb-3" />
         <label className="mx-3.5 flex cursor-pointer items-center gap-3 rounded-[10px] border bg-surface-2/60 px-3 py-2.5">
           <ScanEye className="h-4 w-4 shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
@@ -270,13 +275,28 @@ export function SecurityPanel() {
           <h3 className="mb-1.5 flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint">
             <Globe className="h-3 w-3" /> {m.internetFacing}
           </h3>
-          {exposed.length === 0 ? (
+          {exposed.length === 0 && project.exposed.length === 0 ? (
             <p className="flex items-center gap-1.5 text-[12px] text-muted">
               <Lock className="h-3.5 w-3.5 text-success" />{' '}
               {unknown.length ? m.nothingConfirmed : m.nothingReachable}
             </p>
           ) : (
             <ul className="space-y-1">
+              {project.exposed.map((x) => (
+                <li key={x.key} className="flex items-center gap-2" data-exposed={x.key}>
+                  <button
+                    type="button"
+                    onClick={() => showModuleResource(x.module.steps, x.resource)}
+                    title={m.showOnCanvas(x.label)}
+                    className="inline-flex min-w-0 max-w-[70%] items-center gap-1 rounded-full border bg-surface-2 px-2 py-0.5 font-mono text-[10.5px] font-medium text-foreground transition-colors hover:border-border-strong"
+                  >
+                    <span className="truncate">{x.label}</span>
+                  </button>
+                  <span className="min-w-0 flex-1 truncate text-right font-mono text-[11px] text-muted" title={portList(x.ports)}>
+                    {portList(x.ports)}
+                  </span>
+                </li>
+              ))}
               {exposed.map(([id, e]) => (
                 <ExposedRow
                   key={id}
@@ -341,7 +361,7 @@ export function SecurityPanel() {
               ))}
             </div>
           ) : null}
-          {audit.findings.length === 0 ? (
+          {total === 0 ? (
             <div className="rounded-[12px] border border-dashed px-4 py-6 text-center">
               <ShieldCheck className="mx-auto h-6 w-6 text-success" />
               <p className="mt-2 text-[12.5px] font-semibold">{m.allPass}</p>
@@ -391,6 +411,8 @@ export function SecurityPanel() {
             </ul>
           )}
         </section>
+
+        <ModuleFindings findings={project.modules} />
       </div>
     </aside>
   );

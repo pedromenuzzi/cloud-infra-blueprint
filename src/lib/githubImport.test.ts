@@ -6,6 +6,7 @@ import {
   listGithub,
   MAX_FILES,
   parseGithubInput,
+  planRootModule,
   refCandidates,
   targetShorthand,
   type GithubTarget,
@@ -349,6 +350,22 @@ describe('listGithub + fetchRootModule', () => {
     expect(result.imported.modules).toEqual(['modules/vpc']);
     expect(result.note).toBe('Imported the root module (envs/prod/) and kept its child module.');
     expect(progress).toEqual(['0/1', '1/1', '1/2', '2/2']);
+  });
+
+  it('counts the child modules’ files before the import, which then reuses what it read', async () => {
+    const gh = fakeGithub({
+      [`${API}/repos/acme/infra/git/trees/main?recursive=1`]: { body: INFRA_TREE },
+      [`${RAW}/acme/infra/main/envs/prod/main.tf`]: { text: 'module "vpc" {\n  source = "../../modules/vpc"\n}\n' },
+      [`${RAW}/acme/infra/main/modules/vpc/main.tf`]: { text: 'resource "aws_vpc" "this" {}\n' },
+    });
+    const listing = await listGithub(target('https://github.com/acme/infra/tree/main/envs/prod'), { fetch: gh.fetch });
+    const scan = findRootModules(listing.files, listing.basePath);
+    expect(scan.modules[0]!.files).toHaveLength(1);
+    expect(await planRootModule(listing, scan.modules[0]!, { fetch: gh.fetch })).toEqual({ files: 2, moduleFiles: 1, moduleDirs: 1 });
+    const before = gh.calls.length;
+    const result = await fetchRootModule(listing, scan.modules[0]!, scan.childModuleFiles, { fetch: gh.fetch });
+    expect(Object.keys(result.imported.files)).toEqual(['main.tf', 'modules/vpc/main.tf']);
+    expect(gh.calls.length).toBe(before);
   });
 
   it('finds where a slashed branch name ends', async () => {

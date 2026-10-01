@@ -1,14 +1,15 @@
 /**
  * The cost breakdown, under the canvas cost chip: totals by category (and by
  * cloud when there are several), a sortable row per resource — a click selects
- * it — and the assumptions every number rests on.
+ * it — the resources inside each call to a local module (a click opens the
+ * module there) and the assumptions every number rests on.
  */
-import { ChevronRight } from 'lucide-react';
+import { Boxes, ChevronRight } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { restoreFocus, useLayer } from '@/components/ui';
 import { providerName } from '@/cost/estimate';
 import { approx, describeLines, usd } from '@/cost/format';
-import type { CostKind, ProjectCost, ResourceCost } from '@/cost/types';
+import type { CostKind, ModuleCost, ProjectCost, ResourceCost } from '@/cost/types';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { useEditor } from '@/features/editor/store';
 import { useLocale, type Locale } from '@/i18n/locale';
@@ -19,6 +20,8 @@ import { categoryLabel as catalogCategory, resourceShortName } from '@/resources
 import { CATEGORY_COLORS } from '@/resources/icons';
 import type { Category } from '@/resources/types';
 import { ModulesNote } from '@/features/modules/ModulesNote';
+import { openModulePath } from '@/features/modules/moduleViewStore';
+import { pathLabel } from '@/ir/moduleInstance';
 import { costUiMessages } from './messages';
 
 type SortKey = 'cost' | 'name' | 'category';
@@ -89,6 +92,61 @@ function Row({ item, onPick }: { item: ResourceCost; onPick(id: string): void })
         <ChevronRight className="h-3 w-3 shrink-0 text-faint opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-visible/row:opacity-100" aria-hidden="true" />
       </button>
     </li>
+  );
+}
+
+/** Every module call of an estimate, outermost first, with how many times its amounts count (null: unknown). */
+function moduleGroups(modules: ModuleCost[] | undefined, factor: number | null = 1): Array<{ mod: ModuleCost; factor: number | null }> {
+  return (modules ?? []).flatMap((mod) => {
+    const f = factor === null || mod.count === null ? null : factor * mod.count;
+    return [{ mod, factor: f }, ...moduleGroups(mod.nested, f)];
+  });
+}
+
+/** One call to a local module: its own resources (the modules it calls follow as their own groups). */
+function ModuleGroup({
+  mod,
+  factor,
+  sort,
+  onPick,
+}: {
+  mod: ModuleCost;
+  factor: number | null;
+  sort: SortKey;
+  onPick(steps: ModuleCost['steps'], id: string): void;
+}) {
+  const m = useMessages(costUiMessages);
+  const locale = useLocale((s) => s.locale);
+  const headingId = useId();
+  const rows = sortItems(mod.items.filter((i) => i.kind !== 'free'), sort, locale);
+  const own = mod.items.reduce((sum, i) => sum + (i.kind === 'fixed' ? (i.monthly ?? 0) : 0), 0);
+  return (
+    <section aria-labelledby={headingId} className="mt-1.5" data-testid="cost-module" data-module={mod.label}>
+      <h4 id={headingId} className="flex items-center gap-1.5 px-2 py-1 text-[11.5px]">
+        <Boxes className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" />
+        <span className="sr-only">{m.moduleGroup(mod.label)}</span>
+        <code className="min-w-0 flex-1 truncate font-mono font-semibold text-foreground" title={mod.dir} aria-hidden="true">
+          {mod.label}
+        </code>
+        {factor === null ? (
+          <span className="shrink-0 text-[10.5px] font-medium text-warning">{m.instancesUnknown}</span>
+        ) : factor !== 1 ? (
+          <span className="shrink-0 text-[10.5px] font-semibold text-muted" title={m.instancesTitle(factor)}>
+            {m.instances(factor)}
+          </span>
+        ) : null}
+        {factor !== null ? <span className="shrink-0 font-semibold tabular-nums text-foreground">{usd(own * factor)}</span> : null}
+      </h4>
+      {rows.length ? (
+        <ul className="ml-3.5 space-y-px border-l pl-1.5">
+          {rows.map((item) => (
+            <Row key={item.id} item={item} onPick={(id) => onPick(mod.steps, id)} />
+          ))}
+        </ul>
+      ) : (
+        <p className="ml-5 pb-1 text-[11px] text-faint">{m.moduleEmpty}</p>
+      )}
+    </section>
   );
 }
 
@@ -173,6 +231,16 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
     canvasApi()?.focusNode(id);
     onClose();
   };
+  /** a resource inside a module: open the module there, with it selected */
+  const pickInModule = (steps: ModuleCost['steps'], id: string) => {
+    openModulePath(steps, id);
+    onClose();
+    setTimeout(() => canvasApi()?.focusNode(id), 220);
+  };
+  const groups = moduleGroups(cost.modules);
+  // an opened module: the estimate is of one instance of the call that leads to it
+  const scoped = useEditor((s) => s.scope);
+  const scopeLabel = scoped ? pathLabel(scoped.path) : null;
 
   // the category sort follows the language the labels are in
   const locale = useLocale((s) => s.locale);
@@ -215,6 +283,7 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
           {counts.fixed ? m.pricedFor(usd(cost.total), counts.fixed) : m.nothingFixed}
           {m.plus(extras)}.
         </p>
+        {scopeLabel ? <p className="mt-1 text-[11.5px] leading-snug text-muted">{m.insideCall(scopeLabel)}</p> : null}
         <ModulesNote area="cost" className="mt-2" />
       </header>
 
@@ -288,6 +357,15 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
             </>
           ) : null}
         </section>
+
+        {groups.length ? (
+          <section aria-label={m.insideModules}>
+            <h3 className="mb-0.5 px-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.insideModules}</h3>
+            {groups.map(({ mod, factor }) => (
+              <ModuleGroup key={mod.label} mod={mod} factor={factor} sort={sort} onPick={pickInModule} />
+            ))}
+          </section>
+        ) : null}
       </div>
 
       <footer className="border-t bg-surface-2/60 px-4 py-2.5">

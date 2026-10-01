@@ -90,21 +90,38 @@ export function estimateResource(r: ResourceNode, ir: IR, book: PriceBook, local
 
 /** The project's estimate, worded in `locale` (the numbers don't depend on it). */
 export function estimateProject(ir: IR, book: PriceBook, locale: Locale = currentLocale()): ProjectCost {
-  const t = messagesFor(costMessages, locale);
   const items = ir.resources.map((r) => estimateResource(r, ir, book, locale));
+  return { items, ...summarize(items.map((item) => ({ item, factor: 1 })), book, locale) };
+}
+
+/**
+ * An item counted `factor` times in the totals (the instances of the module
+ * call it sits in); null: the call's instances are decided at plan time, so
+ * its amount is left out and the item counts as not estimated.
+ */
+export interface WeightedItem {
+  item: ResourceCost;
+  factor: number | null;
+}
+
+/** Totals, counts, groups and assumptions of a set of (weighted) items. */
+export function summarize(list: WeightedItem[], book: PriceBook, locale: Locale = currentLocale()): Omit<ProjectCost, 'items'> {
+  const t = messagesFor(costMessages, locale);
+  const kindOf = ({ item, factor }: WeightedItem): CostKind => (factor === null && item.kind === 'fixed' ? 'unknown' : item.kind);
+  const amount = (w: WeightedItem) => (kindOf(w) === 'fixed' ? (w.item.monthly ?? 0) * (w.factor ?? 0) : 0);
   const counts: Record<CostKind, number> = { fixed: 0, usage: 0, unknown: 0, free: 0 };
-  for (const item of items) counts[item.kind]++;
-  const total = items.reduce((sum, i) => sum + (i.kind === 'fixed' ? (i.monthly ?? 0) : 0), 0);
+  for (const w of list) counts[kindOf(w)]++;
+  const total = list.reduce((sum, w) => sum + amount(w), 0);
 
   const group = <K extends string>(keys: K[], keyOf: (i: ResourceCost) => K) =>
     keys
       .map((key) => {
-        const members = items.filter((i) => keyOf(i) === key);
+        const members = list.filter((w) => keyOf(w.item) === key);
         return {
           key,
-          monthly: members.reduce((sum, i) => sum + (i.kind === 'fixed' ? (i.monthly ?? 0) : 0), 0),
+          monthly: members.reduce((sum, w) => sum + amount(w), 0),
           resources: members.length,
-          priced: members.filter((i) => i.kind === 'fixed').length,
+          priced: members.filter((w) => kindOf(w) === 'fixed').length,
         };
       })
       .filter((g) => g.resources > 0);
@@ -125,7 +142,7 @@ export function estimateProject(ir: IR, book: PriceBook, locale: Locale = curren
         return t.pricesAsOf(providerName(g.key, locale), meta.region, priceDate(meta.retrieved, locale));
       }),
   ];
-  return { items, total, counts, byCategory, byProvider, assumptions };
+  return { total, counts, byCategory, byProvider, assumptions };
 }
 
 const cache = new WeakMap<IR, { book: PriceBook; locale: Locale; cost: ProjectCost }>();

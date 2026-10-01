@@ -268,7 +268,8 @@ function imdsFinding(r: ResourceNode, what: 'instance' | 'template', m: AuditMes
   };
 }
 
-function scoreOf(findings: Finding[]): number {
+/** 0–100 for these findings (each further one of a kind counts less; anything unverified caps it at 89) */
+export function scoreOf(findings: Finding[]): number {
   const byType = new Map<string, number[]>();
   for (const f of findings) {
     const type = f.id.split(':')[0];
@@ -559,9 +560,12 @@ export function auditSecurity(ir: IR, topology: SecurityTopology = analyzeSecuri
     return { locale, findings, counts, score: null, grade: null, topology, risks };
   }
   const score = scoreOf(findings);
-  const grade = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
-  return { locale, findings, counts, score, grade, topology, risks };
+  return { locale, findings, counts, score, grade: gradeOf(score), topology, risks };
 }
+
+/** the letter for a score */
+export const gradeOf = (score: number): NonNullable<AuditResult['grade']> =>
+  score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F';
 
 export interface FixAllResult {
   ops: Op[];

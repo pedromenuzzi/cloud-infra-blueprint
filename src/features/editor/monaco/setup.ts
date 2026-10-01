@@ -6,6 +6,7 @@ import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import './contribs';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import { messagesFor } from '@/i18n/messages';
+import { exprPreview, literalString } from '@/ir/expr';
 import type { IR } from '@/ir/types';
 import { emptyIR } from '@/ir/types';
 import { fieldHelp, resourceDescription, resourceName } from '@/resources/i18n';
@@ -330,6 +331,8 @@ export function ensureMonacoSetup() {
             label: `var.${v.name}`,
             kind: monaco.languages.CompletionItemKind.Variable,
             insertText: `var.${v.name}`,
+            detail: v.args.type ? exprPreview(v.args.type) : undefined,
+            documentation: literalString(v.args.description),
             range: tokenRange,
             sortText: `2${v.name}`,
           });

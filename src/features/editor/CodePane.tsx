@@ -7,10 +7,12 @@ import { useMessages } from '@/i18n/messages';
 import { prefersReducedMotion } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { codeMessages } from './CodePane.messages';
+import { completionIr, ensureModuleCompletion } from './monaco/moduleCompletion';
 import { ensureMonacoSetup, monaco, setCompletionSource } from './monaco/setup';
 import { orderedFiles, readOnlyHint, useEditor } from './store';
 
 ensureMonacoSetup();
+ensureModuleCompletion();
 
 /** Apply newText to the model as a single minimal splice (keeps cursors sane). */
 function applyMinimalEdit(model: monaco.editor.ITextModel, newText: string) {
@@ -90,7 +92,8 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    setCompletionSource(() => useEditor.getState().ir);
+    // the file being edited references the blocks of its own module (a local module's, or the root's)
+    setCompletionSource(completionIr);
     // Monaco holds on to the last editor it created; a host node we own (and
     // detach on unmount) keeps that reference from pinning the whole page
     const host = document.createElement('div');
@@ -248,12 +251,21 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
       freshRef.current ? monaco.editor.ScrollType.Immediate : monaco.editor.ScrollType.Smooth,
     );
     flashRef.current?.clear();
-    flashRef.current = editor.createDecorationsCollection([
+    const flash = editor.createDecorationsCollection([
       {
         range: new monaco.Range(start, 1, end, 1),
         options: { isWholeLine: true, className: 'bp-code-flash', linesDecorationsClassName: 'bp-code-flash-gutter' },
       },
     ]);
+    flashRef.current = flash;
+    // a flash always fades, even when the reveal that made it ends early (a file switch, a pick in the code)
+    setTimeout(() => {
+      try {
+        flash.clear();
+      } catch {
+        // the editor is gone already
+      }
+    }, 1600);
   };
 
   useEffect(() => {

@@ -21,6 +21,8 @@ export const modulesMessages = defineMessages(
     noSource: 'no source',
     nodeLabel: (name: string, source: string, warn: boolean) => `Module ${name}, ${source}${warn ? ', has warnings' : ''}`,
     notAnalysed: 'Not analysed',
+    analysedInside: (findings: number, cost: string | null) =>
+      `${findings === 0 ? 'No findings' : `${findings} finding${s(findings)}`}${cost ? `, ~${cost}/mo` : ''} inside`,
     openHint: 'Double-click to open',
     hasWarnings: 'Has warnings: see the inspector',
 
@@ -37,12 +39,10 @@ export const modulesMessages = defineMessages(
     deleteConfirm: 'Delete',
 
     /* what the audit and the estimate leave out */
-    notAudited: (n: number, local: number) =>
-      `${n === 1 ? 'A module call isn’t' : `${n} module calls aren’t`} part of this audit: ` +
-      (local === n ? 'module resources aren’t audited yet.' : local === 0 ? 'their contents come from outside the project.' : `${n - local} come from outside the project, ${local} ${local === 1 ? 'is' : 'are'} not audited yet.`),
-    notEstimated: (n: number, local: number) =>
-      `${n} module call${s(n)} not included: ` +
-      (local === n ? 'module resources aren’t estimated yet.' : local === 0 ? 'their contents come from outside the project.' : `${n - local} from outside the project, ${local} not estimated yet.`),
+    notAudited: (n: number) =>
+      `${n === 1 ? 'A module call isn’t' : `${n} module calls aren’t`} part of this audit: their contents aren’t in the project (Registry, git, or a folder that’s missing or doesn’t parse).`,
+    notEstimated: (n: number) =>
+      `${n} module call${s(n)} not included: ${n === 1 ? 'its contents aren’t' : 'their contents aren’t'} in the project (Registry, git, or a folder that’s missing or doesn’t parse).`,
 
     /* the stats pill */
     stats: (resources: number, modules: number, connections: number) =>
@@ -55,6 +55,8 @@ export const modulesMessages = defineMessages(
     noSource: 'sem source',
     nodeLabel: (name, source, warn) => `Módulo ${name}, ${source}${warn ? ', tem avisos' : ''}`,
     notAnalysed: 'Não analisado',
+    analysedInside: (findings, cost) =>
+      `${findings === 0 ? 'Nenhum achado' : `${findings} ${findings === 1 ? 'achado' : 'achados'}`}${cost ? `, ~${cost}/mês` : ''} dentro dele`,
     openHint: 'Clique duas vezes para abrir',
     hasWarnings: 'Tem avisos: veja o inspetor',
 
@@ -68,20 +70,10 @@ export const modulesMessages = defineMessages(
       `Ainda é lido por ${few(ids, (n) => `e mais ${n}`, 'pt-BR')}. Essas referências ficam como estão. Elas aparecem como avisos até você apontá-las para outro lugar.`,
     deleteConfirm: 'Excluir',
 
-    notAudited: (n, local) =>
-      `${n === 1 ? 'Uma chamada de módulo não entra' : `${n} chamadas de módulo não entram`} nesta auditoria: ` +
-      (local === n
-        ? 'os recursos de módulos ainda não são auditados.'
-        : local === 0
-          ? 'o conteúdo delas vem de fora do projeto.'
-          : `${n - local} ${n - local === 1 ? 'vem' : 'vêm'} de fora do projeto, ${local} ainda não ${local === 1 ? 'é auditada' : 'são auditadas'}.`),
-    notEstimated: (n, local) =>
-      `${n} chamada${s(n)} de módulo fora da conta: ` +
-      (local === n
-        ? 'os recursos de módulos ainda não são estimados.'
-        : local === 0
-          ? 'o conteúdo delas vem de fora do projeto.'
-          : `${n - local} de fora do projeto, ${local} ainda sem estimativa.`),
+    notAudited: (n) =>
+      `${n === 1 ? 'Uma chamada de módulo não entra' : `${n} chamadas de módulo não entram`} nesta auditoria: o conteúdo ${n === 1 ? 'dela' : 'delas'} não está no projeto (Registry, git, ou uma pasta que falta ou não é lida).`,
+    notEstimated: (n) =>
+      `${n} chamada${s(n)} de módulo fora da conta: o conteúdo ${n === 1 ? 'dela' : 'delas'} não está no projeto (Registry, git, ou uma pasta que falta ou não é lida).`,
 
     stats: (resources, modules, connections) =>
       `${resources} recurso${s(resources)}, ${connections} ${connections === 1 ? 'conexão' : 'conexões'}, ${modules} módulo${s(modules)}`,

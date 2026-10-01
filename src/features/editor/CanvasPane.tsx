@@ -62,7 +62,8 @@ import { DATA_TILE } from '@/features/data-sources/tile';
 import { dataSourceMessages } from '@/features/data-sources/dataSources.messages';
 import { moduleMenuEntries } from '@/features/modules/moduleMenu';
 import { ModuleNodeView, moduleFlowNodes } from '@/features/modules/ModuleNode';
-import { ModulesHost } from '@/features/modules/ModulesHost';
+import { ModulesHost, ModuleViewBar } from '@/features/modules/ModulesHost';
+import { duplicateModuleCall } from '@/features/modules/duplicateModule';
 import { modulesMessages } from '@/features/modules/modules.messages';
 import { repeatOf } from '@/ir/repeat';
 import type { Op } from '@/ir/ops';
@@ -479,6 +480,19 @@ function CanvasInner() {
     return () => clearTimeout(t);
   }, [projectId, rf]);
 
+  // a module opened or closed: other blocks on the canvas, seen where they were last looked at (else all of them)
+  const scopeKey = useEditor((s) => `${s.projectId}:${s.scope?.dir ?? ''}`);
+  const shownScope = useRef(scopeKey);
+  const viewports = useRef(new Map<string, Viewport>());
+  useEffect(() => {
+    if (scopeKey === shownScope.current) return;
+    viewports.current.set(shownScope.current, rf.getViewport());
+    shownScope.current = scopeKey;
+    const saved = viewports.current.get(scopeKey);
+    const t = setTimeout(() => void (saved ? rf.setViewport(saved) : rf.fitView({ padding: 0.15, maxZoom: 1 })), 80);
+    return () => clearTimeout(t);
+  }, [scopeKey, rf]);
+
   // Space + drag pans — even when the pointer starts on a node
   const spaceHeld = useKeyPress('Space');
 
@@ -635,6 +649,10 @@ function CanvasInner() {
 
   const duplicate = useCallback(
     (nodeId: string) => {
+      if (isModuleId(nodeId)) {
+        duplicateModuleCall(nodeId);
+        return;
+      }
       const state = useEditor.getState();
       const source = state.ir.resources.find((r) => r.id === nodeId);
       if (!source) return;
@@ -1102,6 +1120,8 @@ function CanvasInner() {
               </button>
             ) : null}
           </span>
+          {/* an opened module: its way back, below the stats (clear of the canvas's top-left controls) */}
+          <ModuleViewBar />
           {overview ? <OverviewPopover onClose={() => setOverview(false)} /> : null}
           {codeErrored ? (
             <span

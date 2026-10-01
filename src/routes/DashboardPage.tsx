@@ -239,7 +239,7 @@ const ProjectCard = memo(function ProjectCard({
           title={m.exportZip}
           aria-label={m.exportZip}
           onClick={() => {
-            exportZip(project.name, project.files);
+            exportZip(project.name, project.files, { rootPath: project.rootPath });
             showToast(messagesFor(dashboardMessages).zipDownloaded, 'success');
           }}
         >
@@ -369,6 +369,7 @@ export default function DashboardPage() {
       name: uniqueProjectName(imported.name),
       files: imported.files,
       description: text.importedDescription(Object.keys(imported.files).length),
+      rootPath: imported.rootDir,
     });
     if (!project) return;
     const note = importNote(imported);

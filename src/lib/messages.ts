@@ -36,7 +36,7 @@ export const libMessages = defineMessages(
     importOversized: (n: number) => `${n} file${n === 1 ? ' was' : 's were'} too large to import`,
 
     // the README inside a Terraform zip
-    exportReadme: (name: string, repo: string, files: string) => `# ${name}
+    exportReadme: (name: string, repo: string, files: string, root = '') => `# ${name}
 
 Terraform project exported from [Cloud Blueprint](${repo}),
 the free, in-browser visual editor for cloud architecture.
@@ -46,9 +46,9 @@ the free, in-browser visual editor for cloud architecture.
 ${files}
 
 ## Usage
-
+${root ? `\nThe root module is in \`${root}/\`, where its module sources expect it.\n` : ''}
 \`\`\`bash
-terraform init
+${root ? `cd ${root}\n` : ''}terraform init
 terraform plan
 terraform apply
 \`\`\`
@@ -90,7 +90,7 @@ terraform apply
     importOversized: (n: number) =>
       n === 1 ? '1 arquivo era grande demais para importar' : `${n} arquivos eram grandes demais para importar`,
 
-    exportReadme: (name: string, repo: string, files: string) => `# ${name}
+    exportReadme: (name: string, repo: string, files: string, root = '') => `# ${name}
 
 Projeto Terraform exportado do [Cloud Blueprint](${repo}),
 o editor visual de arquitetura em nuvem, gratuito e no navegador.
@@ -100,9 +100,9 @@ o editor visual de arquitetura em nuvem, gratuito e no navegador.
 ${files}
 
 ## Como usar
-
+${root ? `\nO módulo raiz está em \`${root}/\`, onde as origens dos módulos esperam encontrá-lo.\n` : ''}
 \`\`\`bash
-terraform init
+${root ? `cd ${root}\n` : ''}terraform init
 terraform plan
 terraform apply
 \`\`\`

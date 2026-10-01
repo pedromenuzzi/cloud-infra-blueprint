@@ -173,7 +173,7 @@ function sizeOf(p: CanvasPosition): { w: number; h: number } {
  * node of its size overlaps none of its siblings — so a copy never lands on
  * the original, and a copied container isn't drawn over the one it copies.
  */
-function freeSpotNear(ir: IR, source: ResourceNode, isContainer: boolean): CanvasPosition {
+export function freeSpotNear(ir: IR, source: ResourceNode, isContainer: boolean): CanvasPosition {
   const pos = source.position ?? { x: 0, y: 0 };
   const size = isContainer
     ? { w: pos.w ?? CONTAINER_MIN_W, h: pos.h ?? CONTAINER_MIN_H }
