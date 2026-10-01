@@ -31,12 +31,13 @@ export function chipText(cost: ProjectCost, locale: Locale = currentLocale()): {
 
 export function CostChip() {
   const m = useMessages(costUiMessages);
-  const hasResources = useEditor((s) => s.ir.resources.length > 0);
+  const rootResources = useEditor((s) => s.rootIr.resources.length > 0);
   const { cost, failed, retry } = useProjectCost();
   const [open, setOpen] = useState(false);
   const chip = useRef<HTMLButtonElement>(null);
   const tipId = useId();
-  if (!hasResources) return null;
+  // resources of its own, or inside its local modules
+  if (!rootResources && !cost?.modules?.some((x) => x.counts.fixed + x.counts.usage + x.counts.unknown + x.counts.free > 0)) return null;
 
   const text = cost ? chipText(cost) : null;
   const label = failed ? m.unavailable : text ? text.label : m.estimating;

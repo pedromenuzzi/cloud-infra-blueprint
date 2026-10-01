@@ -26,6 +26,8 @@ export interface ModuleInstance {
   id: string;
   /** call names from the root module, outermost first */
   path: string[];
+  /** the same calls with the folder each one opens (what the canvas's module view takes) */
+  steps: Array<{ dir: string; name: string }>;
   /** `module.service › module.ecr` */
   label: string;
   /** project folder of the module */
@@ -219,25 +221,32 @@ const MAX_DEPTH = 8;
  * calls inside each), instantiated. Registry / git modules, folders the
  * project doesn't have and modules with parse errors are left out.
  */
-export function moduleInstances(ir: IR, files: Record<string, string>, path: string[] = [], seen: string[] = []): ModuleInstance[] {
-  if (path.length >= MAX_DEPTH) return [];
+export function moduleInstances(
+  ir: IR,
+  files: Record<string, string>,
+  steps: Array<{ dir: string; name: string }> = [],
+): ModuleInstance[] {
+  if (steps.length >= MAX_DEPTH) return [];
+  const seen = steps.map((s) => s.dir);
   const out: ModuleInstance[] = [];
   for (const call of ir.modules) {
     const target = moduleTarget(files, call);
     if (target.kind !== 'local' || !target.module || target.module.broken || seen.includes(target.dir)) continue;
-    const here = [...path, call.name];
+    const here = [...steps, { dir: target.dir, name: call.name }];
+    const path = here.map((s) => s.name);
     const { ir: inst, fromInputs } = instantiate(target.module.ir, call, ir);
     out.push({
       call,
       id: call.id,
-      path: here,
-      label: pathLabel(here),
+      path,
+      steps: here,
+      label: pathLabel(path),
       dir: target.dir,
       child: target.module,
       ir: inst,
       fromInputs,
       ...callCount(call, ir),
-      nested: moduleInstances(inst, files, here, [...seen, target.dir]),
+      nested: moduleInstances(inst, files, here),
     });
   }
   return out;

@@ -46,6 +46,14 @@ export const costUiMessages = defineMessages(
     estimatedCost: 'Estimated cost',
     fewerDetails: 'Fewer details',
     moreAssumptions: (n: number) => `${n} more assumption${s(n)}`,
+    // local modules, in the popover
+    insideModules: 'Inside local modules',
+    moduleGroup: (label: string) => `Resources inside ${label}`,
+    instances: (n: number) => `×${n}`,
+    instancesTitle: (n: number) => `${n} instance${s(n)} of the module call: every amount here is counted ${n} time${s(n)}`,
+    instancesUnknown: 'instances decided at plan time',
+    moduleEmpty: 'Nothing with a cost of its own inside.',
+    perCallLine: (amount: string) => `Inside it: ~${amount}/mo per instance`,
   },
   {
     usageBased: (n: number) => `${n} por uso`,
@@ -86,5 +94,13 @@ export const costUiMessages = defineMessages(
     estimatedCost: 'Custo estimado',
     fewerDetails: 'Menos detalhes',
     moreAssumptions: (n: number) => `mais ${n} ${n === 1 ? 'premissa' : 'premissas'}`,
+    insideModules: 'Dentro de módulos locais',
+    moduleGroup: (label: string) => `Recursos dentro de ${label}`,
+    instances: (n: number) => `×${n}`,
+    instancesTitle: (n: number) =>
+      `${n} ${n === 1 ? 'instância' : 'instâncias'} da chamada de módulo: cada valor aqui conta ${n} ${n === 1 ? 'vez' : 'vezes'}`,
+    instancesUnknown: 'instâncias decididas no plan',
+    moduleEmpty: 'Nada com custo próprio aqui dentro.',
+    perCallLine: (amount: string) => `Dentro dele: ~${amount}/mês por instância`,
   },
 );
