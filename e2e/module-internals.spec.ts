@@ -245,8 +245,13 @@ test('completion knows a local module’s outputs, and a module file’s variabl
   await importShop(page);
   await expect(page.locator('[data-testid="monaco"] .monaco-editor')).toBeVisible({ timeout: 15_000 });
   // hovering a module output says what it is
-  await page.locator('[data-testid="monaco"] .view-line span', { hasText: 'private_subnet_id' }).last().hover();
   const hover = page.locator('.monaco-hover:not(.hidden)');
+  // Monaco may still be laying the code out: hover again until its widget shows
+  await expect(async () => {
+    await page.mouse.move(0, 0);
+    await page.locator('[data-testid="monaco"] .view-line span', { hasText: 'private_subnet_id' }).last().hover();
+    await expect(hover).toBeVisible({ timeout: 1_500 });
+  }).toPass({ timeout: 12_000 });
   await expect(hover).toContainText('The private subnet the app runs in');
   await expect(hover).toContainText('value = aws_subnet.private.id');
   await page.mouse.move(0, 0);
