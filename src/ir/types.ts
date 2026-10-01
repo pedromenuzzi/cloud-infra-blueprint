@@ -159,7 +159,25 @@ export interface ModuleNode {
   trivia: Trivia;
 }
 
-/** Any block we intentionally keep verbatim: terraform {}, locals {}, data, moved… */
+/**
+ * A `data "type" "name" { … }` block: a lookup Terraform reads, never
+ * creates. A node of its own on the canvas, kept as written like a
+ * resource (arguments, position comment, trivia); src/ir/dataSources.ts
+ * reads its references (`data.aws_ami.ubuntu.id`) and edges.
+ */
+export interface DataNode {
+  /** `data.${type}.${name}`: the address its attributes are read through */
+  id: string;
+  provider: Provider;
+  type: string;
+  name: string;
+  args: Record<string, Expression>;
+  /** canvas position; persisted in HCL via `# @blueprint:pos=x,y` like a resource's */
+  position?: CanvasPosition;
+  trivia: Trivia;
+}
+
+/** Any block we intentionally keep verbatim: terraform {}, locals {}, moved… */
 export interface RawBlock {
   id: string;
   text: string;
@@ -174,6 +192,8 @@ export interface IR {
   providers: ProviderBlock[];
   /** `module` calls of the root module (child module files are not parsed into the IR) */
   modules: ModuleNode[];
+  /** `data` blocks (lookups) */
+  data: DataNode[];
   extras: RawBlock[];
 }
 
@@ -203,6 +223,7 @@ export const emptyIR = (): IR => ({
   outputs: [],
   providers: [],
   modules: [],
+  data: [],
   extras: [],
 });
 
@@ -250,3 +271,6 @@ export function providerOfSourceName(name: string): Provider {
 }
 
 export const resourceAddress = (type: string, name: string) => `${type}.${name}`;
+
+/** `data.aws_ami.ubuntu`: a data block's address (and canvas / op id) */
+export const dataAddress = (type: string, name: string) => `data.${type}.${name}`;

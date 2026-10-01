@@ -6,9 +6,10 @@
  */
 import { isStateBlockText } from '@/hcl/moved';
 import { renameInExpression, renameInHcl, renameInRecord } from './expr';
+import { applyDataOp, isDataOp } from './dataOps';
 import { applyModuleOp, isModuleOp } from './moduleOps';
 import { rekeyInExpression, rekeyInHcl, rekeyInRecord, type Rekey } from './repeat';
-import type { CanvasPosition, Expression, IR, ModuleNode, RawBlock, ResourceNode } from './types';
+import type { CanvasPosition, DataNode, Expression, IR, ModuleNode, RawBlock, ResourceNode } from './types';
 import { resourceAddress } from './types';
 
 export type Op =
@@ -25,7 +26,9 @@ export type Op =
   /** references to `address` change instance key (repetition added / removed), see repeat.ts */
   | { kind: 'rekey_refs'; address: string; rekey: Rekey }
   /** a new `module` call (the other kinds act on one through its id, `module.x`: see ./moduleOps.ts) */
-  | { kind: 'add_module'; node: ModuleNode };
+  | { kind: 'add_module'; node: ModuleNode }
+  /** a new `data` block (the other kinds act on one through its id, `data.type.name`: see ./dataOps.ts) */
+  | { kind: 'add_data'; node: DataNode };
 
 /** how a value's text follows a rename / re-key — the patcher rewrites those tokens in place */
 export interface TextRewrite {
@@ -55,6 +58,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
     outputs: [...ir.outputs],
     providers: [...ir.providers],
     modules: [...ir.modules],
+    data: [...ir.data],
     extras: [...ir.extras],
   };
   const touched = new Set<string>();
@@ -80,6 +84,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
     next.outputs = next.outputs.map(retarget);
     next.providers = next.providers.map(retarget);
     next.modules = next.modules.map(retarget);
+    next.data = next.data.map(retarget);
     next.extras = next.extras.map((b) => {
       if (isStateBlockText(b.text)) return b;
       const text = rewrite.hcl(b.text);
@@ -92,6 +97,10 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
   for (const op of ops) {
     if (isModuleOp(op)) {
       applyModuleOp(next, op, { touched, removed, renamed, rewrites });
+      continue;
+    }
+    if (isDataOp(op)) {
+      applyDataOp(next, op, { touched, removed, renamed, rewrites });
       continue;
     }
     switch (op.kind) {
@@ -161,6 +170,7 @@ export function applyOps(ir: IR, ops: Op[]): ApplyResult {
         next.outputs = next.outputs.map(retarget);
         next.providers = next.providers.map(retarget);
         next.modules = next.modules.map(retarget);
+        next.data = next.data.map(retarget);
         next.extras = next.extras.map((b) => {
           // `moved` / `removed` name addresses in the state: hcl/moved.ts decides about those
           if (isStateBlockText(b.text)) return b;
