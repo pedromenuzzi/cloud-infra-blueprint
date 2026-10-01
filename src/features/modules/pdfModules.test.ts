@@ -62,6 +62,45 @@ describe('the PDF lists modules', () => {
     expect(text).toContain('ENTRADAS');
   });
 
+  it('what local modules hold: resources, findings and cost per call', () => {
+    const files = {
+      'main.tf': 'provider "aws" {\n  region = "us-east-1"\n}\n\nmodule "edge" {\n  source = "./modules/edge"\n  cidr   = "0.0.0.0/0"\n  count  = 2\n}\n',
+      'modules/edge/main.tf': `resource "aws_security_group" "ssh" {
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.cidr]
+  }
+}
+
+resource "aws_instance" "bastion" {
+  ami                    = "ami-1"
+  instance_type          = "t3.micro"
+  vpc_security_group_ids = [aws_security_group.ssh.id]
+}
+
+variable "cidr" {}
+`,
+    };
+    const doc = input(files);
+    const text = pdfText(buildArchitecturePdf({ ...doc, sections: { ...doc.sections, cost: true } }));
+    expect(text).toContain('Inside local modules');
+    expect(text).toContain('module.edge');
+    expect(text).toContain('modules/edge · 2 instances');
+    expect(text).toContain('bastion');
+    expect(text).toContain('instance_type: t3.micro');
+    expect(text).toContain('SSH (port 22) is open to the internet: module.edge › aws_security_group.ssh');
+    // the security review points there
+    expect(text).toContain('2 findings inside local modules: see Inside local modules.');
+    // the cost table groups them under the call, × its instances
+    expect(text).toContain('module.edge × 2');
+    expect(text).toMatch(/Inside it: ~\$[\d.]+\/mo per instance, × 2/);
+    const pt = pdfText(buildArchitecturePdf({ ...input(files, 'pt-BR'), sections: { ...doc.sections, cost: true } }));
+    expect(pt).toContain('Dentro de módulos locais');
+    expect(pt).toContain('modules/edge · 2 instâncias');
+  });
+
   it('no section without modules', () => {
     const text = pdfText(buildArchitecturePdf(input({ 'main.tf': 'resource "aws_vpc" "a" {}\n' })));
     expect(text).not.toContain('Listing the modules');

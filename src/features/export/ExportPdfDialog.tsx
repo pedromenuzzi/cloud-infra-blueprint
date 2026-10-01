@@ -10,6 +10,7 @@ import { showToast } from '@/components/Toast';
 import { Button, Field, Input, Modal, Textarea } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { orderedFiles, useEditor } from '@/features/editor/store';
+import { moduleViewTo } from '@/features/modules/moduleViewStore';
 import { getAudit, useAudit } from '@/features/security/securityStore';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import { downloadBlob } from '@/lib/download';
@@ -70,7 +71,8 @@ interface ExportPdfState {
 const useExportPdf = create<ExportPdfState>(() => ({ open: false, drafts: {} }));
 
 export function openExportPdf() {
-  if (useEditor.getState().ir.resources.length === 0) {
+  const { rootIr } = useEditor.getState();
+  if (rootIr.resources.length === 0 && rootIr.modules.length === 0) {
     showToast(messagesFor(exportMessages).nothingToExport, 'info');
     return;
   }
@@ -130,6 +132,12 @@ function ExportPdfDialog({ onClose }: { onClose(): void }) {
     // the document is written in the language in effect when it is asked for
     const t = messagesFor(exportMessages);
     setStage(t.reading);
+    // the document is the project's: its diagram is the root module's canvas
+    if (useEditor.getState().scope) {
+      moduleViewTo(0);
+      await new Promise((r) => setTimeout(r, 450));
+      if (signal.aborted) return;
+    }
     let diagram: DiagramVector | null = null;
     let diagramError = t.canvasClosed;
     try {
