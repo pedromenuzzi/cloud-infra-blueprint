@@ -130,7 +130,7 @@ function awsPublicRouting(
 ): ResourceNode[] {
   return [
     res('aws_internet_gateway', 'igw', { vpc_id: ref('aws_vpc.main.id') }, at.gateway, [
-      '# Internet access — the default route that makes the public subnets public',
+      '# Internet access: the default route that makes the public subnets public',
     ]),
     res(
       'aws_route_table',
@@ -578,7 +578,7 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
         environment: block({ variables: obj({ TABLE_NAME: ref('aws_dynamodb_table.items.name') }) }),
       },
       { x: 640, y: 124 },
-      ['# Function — package your handler as lambda.zip next to these files'],
+      ['# Function: package your handler as lambda.zip next to these files'],
     ),
     res(
       'aws_lambda_permission',
@@ -613,7 +613,7 @@ function buildAwsServerlessApi(appName: string): Record<string, string> {
         ),
       },
       { x: 640, y: 390 },
-      ['# Identity — least privilege: this table + CloudWatch logs'],
+      ['# Identity (least privilege): this table + CloudWatch logs'],
     ),
     res(
       'aws_iam_role_policy',
@@ -687,7 +687,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
         drop_invalid_header_fields: lit(true),
       },
       { x: 40, y: 120 },
-      ['# Edge — the load balancer is the only internet-facing resource'],
+      ['# Edge: the load balancer is the only internet-facing resource'],
     ),
     res(
       'aws_lb_listener',
@@ -736,7 +736,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
       'main',
       { cidr_block: lit('10.0.0.0/16'), enable_dns_hostnames: lit(true), tags: obj({ Name: lit(slug) }) },
       { x: 320, y: 40, w: 1380, h: 780 },
-      ['# Network — public, app and data tiers across two AZs'],
+      ['# Network: public, app and data tiers across two AZs'],
     ),
     subnet('public_a', '10.0.1.0/24', 'us-east-1a', 32, 64),
     subnet('public_b', '10.0.2.0/24', 'us-east-1b', 456, 64),
@@ -787,7 +787,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
         egress: block(sgRule('To the app tier', 8080, { cidr_blocks: list([lit('10.0.0.0/16')]) })),
       },
       { x: 900, y: 64 },
-      ['# Security — each tier only accepts traffic from the tier in front of it'],
+      ['# Security: each tier only accepts traffic from the tier in front of it'],
     ),
     res(
       'aws_security_group',
@@ -853,7 +853,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
         root_block_device: block({ encrypted: lit(true) }),
       },
       { x: 24, y: 52 },
-      ['# Compute — private app server, IMDSv2 only'],
+      ['# Compute: private app server, IMDSv2 only'],
     ),
     res(
       'aws_db_subnet_group',
@@ -880,7 +880,7 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
         skip_final_snapshot: lit(true),
       },
       { x: 28, y: 56 },
-      ['# Data — private, encrypted PostgreSQL'],
+      ['# Data: private, encrypted PostgreSQL'],
     ),
   );
 
@@ -1348,14 +1348,14 @@ function buildMultiCloudDr(appName: string): Record<string, string> {
       'primary',
       { bucket: name('aws_s3_bucket', 'primary'), force_destroy: lit(true) },
       { x: 40, y: 120 },
-      ['# Primary copy — AWS', '# Replication to the other clouds runs out-of-band (rclone / storage transfer).'],
+      ['# Primary copy (AWS)', '# Replication to the other clouds runs out-of-band (rclone / storage transfer).'],
     ),
     res(
       'aws_route53_zone',
       'main',
       { name: ref('var.domain_name') },
       { x: 40, y: 300 },
-      ['# DNS — flip this record to fail over'],
+      ['# DNS: flip this record to fail over'],
     ),
     res(
       'aws_route53_record',
@@ -1380,7 +1380,7 @@ function buildMultiCloudDr(appName: string): Record<string, string> {
         uniform_bucket_level_access: lit(true),
       },
       { x: 640, y: 120 },
-      ['# Warm replica — GCP'],
+      ['# Warm replica (GCP)'],
     ),
     // Cold archive — Azure
     res(
@@ -1388,7 +1388,7 @@ function buildMultiCloudDr(appName: string): Record<string, string> {
       'dr',
       { name: name('azurerm_resource_group', 'dr-rg'), location: lit('eastus') },
       { x: 940, y: 60, w: 380, h: 260 },
-      ['# Cold archive — Azure'],
+      ['# Cold archive (Azure)'],
     ),
     res(
       'azurerm_storage_account',

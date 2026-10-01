@@ -303,7 +303,7 @@ describe('listGithub + fetchRootModule', () => {
     expect(Object.keys(result.imported.files).sort()).toEqual(['main.tf', 'variables.tf']);
     expect(result.imported.name).toBe('infra');
     expect(result.origin).toBe('github:acme/infra@trunk');
-    expect(result.description).toBe('Imported from GitHub — acme/infra @ trunk.');
+    expect(result.description).toBe('Imported from GitHub: acme/infra @ trunk.');
     expect(result.note).toMatch(/1 other file was left out/);
     expect(rates).toEqual([58, 57]);
     expect(phases).toEqual(['repo', 'tree', 'files', 'files', 'files']);

@@ -49,7 +49,7 @@ export const docMessages = defineMessages(
     diagram: 'Diagram',
     noDiagram: 'The diagram could not be rendered.',
     numberedAreas: (first: number, last: number) => `Numbered areas are printed at a readable size on pages ${first}–${last} (click one to jump).`,
-    areaTitle: (i: number, n: number) => `Diagram — area ${i} of ${n}`,
+    areaTitle: (i: number, n: number) => `Diagram: area ${i} of ${n}`,
     areaMeta: (title: string, row: number, rows: number, col: number, cols: number) =>
       `${title}   ·   row ${row} of ${rows}, column ${col} of ${cols}`,
     backToOverview: 'Whole diagram and legend on page 1',
@@ -103,7 +103,7 @@ export const docMessages = defineMessages(
     colTo: 'To',
     colPorts: 'Ports',
     colReach: 'Reach',
-    publicAtRisk: 'Public — at risk',
+    publicAtRisk: 'Public, at risk',
     public: 'Public',
     internal: 'Internal',
     dependencies: 'Dependencies',
@@ -130,13 +130,13 @@ export const docMessages = defineMessages(
     complianceControls: 'Compliance controls',
     failedControls: (n: number) => plural(n, 'failed control', 'failed controls'),
     complianceHint: (frameworks: string) =>
-      `Findings mapped to ${frameworks}. Only controls that can be decided from the Terraform are checked — a clean result here is not a certification.`,
+      `Findings mapped to ${frameworks}. Only controls that can be decided from the Terraform are checked, so a clean result here is not a certification.`,
     colControl: 'Control',
     colRequirement: 'Requirement',
     colFindings: 'Findings',
     // cost
     costTitle: 'Cost estimate',
-    costHint: 'Monthly on-demand estimate from public list prices — for planning, not a quote.',
+    costHint: 'Monthly on-demand estimate from public list prices (for planning, not a quote).',
     usageBased: (n: number) => `${n} usage-based`,
     notEstimated: (n: number) => `${n} not estimated`,
     pricedFor: (total: string, n: number) => `${total} for ${plural(n, 'priced resource', 'priced resources')}`,
@@ -157,8 +157,8 @@ export const docMessages = defineMessages(
     noCharge: (n: number, list: string) => `No charge of their own (${n}): ${list}.`,
     assumptions: 'Assumptions',
     notAQuote:
-      'This is an estimate for planning, not a quote. Real bills depend on usage, discounts, taxes and price changes — check the provider’s pricing calculator before committing to a budget.',
-    sources: (hosts: string) => `Price sources — ${hosts}.`,
+      'This is an estimate for planning, not a quote. Real bills depend on usage, discounts, taxes and price changes, so check the provider’s pricing calculator before committing to a budget.',
+    sources: (hosts: string) => `Price sources: ${hosts}.`,
     // source
     sourceTitle: 'Terraform source',
     sourceHint: (n: number) => `${plural(n, 'file', 'files')} from the project (canvas layout comments left out).`,
@@ -191,7 +191,7 @@ export const docMessages = defineMessages(
     noDiagram: 'Não foi possível desenhar o diagrama.',
     numberedAreas: (first: number, last: number) =>
       `As áreas numeradas estão impressas em tamanho legível nas páginas ${first}–${last} (clique em uma para ir até ela).`,
-    areaTitle: (i: number, n: number) => `Diagrama — área ${i} de ${n}`,
+    areaTitle: (i: number, n: number) => `Diagrama: área ${i} de ${n}`,
     areaMeta: (title: string, row: number, rows: number, col: number, cols: number) =>
       `${title}   ·   linha ${row} de ${rows}, coluna ${col} de ${cols}`,
     backToOverview: 'Diagrama completo e legenda na página 1',
@@ -241,7 +241,7 @@ export const docMessages = defineMessages(
     colTo: 'Para',
     colPorts: 'Portas',
     colReach: 'Alcance',
-    publicAtRisk: 'Público — em risco',
+    publicAtRisk: 'Público, em risco',
     public: 'Público',
     internal: 'Interno',
     dependencies: 'Dependências',
@@ -267,12 +267,12 @@ export const docMessages = defineMessages(
     complianceControls: 'Controles de conformidade',
     failedControls: (n: number) => plural(n, 'controle não atendido', 'controles não atendidos'),
     complianceHint: (frameworks: string) =>
-      `Achados mapeados para ${frameworks}. Só são verificados os controles que podem ser decididos a partir do Terraform — um resultado limpo aqui não é uma certificação.`,
+      `Achados mapeados para ${frameworks}. Só são verificados os controles que podem ser decididos a partir do Terraform, então um resultado limpo aqui não é uma certificação.`,
     colControl: 'Controle',
     colRequirement: 'Requisito',
     colFindings: 'Achados',
     costTitle: 'Estimativa de custo',
-    costHint: 'Estimativa mensal sob demanda, a partir de preços públicos de tabela — para planejamento, não uma cotação.',
+    costHint: 'Estimativa mensal sob demanda, a partir de preços públicos de tabela (para planejamento, não uma cotação).',
     usageBased: (n: number) => `${n} por uso`,
     notEstimated: (n: number) => `${n} sem estimativa`,
     pricedFor: (total: string, n: number) => `${total} para ${plural(n, 'recurso com preço', 'recursos com preço')}`,
@@ -293,8 +293,8 @@ export const docMessages = defineMessages(
     noCharge: (n: number, list: string) => `Sem cobrança própria (${n}): ${list}.`,
     assumptions: 'Premissas',
     notAQuote:
-      'Esta é uma estimativa para planejamento, não uma cotação. A conta real depende do uso, de descontos, de impostos e de mudanças de preço — confira a calculadora de preços do provedor antes de se comprometer com um orçamento.',
-    sources: (hosts: string) => `Fontes dos preços — ${hosts}.`,
+      'Esta é uma estimativa para planejamento, não uma cotação. A conta real depende do uso, de descontos, de impostos e de mudanças de preço, então confira a calculadora de preços do provedor antes de se comprometer com um orçamento.',
+    sources: (hosts: string) => `Fontes dos preços: ${hosts}.`,
     sourceTitle: 'Código Terraform',
     sourceHint: (n: number) => `${plural(n, 'arquivo', 'arquivos')} do projeto (sem os comentários de layout do canvas).`,
     lines: (n: number) => plural(n, 'linha', 'linhas'),

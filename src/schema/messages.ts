@@ -15,16 +15,16 @@ export const schemaMessages = defineMessages(
   {
     /** ` in ingress.cidr_blocks` */
     where: (path: string) => ` in ${path}`,
-    didYouMean: (name: string) => ` — did you mean "${name}"?`,
+    didYouMean: (name: string) => `. Did you mean "${name}"?`,
     /** a deprecation note from the provider, after the finding */
-    note: (text: string) => ` — ${text}`,
+    note: (text: string) => `: ${text}`,
     unknown: (what: 'argument' | 'block' | 'block type', name: string, where: string, hint: string) =>
       `unknown ${what} "${name}"${where}${hint}`,
     blockDeprecated: (name: string, where: string, note: string) => `block "${name}"${where} is deprecated${note}`,
     deprecated: (key: string, where: string, note: string) => `"${key}"${where} is deprecated${note}`,
-    readOnly: (key: string, where: string) => `"${key}"${where} is read-only — the provider computes it`,
-    notABlock: (key: string, where: string) => `"${key}"${where} is an argument — write ${key} = …, not a block`,
-    notAnArgument: (key: string, where: string) => `"${key}"${where} is a block — write ${key} { … }, not ${key} = …`,
+    readOnly: (key: string, where: string) => `"${key}"${where} is read-only: the provider computes it`,
+    notABlock: (key: string, where: string) => `"${key}"${where} is an argument: write ${key} = …, not a block`,
+    notAnArgument: (key: string, where: string) => `"${key}"${where} is a block: write ${key} { … }, not ${key} = …`,
     /** `problem`: from `typeProblem` */
     typeProblem: (key: string, where: string, problem: string) => `"${key}"${where} ${problem}`,
     tooMany: (name: string, where: string, max: number, found: number) =>
@@ -58,21 +58,21 @@ export const schemaMessages = defineMessages(
     blockMap: 'block map',
     blockNesting: (nesting: string, max: number) => `block ${nesting}${max > 1 ? ` (max ${max})` : ''}`,
     /** hovers and completion docs */
-    deprecatedHeading: (note?: string) => `**Deprecated**${note ? ` — ${note}` : ''}`,
+    deprecatedHeading: (note?: string) => (note ? `**Deprecated:** ${note}` : '**Deprecated**'),
     providerVersion: (provider: string, version: string) => `${provider} provider ${version}`,
-    argumentCount: (n: number) => `${n} arguments and blocks — type inside the block to see them`,
+    argumentCount: (n: number) => `${n} arguments and blocks: type inside the block to see them`,
   },
   {
     where: (path) => ` em ${path}`,
-    didYouMean: (name) => ` — você quis dizer "${name}"?`,
-    note: (text) => ` — ${text}`,
+    didYouMean: (name) => `. Você quis dizer "${name}"?`,
+    note: (text) => `: ${text}`,
     unknown: (what, name, where, hint) =>
       `${what === 'argument' ? 'argumento' : what === 'block' ? 'bloco' : 'tipo de bloco'} desconhecido "${name}"${where}${hint}`,
     blockDeprecated: (name, where, note) => `o bloco "${name}"${where} está obsoleto${note}`,
     deprecated: (key, where, note) => `"${key}"${where} está obsoleto${note}`,
-    readOnly: (key, where) => `"${key}"${where} é somente leitura — o provider calcula o valor`,
-    notABlock: (key, where) => `"${key}"${where} é um argumento — escreva ${key} = …, não um bloco`,
-    notAnArgument: (key, where) => `"${key}"${where} é um bloco — escreva ${key} { … }, não ${key} = …`,
+    readOnly: (key, where) => `"${key}"${where} é somente leitura: o provider calcula o valor`,
+    notABlock: (key, where) => `"${key}"${where} é um argumento: escreva ${key} = …, não um bloco`,
+    notAnArgument: (key, where) => `"${key}"${where} é um bloco: escreva ${key} { … }, não ${key} = …`,
     typeProblem: (key, where, problem) => `"${key}"${where} ${problem}`,
     tooMany: (name, where, max, found) =>
       `o bloco "${name}"${where} pode aparecer no máximo ${max === 1 ? 'uma vez' : `${max} vezes`}, mas aparece ${found}`,
@@ -99,9 +99,9 @@ export const schemaMessages = defineMessages(
     block: 'bloco',
     blockMap: 'bloco map',
     blockNesting: (nesting, max) => `bloco ${nesting}${max > 1 ? ` (máx. ${max})` : ''}`,
-    deprecatedHeading: (note) => `**Obsoleto**${note ? ` — ${note}` : ''}`,
+    deprecatedHeading: (note) => (note ? `**Obsoleto:** ${note}` : '**Obsoleto**'),
     providerVersion: (provider, version) => `provider ${provider} ${version}`,
-    argumentCount: (n) => `${n} argumentos e blocos — digite dentro do bloco para vê-los`,
+    argumentCount: (n) => `${n} argumentos e blocos: digite dentro do bloco para vê-los`,
   },
 );
 

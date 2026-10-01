@@ -45,7 +45,7 @@ function riskEn(w: RiskWhat): string {
     case 'wide':
       return `Wide port range ${w.from}–${w.to} is open to the internet`;
     case 'unverified':
-      return `Port can't be verified (${w.expr}) — open to the internet`;
+      return `Port that can't be verified (${w.expr}) is open to the internet`;
     case 'nacl':
       return `Network ACL allows ${joinEn(w.hits.map(([p, n]) => `${n} (port ${p})`))} from the internet`;
   }
@@ -77,7 +77,7 @@ function riskPt(w: RiskWhat): string {
     case 'wide':
       return `Faixa ampla de portas ${w.from}–${w.to} aberta para a internet`;
     case 'unverified':
-      return `Porta não verificável (${w.expr}) — aberta para a internet`;
+      return `Porta não verificável (${w.expr}) aberta para a internet`;
     case 'nacl':
       return `ACL de rede permite ${joinPt(w.hits.map(([p, n]) => `${n} (porta ${p})`))} a partir da internet`;
   }
@@ -99,7 +99,7 @@ function alertPt(w: RiskWhat): string {
     case 'wide':
       return `A faixa ampla de portas ${w.from}–${w.to} agora está aberta para a internet`;
     case 'unverified':
-      return riskPt(w);
+      return `A porta não verificável (${w.expr}) agora está aberta para a internet`;
     case 'nacl':
       return `ACL de rede permite ${joinPt(w.hits.map(([p, n]) => `${n} (${p})`))} a partir da internet`;
   }
@@ -117,20 +117,20 @@ export const auditMessages = defineMessages(
         .replace(/\(port (\d+)\)/g, '($1)')
         .replace(/ (is|are) open to the internet/, ' $1 now open to the internet'),
     implicitSources: 'no source ranges, so 0.0.0.0/0',
-    unverifiedWhat: (expr: string | undefined) => `ports set by an expression (${expr}) — the audit can't tell which are open —`,
+    unverifiedWhat: (expr: string | undefined) => `ports set by an expression (${expr}, so the audit can't tell which are open)`,
     ruleDetail: (owner: string, what: string, sources: string, tail: RuleTail) =>
       `${owner} allows ${what} from anywhere (${sources}).` +
       (tail.kind === 'nacl'
         ? ' Security groups still apply, but the network ACL adds no protection for these ports.'
         : tail.kind === 'reachable'
           ? ` Reachable right now on ${tail.names}.`
-          : ' Nothing public uses it yet — but the next resource that does will be exposed.'),
+          : ' Nothing public uses it yet, but the next resource that does will be exposed.'),
     removeFromRule: (services: string) => `Remove ${services} from this rule`,
     naclOpenTitle: 'Network ACL allows all inbound traffic',
-    naclOpenDetail: (owner: string) => `${owner} lets every protocol in from anywhere — it adds no protection beyond the security groups.`,
+    naclOpenDetail: (owner: string) => `${owner} lets every protocol in from anywhere, so it adds no protection beyond the security groups.`,
     unverifiedTitle: "Some inbound rules can't be verified",
     unverifiedDetail: (owner: string, reasons: string) =>
-      `${owner} defines inbound rules with ${reasons} — the audit can't evaluate them. Check what they open in code.`,
+      `${owner} defines inbound rules with ${reasons}, so the audit can't evaluate them. Check what they open in code.`,
     rdsPublicTitle: 'Database is publicly accessible',
     rdsPublicDetail: (name: string) => `${name} gets a public endpoint. Keep databases private and reach them from inside the VPC.`,
     rdsPublicFix: 'Make it private',
@@ -144,7 +144,7 @@ export const auditMessages = defineMessages(
     imdsFix: 'Require IMDSv2',
     lbHttpTitle: 'Load balancer only serves plain HTTP',
     lbHttpDetail: (name: string) =>
-      `${name} has no HTTPS listener — traffic from users travels unencrypted. Add an HTTPS listener with an ACM certificate.`,
+      `${name} has no HTTPS listener, so traffic from users travels unencrypted. Add an HTTPS listener with an ACM certificate.`,
     s3PublicTitle: 'Bucket has no public access block',
     s3PublicDetail: (name: string) =>
       `${name} relies on account defaults. A public access block makes "never public" explicit and prevents accidental exposure.`,
@@ -163,21 +163,21 @@ export const auditMessages = defineMessages(
     ruleAlert: (w: RiskWhat, v6: boolean) => (v6 ? `${alertPt(w)} via IPv6` : alertPt(w)),
     implicitSources: 'sem intervalos de origem, então 0.0.0.0/0',
     unverifiedWhat: (expr: string | undefined) =>
-      `portas definidas por uma expressão (${expr}) — a auditoria não consegue saber quais estão abertas —`,
+      `portas definidas por uma expressão (${expr}, então a auditoria não consegue saber quais estão abertas)`,
     ruleDetail: (owner: string, what: string, sources: string, tail: RuleTail) =>
       `${owner} permite ${what} de qualquer lugar (${sources}).` +
       (tail.kind === 'nacl'
         ? ' Os grupos de segurança continuam valendo, mas a ACL de rede não acrescenta proteção para essas portas.'
         : tail.kind === 'reachable'
           ? ` Acessível agora em ${tail.names}.`
-          : ' Nada público usa esta regra ainda — mas o próximo recurso que usar ficará exposto.'),
+          : ' Nada público usa esta regra ainda, mas o próximo recurso que usar ficará exposto.'),
     removeFromRule: (services: string) => `Remover ${services} desta regra`,
     naclOpenTitle: 'ACL de rede permite todo o tráfego de entrada',
     naclOpenDetail: (owner: string) =>
-      `${owner} deixa entrar qualquer protocolo de qualquer lugar — não acrescenta proteção além dos grupos de segurança.`,
+      `${owner} deixa entrar qualquer protocolo de qualquer lugar, então não acrescenta proteção além dos grupos de segurança.`,
     unverifiedTitle: 'Algumas regras de entrada não podem ser verificadas',
     unverifiedDetail: (owner: string, reasons: string) =>
-      `${owner} define regras de entrada com ${reasons} — a auditoria não consegue avaliá-las. Confira no código o que elas liberam.`,
+      `${owner} define regras de entrada com ${reasons}, então a auditoria não consegue avaliá-las. Confira no código o que elas liberam.`,
     rdsPublicTitle: 'Banco de dados com acesso público',
     rdsPublicDetail: (name: string) =>
       `${name} recebe um endpoint público. Mantenha os bancos de dados privados e acesse-os de dentro da VPC.`,
@@ -193,7 +193,7 @@ export const auditMessages = defineMessages(
     imdsFix: 'Exigir IMDSv2',
     lbHttpTitle: 'Balanceador de carga só atende HTTP sem criptografia',
     lbHttpDetail: (name: string) =>
-      `${name} não tem listener HTTPS — o tráfego dos usuários passa sem criptografia. Adicione um listener HTTPS com um certificado do ACM.`,
+      `${name} não tem listener HTTPS, então o tráfego dos usuários passa sem criptografia. Adicione um listener HTTPS com um certificado do ACM.`,
     s3PublicTitle: 'Bucket sem bloqueio de acesso público',
     s3PublicDetail: (name: string) =>
       `${name} depende dos padrões da conta. Um bloqueio de acesso público deixa explícito que ele nunca será público e evita exposição acidental.`,

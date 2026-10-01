@@ -32,7 +32,7 @@ test('a template creates a new project and opens it in the editor', async ({ pag
 test('unknown routes render the 404 page', async ({ page }) => {
   await page.goto('/definitely-not-a-page');
   await expect(page.getByText(/not found/i).first()).toBeVisible();
-  await expect(page).toHaveTitle('Page not found — Cloud Blueprint');
+  await expect(page).toHaveTitle('Page not found · Cloud Blueprint');
   await expect(page.getByRole('link', { name: 'Back to projects' })).toBeVisible();
 });
 

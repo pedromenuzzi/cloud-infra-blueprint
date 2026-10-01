@@ -154,6 +154,26 @@ describe('corrupted storage', () => {
     s.updateProject('mine', { name: 'x' });
     expect(ls.getItem('cb-projects-schema')).toBe(String(s.SCHEMA_VERSION));
   });
+
+  it("reads the demo's untouched dashed description as today's words, and leaves everyone else's text alone", async () => {
+    ls.setItem(
+      'cb-projects-v1',
+      JSON.stringify([
+        { id: 'en', name: 'production-web', demo: true, description: 'Demo project — a classic VPC + EC2 + RDS web stack. Safe to edit or delete.', files },
+        { id: 'pt', name: 'production-web 2', demo: true, description: 'Projeto de demonstração — uma stack web clássica com VPC + EC2 + RDS. Pode editar ou excluir à vontade.', files },
+        { id: 'edited', name: 'production-web 3', demo: true, description: 'Demo project — mine now', files },
+        { id: 'mine', name: 'web', description: 'Demo project — a classic VPC + EC2 + RDS web stack. Safe to edit or delete.', files },
+      ]),
+    );
+    ls.setItem('cb-projects-schema', '2');
+    const s = await load();
+    expect(s.getProject('en')!.description).toBe('Demo project: a classic VPC + EC2 + RDS web stack. Safe to edit or delete.');
+    expect(s.getProject('pt')!.description).toBe(
+      'Projeto de demonstração: uma stack web clássica com VPC + EC2 + RDS. Pode editar ou excluir à vontade.',
+    );
+    expect(s.getProject('edited')!.description).toBe('Demo project — mine now');
+    expect(s.getProject('mine')!.description).toBe('Demo project — a classic VPC + EC2 + RDS web stack. Safe to edit or delete.');
+  });
 });
 
 describe('revisions', () => {

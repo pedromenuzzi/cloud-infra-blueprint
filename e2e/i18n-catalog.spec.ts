@@ -136,7 +136,7 @@ test('"All arguments", a validation warning, and the markers and hovers switch l
   await expect(page.locator('[data-testid="monaco"] .squiggly-warning').first()).toBeAttached();
 
   // the marker on the unknown argument
-  const pt = 'aws_s3_bucket.e2e: argumento desconhecido "force_destory" — você quis dizer "force_destroy"?';
+  const pt = 'aws_s3_bucket.e2e: argumento desconhecido "force_destory". Você quis dizer "force_destroy"?';
   await expect(await hoverWord(page, 'force_destory')).toContainText(pt);
   // the hover we build from the schema
   await expect(await hoverWord(page, 'delay_seconds')).toContainText(/delay_seconds · number · opcional/);
@@ -146,17 +146,17 @@ test('"All arguments", a validation warning, and the markers and hovers switch l
   await expect(page.getByTestId('inspector-address')).toHaveText('aws_s3_bucket.e2e');
   const row = schemaFields(page).getByTestId('schema-arg-force_destory');
   await expect(row).toContainText('desconhecido');
-  await expect(row).toContainText('argumento desconhecido "force_destory" — você quis dizer "force_destroy"?');
+  await expect(row).toContainText('argumento desconhecido "force_destory". Você quis dizer "force_destroy"?');
   await expect(row.getByRole('button', { name: 'Renomear para force_destroy' })).toBeVisible();
 
   // switching language: same screen, same code, same undo history — new words
   const code = await page.locator('[data-testid="monaco"] .view-lines').innerText();
   await switchToEnglish(page);
-  await expect(row).toContainText('unknown argument "force_destory" — did you mean "force_destroy"?');
+  await expect(row).toContainText('unknown argument "force_destory". Did you mean "force_destroy"?');
   await expect(row.getByRole('button', { name: 'Rename to force_destroy' })).toBeVisible();
   await expect(schemaFields(page).getByRole('heading', { name: /All arguments/ })).toBeVisible();
   await expect(await hoverWord(page, 'force_destory')).toContainText(
-    'aws_s3_bucket.e2e: unknown argument "force_destory" — did you mean "force_destroy"?',
+    'aws_s3_bucket.e2e: unknown argument "force_destory". Did you mean "force_destroy"?',
   );
   await expect(await hoverWord(page, 'delay_seconds')).toContainText(/delay_seconds · number · optional/);
   expect(await page.locator('[data-testid="monaco"] .view-lines').innerText()).toBe(code);

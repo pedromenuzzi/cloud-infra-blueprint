@@ -95,7 +95,7 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     name: 'Listener do ALB',
     shortName: 'Listener',
     description: 'Escuta em uma porta e encaminha para um grupo de destino',
-    fields: { certificate_arn: { doc: 'Certificado do ACM — obrigatório para HTTPS' } },
+    fields: { certificate_arn: { doc: 'Certificado do ACM (obrigatório para HTTPS)' } },
   },
   aws_ecr_repository: { name: 'Repositório ECR', shortName: 'ECR', description: 'Registro privado de imagens de contêiner' },
   aws_ecs_cluster: { name: 'Cluster ECS', shortName: 'Cluster ECS', description: 'Cluster de orquestração de contêineres' },
@@ -247,7 +247,7 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
   aws_route_table: {
     name: 'Tabela de rotas',
     shortName: 'Tabela de rotas',
-    description: 'Rotas das sub-redes — uma rota 0.0.0.0/0 para um internet gateway as torna públicas',
+    description: 'Rotas das sub-redes: uma rota 0.0.0.0/0 para um internet gateway as torna públicas',
   },
   aws_route_table_association: {
     name: 'Associação de tabela de rotas',
@@ -362,7 +362,7 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     fields: {
       name: { doc: '3–24 caracteres, único globalmente' },
       tenant_id: {
-        doc: 'Valor provisório — use o ID do seu tenant, em geral data.azurerm_client_config.current.tenant_id (adicione `data "azurerm_client_config" "current" {}`)',
+        doc: 'Valor provisório: use o ID do seu tenant, em geral data.azurerm_client_config.current.tenant_id (adicione `data "azurerm_client_config" "current" {}`)',
       },
       rbac_authorization_enabled: { doc: 'RBAC do Azure em vez de políticas de acesso (obrigatório a partir do azurerm 5)' },
       soft_delete_retention_days: { doc: '7–90 dias' },

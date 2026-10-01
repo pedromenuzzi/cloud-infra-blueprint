@@ -15,7 +15,7 @@ export const editMessages = defineMessages(
     removeAccess: (v6: boolean) => `Remove ${v6 ? '::/0' : 'internet'} access`,
     removeRule: 'Remove the rule',
     writtenAs: (field: string, objects: boolean) =>
-      `${field} is written as ${objects ? 'a list of objects' : 'an expression'} — add rules in code`,
+      `${field} is written as ${objects ? 'a list of objects' : 'an expression'}: add rules in code`,
     presets: {
       https: 'HTTPS',
       http: 'HTTP',
@@ -38,7 +38,7 @@ export const editMessages = defineMessages(
     removeAccess: (v6: boolean) => (v6 ? 'Remover acesso de ::/0' : 'Remover acesso da internet'),
     removeRule: 'Remover a regra',
     writtenAs: (field: string, objects: boolean) =>
-      `${field} está escrito como ${objects ? 'uma lista de objetos' : 'uma expressão'} — adicione regras no código`,
+      `${field} está escrito como ${objects ? 'uma lista de objetos' : 'uma expressão'}: adicione regras no código`,
     presets: {
       https: 'HTTPS',
       http: 'HTTP',

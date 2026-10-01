@@ -40,7 +40,7 @@ export function describeFinding(f: Finding, locale: Locale = currentLocale()): s
     const alert = f.alert ?? f.title;
     return f.related.length > 0 ? m.onTargets(alert, f.related[0], f.related.length - 1) : m.inOwner(alert, f.resource);
   }
-  return `${f.title} — ${f.resource}`;
+  return `${f.title} (${f.resource})`;
 }
 
 export function securityDelta(before: AuditResult, after: AuditResult): SecurityDelta | null {

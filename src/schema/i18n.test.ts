@@ -20,17 +20,17 @@ const lit = (value: string | number | boolean | null) => ({ kind: 'literal' as c
 describe('schema text in Portuguese', () => {
   it('"did you mean" for an unknown argument, block and resource type', () => {
     const bucket = 'resource "aws_s3_bucket" "logs" {\n  bucket        = "logs"\n  force_destory = true\n}\n';
-    expect(warnings(bucket)).toEqual(['aws_s3_bucket.logs: unknown argument "force_destory" — did you mean "force_destroy"?']);
+    expect(warnings(bucket)).toEqual(['aws_s3_bucket.logs: unknown argument "force_destory". Did you mean "force_destroy"?']);
     useLocale.getState().setLocale('pt-BR');
     expect(warnings(bucket)).toEqual([
-      'aws_s3_bucket.logs: argumento desconhecido "force_destory" — você quis dizer "force_destroy"?',
+      'aws_s3_bucket.logs: argumento desconhecido "force_destory". Você quis dizer "force_destroy"?',
     ]);
     const nested = 'resource "aws_instance" "web" {\n  ami           = "ami-1"\n  instance_type = "t3.micro"\n  root_block_device {\n    volum_type = "gp3"\n  }\n}\n';
     expect(warnings(nested)).toEqual([
-      'aws_instance.web: argumento desconhecido "volum_type" em root_block_device — você quis dizer "volume_type"?',
+      'aws_instance.web: argumento desconhecido "volum_type" em root_block_device. Você quis dizer "volume_type"?',
     ]);
     expect(warnings('resource "aws_s3_buckett" "x" {\n}\n')[0]).toMatch(
-      /^aws_s3_buckett\.x: o tipo de recurso "aws_s3_buckett" não existe no provider aws [\d.]+ — você quis dizer "aws_s3_bucket"\?$/,
+      /^aws_s3_buckett\.x: o tipo de recurso "aws_s3_buckett" não existe no provider aws [\d.]+\. Você quis dizer "aws_s3_bucket"\?$/,
     );
   });
 
@@ -67,6 +67,6 @@ describe('schema text in Portuguese', () => {
     expect(entryMarkdown(described)).toContain(described.description!);
     const hover = schemaTypeHover('aws_instance')!.map((c) => c.value);
     expect(hover[0]).toMatch(/^\*\*aws_instance\*\* · provider AWS [\d.]+$/);
-    expect(hover[1]).toMatch(/^\d+ argumentos e blocos — digite dentro do bloco para vê-los$/);
+    expect(hover[1]).toMatch(/^\d+ argumentos e blocos: digite dentro do bloco para vê-los$/);
   });
 });

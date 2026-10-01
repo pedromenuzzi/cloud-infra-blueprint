@@ -147,7 +147,7 @@ const firstVpcEc2: TutorialDef = {
       title: 'Providers & versions',
       body: [
         'Every Terraform project starts by declaring which cloud it talks to. The `provider "aws"` block sets the region; the `terraform` block pins the provider version so the project builds the same way next year.',
-        'The canvas is still empty — these two blocks configure the project but create no infrastructure. That is why nothing is drawn yet.',
+        'The canvas is still empty: these two blocks configure the project but create no infrastructure. That is why nothing is drawn yet.',
       ],
       files: {
         'main.tf': '# Resources will land here in the next step.\n',
@@ -160,7 +160,7 @@ const firstVpcEc2: TutorialDef = {
       title: 'The VPC',
       body: [
         'A VPC is your private slice of the AWS network. `cidr_block = "10.0.0.0/16"` reserves 65,536 private IP addresses for everything you will build inside it.',
-        'On the blueprint, a VPC is a *container*: the dashed box. Anything that references it will be drawn inside — nesting on this canvas is never decoration, it is derived from real references in the code.',
+        'On the blueprint, a VPC is a *container*: the dashed box. Anything that references it will be drawn inside. Nesting on this canvas is never decoration: it is derived from real references in the code.',
       ],
       files: {
         'main.tf': t1Step2Main,
@@ -171,7 +171,7 @@ const firstVpcEc2: TutorialDef = {
     {
       title: 'A subnet inside',
       body: [
-        'Subnets split the VPC into smaller networks, one per availability zone. Look at the highlighted line `vpc_id = aws_vpc.main.id` — that reference is the *only* reason the subnet is drawn inside the VPC box.',
+        'Subnets split the VPC into smaller networks, one per availability zone. Look at the highlighted line `vpc_id = aws_vpc.main.id`: that reference is the *only* reason the subnet is drawn inside the VPC box.',
         '`map_public_ip_on_launch = true` makes this a public subnet: instances placed here get an internet-facing IP.',
       ],
       files: {
@@ -183,7 +183,7 @@ const firstVpcEc2: TutorialDef = {
     {
       title: 'The web server',
       body: [
-        'The `aws_instance` is the actual virtual machine. `ami` picks the disk image (this one is Amazon Linux 2), `instance_type` picks the hardware — `t3.micro` is free-tier eligible.',
+        'The `aws_instance` is the actual virtual machine. `ami` picks the disk image (this one is Amazon Linux 2), `instance_type` picks the hardware (`t3.micro` is free-tier eligible).',
         'Its `subnet_id` reference nests it two levels deep: instance → subnet → VPC. In the editor you get the same result by dragging an EC2 from the palette and dropping it inside the subnet.',
       ],
       files: {
@@ -196,7 +196,7 @@ const firstVpcEc2: TutorialDef = {
       title: 'Lock it down',
       body: [
         'A security group is a stateful firewall. The `ingress` block admits HTTP on port 80 from anywhere; the `egress` block lets the server reach out freely.',
-        'The instance attaches it via `vpc_security_group_ids = [...]` — a *list* of references. On the canvas that reference is the dashed orange connection. Delete the edge and the reference disappears from the code; delete the line and the edge disappears from the canvas.',
+        'The instance attaches it via `vpc_security_group_ids = [...]`, a *list* of references. On the canvas that reference is the dashed orange connection. Delete the edge and the reference disappears from the code; delete the line and the edge disappears from the canvas.',
         'That is the whole stack. Open this step in the editor and try both directions yourself.',
       ],
       files: {
@@ -291,8 +291,8 @@ const staticSiteCdn: TutorialDef = {
     {
       title: 'The bucket',
       body: [
-        'An S3 bucket is a bottomless folder in the cloud — your HTML, CSS and images live here. Bucket names are globally unique, so pick something specific.',
-        '`force_destroy = true` lets `terraform destroy` delete the bucket even when it still has files — handy for demos, dangerous for production.',
+        'An S3 bucket is a bottomless folder in the cloud: your HTML, CSS and images live here. Bucket names are globally unique, so pick something specific.',
+        '`force_destroy = true` lets `terraform destroy` delete the bucket even when it still has files: handy for demos, dangerous for production.',
       ],
       files: {
         'main.tf': t2Step1Main,
@@ -303,8 +303,8 @@ const staticSiteCdn: TutorialDef = {
     {
       title: 'Cache it at the edge',
       body: [
-        'CloudFront replicates your files to hundreds of edge locations. The `origin` block points at the bucket — that reference is the line you see between the two nodes.',
-        'Nested blocks like `default_cache_behavior` configure how requests are cached and always redirected to HTTPS. Blocks inside blocks are normal HCL — the canvas keeps them intact even when you edit the resource visually.',
+        'CloudFront replicates your files to hundreds of edge locations. The `origin` block points at the bucket. That reference is the line you see between the two nodes.',
+        'Nested blocks like `default_cache_behavior` configure how requests are cached and always redirected to HTTPS. Blocks inside blocks are normal HCL, and the canvas keeps them intact even when you edit the resource visually.',
       ],
       files: {
         'main.tf': t2Step2Main,
@@ -315,7 +315,7 @@ const staticSiteCdn: TutorialDef = {
     {
       title: 'A real domain',
       body: [
-        'Route 53 hosts the DNS zone; the `alias` block inside the record points `www.example.com` straight at the distribution. Alias records are AWS magic — they behave like CNAMEs but work at the zone apex too.',
+        'Route 53 hosts the DNS zone; the `alias` block inside the record points `www.example.com` straight at the distribution. Alias records are AWS magic: they behave like CNAMEs but work at the zone apex too.',
         'Follow the arrows on the diagram: record → zone, record → distribution → bucket. The whole request path is visible at a glance.',
       ],
       files: {
@@ -327,7 +327,7 @@ const staticSiteCdn: TutorialDef = {
     {
       title: 'Outputs',
       body: [
-        'Outputs are what Terraform prints after `terraform apply` — the values you actually need, like the CDN address to open in a browser.',
+        'Outputs are what Terraform prints after `terraform apply`: the values you actually need, like the CDN address to open in a browser.',
         'They live in `outputs.tf` by convention. Export the project as a zip and the file structure matches exactly what you see in these tabs.',
       ],
       files: {
@@ -407,7 +407,7 @@ const refsToConnections: TutorialDef = {
     {
       title: 'Three loose resources',
       body: [
-        'Note the order in the file: the subnet is declared *before* the VPC it references. Terraform does not care — it builds a dependency graph from references, not from line order. The canvas reads the same graph.',
+        'Note the order in the file: the subnet is declared *before* the VPC it references. Terraform does not care: it builds a dependency graph from references, not from line order. The canvas reads the same graph.',
         'The instance has no references yet, so it floats outside the VPC box, disconnected.',
       ],
       files: {
@@ -420,7 +420,7 @@ const refsToConnections: TutorialDef = {
       title: 'One line moves a node',
       body: [
         'A single highlighted line changed: `subnet_id = aws_subnet.a.id`. That is enough for the instance to jump inside the subnet on the diagram.',
-        'The reverse also works — in the editor, dragging the instance into the subnet *writes this exact line* for you. There is no hidden diagram state: the code is the diagram.',
+        'The reverse also works: in the editor, dragging the instance into the subnet *writes this exact line* for you. There is no hidden diagram state: the code is the diagram.',
       ],
       files: {
         'main.tf': t3Step2Main,
@@ -431,8 +431,8 @@ const refsToConnections: TutorialDef = {
     {
       title: 'Lists make edges',
       body: [
-        'Security groups attach through a list: `vpc_security_group_ids = [aws_security_group.web.id]`. References inside lists (or nested blocks, or even function calls) are found too — each one becomes an edge.',
-        'Dashed orange edges are security relationships; solid blue ones are plain references. Deleting the edge on the canvas removes the item from the list — and unsets the argument when the list empties.',
+        'Security groups attach through a list: `vpc_security_group_ids = [aws_security_group.web.id]`. References inside lists (or nested blocks, or even function calls) are found too, and each one becomes an edge.',
+        'Dashed orange edges are security relationships; solid blue ones are plain references. Deleting the edge on the canvas removes the item from the list, and unsets the argument when the list empties.',
       ],
       files: {
         'main.tf': t3Step3Main,
@@ -505,7 +505,7 @@ const t4Variables = `variable "sql_admin_password" {
 const azureNesting: TutorialDef = {
   slug: 'azure-nesting',
   title: 'Azure: resource groups & nesting',
-  description: 'Azure organizes by name, not by id — see how the canvas follows along.',
+  description: 'Azure organizes by name, not by id. See how the canvas follows along.',
   level: 'Beginner',
   minutes: 8,
   providers: ['azure'],
@@ -513,7 +513,7 @@ const azureNesting: TutorialDef = {
     {
       title: 'The resource group',
       body: [
-        'Azure requires every resource to belong to a *resource group* — a folder with a location. Deleting the group deletes everything inside, which makes cleanup delightfully easy.',
+        'Azure requires every resource to belong to a *resource group*, a folder with a location. Deleting the group deletes everything inside, which makes cleanup delightfully easy.',
         'On the blueprint the group is the outermost dashed container. Everything you add next will nest inside it.',
       ],
       files: {
@@ -525,7 +525,7 @@ const azureNesting: TutorialDef = {
     {
       title: 'Network in, subnet deeper',
       body: [
-        'Where AWS links by id, Azure links by *name*: `resource_group_name = azurerm_resource_group.main.name`. Same idea, different attribute — and the canvas nests on it just the same.',
+        'Where AWS links by id, Azure links by *name*: `resource_group_name = azurerm_resource_group.main.name`. Same idea, different attribute, and the canvas nests on it just the same.',
         'The subnet goes one level deeper via `virtual_network_name`. Notice `location` is also a reference: change the group location once and everything follows.',
       ],
       files: {
@@ -537,7 +537,7 @@ const azureNesting: TutorialDef = {
     {
       title: 'Storage account',
       body: [
-        'Storage account names are strict: 3–24 characters, lowercase letters and digits only, globally unique — no dashes. The inspector warns you when a required field is missing.',
+        'Storage account names are strict: 3–24 characters, lowercase letters and digits only (no dashes), globally unique. The inspector warns you when a required field is missing.',
         '`LRS` keeps three copies in one datacenter; `GRS` replicates to a paired region for disaster recovery.',
       ],
       files: {
@@ -549,8 +549,8 @@ const azureNesting: TutorialDef = {
     {
       title: 'SQL Server + database',
       body: [
-        'The database attaches to its server via `server_id` — an id reference this time, drawn as an edge instead of nesting (a database is not *inside* the server box conceptually; it belongs to it).',
-        'The password comes from `var.sql_admin_password`, declared as `sensitive` in variables.tf — never hard-code secrets. Open the variables tab to see the declaration.',
+        'The database attaches to its server via `server_id`: an id reference this time, drawn as an edge instead of nesting (a database is not *inside* the server box conceptually; it belongs to it).',
+        'The password comes from `var.sql_admin_password`, declared as `sensitive` in variables.tf. Never hard-code secrets. Open the variables tab to see the declaration.',
       ],
       files: {
         'main.tf': t4Step4Main,

@@ -530,7 +530,7 @@ resource "aws_instance" "web" {
       expect(performance.now() - t0).toBeLessThan(5_000);
       expectWellFormed(bytes);
       const { pages, runs } = pdfLayout(bytes);
-      const tileIndexes = new Set(runs.filter((r) => /^Diagram — area \d+ of \d+$/.test(r.text)).map((r) => r.page));
+      const tileIndexes = new Set(runs.filter((r) => /^Diagram: area \d+ of \d+$/.test(r.text)).map((r) => r.page));
       const tiles = pages.filter((p) => tileIndexes.has(p.index));
       expect(tiles.length).toBeGreaterThan(1);
       const onTiles = runs.filter((r) => tileIndexes.has(r.page) && r.clipped);
@@ -647,7 +647,7 @@ describe('in Portuguese', () => {
     const bytes = await buildArchitecturePdfAsync(big, { onStage: (s) => stages.push(s) });
     expect(stages[0]).toBe('Desenhando o diagrama…');
     expect(stages).toContain('Salvando…');
-    expect(pdfText(bytes)).toMatch(/Diagrama — área 1 de \d+/);
+    expect(pdfText(bytes)).toMatch(/Diagrama: área 1 de \d+/);
     expectLaidOut(bytes, 'pt-BR tiles');
   });
 

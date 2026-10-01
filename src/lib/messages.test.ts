@@ -26,13 +26,13 @@ describe('lib text in Portuguese', () => {
   it('names copies, the demo and errors in the UI language', () => {
     const source = createProject({ name: 'web', files: { 'main.tf': '' } });
     expect(duplicateProject(source.id)!.name).toBe('web (cópia)');
-    expect(openDemoProject().description).toMatch(/^Projeto de demonstração — /);
-    expect(new StorageFullError().message).toBe('O armazenamento está cheio — exporte ou exclua projetos');
+    expect(openDemoProject().description).toMatch(/^Projeto de demonstração: /);
+    expect(new StorageFullError().message).toBe('O armazenamento está cheio: exporte ou exclua projetos');
   });
 
   it('page titles, relative times and slugs', () => {
-    expect(pageTitle('Projetos')).toBe('Projetos — Cloud Blueprint');
-    expect(pageTitle(null)).toBe('Cloud Blueprint — Desenhe sua nuvem. Gere o Terraform na hora.');
+    expect(pageTitle('Projetos')).toBe('Projetos · Cloud Blueprint');
+    expect(pageTitle(null)).toBe('Cloud Blueprint · Desenhe sua nuvem. Gere o Terraform na hora.');
     expect(timeAgo(new Date().toISOString())).toBe('agora');
     expect(timeAgo(new Date(Date.now() - 3 * 3600_000).toISOString())).toBe('há 3 horas');
     expect(timeAgo(new Date(Date.now() - 3 * 3600_000).toISOString(), 'en')).toBe('3h ago');
@@ -52,7 +52,7 @@ describe('lib text in Portuguese', () => {
     );
     vi.stubGlobal('location', { origin: 'https://example.test' });
     const big = shareLinkInfo({ name: 'big', files: { 'main.tf': Array.from({ length: 4000 }, (_, i) => `# ${i} ${Math.random()}`).join('\n') } });
-    expect(big.warning).toMatch(/^Este link tem [\d.]+ KB — links acima de 32 KB podem ser cortados/);
+    expect(big.warning).toMatch(/^Este link tem [\d.]+ KB, e links acima de 32 KB podem ser cortados/);
   });
 
   it('backup checks, and the README inside the zip', () => {
@@ -94,7 +94,7 @@ describe('lib text in Portuguese', () => {
     const bad = parseGithubInput('https://gitlab.com/acme/infra');
     expect(bad).toEqual({
       ok: false,
-      error: 'Por enquanto só o GitHub é suportado — baixe os arquivos e solte-os no painel inicial.',
+      error: 'Por enquanto só o GitHub é suportado. Baixe os arquivos e solte-os no painel inicial.',
     });
     expect(parseGithubInput('')).toMatchObject({ ok: false, error: expect.stringMatching(/^Cole owner\/repo, um link do github\.com/) });
     expect(githubBytes(1.4 * 1024 * 1024)).toBe('1,4 MB');

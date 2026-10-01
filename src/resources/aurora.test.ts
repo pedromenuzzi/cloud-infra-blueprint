@@ -105,7 +105,7 @@ resource "aws_rds_cluster" "orders" {
     const verdict = dropVerdict(ir, computeAbsoluteRects(ir), { id: cluster.id, type: cluster.type }, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 + 20 }, 'en');
     if (verdict.kind !== 'refuse' || !verdict.fix) throw new Error(`expected a refusal with a fix, got ${verdict.kind}`);
     expect(verdict.reason).toBe(
-      "An Aurora cluster isn't placed in one subnet — it runs in a DB subnet group that spans two or more availability zones",
+      "An Aurora cluster isn't placed in one subnet: it runs in a DB subnet group that spans two or more availability zones",
     );
     expect(verdict.fix).toMatchObject({ kind: 'create-group', groupType: 'aws_db_subnet_group' });
 
