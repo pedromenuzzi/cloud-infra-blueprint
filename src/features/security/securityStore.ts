@@ -1,7 +1,7 @@
 /** Security UI state + a shared, memoized audit of the current IR. */
 import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
-import { MOD } from '@/features/command/paletteStore';
+import { shortcut } from '@/lib/keys';
 import { useEditor } from '@/features/editor/store';
 import { currentLocale, useLocale, type Locale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
@@ -106,7 +106,7 @@ export function fixAllFindings() {
   const { ops, fixed } = planFixAll(useEditor.getState().ir);
   if (ops.length) useEditor.getState().applyCanvasOps(ops);
   const m = messagesFor(securityUiMessages);
-  if (fixed > 0) showToast(m.fixedCount(fixed, MOD), 'success');
+  if (fixed > 0) showToast(m.fixedCount(fixed, shortcut('mod', 'Z')), 'success');
   else showToast(m.nothingFixed, 'info');
 }
 

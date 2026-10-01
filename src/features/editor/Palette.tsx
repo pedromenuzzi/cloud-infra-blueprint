@@ -1,7 +1,7 @@
 import { ChevronDown, Plus, Search } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
 import { Input, Kbd } from '@/components/ui';
-import { MOD } from '@/features/command/paletteStore';
+import { shortcut } from '@/lib/keys';
 import { useLocale } from '@/i18n/locale';
 import { useMessages } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
@@ -309,7 +309,7 @@ export function Palette() {
       <AddModuleButton />
       <p className="border-t px-3 py-2 text-[10.5px] leading-relaxed text-faint">
         {m.footer[0]}
-        <Kbd>{MOD} K</Kbd>
+        <Kbd>{shortcut('mod', 'K')}</Kbd>
         {m.footer[1]}
       </p>
     </aside>

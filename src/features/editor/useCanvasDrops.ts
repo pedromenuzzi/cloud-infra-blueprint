@@ -9,7 +9,7 @@ import { useReactFlow, type Node, type XYPosition } from '@xyflow/react';
 import { useCallback, useRef } from 'react';
 import { computeAbsoluteRects, type AbsRect } from '@/components/ProjectThumbnail';
 import { showToast } from '@/components/Toast';
-import { MOD } from '@/features/command/paletteStore';
+import { shortcut } from '@/lib/keys';
 import { messagesFor } from '@/i18n/messages';
 import type { Op } from '@/ir/ops';
 import { findNode } from '@/ir/modules';
@@ -116,7 +116,7 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
       animate();
       state.applyCanvasOps(result.ops, nodeId);
       if (useEditor.getState().filesRevision === before) return;
-      showToast(result.message, result.hint ? 'warning' : 'success', { hint: result.hint ?? m.undoHint(MOD), note: result.note });
+      showToast(result.message, result.hint ? 'warning' : 'success', { hint: result.hint ?? m.undoHint(shortcut('mod', 'Z')), note: result.note });
     },
     [animate],
   );
@@ -246,7 +246,7 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
               { kind: 'unset_arg', nodeId: node.id, field: rule.arg },
               { kind: 'move_node', nodeId: node.id, position: { x: Math.round(box.x), y: Math.round(box.y), ...keepSize(irNode) } },
             ]);
-            showToast(m.detached(rule.arg, node.id, parent.id, MOD), 'info');
+            showToast(m.detached(rule.arg, node.id, parent.id, shortcut('mod', 'Z')), 'info');
             return;
           }
           const ops = plainMove(node);

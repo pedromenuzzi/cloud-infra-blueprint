@@ -67,6 +67,7 @@ function untranslatedToken(token: string, data: Set<string>): boolean {
   if (!/\p{L}/u.test(token)) return true; // numbers, prices, ports, symbols
   if (/^[A-Z]$/.test(token)) return true; // a key (Ctrl K) or a grade (A–F)
   if (/^(Ctrl|⌘|⇧)[A-Z0-9]$/.test(token)) return true; // a shortcut: CtrlD
+  if (/^[⌘⇧⌥]+[A-Z0-9/]$/.test(token)) return true; // a Mac shortcut: ⌘K, ⌘⇧Z (Windows spells them Ctrl+K, split on +)
   if (/\p{Ll}\p{Lu}/u.test(token)) return true; // product names: MongoDB, PostgreSQL, GitHub, CloudFront
   if (/^[A-Z][A-Z0-9]{1,6}s?$/.test(token)) return true; // VPC, NAT, HTTPS, IMDSv2, FSBP, NACL
   if (/[_\d]/.test(token)) return true; // aws_instance, public_a, t3.micro, EC2, IPv4, us-east-1a
@@ -578,6 +579,8 @@ test('the sweep would catch a leak', () => {
   expect(untranslated('aws_instance.web', data)).toBe(true);
   expect(untranslated('web', data)).toBe(true);
   expect(untranslated('Ctrl K', data)).toBe(true);
+  expect(untranslated('Ctrl+Shift+Z', data)).toBe(true);
+  expect(untranslated('⌘⇧Z', data)).toBe(true);
   expect(untranslated(':80, :443', data)).toBe(true);
   expect(untranslated('HTTPS 443', data)).toBe(true);
   expect(readFileSync(new URL('../src/i18n/GLOSSARY.md', import.meta.url), 'utf8')).toContain('i18n-sweep');

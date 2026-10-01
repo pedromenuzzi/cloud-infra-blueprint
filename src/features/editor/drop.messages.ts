@@ -31,11 +31,11 @@ export const dropMessages = defineMessages(
       `Tip: connect ${id} to a security group. Without one it gets the VPC's default group`,
     movedInto: (name: string, group: string) => `${name} is now in ${group}`,
     connected: (name: string, target: string) => `Connected ${name} to ${target}`,
-    undoHint: (mod: string) => `${mod} Z to undo`,
+    undoHint: (undo: string) => `${undo} to undo`,
     fixGone: 'That changed in the meantime. Drag it again',
     /** dragged out of the container its argument pointed at */
-    detached: (arg: string, id: string, parent: string, mod: string) =>
-      `Removed ${arg} from ${id}: it's no longer in ${parent} (${mod} Z to undo)`,
+    detached: (arg: string, id: string, parent: string, undo: string) =>
+      `Removed ${arg} from ${id}: it's no longer in ${parent} (${undo} to undo)`,
   },
   {
     into: (c: Noun, name: string) => `Para ${o(c)} ${name}`,
@@ -56,9 +56,9 @@ export const dropMessages = defineMessages(
       `Dica: conecte ${id} a um grupo de segurança. Sem um, ele fica com o grupo padrão da VPC`,
     movedInto: (name: string, group: string) => `${name} agora está em ${group}`,
     connected: (name: string, target: string) => `${name} conectado a ${target}`,
-    undoHint: (mod: string) => `${mod} Z para desfazer`,
+    undoHint: (undo: string) => `${undo} para desfazer`,
     fixGone: 'Isso mudou nesse meio-tempo. Arraste de novo',
-    detached: (arg: string, id: string, parent: string, mod: string) =>
-      `${arg} removido de ${id}: ele não está mais em ${parent} (${mod} Z para desfazer)`,
+    detached: (arg: string, id: string, parent: string, undo: string) =>
+      `${arg} removido de ${id}: ele não está mais em ${parent} (${undo} para desfazer)`,
   },
 );

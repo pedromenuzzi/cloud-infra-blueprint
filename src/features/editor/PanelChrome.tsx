@@ -21,7 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { forwardRef, useEffect, useRef, useState, type ReactNode } from 'react';
-import { MOD } from '@/features/command/paletteStore';
+import { shortcut } from '@/lib/keys';
 import { useMessages } from '@/i18n/messages';
 import { cn } from '@/lib/utils';
 import { layoutMessages } from './layout.messages';
@@ -30,7 +30,7 @@ import { useLayout, type MovableId, type PanelId, type Side } from './layoutStor
 /** the element panels are dragged across (palette, canvas and code) */
 export const WORKSPACE_ID = 'bp-workspace';
 
-const SHORTCUT: Partial<Record<PanelId, string>> = { palette: `${MOD}B`, code: `${MOD}J`, inspector: `${MOD}I` };
+const SHORTCUT: Partial<Record<PanelId, string>> = { palette: shortcut('mod', 'B'), code: shortcut('mod', 'J'), inspector: shortcut('mod', 'I') };
 
 const withShortcut = (label: string, panel: PanelId) => (SHORTCUT[panel] ? `${label} (${SHORTCUT[panel]})` : label);
 

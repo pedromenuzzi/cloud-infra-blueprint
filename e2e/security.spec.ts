@@ -144,7 +144,7 @@ test('fix all applies every fix as one undo step and counts only what it fixed',
   // the IPv4 and IPv6 SSH rules are two distinguishable findings; RDP on an unknown VPC has no fix
   await expect(panel.locator('[data-severity="critical"]')).toHaveCount(3);
   await panel.getByRole('button', { name: 'Fix all 3' }).click();
-  await expect(page.getByText('Fixed 3 issues. Ctrl Z to undo')).toBeVisible();
+  await expect(page.getByText('Fixed 3 issues. Ctrl+Z to undo')).toBeVisible();
 
   await expect.poll(() => mainTf(page, 'fix-all')).not.toContain('::/0');
   const text = await mainTf(page, 'fix-all');

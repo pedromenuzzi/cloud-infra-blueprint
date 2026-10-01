@@ -20,7 +20,7 @@ import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Kbd, LogoMark, Select } from '@/components/ui';
-import { MOD, usePalette } from '@/features/command/paletteStore';
+import { usePalette } from '@/features/command/paletteStore';
 import { backupAmong, openRestore } from '@/features/data/dataDialogs';
 import { DataPanel, StorageNudge } from '@/features/data/DataPanel';
 import { forgetFolderLink, useFolderLinks } from '@/features/data/folderLinks';
@@ -48,6 +48,7 @@ import {
 } from '@/lib/storage';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn, slugify, timeAgo } from '@/lib/utils';
+import { shortcut } from '@/lib/keys';
 import { ProviderChip, ProviderDot, PROVIDER_LABELS } from '@/resources/icons';
 import { getTemplate, scratchProject } from '@/templates';
 import { templateDescription, templateName } from '@/templates/i18n';
@@ -448,7 +449,7 @@ export default function DashboardPage() {
                 onClick={() => openPalette(true)}
                 className="hidden h-8.5 items-center gap-2 rounded-sm border bg-surface-1 px-3 text-[12.5px] text-faint transition-colors hover:text-muted md:flex"
               >
-                <Search className="h-3.5 w-3.5" /> {m.quickActions} <Kbd>{MOD} K</Kbd>
+                <Search className="h-3.5 w-3.5" /> {m.quickActions} <Kbd>{shortcut('mod', 'K')}</Kbd>
               </button>
               <Button variant="outline" onClick={() => fileInput.current?.click()}>
                 <FileUp className="h-4 w-4" /> {m.importTf}

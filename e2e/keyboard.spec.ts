@@ -42,7 +42,8 @@ test.describe('modal dialogs', () => {
     await page.keyboard.press('?');
     const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
     await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused();
+    // focus starts on the platform switch, at this device's keys
+    await expect(dialog.getByRole('radio', { name: 'Windows and Linux' })).toBeFocused();
     await expectTabTrapped(page, dialog, 6);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();

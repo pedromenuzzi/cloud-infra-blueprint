@@ -7,7 +7,7 @@ import { Link2, Tag, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { showToast } from '@/components/Toast';
 import { Button, Input, Select } from '@/components/ui';
-import { MOD } from '@/features/command/paletteStore';
+import { shortcut } from '@/lib/keys';
 import { useMessages } from '@/i18n/messages';
 import { exprPreview, lit } from '@/ir/expr';
 import type { Expression } from '@/ir/types';
@@ -304,7 +304,7 @@ export function MultiSelectPanel({ ids }: { ids: string[] }) {
           className="w-full text-danger hover:border-danger/50 hover:bg-danger/8"
           onClick={() => {
             const count = useEditor.getState().deleteResources(ids);
-            showToast(m.deleted(count, MOD), 'info');
+            showToast(m.deleted(count, shortcut('mod', 'Z')), 'info');
           }}
         >
           <Trash2 className="h-3.5 w-3.5" /> {m.delete(nodes.length)}

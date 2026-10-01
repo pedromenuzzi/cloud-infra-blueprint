@@ -60,7 +60,7 @@ export const canvasMessages = defineMessages(
     complexConnections: 'Some connections are complex expressions. Edit them in code',
 
     /* toasts */
-    deletedMany: (n: number, mod: string) => `Deleted ${n} resources. ${mod} Z to undo`,
+    deletedMany: (n: number, undo: string) => `Deleted ${n} resources. ${undo} to undo`,
     duplicated: (id: string) => `Duplicated as ${id}`,
     exported: (format: string) => `Diagram exported as ${format}`,
     nothingToExport: 'Nothing to export yet. Add a resource first',
@@ -120,7 +120,7 @@ export const canvasMessages = defineMessages(
     zoomIn: 'Zoom in',
     resetZoom: 'Reset zoom',
     resetZoomTip: 'Reset to 100%',
-    fitViewTip: 'Fit view  ⇧1',
+    fitViewTip: (keys: string) => `Fit view  ${keys}`,
     lens: 'Security lens',
     hideLens: 'Hide security lens',
     showMinimap: 'Show minimap',
@@ -171,7 +171,7 @@ export const canvasMessages = defineMessages(
     noAttribute: 'Esses recursos não têm um atributo para conectá-los diretamente',
     complexConnections: 'Algumas conexões são expressões complexas. Edite-as no código',
 
-    deletedMany: (n: number, mod: string) => `${n} recursos excluídos. ${mod} Z para desfazer`,
+    deletedMany: (n: number, undo: string) => `${n} recursos excluídos. ${undo} para desfazer`,
     duplicated: (id: string) => `Duplicado como ${id}`,
     exported: (format: string) => `Diagrama exportado em ${format}`,
     nothingToExport: 'Nada para exportar ainda. Adicione um recurso primeiro',
@@ -226,7 +226,7 @@ export const canvasMessages = defineMessages(
     zoomIn: 'Aproximar',
     resetZoom: 'Redefinir zoom',
     resetZoomTip: 'Voltar a 100%',
-    fitViewTip: 'Ajustar à tela  ⇧1',
+    fitViewTip: (keys: string) => `Ajustar à tela  ${keys}`,
     lens: 'Lente de segurança',
     hideLens: 'Ocultar lente de segurança',
     showMinimap: 'Mostrar minimapa',

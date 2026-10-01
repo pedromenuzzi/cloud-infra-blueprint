@@ -34,12 +34,13 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { showToast } from '@/components/Toast';
 import { Button, Kbd, LogoMark } from '@/components/ui';
-import { IS_MAC, MOD, usePalette } from '@/features/command/paletteStore';
+import { usePalette } from '@/features/command/paletteStore';
 import { FolderSyncStatus } from '@/features/data/FolderSyncStatus';
 import { startFolderLink } from '@/features/data/folderSync';
 import { copyText, exportZip } from '@/lib/download';
 import { shareLinkInfo, viewLinkInfo } from '@/lib/share';
 import { cn } from '@/lib/utils';
+import { ariaShortcut, shortcut } from '@/lib/keys';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { GRADE_COLORS, useAudit, useSecurityUi } from '@/features/security/securityStore';
 import { LOCALES, useLocale } from '@/i18n/locale';
@@ -178,12 +179,12 @@ export function Topbar() {
   const panelToggles: Array<{ id: PanelId; label: string; icon: ReactNode }> = [
     {
       id: 'palette',
-      label: m.palette(MOD),
+      label: m.palette(shortcut('mod', 'B')),
       icon: paletteSide === 'left' ? <PanelLeft className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />,
     },
     { id: 'canvas', label: lm.section.canvas, icon: <Workflow className="h-4 w-4" /> },
-    { id: 'code', label: m.code(MOD), icon: <Code2 className="h-4 w-4" /> },
-    { id: 'inspector', label: m.inspector(MOD), icon: <SlidersHorizontal className="h-4 w-4" /> },
+    { id: 'code', label: m.code(shortcut('mod', 'J')), icon: <Code2 className="h-4 w-4" /> },
+    { id: 'inspector', label: m.inspector(shortcut('mod', 'I')), icon: <SlidersHorizontal className="h-4 w-4" /> },
   ];
 
   const moreEntries = (small: boolean): MenuEntry[] => [
@@ -193,13 +194,13 @@ export function Topbar() {
             id: 'search',
             label: m.commandPalette,
             icon: Search,
-            shortcut: `${MOD} K`,
+            shortcut: shortcut('mod', 'K'),
             onSelect: () => openPalette(true),
           },
         ]
       : []),
-    { id: 'undo', label: m.undo, icon: Undo2, shortcut: `${MOD} Z`, disabled: !canUndo, onSelect: undo },
-    { id: 'redo', label: m.redo, icon: Redo2, shortcut: `${MOD} ⇧ Z`, disabled: !canRedo, onSelect: redo },
+    { id: 'undo', label: m.undo, icon: Undo2, shortcut: shortcut('mod', 'Z'), disabled: !canUndo, onSelect: undo },
+    { id: 'redo', label: m.redo, icon: Redo2, shortcut: shortcut('mod', 'shift', 'Z'), disabled: !canRedo, onSelect: redo },
     ...(small
       ? [
           { id: 'share', label: m.copyShareLink, icon: Share2, onSelect: doShare },
@@ -208,7 +209,7 @@ export function Topbar() {
             id: 'inspector',
             label: m.inspectorEntry,
             icon: SlidersHorizontal,
-            shortcut: `${MOD} I`,
+            shortcut: shortcut('mod', 'I'),
             checked: isOpen('inspector'),
             toggle: true,
             onSelect: () => toggle('inspector'),
@@ -308,15 +309,15 @@ export function Topbar() {
           onClick={() => openPalette(true)}
           className="hidden h-8 w-full max-w-[340px] items-center gap-2 whitespace-nowrap rounded-md border bg-surface-2/70 px-2.5 text-[12.5px] text-faint transition-colors hover:border-border-strong hover:text-muted xl:flex"
           aria-label={m.search}
-          aria-keyshortcuts={IS_MAC ? 'Meta+K' : 'Control+K'}
+          aria-keyshortcuts={ariaShortcut('mod', 'K')}
         >
           <Search className="h-3.5 w-3.5" />
           <span className="flex-1 truncate text-left">{m.searchPlaceholder}</span>
-          <Kbd>{MOD} K</Kbd>
+          <Kbd>{shortcut('mod', 'K')}</Kbd>
         </button>
       </div>
       <span className="hidden sm:contents xl:hidden">
-        <IconToggle label={m.searchShortcut(MOD)} emphasis onClick={() => openPalette(true)}>
+        <IconToggle label={m.searchShortcut(shortcut('mod', 'K'))} emphasis onClick={() => openPalette(true)}>
           <Search className="h-4 w-4" />
         </IconToggle>
       </span>
@@ -349,10 +350,10 @@ export function Topbar() {
 
       <span className="hidden lg:contents">
         <span className="mx-1 h-5 w-px shrink-0 bg-border" />
-        <Button variant="ghost" size="icon" aria-label={m.undo} title={m.undoShortcut(MOD)} disabled={!canUndo} onClick={undo}>
+        <Button variant="ghost" size="icon" aria-label={m.undo} title={m.undoShortcut(shortcut('mod', 'Z'))} disabled={!canUndo} onClick={undo}>
           <Undo2 className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" aria-label={m.redo} title={m.redoShortcut(MOD)} disabled={!canRedo} onClick={redo}>
+        <Button variant="ghost" size="icon" aria-label={m.redo} title={m.redoShortcut(shortcut('mod', 'shift', 'Z'))} disabled={!canRedo} onClick={redo}>
           <Redo2 className="h-4 w-4" />
         </Button>
         <span className="mx-1 h-5 w-px shrink-0 bg-border" />

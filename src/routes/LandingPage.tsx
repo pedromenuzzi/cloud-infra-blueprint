@@ -1,10 +1,10 @@
 import {
   ArrowRight,
   Boxes,
-  Command,
   FileDown,
   FileUp,
   Github,
+  Keyboard,
   Lock,
   MousePointerClick,
   Play,
@@ -24,6 +24,7 @@ import { Button, Kbd, Logo } from '@/components/ui';
 import { useMessages } from '@/i18n/messages';
 import { REPO_URL } from '@/lib/links';
 import { createProject, openDemoProject, uniqueProjectName } from '@/lib/storage';
+import { otherShortcut, PLATFORM, shortcut } from '@/lib/keys';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn, slugify } from '@/lib/utils';
 import { resourceShortName } from '@/resources/i18n';
@@ -152,7 +153,7 @@ function HeroDemo() {
             <Lock className="h-3 w-3" /> cloud-blueprint · orders-service
           </div>
           <span className="ml-auto hidden items-center gap-1 text-[11px] text-faint sm:flex">
-            <Kbd>⌘ K</Kbd>
+            <Kbd>{shortcut('mod', 'K')}</Kbd>
           </span>
         </div>
         <div className="grid md:grid-cols-[1.35fr_1fr]">
@@ -262,10 +263,17 @@ function HeroDemo() {
 /* --------------------------------------------------------------- content */
 
 /** the tiles; their words live in landingMessages.features */
+/** a feature card's text; the keyboard card names this device's shortcut and the other platform's */
+function featureBody(m: Text, key: keyof Text['features']): string {
+  const { body } = m.features[key];
+  if (typeof body === 'string') return body;
+  return body(shortcut('mod', 'K'), m.keysOn[PLATFORM === 'mac' ? 'pc' : 'mac'](otherShortcut('mod', 'K')));
+}
+
 const FEATURES: Array<{ key: keyof Text['features']; icon: LucideIcon; category: Category }> = [
   { key: 'sync', icon: RefreshCw, category: 'network' },
   { key: 'clouds', icon: Boxes, category: 'compute' },
-  { key: 'keyboard', icon: Command, category: 'integration' },
+  { key: 'keyboard', icon: Keyboard, category: 'integration' },
   { key: 'layout', icon: WandSparkles, category: 'containers' },
   { key: 'import', icon: FileUp, category: 'storage' },
   { key: 'export', icon: FileDown, category: 'edge' },
@@ -444,7 +452,7 @@ export default function LandingPage() {
               >
                 <FeatureTile icon={f.icon} category={f.category} />
                 <h3 className="mt-4 text-[15px] font-semibold tracking-[-0.01em]">{m.features[f.key].title}</h3>
-                <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted">{m.features[f.key].body}</p>
+                <p className="mt-1.5 text-[13.5px] leading-relaxed text-muted">{featureBody(m, f.key)}</p>
               </div>
             ))}
           </div>

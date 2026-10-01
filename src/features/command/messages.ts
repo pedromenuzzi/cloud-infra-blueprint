@@ -104,6 +104,9 @@ export const commandMessages = defineMessages(
 
     /* the shortcuts dialog */
     shortcutsTitle: 'Keyboard shortcuts',
+    keysFor: 'Keys for',
+    platformPc: 'Windows and Linux',
+    platformMac: 'macOS',
     sections: {
       anywhere: 'Anywhere',
       canvas: 'Canvas',
@@ -240,6 +243,9 @@ export const commandMessages = defineMessages(
     },
 
     shortcutsTitle: 'Atalhos de teclado',
+    keysFor: 'Teclas para',
+    platformPc: 'Windows e Linux',
+    platformMac: 'macOS',
     sections: {
       anywhere: 'Em qualquer lugar',
       canvas: 'Canvas',

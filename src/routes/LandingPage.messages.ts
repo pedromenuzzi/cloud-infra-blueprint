@@ -3,7 +3,8 @@ import { defineMessages } from '@/i18n/messages';
 
 interface Feature {
   title: string;
-  body: string;
+  /** the keyboard card takes the shortcut in this device's spelling and the other platform's ("⌘K on a Mac") */
+  body: string | ((keys: string, other: string) => string);
 }
 
 export const landingMessages = defineMessages(
@@ -34,6 +35,8 @@ export const landingMessages = defineMessages(
     statTemplates: 'production templates',
     statClouds: 'clouds, one canvas',
     statServers: 'servers or accounts',
+    /** the same shortcut on the other platform */
+    keysOn: { mac: (keys: string) => `${keys} on a Mac`, pc: (keys: string) => `${keys} on Windows and Linux` },
     // features
     featuresEyebrow: 'Features',
     featuresTitleBefore: 'Everything you need to go from whiteboard to ',
@@ -48,7 +51,8 @@ export const landingMessages = defineMessages(
       },
       keyboard: {
         title: 'Keyboard-first',
-        body: 'Press ⌘K to add resources, jump anywhere or run any action. Double-click the canvas to drop a service right where you want it.',
+        body: (keys: string, other: string) =>
+          `Press ${keys} (${other}) to add resources, jump anywhere or run any action. Double-click the canvas to drop a service right where you want it.`,
       },
       layout: {
         title: 'One-click tidy layout',
@@ -78,7 +82,7 @@ export const landingMessages = defineMessages(
       { title: 'Start anywhere', body: 'Pick a template, import your .tf files, or open a blank canvas.' },
       { title: 'Design both ways', body: 'Drag, connect and nest on the canvas, or just write HCL. Both stay in sync.' },
       { title: 'Ship it', body: 'Export the Terraform and run terraform apply. Diagram included.' },
-    ] as Feature[],
+    ] as Array<{ title: string; body: string }>,
     // templates
     templatesEyebrow: 'Templates',
     templatesTitle: 'Start from a proven pattern',
@@ -116,6 +120,7 @@ export const landingMessages = defineMessages(
     statTemplates: 'templates prontos para produção',
     statClouds: 'nuvens, um só canvas',
     statServers: 'servidores ou contas',
+    keysOn: { mac: (keys: string) => `${keys} no Mac`, pc: (keys: string) => `${keys} no Windows e no Linux` },
     featuresEyebrow: 'Funcionalidades',
     featuresTitleBefore: 'Tudo o que você precisa para ir do quadro branco ao ',
     features: {
@@ -129,7 +134,8 @@ export const landingMessages = defineMessages(
       },
       keyboard: {
         title: 'Feito para o teclado',
-        body: 'Pressione ⌘K para adicionar recursos, ir a qualquer lugar ou executar qualquer ação. Clique duas vezes no canvas para soltar um serviço exatamente onde quiser.',
+        body: (keys: string, other: string) =>
+          `Pressione ${keys} (${other}) para adicionar recursos, ir a qualquer lugar ou executar qualquer ação. Clique duas vezes no canvas para soltar um serviço exatamente onde quiser.`,
       },
       layout: {
         title: 'Layout organizado em um clique',
