@@ -21,6 +21,7 @@ import { CATEGORY_COLORS } from '@/resources/icons';
 import type { Category } from '@/resources/types';
 import { ModulesNote } from '@/features/modules/ModulesNote';
 import { openModulePath } from '@/features/modules/moduleViewStore';
+import { pathLabel } from '@/ir/moduleInstance';
 import { costUiMessages } from './messages';
 
 type SortKey = 'cost' | 'name' | 'category';
@@ -226,14 +227,8 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
   }, []);
 
   const pick = (id: string) => {
-    // a root resource: on the root module's canvas
-    if (useEditor.getState().scope) {
-      openModulePath([], id);
-      setTimeout(() => canvasApi()?.focusNode(id), 220);
-    } else {
-      useEditor.getState().setSelection(id, 'canvas');
-      canvasApi()?.focusNode(id);
-    }
+    useEditor.getState().setSelection(id, 'canvas');
+    canvasApi()?.focusNode(id);
     onClose();
   };
   /** a resource inside a module: open the module there, with it selected */
@@ -243,6 +238,9 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
     setTimeout(() => canvasApi()?.focusNode(id), 220);
   };
   const groups = moduleGroups(cost.modules);
+  // an opened module: the estimate is of one instance of the call that leads to it
+  const scoped = useEditor((s) => s.scope);
+  const scopeLabel = scoped ? pathLabel(scoped.path) : null;
 
   // the category sort follows the language the labels are in
   const locale = useLocale((s) => s.locale);
@@ -285,6 +283,7 @@ export function CostPopover({ cost, anchor, onClose }: { cost: ProjectCost; anch
           {counts.fixed ? m.pricedFor(usd(cost.total), counts.fixed) : m.nothingFixed}
           {m.plus(extras)}.
         </p>
+        {scopeLabel ? <p className="mt-1 text-[11.5px] leading-snug text-muted">{m.insideCall(scopeLabel)}</p> : null}
         <ModulesNote area="cost" className="mt-2" />
       </header>
 

@@ -251,12 +251,21 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
       freshRef.current ? monaco.editor.ScrollType.Immediate : monaco.editor.ScrollType.Smooth,
     );
     flashRef.current?.clear();
-    flashRef.current = editor.createDecorationsCollection([
+    const flash = editor.createDecorationsCollection([
       {
         range: new monaco.Range(start, 1, end, 1),
         options: { isWholeLine: true, className: 'bp-code-flash', linesDecorationsClassName: 'bp-code-flash-gutter' },
       },
     ]);
+    flashRef.current = flash;
+    // a flash always fades, even when the reveal that made it ends early (a file switch, a pick in the code)
+    setTimeout(() => {
+      try {
+        flash.clear();
+      } catch {
+        // the editor is gone already
+      }
+    }, 1600);
   };
 
   useEffect(() => {

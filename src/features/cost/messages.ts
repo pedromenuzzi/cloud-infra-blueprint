@@ -53,7 +53,7 @@ export const costUiMessages = defineMessages(
     instancesTitle: (n: number) => `${n} instance${s(n)} of the module call: every amount here is counted ${n} time${s(n)}`,
     instancesUnknown: 'instances decided at plan time',
     moduleEmpty: 'Nothing with a cost of its own inside.',
-    perCallLine: (amount: string) => `Inside it: ~${amount}/mo per instance`,
+    insideCall: (label: string) => `Inside ${label}, for one instance of the call.`,
   },
   {
     usageBased: (n: number) => `${n} por uso`,
@@ -101,6 +101,6 @@ export const costUiMessages = defineMessages(
       `${n} ${n === 1 ? 'instância' : 'instâncias'} da chamada de módulo: cada valor aqui conta ${n} ${n === 1 ? 'vez' : 'vezes'}`,
     instancesUnknown: 'instâncias decididas no plan',
     moduleEmpty: 'Nada com custo próprio aqui dentro.',
-    perCallLine: (amount: string) => `Dentro dele: ~${amount}/mês por instância`,
+    insideCall: (label: string) => `Dentro de ${label}, para uma instância da chamada.`,
   },
 );

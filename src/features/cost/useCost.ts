@@ -31,22 +31,10 @@ export function usePriceBook(): { book: PriceBook | null; failed: boolean; retry
 }
 
 /**
- * The estimate of the open project, local modules' resources included
- * (whatever module is open on the canvas), recomputed when its code changes
- * and re-worded when the language does.
- */
-export function useProjectCost(): { cost: ProjectCost | null; failed: boolean; retry(): void } {
-  const ir = useEditor((s) => s.rootIr);
-  const files = useEditor((s) => s.files);
-  const locale = useLocale((s) => s.locale);
-  const { book, failed, retry } = usePriceBook();
-  return { cost: book ? projectCostWithModules(ir, files, book, locale) : null, failed, retry };
-}
-
-/**
- * The estimate of what's on the canvas: the project, or the opened module
- * as the calls leading to it make it (one instance of it) — what the
- * inspector's cost line reads a resource's amount from.
+ * The estimate of what's on the canvas, recomputed when its code changes and
+ * re-worded when the language does: the project with what its local modules
+ * hold, or the opened module as the calls leading to it make it (one
+ * instance of it). The canvas's cost chip and the inspector's cost line.
  */
 export function useViewCost(): ProjectCost | null {
   const ir = useEditor((s) => s.ir);

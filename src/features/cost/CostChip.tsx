@@ -1,6 +1,8 @@
 /**
- * "~$27/mo" next to the canvas stats pill: the project's estimated monthly
- * cost at on-demand list prices. Click it for the breakdown.
+ * "~$27/mo" next to the canvas stats pill: the estimated monthly cost of
+ * what's on the canvas at on-demand list prices (the project with what its
+ * local modules hold, or the opened module as its call makes it). Click it
+ * for the breakdown.
  */
 import { CircleDollarSign, Info, Loader2 } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
@@ -12,7 +14,7 @@ import { cn } from '@/lib/utils';
 import { useEditor } from '@/features/editor/store';
 import { CostPopover } from './CostPopover';
 import { costUiMessages } from './messages';
-import { useProjectCost } from './useCost';
+import { usePriceBook, useViewCost } from './useCost';
 
 /** what the chip says, and the longer sentence for its tooltip / accessible name */
 export function chipText(cost: ProjectCost, locale: Locale = currentLocale()): { label: string; muted: boolean; tip: string } {
@@ -31,13 +33,14 @@ export function chipText(cost: ProjectCost, locale: Locale = currentLocale()): {
 
 export function CostChip() {
   const m = useMessages(costUiMessages);
-  const rootResources = useEditor((s) => s.rootIr.resources.length > 0);
-  const { cost, failed, retry } = useProjectCost();
+  const ownResources = useEditor((s) => s.ir.resources.length > 0);
+  const { failed, retry } = usePriceBook();
+  const cost = useViewCost();
   const [open, setOpen] = useState(false);
   const chip = useRef<HTMLButtonElement>(null);
   const tipId = useId();
   // resources of its own, or inside its local modules
-  if (!rootResources && !cost?.modules?.some((x) => x.counts.fixed + x.counts.usage + x.counts.unknown + x.counts.free > 0)) return null;
+  if (!ownResources && !cost?.modules?.some((x) => x.counts.fixed + x.counts.usage + x.counts.unknown + x.counts.free > 0)) return null;
 
   const text = cost ? chipText(cost) : null;
   const label = failed ? m.unavailable : text ? text.label : m.estimating;

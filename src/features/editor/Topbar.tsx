@@ -42,7 +42,7 @@ import { shareLinkInfo, viewLinkInfo } from '@/lib/share';
 import { cn } from '@/lib/utils';
 import { ariaShortcut, shortcut } from '@/lib/keys';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
-import { GRADE_COLORS, useAudit, useSecurityUi } from '@/features/security/securityStore';
+import { GRADE_COLORS, useProjectAudit, useSecurityUi } from '@/features/security/securityStore';
 import { LOCALES, useLocale } from '@/i18n/locale';
 import { useMessages } from '@/i18n/messages';
 import { useTheme } from '@/theme/useTheme';
@@ -93,7 +93,8 @@ function SecurityBadge() {
   const m = useMessages(topbarMessages);
   const open = useSecurityUi((s) => s.panelOpen);
   const setPanel = useSecurityUi((s) => s.setPanel);
-  const audit = useAudit();
+  // the canvas and the local modules it calls: the panel's grade
+  const audit = useProjectAudit();
   const urgent = audit.counts.critical + audit.counts.high;
   const color = audit.grade ? GRADE_COLORS[audit.grade] : undefined;
   return (
