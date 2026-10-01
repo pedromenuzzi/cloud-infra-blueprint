@@ -12,12 +12,18 @@ import { fieldHelp, resourceDescription, resourceName } from '@/resources/i18n';
 import { allDefs, getDef } from '@/resources/registry';
 import { codeMessages } from '../CodePane.messages';
 import {
+  dataReferenceSuggestions,
+  dataTypeHover,
+  dataTypeSuggestions,
   schemaBodySuggestions,
   schemaEntryAt,
   schemaHoverContents,
   schemaReferenceSuggestions,
   schemaTypeHover,
 } from '@/schema/monaco';
+import { dataTypeLabelBefore } from '@/schema/context';
+import { schemaProviderOf, usualDataAttribute } from '@/schema/store';
+import type { SchemaProvider } from '@/schema/types';
 
 export { monaco };
 
@@ -183,7 +189,11 @@ export function ensureMonacoSetup() {
     },
   });
 
-  /** find the resource type of the block enclosing `lineNumber` (rough brace scan) */
+  /**
+   * find the resource type of the block enclosing `lineNumber` (rough brace
+   * scan); undefined inside a `data` block, which the catalog's resource
+   * fields don't describe (`data "aws_vpc"` is not a VPC to create)
+   */
   const enclosingResourceType = (model: monaco.editor.ITextModel, lineNumber: number) => {
     let depth = 0;
     for (let ln = lineNumber; ln >= 1; ln--) {
@@ -195,10 +205,22 @@ export function ensureMonacoSetup() {
       if (depth < 0) {
         const m = /^\s*resource\s+"([\w-]+)"/.exec(text);
         if (m) return m[1];
+        if (/^\s*data\s+"/.test(text)) return undefined;
         depth = 0; // inside a nested block — keep walking outward
       }
     }
     return undefined;
+  };
+
+  /** providers the project uses (resources and data blocks): whose data sources `data "` offers */
+  const projectProviders = (): SchemaProvider[] => {
+    const ir = irSource();
+    const found = new Set<SchemaProvider>();
+    for (const b of [...ir.resources, ...ir.data]) {
+      const p = schemaProviderOf(b.type);
+      if (p) found.add(p);
+    }
+    return [...found];
   };
 
   monaco.languages.registerCompletionItemProvider('hcl', {
@@ -228,6 +250,16 @@ export function ensureMonacoSetup() {
         }
         return { suggestions };
       }
+
+      // data "aws_… → data source types (the provider's data sources, once loaded)
+      const dataLabel = dataTypeLabelBefore(line);
+      if (dataLabel !== undefined) {
+        return { suggestions: dataTypeSuggestions(monaco, dataLabel, range, projectProviders()) };
+      }
+
+      // `data.aws_ami.ubuntu.` → the attributes that data source exposes
+      const exposed = dataReferenceSuggestions(monaco, model, position);
+      if (exposed) return { suggestions: exposed };
 
       // `aws_instance.web.` → the attributes it exports (provider schema, once loaded)
       const assigned = /^\s*([\w-]+)\s*=/.exec(line)?.[1];
@@ -282,6 +314,17 @@ export function ensureMonacoSetup() {
             });
           }
         }
+        // the project's data sources, through the attribute they're usually read by
+        for (const d of ir.data) {
+          const text = `${d.id}.${usualDataAttribute(d.type)}`;
+          suggestions.push({
+            label: text,
+            kind: monaco.languages.CompletionItemKind.Reference,
+            insertText: text,
+            range: tokenRange,
+            sortText: `1~${d.id}`,
+          });
+        }
         for (const v of ir.variables) {
           suggestions.push({
             label: `var.${v.name}`,
@@ -334,6 +377,13 @@ export function ensureMonacoSetup() {
           insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
           range,
         });
+        suggestions.push({
+          label: m.dataSnippet,
+          kind: monaco.languages.CompletionItemKind.Snippet,
+          insertText: 'data "${1:aws_ami}" "${2:main}" {\n  ${0}\n}',
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range,
+        });
         return { suggestions };
       }
 
@@ -346,6 +396,13 @@ export function ensureMonacoSetup() {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
       const m = messagesFor(codeMessages);
+      // a data source type: `data "aws_ami" …` or `data.aws_ami.ubuntu…` (not the resource of that name)
+      const lineText = model.getLineContent(position.lineNumber);
+      const before = lineText.slice(0, word.startColumn - 1);
+      if (/^\s*data\s+"$/.test(before) || /(^|[^\w.-])data\.$/.test(before)) {
+        const dataHover = dataTypeHover(word.word);
+        return dataHover ? { contents: dataHover } : null;
+      }
       const def = getDef(word.word);
       if (def) {
         return {
