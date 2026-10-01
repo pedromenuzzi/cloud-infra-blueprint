@@ -43,17 +43,17 @@ resource "aws_lb" "web" {
 
   it('warns about attribute access without an instance key', () => {
     expect(warnings(`${SUBNETS}resource "aws_instance" "a" {\n  ami       = "ami-1"\n  subnet_id = aws_subnet.private.id\n}\n`)).toEqual([
-      'aws_instance.a: subnet_id reads aws_subnet.private.id, but aws_subnet.private has count set — use one instance (aws_subnet.private[0].id) or all of them (aws_subnet.private[*].id)',
+      'aws_instance.a: subnet_id reads aws_subnet.private.id, but aws_subnet.private has count set. Use one instance (aws_subnet.private[0].id) or all of them (aws_subnet.private[*].id)',
     ]);
     useLocale.getState().setLocale('pt-BR');
     expect(warnings(`${SUBNETS}resource "aws_instance" "a" {\n  ami       = "ami-1"\n  subnet_id = aws_subnet.private.id\n}\n`)[0]).toContain(
-      'mas aws_subnet.private tem count — use uma instância (aws_subnet.private[0].id) ou todas (aws_subnet.private[*].id)',
+      'mas aws_subnet.private tem count. Use uma instância (aws_subnet.private[0].id) ou todas (aws_subnet.private[*].id)',
     );
   });
 
   it('warns about an instance key on a single resource', () => {
     expect(warnings(`${VPC}resource "aws_subnet" "a" {\n  vpc_id     = aws_vpc.main[0].id\n  cidr_block = "10.0.1.0/24"\n}\n`)).toEqual([
-      'aws_subnet.a: vpc_id reads aws_vpc.main[0].id, but aws_vpc.main has no count or for_each — drop the instance key (aws_vpc.main.id)',
+      'aws_subnet.a: vpc_id reads aws_vpc.main[0].id, but aws_vpc.main has no count or for_each. Drop the instance key (aws_vpc.main.id)',
     ]);
   });
 
