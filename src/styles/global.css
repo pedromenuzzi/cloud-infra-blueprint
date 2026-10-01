@@ -346,8 +346,19 @@
   background: var(--data-bg);
   box-shadow: var(--shadow-xs);
 }
-.bp-data.bp-node-selected {
+/* selected: the dashes give way to the selection ring (.bp-data's own shadow would hide it) */
+.bp-data.bp-node-selected,
+.bp-data.bp-node-selected:hover {
   border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--cat),
+    0 10px 28px -8px color-mix(in srgb, var(--cat) 55%, transparent);
+}
+.dark .bp-data.bp-node-selected,
+.dark .bp-data.bp-node-selected:hover {
+  box-shadow:
+    0 0 0 2px var(--cat-light),
+    0 10px 28px -8px color-mix(in srgb, var(--cat-light) 45%, transparent);
 }
 
 .bp-container {

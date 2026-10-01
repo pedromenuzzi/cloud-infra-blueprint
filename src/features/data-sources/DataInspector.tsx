@@ -67,7 +67,6 @@ function Section({ title, hint, children, tone }: { title: string; hint?: string
 
 const useApply = () => useEditor((s) => s.applyCanvasOps);
 
-
 /** One argument: an editable literal, or an expression / nested block shown read-only with a way to the code. */
 function ArgRow({ node, name, value, entry }: { node: DataNode; name: string; value: Expression; entry?: SchemaEntry }) {
   const m = useMessages(dataSourceMessages);
