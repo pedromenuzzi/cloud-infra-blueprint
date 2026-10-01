@@ -215,11 +215,13 @@ interface Normalized {
  * each language: an untouched one reads as today's text, so the dashboard
  * still recognizes it as ours and shows it in the UI language.
  */
-const LEGACY_DEMO_DESCRIPTION: Record<string, string> = {
-  'Demo project — a classic VPC + EC2 + RDS web stack. Safe to edit or delete.': libMessages.en.demoDescription,
-  'Projeto de demonstração — uma stack web clássica com VPC + EC2 + RDS. Pode editar ou excluir à vontade.':
+const LEGACY_DEMO_DESCRIPTION = new Map<string, string>([
+  ['Demo project — a classic VPC + EC2 + RDS web stack. Safe to edit or delete.', libMessages.en.demoDescription],
+  [
+    'Projeto de demonstração — uma stack web clássica com VPC + EC2 + RDS. Pode editar ou excluir à vontade.',
     libMessages['pt-BR'].demoDescription,
-};
+  ],
+]);
 
 function normalizeProject(value: unknown): Normalized {
   if (!isRecord(value) || typeof value.id !== 'string' || value.id === '') {
@@ -246,7 +248,7 @@ function normalizeProject(value: unknown): Normalized {
     ...value, // keep fields a newer version may have added
     id: value.id,
     name: str(value.name)?.trim() || messagesFor(libMessages).untitledProject,
-    description: (value.demo === true && description && LEGACY_DEMO_DESCRIPTION[description]) || description,
+    description: (value.demo === true && description !== undefined && LEGACY_DEMO_DESCRIPTION.get(description)) || description,
     files,
     providers,
     templateSlug: str(value.templateSlug),
