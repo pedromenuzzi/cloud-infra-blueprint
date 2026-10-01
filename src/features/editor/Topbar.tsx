@@ -109,7 +109,7 @@ function SecurityBadge() {
       )}
     >
       <ShieldCheck className="h-4 w-4" style={{ color }} />
-      <span className="hidden text-muted lg:inline">{m.security}</span>
+      <span className="hidden text-muted xl:inline">{m.security}</span>
       {audit.grade ? <span style={{ color }}>{audit.grade}</span> : null}
       {urgent > 0 ? (
         <span className="rounded-full bg-danger-solid px-1.5 text-[10px] font-bold leading-4 text-white">{urgent}</span>
@@ -142,7 +142,8 @@ export function Topbar() {
   const { theme, setTheme } = useTheme();
   const [exportMenu, setExportMenu] = useState<{ x: number; y: number } | null>(null);
   // ⋯ menu below lg: the actions the bar has no room for at the current width
-  const [moreMenu, setMoreMenu] = useState<{ x: number; y: number; small: boolean } | null>(null);
+  // (small: below sm, phones; narrow: below md, where the Layout button leaves the bar too)
+  const [moreMenu, setMoreMenu] = useState<{ x: number; y: number; small: boolean; narrow: boolean } | null>(null);
 
   const doExportZip = () => {
     const { projectName: name, files } = useEditor.getState();
@@ -187,7 +188,7 @@ export function Topbar() {
     { id: 'inspector', label: m.inspector(shortcut('mod', 'I')), icon: <SlidersHorizontal className="h-4 w-4" /> },
   ];
 
-  const moreEntries = (small: boolean): MenuEntry[] => [
+  const moreEntries = (small: boolean, narrow: boolean): MenuEntry[] => [
     ...(small
       ? [
           {
@@ -201,10 +202,11 @@ export function Topbar() {
       : []),
     { id: 'undo', label: m.undo, icon: Undo2, shortcut: shortcut('mod', 'Z'), disabled: !canUndo, onSelect: undo },
     { id: 'redo', label: m.redo, icon: Redo2, shortcut: shortcut('mod', 'shift', 'Z'), disabled: !canRedo, onSelect: redo },
+    ...(small ? [{ id: 'share', label: m.copyShareLink, icon: Share2, onSelect: doShare }] : []),
+    // the view-link button sits in the bar from lg up, where the ⋯ menu is gone
+    { id: 'view-link', label: m.copyViewLinkReadOnly, icon: Eye, onSelect: doViewLink },
     ...(small
       ? [
-          { id: 'share', label: m.copyShareLink, icon: Share2, onSelect: doShare },
-          { id: 'view-link', label: m.copyViewLinkReadOnly, icon: Eye, onSelect: doViewLink },
           {
             id: 'inspector',
             label: m.inspectorEntry,
@@ -214,6 +216,10 @@ export function Topbar() {
             toggle: true,
             onSelect: () => toggle('inspector'),
           },
+        ]
+      : []),
+    ...(narrow
+      ? [
           {
             id: 'layout',
             label: lm.layoutMore,
@@ -284,20 +290,30 @@ export function Topbar() {
           saveState === 'saved' ? 'text-faint' : saveState === 'saving' ? 'text-muted' : '',
         )}
         role="status"
-        title={saveState === 'error' ? m.saveError[saveError ?? 'quota'] : undefined}
+        title={saveState === 'error' ? m.saveError[saveError ?? 'quota'] : saveState === 'saved' ? m.saved : m.saving}
       >
+        {/* below md the icon says it (the word stays for screen readers); the reason is in the tooltip */}
         {saveState === 'saved' ? (
           <>
-            <Check className="h-3.5 w-3.5 text-success" /> {m.saved}
+            <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />
+            <span className="max-md:sr-only">{m.saved}</span>
           </>
         ) : saveState === 'error' ? (
           <>
-            <AlertTriangle className="h-3.5 w-3.5" />
-            {saveError === 'quota' ? m.notSavedFull : m.notSaved}
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+            {saveError === 'quota' ? (
+              <>
+                <span className="hidden xl:inline">{m.notSavedFull}</span>
+                <span className="xl:hidden">{m.notSaved}</span>
+              </>
+            ) : (
+              m.notSaved
+            )}
           </>
         ) : (
           <>
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {m.saving}
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            <span className="max-md:sr-only">{m.saving}</span>
           </>
         )}
       </span>
@@ -332,7 +348,7 @@ export function Topbar() {
             </IconToggle>
           </span>
         ))}
-        <span className="contents max-sm:hidden">
+        <span className="contents max-md:hidden">
           <IconToggle
             label={lm.layout}
             emphasis={layoutMenu !== null}
@@ -350,19 +366,22 @@ export function Topbar() {
 
       <span className="hidden lg:contents">
         <span className="mx-1 h-5 w-px shrink-0 bg-border" />
-        <Button variant="ghost" size="icon" aria-label={m.undo} title={m.undoShortcut(shortcut('mod', 'Z'))} disabled={!canUndo} onClick={undo}>
+        <Button variant="ghost" size="icon" aria-label={m.undo} title={m.undoShortcut(shortcut('mod', 'Z'))} disabled={!canUndo} onClick={undo} className="shrink-0">
           <Undo2 className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" aria-label={m.redo} title={m.redoShortcut(shortcut('mod', 'shift', 'Z'))} disabled={!canRedo} onClick={redo}>
+        <Button variant="ghost" size="icon" aria-label={m.redo} title={m.redoShortcut(shortcut('mod', 'shift', 'Z'))} disabled={!canRedo} onClick={redo} className="shrink-0">
           <Redo2 className="h-4 w-4" />
         </Button>
         <span className="mx-1 h-5 w-px shrink-0 bg-border" />
       </span>
 
+      {/* labels show from xl up; below lg the view link moves into ⋯ */}
       <span className="hidden sm:contents">
-        <Button variant="outline" size="sm" onClick={doShare} aria-label={m.share} className="shrink-0">
-          <Share2 className="h-3.5 w-3.5" /> <span className="hidden lg:inline">{m.share}</span>
+        <Button variant="outline" size="sm" onClick={doShare} aria-label={m.share} title={m.share} className="shrink-0">
+          <Share2 className="h-3.5 w-3.5" /> <span className="hidden xl:inline">{m.share}</span>
         </Button>
+      </span>
+      <span className="hidden lg:contents">
         <Button
           variant="outline"
           size="icon"
@@ -379,16 +398,17 @@ export function Topbar() {
         aria-haspopup="menu"
         aria-expanded={exportMenu !== null}
         aria-label={m.export}
+        title={m.export}
         className="shrink-0"
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setExportMenu({ x: r.right - 220, y: r.bottom + 6 });
         }}
       >
-        <Download className="h-3.5 w-3.5" /> <span className="hidden md:inline">{m.export}</span>
+        <Download className="h-3.5 w-3.5" /> <span className="hidden lg:inline">{m.export}</span>
         <ChevronDown className="-mr-0.5 h-3.5 w-3.5 opacity-80 max-sm:hidden" />
       </Button>
-      <span className="hidden lg:contents">
+      <span className="hidden shrink-0 items-center lg:flex">
         <LanguageSwitcher compact />
         <ThemeToggle />
       </span>
@@ -405,7 +425,8 @@ export function Topbar() {
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             const small = !window.matchMedia('(min-width: 640px)').matches;
-            setMoreMenu({ x: r.right - 240, y: r.bottom + 6, small });
+            const narrow = !window.matchMedia('(min-width: 768px)').matches;
+            setMoreMenu({ x: r.right - 240, y: r.bottom + 6, small, narrow });
           }}
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -419,7 +440,7 @@ export function Topbar() {
           y={moreMenu.y}
           label={m.moreActions}
           onClose={() => setMoreMenu(null)}
-          entries={moreEntries(moreMenu.small)}
+          entries={moreEntries(moreMenu.small, moreMenu.narrow)}
         />
       ) : null}
       {exportMenu ? (
