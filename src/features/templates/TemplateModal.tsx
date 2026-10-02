@@ -23,6 +23,7 @@ const FILTERS = [
   'Containers',
   'Serverless',
   'Security',
+  'Networking',
   'Data',
 ] as const;
 type Filter = (typeof FILTERS)[number];

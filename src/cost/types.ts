@@ -43,6 +43,11 @@ export interface AwsPrices {
     instance: Record<string, Record<string, DeploymentRates>>;
     /** storage type (gp2, gp3, io1, standard) → $/GB-month */
     storage: Record<string, DeploymentRates>;
+    /**
+     * Aurora instance class → $/hour per instance, on an Aurora Standard cluster and on an
+     * I/O-Optimized one (`storage_type = "aurora-iopt1"`); the same for Aurora PostgreSQL and MySQL
+     */
+    aurora: Record<string, { standard: number; ioOptimized: number }>;
   };
   /** ElastiCache node type → engine (redis, memcached, valkey) → $/hour */
   elasticache: Record<string, Record<string, number>>;
@@ -74,6 +79,9 @@ export interface AwsPrices {
     auroraGbMonth: number;
     auroraIoPerMillion: number;
     auroraIoOptimizedGbMonth: number;
+    /** Aurora Serverless v2 capacity, per ACU-hour (Standard and I/O-Optimized clusters) */
+    auroraServerlessAcuHour: number;
+    auroraServerlessIoOptimizedAcuHour: number;
   };
 }
 
@@ -210,4 +218,33 @@ export interface ProjectCost {
   byProvider: Array<CostGroup<Provider> & { region?: string; retrieved?: string }>;
   /** the rules every number follows */
   assumptions: string[];
+  /**
+   * The project's calls to local modules, each with what's inside it (the
+   * totals above count them, × the call's instances). Absent: none, or an
+   * estimate of one module's own resources.
+   */
+  modules?: ModuleCost[];
+}
+
+/** What one call to a local module costs (./modules.ts). */
+export interface ModuleCost {
+  /** `module.network` */
+  id: string;
+  /** `module.service › module.ecr` */
+  label: string;
+  /** the calls from the root module that lead to it: folder and name of each */
+  steps: Array<{ dir: string; name: string }>;
+  dir: string;
+  /** instances of the call; null when its `count` / `for_each` is decided at plan time */
+  count: number | null;
+  repeat?: 'count' | 'for_each';
+  /** the module's own resources, for one instance of the call */
+  items: ResourceCost[];
+  /** one instance of the call, the modules it calls included (fixed amounts only) */
+  perCall: number;
+  /** every instance; null when the instances aren't known */
+  monthly: number | null;
+  /** priced / usage-based / not estimated resources inside (nested modules included) */
+  counts: Record<CostKind, number>;
+  nested: ModuleCost[];
 }

@@ -21,6 +21,7 @@ import type {
   BlockSpans,
   BodySpans,
   CanvasPosition,
+  DataNode,
   Diagnostic,
   EntrySpan,
   Expression,
@@ -34,6 +35,7 @@ import type {
 } from '@/ir/types';
 import {
   DEFAULT_FILES,
+  emitData,
   emitExpression,
   emitLabel,
   emitModule,
@@ -88,6 +90,7 @@ type Block =
   | { kind: 'output'; node: OutputDecl }
   | { kind: 'provider'; node: ProviderBlock }
   | { kind: 'module'; node: ModuleNode }
+  | { kind: 'data'; node: DataNode }
   | { kind: 'extra'; node: RawBlock };
 
 function blocksOf(ir: IR): Block[] {
@@ -97,6 +100,7 @@ function blocksOf(ir: IR): Block[] {
     ...ir.outputs.map((node) => ({ kind: 'output' as const, node })),
     ...ir.providers.map((node) => ({ kind: 'provider' as const, node })),
     ...ir.modules.map((node) => ({ kind: 'module' as const, node })),
+    ...ir.data.map((node) => ({ kind: 'data' as const, node })),
     ...ir.extras.map((node) => ({ kind: 'extra' as const, node })),
   ];
 }
@@ -113,6 +117,8 @@ function emitBlock(b: Block): string {
       return emitProvider(b.node);
     case 'module':
       return emitModule(b.node);
+    case 'data':
+      return emitData(b.node);
     case 'extra':
       return emitRawBlock(b.node);
   }
@@ -610,9 +616,10 @@ function spliceBlock(ctx: FileCtx, old: Block, next: Block, edits: Edit[]): bool
     }
     return true;
   }
-  if (old.kind === 'resource') {
+  if (old.kind === 'resource' || old.kind === 'data') {
+    // `resource` and `data` blocks: labels `"type" "name"`
     const o = old.node;
-    const n = next.node as ResourceNode;
+    const n = next.node as ResourceNode | DataNode;
     if (o.type !== n.type) return false;
     if (o.name !== n.name) {
       const label = spans.labels[1];
@@ -638,7 +645,8 @@ function spliceBlock(ctx: FileCtx, old: Block, next: Block, edits: Edit[]): bool
     return false;
   }
   const indent = indentAt(ctx.text, spans.header);
-  return patchBody(ctx, old.node.args, (next.node as typeof old.node).args, spans.body, indent, edits, old.kind === 'resource');
+  const leadingMeta = old.kind === 'resource' || old.kind === 'data';
+  return patchBody(ctx, old.node.args, (next.node as typeof old.node).args, spans.body, indent, edits, leadingMeta);
 }
 
 function patchBlock(ctx: FileCtx, old: Block, next: Block): Edit[] {
@@ -811,7 +819,8 @@ function plan(files: Record<string, string>, ir: IR, ops: Op[]): Plan | { stale:
       push(edits, file, ...patchBlock(ctxOf(file), old, next));
     } catch (err) {
       if (!(err instanceof CommentsWouldBeLost)) throw err;
-      const where = old.kind === 'resource' ? old.node.id : old.kind === 'extra' ? file : `${old.kind} "${old.node.name}"`;
+      const where =
+        old.kind === 'resource' || old.kind === 'data' ? old.node.id : old.kind === 'extra' ? file : `${old.kind} "${old.node.name}"`;
       return { stale: { file, message: messagesFor(hclMessages).commentsWouldBeLost(where, err.key) } };
     }
   }
@@ -866,6 +875,8 @@ function toParsed(b: Block, text: string): ParsedBlock | null {
   switch (b.kind) {
     case 'resource':
       return { kind: 'resource', type: b.node.type, name: b.node.name, args: b.node.args, ...base };
+    case 'data':
+      return { kind: 'data', type: b.node.type, name: b.node.name, args: b.node.args, ...base };
     case 'variable':
     case 'output':
     case 'provider':
@@ -963,7 +974,7 @@ function verify(
   fresh: { ir: IR; diagnostics: Diagnostic[] },
   touched: string[],
 ): PatchRefusal | null {
-  const ids = (ir: IR) => [...ir.resources, ...ir.modules].map((r) => r.id).sort().join('\n');
+  const ids = (ir: IR) => [...ir.resources, ...ir.modules, ...ir.data].map((r) => r.id).sort().join('\n');
   const counts = (ir: IR) =>
     [ir.variables.length, ir.outputs.length, ir.providers.length, ir.extras.length].join();
   if (ids(expected) !== ids(fresh.ir) || counts(expected) !== counts(fresh.ir)) {

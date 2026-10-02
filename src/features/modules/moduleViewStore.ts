@@ -1,7 +1,9 @@
 /**
- * Which child module is opened over the canvas, if any — a path of folders
- * from the root module (`root › service › ecr`). Always loaded (the canvas
- * and the menus open it); the view itself loads on first use.
+ * Which child module is opened on the canvas, if any — a path of module
+ * calls from the root module (`root › service › ecr`). The editor store's
+ * `scope` follows it: the canvas, the inspector and ⌘K then work on that
+ * module's blocks. Always loaded (the canvas and the menus open it); the
+ * breadcrumb bar loads on first use.
  */
 import { create } from 'zustand';
 import { useEditor } from '@/features/editor/store';
@@ -11,38 +13,52 @@ export interface OpenedModule {
   dir: string;
   /** the module call's name, as the breadcrumb shows it */
   name: string;
+  /** what was selected one level up when this one opened: it comes back with that level */
+  from?: string | null;
 }
 
 interface ModuleViewState {
   /** innermost last; empty: the root module's canvas */
   path: OpenedModule[];
-  /** what was selected on the root canvas: the inspector steps aside while a module is open, and comes back */
-  returnTo: string | null;
 }
 
-export const useModuleView = create<ModuleViewState>(() => ({ path: [], returnTo: null }));
+export const useModuleView = create<ModuleViewState>(() => ({ path: [] }));
 
-/** Open a module: from the root canvas it's the first step, from an opened module one level deeper. */
-export function openModuleView(dir: string, name: string, options: { nested?: boolean } = {}) {
+function applyPath(path: OpenedModule[]) {
+  useModuleView.setState({ path });
+  const last = path[path.length - 1];
+  useEditor.getState().setScope(last ? { dir: last.dir, path: path.map((p) => p.name) } : null);
+}
+
+/**
+ * Open a module call's module: from the root canvas it's the first step,
+ * from an opened module one level deeper (the call is one of its blocks).
+ */
+export function openModuleView(dir: string, name: string) {
   const { path } = useModuleView.getState();
-  if (options.nested && path.length > 0) {
-    useModuleView.setState({ path: [...path, { dir, name }] });
-    return;
-  }
   const editor = useEditor.getState();
-  useModuleView.setState({ path: [{ dir, name }], returnTo: path.length > 0 ? useModuleView.getState().returnTo : editor.selection });
-  if (editor.selection) editor.setSelection(null);
+  applyPath([...path, { dir, name, from: editor.selection }]);
 }
 
-/** Back to `depth` levels open (0: the root canvas, where the selection comes back). */
-export function moduleViewTo(depth: number) {
-  const { path, returnTo } = useModuleView.getState();
-  const next = path.slice(0, Math.max(0, depth));
-  useModuleView.setState({ path: next, ...(next.length === 0 ? { returnTo: null } : {}) });
-  if (next.length === 0 && path.length > 0 && returnTo) {
-    const { ir, setSelection } = useEditor.getState();
-    if (ir.modules.some((m) => m.id === returnTo) || ir.resources.some((r) => r.id === returnTo)) setSelection(returnTo);
+/** Open a module reached through these calls from the root (`['service', 'ecr']`), with `select` selected in it. */
+export function openModulePath(steps: Array<{ dir: string; name: string }>, select?: string | null) {
+  const { path } = useModuleView.getState();
+  const same = path.length === steps.length && path.every((p, i) => p.dir === steps[i].dir && p.name === steps[i].name);
+  if (!same) {
+    const from = path.length === 0 ? useEditor.getState().selection : (path[0]?.from ?? null);
+    applyPath(steps.map((s, i) => ({ ...s, from: i === 0 ? from : null })));
   }
+  if (select !== undefined) useEditor.getState().setSelection(select, 'canvas');
+}
+
+/** Back to `depth` levels open (0: the root canvas), where that level's selection comes back. */
+export function moduleViewTo(depth: number) {
+  const { path } = useModuleView.getState();
+  if (depth >= path.length) return;
+  const back = path[Math.max(0, depth)]?.from ?? null;
+  applyPath(path.slice(0, Math.max(0, depth)));
+  const { ir, setSelection } = useEditor.getState();
+  if (back && (ir.modules.some((m) => m.id === back) || ir.resources.some((r) => r.id === back))) setSelection(back);
 }
 
 /** One level up (to the root canvas from a first-level module). */
@@ -52,5 +68,11 @@ export function moduleViewBack() {
 
 /** Leave without restoring anything (another project opened). */
 export function closeModuleView() {
-  if (useModuleView.getState().path.length > 0) useModuleView.setState({ path: [], returnTo: null });
+  if (useModuleView.getState().path.length > 0) applyPath([]);
 }
+
+// the store leaves the module by itself when its folder goes away (undo, code edits, a reload)
+useEditor.subscribe((state, prev) => {
+  if (state.scope === prev.scope || state.scope !== null) return;
+  if (useModuleView.getState().path.length > 0) useModuleView.setState({ path: [] });
+});

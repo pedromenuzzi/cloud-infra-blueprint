@@ -83,6 +83,47 @@ describe('CIDR checks', () => {
     expect(messages(vpc('main', '10.0.0.0/16') + vpc('other', '10.1.0.0/16') + subnet('a', '10.0.1.0/24') + subnet('b', '10.1.1.0/24', '', 'other'))).toEqual([]);
   });
 
+  it('compares the instances of repeated subnets: with each other and with plain subnets, no false alarms', () => {
+    const azs = 'variable "azs" {\n  default = ["us-east-1a", "us-east-1b", "us-east-1c"]\n}\n';
+    const tier = (name: string, netnum: string, extra = '') =>
+      subnet(name, `cidrsubnet(aws_vpc.main.cidr_block, 8, ${netnum})`, `  count      = length(var.azs)\n${extra}`);
+    const main = vpc('main', '10.0.0.0/16');
+    // two tiers apart: fine (the "Subnets per AZ" template's plan)
+    expect(messages(azs + main + tier('public', 'count.index') + tier('private', 'count.index + 10'))).toEqual([]);
+    // tiers whose numbers meet: private[0] is public[2]
+    expect(messages(azs + main + tier('public', 'count.index') + tier('private', 'count.index + 2'))).toEqual([
+      'aws_subnet.private: cidr_block gives aws_subnet.private[0] 10.0.2.0/24, which overlaps aws_subnet.public[2] (10.0.2.0/24), but subnets in one VPC need ranges of their own',
+    ]);
+    // a plain subnet in an instance's range (it used to be skipped: a false negative)
+    expect(messages(azs + main + subnet('db', '10.0.1.0/24') + tier('public', 'count.index'))).toEqual([
+      'aws_subnet.public: cidr_block gives aws_subnet.public[1] 10.0.1.0/24, which overlaps aws_subnet.db (10.0.1.0/24), but subnets in one VPC need ranges of their own',
+    ]);
+    // every instance of a count gets the same literal range
+    expect(messages(main + subnet('same', '10.0.5.0/24', '  count      = 2\n'))).toEqual([
+      'aws_subnet.same: cidr_block gives aws_subnet.same[1] 10.0.5.0/24, which overlaps aws_subnet.same[0] (10.0.5.0/24), but subnets in one VPC need ranges of their own',
+    ]);
+    // for_each over a literal map: each value is a range
+    const each = (values: string) =>
+      `resource "aws_subnet" "each" {\n  for_each   = { ${values} }\n  vpc_id     = aws_vpc.main.id\n  cidr_block = each.value\n}\n`;
+    expect(messages(main + each('a = "10.0.1.0/24", b = "10.0.2.0/24"'))).toEqual([]);
+    expect(messages(main + subnet('x', '10.0.2.0/25') + each('a = "10.0.1.0/24", b = "10.0.2.0/24"'))).toEqual([
+      'aws_subnet.each: cidr_block gives aws_subnet.each["b"] 10.0.2.0/24, which overlaps aws_subnet.x (10.0.2.0/25), but subnets in one VPC need ranges of their own',
+    ]);
+    // decided at plan time: still skipped
+    expect(messages(main + subnet('db', '10.0.0.0/24') + subnet('n', 'cidrsubnet(aws_vpc.main.cidr_block, 8, count.index)', '  count      = var.n\n'))).toEqual([]);
+  });
+
+  it('checks a repeated subnet once for its size and its network, not once per instance', () => {
+    const azs = 'variable "azs" {\n  default = ["us-east-1a", "us-east-1b", "us-east-1c"]\n}\n';
+    const counted = (cidr: string) => subnet('s', cidr, '  count      = length(var.azs)\n');
+    expect(messages(azs + vpc('main', '10.0.0.0/16') + counted('cidrsubnet("192.168.0.0/16", 8, count.index)'))).toEqual([
+      "aws_subnet.s: cidr_block 192.168.0.0/24 is outside aws_vpc.main's range (10.0.0.0/16)",
+    ]);
+    expect(messages(azs + vpc('main', '10.0.0.0/16') + counted('cidrsubnet(aws_vpc.main.cidr_block, 14, count.index)'))).toEqual([
+      'aws_subnet.s: cidr_block 10.0.0.0/30 is too small for a subnet (AWS allows /16 to /28)',
+    ]);
+  });
+
   it('flags overlapping VPCs: firmly when peered, softly otherwise', () => {
     const peering = 'resource "aws_vpc_peering_connection" "p" {\n  vpc_id      = aws_vpc.a.id\n  peer_vpc_id = aws_vpc.b.id\n}\n';
     expect(messages(vpc('a', '10.0.0.0/16') + vpc('b', '10.0.0.0/16') + peering)).toEqual([

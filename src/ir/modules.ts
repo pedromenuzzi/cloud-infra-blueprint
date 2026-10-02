@@ -10,7 +10,7 @@
  * (`modules/network/main.tf`); the root module is the files without one.
  */
 import { collectRefs, literalString, refTargetAddress } from './expr';
-import type { Expression, IR, IREdge, ModuleNode, ResourceNode } from './types';
+import type { DataNode, Expression, IR, IREdge, ModuleNode, ResourceNode } from './types';
 
 export const MODULE_PREFIX = 'module.';
 
@@ -189,12 +189,14 @@ export function moduleRef(path: string): { name: string; output?: string } | nul
   return m[3] !== undefined ? { name: m[1], output: m[3] } : { name: m[1] };
 }
 
-/** Every canvas node: resources and module calls. */
-export type CanvasBlock = ResourceNode | ModuleNode;
+/** Every canvas node: resources, module calls and data sources. */
+export type CanvasBlock = ResourceNode | ModuleNode | DataNode;
 
-/** The resource or module call with this id. */
+/** The resource, module call or data source with this id. */
 export function findNode(ir: IR, id: string): CanvasBlock | undefined {
   if (isModuleId(id)) return ir.modules.find((m) => m.id === id);
+  // `data.…` ids: a resource type is never called `data`
+  if (id.startsWith('data.')) return ir.data.find((d) => d.id === id);
   return ir.resources.find((r) => r.id === id);
 }
 
@@ -202,7 +204,7 @@ export const hasNode = (ir: IR, id: string): boolean => findNode(ir, id) !== und
 
 /** ids of every canvas node */
 export function nodeIds(ir: IR): Set<string> {
-  return new Set([...ir.resources.map((r) => r.id), ...ir.modules.map((m) => m.id)]);
+  return new Set([...ir.resources.map((r) => r.id), ...ir.modules.map((m) => m.id), ...ir.data.map((d) => d.id)]);
 }
 
 function refsOf(args: Record<string, Expression>): Array<{ field: string; path: string }> {
@@ -291,13 +293,13 @@ export function moduleReferrers(ir: IR, moduleId: string): string[] {
 /* ------------------------------------------------------------- layout */
 
 /**
- * The IR with its module calls as plain, parentless resources of type
- * `module` — so the resource layout code (auto-layout, Auto-arrange) places
- * them too. Positions are shared objects: moves come back as
- * `move_node` ops on the module ids.
+ * The IR with its module calls and data sources as plain, parentless
+ * resources of type `module` / `data` — so the resource layout code
+ * (auto-layout, Auto-arrange, thumbnails) places them too. Positions are
+ * shared objects: moves come back as `move_node` ops on their ids.
  */
 export function withModuleNodes(ir: IR): IR {
-  if (ir.modules.length === 0) return ir;
+  if (ir.modules.length === 0 && ir.data.length === 0) return ir;
   return {
     ...ir,
     resources: [
@@ -311,6 +313,17 @@ export function withModuleNodes(ir: IR): IR {
           args: m.args,
           position: m.position,
           trivia: m.trivia,
+        }),
+      ),
+      ...ir.data.map(
+        (d): ResourceNode => ({
+          id: d.id,
+          provider: d.provider,
+          type: 'data',
+          name: d.name,
+          args: d.args,
+          position: d.position,
+          trivia: d.trivia,
         }),
       ),
     ],

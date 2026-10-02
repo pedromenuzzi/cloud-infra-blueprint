@@ -11,6 +11,17 @@ export const PROJECT_SEGMENT = /^(?!\.+$)[\p{L}\p{N}_.-]{1,120}$/u;
 /** Folders a child module may sit in, at most. */
 const MAX_DEPTH = 8;
 
+/**
+ * The folder a project's root module came from, as imported (`envs/prod`):
+ * kept when it's a safe relative path, else dropped. The Terraform zip puts
+ * the root module back there when its module sources climb out of it.
+ */
+export function safeRootPath(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value === '') return undefined;
+  const segments = value.split('/');
+  return segments.length <= MAX_DEPTH && segments.every((s) => PROJECT_SEGMENT.test(s)) ? value : undefined;
+}
+
 export function isProjectFilePath(path: string): boolean {
   if (path === '__proto__') return false;
   const segments = path.split('/');

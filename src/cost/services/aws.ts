@@ -96,6 +96,37 @@ const auroraCluster: Rule = (ctx) => {
   return usage(note, [serverless ? m.aws.auroraServerless : m.aws.auroraInstances, m.aws.backups]);
 };
 
+const AURORA_ENGINE_LABEL: Record<string, string> = { 'aurora-postgresql': 'Aurora PostgreSQL', 'aurora-mysql': 'Aurora MySQL' };
+
+/**
+ * An Aurora instance: its class by the hour, at the rate of its cluster's
+ * storage mode (I/O-Optimized instances cost more; their I/O is free). A
+ * Serverless v2 instance (`db.serverless`) is billed per ACU-hour instead.
+ * Storage and I/O are on the cluster (auroraCluster).
+ */
+const auroraInstance: Rule = (ctx) => {
+  const { rds, usage: u } = ctx.book.aws;
+  const { m } = ctx;
+  const cls = ctx.str('instance_class');
+  const cluster = referenced(ctx.r, 'cluster_identifier', ctx.ir);
+  const ioOptimized = cluster !== undefined && resolveString(cluster.args.storage_type, ctx.ir) === 'aurora-iopt1';
+  const assumptions: string[] = [];
+  const engine = ctx.str('engine');
+  assumptions.push(engine && AURORA_ENGINE_LABEL[engine] ? m.aws.auroraInstance(AURORA_ENGINE_LABEL[engine], ioOptimized) : m.aws.auroraEngines);
+  assumptions.push(cluster ? m.aws.auroraOnCluster : m.aws.auroraNoCluster);
+  if (cls === 'db.serverless') {
+    const scaling = cluster ? blockBody(cluster.args.serverlessv2_scaling_configuration) : undefined;
+    const min = scaling ? resolveNumber(scaling.min_capacity, ctx.ir) : undefined;
+    const max = scaling ? resolveNumber(scaling.max_capacity, ctx.ir) : undefined;
+    if (min !== undefined && max !== undefined) assumptions.push(m.aws.auroraAcuRange(min, max));
+    const acu = ioOptimized ? u.auroraServerlessIoOptimizedAcuHour : u.auroraServerlessAcuHour;
+    return usage(m.aws.auroraServerlessInstance(ctx.rate(ctx.at(acu))), assumptions);
+  }
+  const rates = cls ? rds.aurora[cls] : undefined;
+  if (!cls || !rates) return ctx.unpriced('instance_class', cls);
+  return fixed([ctx.hourly(cls, ctx.at(ioOptimized ? rates.ioOptimized : rates.standard))], assumptions);
+};
+
 const cacheCluster: Rule = (ctx) => {
   if (ctx.r.args.replication_group_id) return free(ctx.m.aws.replicationGroup);
   const node = ctx.str('node_type');
@@ -274,6 +305,7 @@ export const AWS_RULES: Record<string, Rule> = {
   aws_instance: instance,
   aws_db_instance: dbInstance,
   aws_rds_cluster: auroraCluster,
+  aws_rds_cluster_instance: auroraInstance,
   aws_elasticache_cluster: cacheCluster,
   aws_ecs_service: ecsService,
   aws_eks_cluster: eksCluster,

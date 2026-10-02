@@ -313,6 +313,52 @@
         "single": 0.1,
         "multi": 0.2
       }
+    },
+    "aurora": {
+      "db.t3.medium": {
+        "standard": 0.082,
+        "ioOptimized": 0.107
+      },
+      "db.t3.large": {
+        "standard": 0.164,
+        "ioOptimized": 0.213
+      },
+      "db.t4g.medium": {
+        "standard": 0.073,
+        "ioOptimized": 0.095
+      },
+      "db.t4g.large": {
+        "standard": 0.146,
+        "ioOptimized": 0.19
+      },
+      "db.r5.large": {
+        "standard": 0.29,
+        "ioOptimized": 0.377
+      },
+      "db.r6g.large": {
+        "standard": 0.26,
+        "ioOptimized": 0.338
+      },
+      "db.r6g.xlarge": {
+        "standard": 0.519,
+        "ioOptimized": 0.675
+      },
+      "db.r6i.large": {
+        "standard": 0.29,
+        "ioOptimized": 0.377
+      },
+      "db.r7g.large": {
+        "standard": 0.276,
+        "ioOptimized": 0.359
+      },
+      "db.r7g.xlarge": {
+        "standard": 0.553,
+        "ioOptimized": 0.719
+      },
+      "db.r8g.large": {
+        "standard": 0.276,
+        "ioOptimized": 0.359
+      }
     }
   },
   "elasticache": {
@@ -414,6 +460,8 @@
     "ecrGbMonth": 0.1,
     "auroraGbMonth": 0.1,
     "auroraIoPerMillion": 0.2,
-    "auroraIoOptimizedGbMonth": 0.225
+    "auroraIoOptimizedGbMonth": 0.225,
+    "auroraServerlessAcuHour": 0.12,
+    "auroraServerlessIoOptimizedAcuHour": 0.16
   }
 }

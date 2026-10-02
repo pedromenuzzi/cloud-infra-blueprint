@@ -44,6 +44,7 @@ import { deltaMessages } from '@/security/delta.messages';
 import { editMessages } from '@/security/edit.messages';
 import { instanceMessages } from '@/security/instances.messages';
 import { modelMessages } from '@/security/model.messages';
+import { moduleAuditMessages } from '@/security/modules.messages';
 import { analyzeSecurity } from '@/security/topology';
 import { scratchProject, TEMPLATES } from '@/templates';
 import { templateDescription, templateName, templateTagLabel } from '@/templates/i18n';
@@ -163,6 +164,7 @@ describe('sentence dashes: messages', () => {
     libMessages,
     modelMessages,
     moduleCheckMessages,
+    moduleAuditMessages,
     reasonMessages,
     resourceMessages,
     schemaMessages,

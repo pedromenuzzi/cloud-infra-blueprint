@@ -208,3 +208,116 @@ export const GOOGLE_WITH_HELP: readonly string[] = [
   'google_os_config_patch_deployment',
   'google_os_login_ssh_public_key',
 ];
+
+/**
+ * Common data sources: the catalog's lookups and the ones projects write by
+ * hand most. They keep their help text in the shipped `google.data.json`
+ * (the AWS and AzureRM data chunks keep all of theirs within budget), and
+ * Monaco offers them first after `data "`. Used by the generator and the
+ * editor alike.
+ */
+export const DATA_SOURCES_WITH_HELP: readonly string[] = [
+  // aws
+  'aws_ami',
+  'aws_availability_zones',
+  'aws_caller_identity',
+  'aws_region',
+  'aws_partition',
+  'aws_iam_policy_document',
+  'aws_vpc',
+  'aws_subnets',
+  'aws_subnet',
+  'aws_security_group',
+  'aws_route53_zone',
+  'aws_acm_certificate',
+  'aws_ssm_parameter',
+  'aws_secretsmanager_secret',
+  'aws_secretsmanager_secret_version',
+  'aws_ecs_cluster',
+  'aws_iam_role',
+  'aws_kms_key',
+  'aws_s3_bucket',
+  'aws_lb',
+  // azurerm
+  'azurerm_client_config',
+  'azurerm_resource_group',
+  'azurerm_subscription',
+  'azurerm_virtual_network',
+  'azurerm_subnet',
+  'azurerm_key_vault',
+  'azurerm_key_vault_secret',
+  'azurerm_storage_account',
+  // google
+  'google_client_config',
+  'google_project',
+  'google_compute_zones',
+  'google_compute_regions',
+  'google_compute_network',
+  'google_compute_subnetwork',
+  'google_compute_image',
+  'google_compute_default_service_account',
+  'google_service_account',
+  'google_secret_manager_secret_version',
+  'google_storage_bucket',
+  'google_container_engine_versions',
+  'google_dns_managed_zone',
+  'google_iam_policy',
+  'google_kms_crypto_key',
+  'google_kms_key_ring',
+  'google_organization',
+  'google_folder',
+  'google_billing_account',
+  'google_compute_instance',
+  'google_container_cluster',
+  'google_sql_database_instance',
+];
+
+/**
+ * The attribute a data source is usually read through (`data.aws_ami.x.id`,
+ * `data.aws_availability_zones.x.names`): what Monaco writes when it offers
+ * a project's data source as a value. Other types: their first exported
+ * attribute when the schema is loaded, else `id`.
+ */
+export const DATA_SOURCE_USUAL_ATTRIBUTE: Readonly<Record<string, string>> = {
+  aws_ami: 'id',
+  aws_availability_zones: 'names',
+  aws_caller_identity: 'account_id',
+  aws_region: 'region',
+  aws_partition: 'partition',
+  aws_iam_policy_document: 'json',
+  aws_vpc: 'id',
+  aws_subnets: 'ids',
+  aws_subnet: 'id',
+  aws_security_group: 'id',
+  aws_route53_zone: 'zone_id',
+  aws_acm_certificate: 'arn',
+  aws_ssm_parameter: 'value',
+  aws_secretsmanager_secret: 'arn',
+  aws_secretsmanager_secret_version: 'secret_string',
+  aws_ecs_cluster: 'arn',
+  aws_iam_role: 'arn',
+  aws_kms_key: 'arn',
+  aws_s3_bucket: 'id',
+  aws_lb: 'arn',
+  azurerm_client_config: 'tenant_id',
+  azurerm_resource_group: 'name',
+  azurerm_subscription: 'subscription_id',
+  azurerm_virtual_network: 'id',
+  azurerm_subnet: 'id',
+  azurerm_key_vault: 'id',
+  azurerm_key_vault_secret: 'value',
+  azurerm_storage_account: 'id',
+  google_client_config: 'project',
+  google_project: 'project_id',
+  google_compute_zones: 'names',
+  google_compute_regions: 'names',
+  google_compute_network: 'id',
+  google_compute_subnetwork: 'id',
+  google_compute_image: 'self_link',
+  google_compute_default_service_account: 'email',
+  google_service_account: 'email',
+  google_secret_manager_secret_version: 'secret_data',
+  google_storage_bucket: 'name',
+  terraform_remote_state: 'outputs',
+  archive_file: 'output_path',
+};

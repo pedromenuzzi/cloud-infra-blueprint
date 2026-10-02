@@ -64,7 +64,11 @@ export const moduleInspectorMessages = defineMessages(
 
     opaqueRemote:
       'Contents not analysed: the module comes from outside the project, so the security audit and the cost estimate can’t look inside it.',
-    opaqueLocal: 'Its resources aren’t part of the security audit or the cost estimate yet. Open the module to review them.',
+    opaqueLocal: 'Its resources are part of the security audit and the cost estimate, read with the inputs this call gives. Open the module to edit them.',
+    insideTitle: 'Inside this call',
+    reviewFindings: 'Review',
+    reviewFindingsTitle: 'Show the findings in the security panel',
+    instancesUnknown: 'instances decided at plan time',
 
     settingsReadOnly: 'Module settings (read-only)',
     deleteModule: 'Delete module',
@@ -129,7 +133,11 @@ export const moduleInspectorMessages = defineMessages(
 
     opaqueRemote:
       'Conteúdo não analisado: o módulo vem de fora do projeto, então a auditoria de segurança e a estimativa de custo não enxergam o que há dentro dele.',
-    opaqueLocal: 'Os recursos dele ainda não entram na auditoria de segurança nem na estimativa de custo. Abra o módulo para revisá-los.',
+    opaqueLocal: 'Os recursos dele entram na auditoria de segurança e na estimativa de custo, lidos com as entradas que esta chamada passa. Abra o módulo para editá-los.',
+    insideTitle: 'Dentro desta chamada',
+    reviewFindings: 'Revisar',
+    reviewFindingsTitle: 'Mostrar os achados no painel de segurança',
+    instancesUnknown: 'instâncias decididas no plan',
 
     settingsReadOnly: 'Configurações do módulo (somente leitura)',
     deleteModule: 'Excluir módulo',

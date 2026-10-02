@@ -8,7 +8,8 @@
  * diagramVector.ts; a diagram too big for one readable page is also split
  * into page-sized tiles.
  */
-import { estimateProject, providerName } from '@/cost/estimate';
+import { providerName } from '@/cost/estimate';
+import { estimateWithModules } from '@/cost/modules';
 import { approx, describeLine, priceDate, usd } from '@/cost/format';
 import { PRICE_BOOK } from '@/cost/prices/prices';
 import type { CloudProvider, ProjectCost, ResourceCost } from '@/cost/types';
@@ -30,7 +31,16 @@ import { controlLabel, controlsIn, FRAMEWORKS, frameworkOf } from '@/security/co
 import { portText } from '@/security/model';
 import { docMessages, type DocMessages } from './archDoc.messages';
 import { drawDiagram, type DiagramVector, type Region } from './diagramVector';
-import { modulesSection, pdfModuleMessages } from '@/features/modules/pdfModules';
+import {
+  hasLocalModules,
+  localModulesSection,
+  moduleCostRows,
+  moduleFindingsNote,
+  modulesSection,
+  pdfModuleMessages,
+} from '@/features/modules/pdfModules';
+import { dataSection, pdfDataMessages } from '@/features/data-sources/pdfData';
+import { dataSourceMessages } from '@/features/data-sources/dataSources.messages';
 
 export type Paper = keyof typeof PAPER;
 
@@ -1105,6 +1115,9 @@ function* security(c: Cursor, input: ArchDocInput, locale: Locale): Generator<vo
     return r ? `${r.name} (${shortName(r.type, locale)})` : id;
   };
   c.section('security', t.securityTitle, t.securityHint);
+  // what the local modules hold has its own section: say how much of it there is
+  const inside = moduleFindingsNote(ir, Object.fromEntries(input.files), locale);
+  if (inside) c.paragraph(inside, { size: 8.5, color: MUTED, gap: 10 });
 
   if (audit.grade) {
     c.ensure(70);
@@ -1338,7 +1351,9 @@ function* costEstimate(c: Cursor, cost: ProjectCost, locale: Locale): Generator<
 
   // one row per resource that costs (or may cost) something, grouped by category
   const charged = cost.items.filter((i) => i.kind !== 'free');
-  if (charged.length) {
+  // what local modules hold follows, grouped by module call
+  const inModules = moduleCostRows(cost, locale, (item) => costRow(item, locale));
+  if (charged.length || inModules.length) {
     c.heading(t.byResource, t.resources(charged.length));
     const rows: Row[] = [];
     for (const k of [...CATEGORY_ORDER, 'other'] as CategoryKey[]) {
@@ -1350,6 +1365,7 @@ function* costEstimate(c: Cursor, cost: ProjectCost, locale: Locale): Generator<
       rows.push({ cells: [], group: { label: categoryLabel(k, locale), color: categoryColor(k), note: subtotal > 0 ? usd(subtotal, locale) : undefined } });
       for (const item of list) rows.push(costRow(item, locale));
     }
+    rows.push(...inModules);
     yield* c.table(
       [
         { title: t.colResource, share: 0.24 },
@@ -1471,12 +1487,18 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
   yield* diagramPages(doc, input, meta, locale);
 
   const hasVars = ir.variables.length > 0 || ir.outputs.length > 0;
+  /** every project file, child modules' too (what's inside local modules is read from them) */
+  const projectFiles = Object.fromEntries(input.files);
   const toc: TocEntry[] = [
     { key: 'diagram', title: t.diagram },
     { key: 'overview', title: t.overview },
     ...(input.sections.inventory ? [{ key: 'inventory', title: t.inventory }] : []),
     ...(input.sections.inventory && hasVars ? [{ key: 'variables', title: t.variablesOutputs }] : []),
     ...(input.sections.inventory && ir.modules.length > 0 ? [{ key: 'modules', title: messagesFor(pdfModuleMessages, locale).title }] : []),
+    ...(input.sections.inventory && hasLocalModules(ir, projectFiles)
+      ? [{ key: 'local-modules', title: messagesFor(pdfModuleMessages, locale).insideTitle }]
+      : []),
+    ...(input.sections.inventory && ir.data.length > 0 ? [{ key: 'data', title: messagesFor(dataSourceMessages, locale).pdfTitle }] : []),
     ...(input.sections.connections ? [{ key: 'connections', title: t.connectionsTitle }] : []),
     ...(input.sections.security ? [{ key: 'security', title: t.securityTitle }] : []),
     ...(input.sections.cost ? [{ key: 'cost', title: t.costTitle }] : []),
@@ -1485,12 +1507,16 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
 
   const paper = PAPER[input.paper];
   const c = new Cursor(doc, paper);
-  const cost = input.sections.cost ? estimateProject(ir, PRICE_BOOK, locale) : null;
+  const cost = input.sections.cost ? estimateWithModules(ir, projectFiles, PRICE_BOOK, locale) : null;
   yield t.writingOverview;
   const contents = overview(c, input, toc, cost, locale);
   if (input.sections.inventory) yield* step(t.writingInventory, inventory(c, input, locale));
   if (input.sections.inventory && ir.modules.length > 0) {
     yield* step(messagesFor(pdfModuleMessages, locale).writing, modulesSection(c, ir, locale));
+    yield* step(messagesFor(pdfModuleMessages, locale).writingInside, localModulesSection(c, ir, projectFiles, cost, locale));
+  }
+  if (input.sections.inventory && ir.data.length > 0) {
+    yield* step(messagesFor(pdfDataMessages, locale).writing, dataSection(c, ir, locale));
   }
   if (input.sections.connections) yield* step(t.writingConnections, connections(c, input, locale));
   if (input.sections.security) yield* step(t.writingSecurity, security(c, input, locale));

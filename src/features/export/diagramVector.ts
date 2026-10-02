@@ -14,6 +14,7 @@ import type { PathSeg } from '@/lib/pdf/svgPath';
 import { pathEnd, pointOnPath } from '@/lib/pdf/svgPath';
 import type { PdfColor, PdfPage, PathTransform } from '@/lib/pdf/writer';
 import { CATEGORY_COLORS, PROVIDER_COLORS, PROVIDER_LABELS } from '@/resources/icons';
+import { DATA_TILE } from '@/features/data-sources/tile';
 import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
 import { docMessages } from './archDoc.messages';
@@ -67,6 +68,8 @@ export interface DiagramNode {
   /** `count` / `for_each` badge ("×3"), and whether the other instances are drawn stacked behind, like the canvas */
   repeat?: string;
   repeatStack?: boolean;
+  /** a data source: drawn lighter, dashed, on its cyan tile (it is read, never created) */
+  lookup?: boolean;
 }
 
 export interface DiagramEdge {
@@ -107,6 +110,42 @@ const WARNING = '#f59e0b';
 const INTERNET_BLUE = '#0ea5e9';
 /** node text block: type row (16) + gap (1) + title (16.25) + subtitle (15.1) */
 const TEXT_BLOCK_H = 48.35;
+/** a type label on two lines: its row grows from 16 to 26 (nodes.tsx: 12 px lines under 2 px of padding) */
+const TYPE_LINE_H = 12;
+const TYPE_SECOND_LINE = 10;
+
+/**
+ * Module calls: the canvas module node's slate tile (ModuleIcon) and label
+ * color (--module-text), not a resource category's. The capture keys their
+ * glyph `module` (ModuleNodeData.resourceType).
+ */
+const MODULE_TONE = { from: '#94a3b8', to: '#475569', solid: '#475569' } as const;
+const isModule = (n: DiagramNode) => n.glyph === 'module' || n.id.startsWith('module.');
+
+/** the provider chip's width (providerChip draws it) */
+function providerChipWidth(provider: Provider): number {
+  return provider === 'other' ? 0 : textWidth(PROVIDER_LABELS[provider].toUpperCase(), 'bold', 9) + 8;
+}
+
+/**
+ * A node's type label in one line, or two when it's too long for the first
+ * (nodes.tsx: the first line runs beside the provider chip, the second takes
+ * the card's width; words stay whole, a hyphen is a break like a space). What
+ * still doesn't fit the second line is cut there.
+ */
+export function typeLabelLines(label: string, first: number, full: number, size = 9.5): string[] {
+  if (textWidth(label, 'bold', size) <= first) return [label];
+  const words = label.split(/(?<=[ -])/);
+  let line = '';
+  let i = 0;
+  for (; i < words.length; i++) {
+    if (textWidth((line + words[i]).trimEnd(), 'bold', size) > first) break;
+    line += words[i];
+  }
+  // a first word wider than the room beside the chip goes below it, as text does around a float
+  const rest = words.slice(i).join('').trim();
+  return [line.trimEnd(), fitText(rest, full, 'bold', size)];
+}
 
 const intersects = (a: Region, b: Region) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
@@ -203,7 +242,7 @@ class Painter {
     if (provider === 'other') return 0;
     const color = PROVIDER_COLORS[provider];
     const label = PROVIDER_LABELS[provider].toUpperCase();
-    const w = textWidth(label, 'bold', 9) + 8;
+    const w = providerChipWidth(provider);
     const x = right - w;
     this.page.rect(this.X(x), this.Y(top), this.S(w), this.S(16), { fill: color, opacity: 0.13, radius: this.S(4) });
     this.page.rect(this.X(x + 0.5), this.Y(top + 0.5), this.S(w - 1), this.S(15), {
@@ -224,12 +263,22 @@ class Painter {
 
   resource(n: DiagramNode) {
     const { palette } = this.d;
-    const cat = CATEGORY_COLORS[n.category] ?? CATEGORY_COLORS.compute;
+    const moduleCall = isModule(n);
+    const cat = moduleCall ? MODULE_TONE : (CATEGORY_COLORS[n.category] ?? CATEGORY_COLORS.compute);
     const sec = n.security;
     const dim = sec?.dim;
     if (dim) {
       this.page.save();
       this.page.setOpacity(0.38);
+    }
+    if (moduleCall) {
+      // it holds other blocks: a second card peeks out behind it (global.css --module-stack)
+      this.page.rect(this.X(n.x + 4), this.Y(n.y + 4), this.S(n.w), this.S(n.h), {
+        fill: palette.node,
+        stroke: palette.nodeBorder,
+        lineWidth: this.S(1),
+        radius: this.S(12),
+      });
     }
     if (n.repeat && n.repeatStack) {
       // the other instances, stacked behind (RepeatStack on the canvas)
@@ -243,7 +292,7 @@ class Painter {
         });
       }
     }
-    this.shadow(n.x, n.y, n.w, n.h, 12);
+    if (!n.lookup) this.shadow(n.x, n.y, n.w, n.h, 12);
     if (!dim && (sec?.risk === 'critical' || sec?.risk === 'high')) {
       this.page.rect(this.X(n.x - 1), this.Y(n.y - 1), this.S(n.w + 2), this.S(n.h + 2), {
         stroke: '#ef4444',
@@ -252,23 +301,37 @@ class Painter {
         radius: this.S(13),
       });
     }
-    this.page.rect(this.X(n.x), this.Y(n.y), this.S(n.w), this.S(n.h), {
-      fill: palette.node,
-      stroke: palette.nodeBorder,
-      lineWidth: this.S(1),
-      radius: this.S(12),
-    });
-    this.icon(n, n.x + 10, n.y + (n.h - 40) / 2, 40, dim ? cat.solid : cat.from, dim ? cat.solid : cat.to, 10);
+    if (n.lookup) {
+      this.page.rect(this.X(n.x), this.Y(n.y), this.S(n.w), this.S(n.h), { fill: palette.node, radius: this.S(12) });
+      this.page.rect(this.X(n.x + 0.75), this.Y(n.y + 0.75), this.S(n.w - 1.5), this.S(n.h - 1.5), {
+        stroke: DATA_TILE.border,
+        lineWidth: this.S(1.5),
+        dash: [this.S(4), this.S(2.5)],
+        radius: this.S(11.25),
+      });
+    } else {
+      this.page.rect(this.X(n.x), this.Y(n.y), this.S(n.w), this.S(n.h), {
+        fill: palette.node,
+        stroke: palette.nodeBorder,
+        lineWidth: this.S(1),
+        radius: this.S(12),
+      });
+    }
+    const tile = n.lookup ? DATA_TILE : cat;
+    this.icon(n, n.x + 10, n.y + (n.h - 40) / 2, 40, dim ? tile.solid : tile.from, dim ? tile.solid : tile.to, 10);
 
     const tx = n.x + 60;
     const right = n.x + n.w - 10;
-    const top = n.y + (n.h - TEXT_BLOCK_H) / 2;
-    const chip = this.providerChip(n.provider, right, top);
-    if (n.typeLabel) {
-      this.text(n.typeLabel.toUpperCase(), tx, top + 11.3, 9.5, cat.solid, { font: 'bold', max: right - tx - chip - 4 });
-    }
-    this.text(n.title, tx, top + 28.4, 13, palette.text, { font: 'bold', max: right - tx });
-    if (n.subtitle) this.text(n.subtitle, tx, top + 43.6, 11, palette.muted, { max: right - tx });
+    const lines = n.typeLabel ? typeLabelLines(n.typeLabel.toUpperCase(), right - tx - providerChipWidth(n.provider) - 4, right - tx) : [];
+    const extra = lines.length > 1 ? TYPE_SECOND_LINE : 0;
+    // the text block stays centered on the card, one type line or two
+    const top = n.y + (n.h - TEXT_BLOCK_H - extra) / 2;
+    this.providerChip(n.provider, right, top);
+    lines.forEach((line, i) =>
+      this.text(line, tx, top + 11.3 + i * TYPE_LINE_H, 9.5, n.lookup ? DATA_TILE.text : cat.solid, { font: 'bold', max: right - tx }),
+    );
+    this.text(n.title, tx, top + 28.4 + extra, 13, palette.text, { font: 'bold', max: right - tx });
+    if (n.subtitle) this.text(n.subtitle, tx, top + 43.6 + extra, 11, palette.muted, { max: right - tx });
 
     if (n.warn) {
       const cx = n.x + n.w - 3;

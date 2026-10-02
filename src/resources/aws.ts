@@ -212,6 +212,8 @@ export const AWS_RESOURCES = [
       manage_master_user_password: lit(true),
       storage_encrypted: lit(true),
     },
+    // its instances (aws_rds_cluster_instance) are drawn inside it
+    container: true,
     // like an RDS instance: it runs in a DB subnet group that spans several zones
     containment: [{ arg: 'db_subnet_group_name', parentTypes: ['aws_db_subnet_group'] }],
     connections: [
@@ -223,6 +225,59 @@ export const AWS_RESOURCES = [
       const version = litStr(args.engine_version);
       return engine ? `${engine}${version ? ` ${version}` : ''}` : undefined;
     },
+  }),
+
+  defineResource({
+    type: 'aws_rds_cluster_instance',
+    provider: 'aws',
+    category: 'database',
+    displayName: 'Aurora Instance',
+    shortName: 'Aurora Instance',
+    description: 'A database instance of an Aurora cluster (the writer or a reader)',
+    nameArg: 'identifier',
+    naming: { maxLength: 63 },
+    fields: [
+      { name: 'identifier', type: 'string', doc: 'Lowercase letters, digits and hyphens, up to 63' },
+      {
+        name: 'cluster_identifier',
+        type: 'string',
+        required: true,
+        refTo: ['aws_rds_cluster'],
+        label: 'Aurora cluster',
+        doc: 'The cluster it belongs to: its storage, network and engine',
+      },
+      {
+        name: 'instance_class',
+        type: 'select',
+        required: true,
+        options: [
+          'db.t4g.medium',
+          'db.t4g.large',
+          'db.t3.medium',
+          'db.r6g.large',
+          'db.r6g.xlarge',
+          'db.r7g.large',
+          'db.r7g.xlarge',
+          'db.r8g.large',
+          'db.r6i.large',
+          'db.serverless',
+        ],
+        doc: 'db.serverless: Aurora Serverless v2, sized by the cluster',
+      },
+      { name: 'engine', type: 'select', required: true, options: ['aurora-postgresql', 'aurora-mysql'], doc: "The cluster's engine" },
+      { name: 'engine_version', type: 'string', placeholder: '16.4' },
+      { name: 'publicly_accessible', type: 'boolean' },
+    ],
+    defaults: {
+      instance_class: lit('db.t4g.medium'),
+      engine: lit('aurora-postgresql'),
+    },
+    // dropped in a cluster, it takes the cluster's engine (and version) by reference
+    inherit: ['engine', 'engine_version'],
+    // instances belong to a cluster: drawn inside the one cluster_identifier names
+    containment: [{ arg: 'cluster_identifier', parentTypes: ['aws_rds_cluster'] }],
+    connections: [{ targetTypes: ['aws_rds_cluster'], arg: 'cluster_identifier', attr: 'id', mode: 'set' }],
+    subtitle: (args) => litStr(args.instance_class),
   }),
 
   defineResource({

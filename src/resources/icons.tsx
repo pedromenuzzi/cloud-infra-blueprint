@@ -169,6 +169,7 @@ const SERVICE_GLYPHS: Record<string, Glyph> = {
   aws_s3_bucket: BucketGlyph,
   aws_db_instance: Database,
   aws_rds_cluster: Cylinder,
+  aws_rds_cluster_instance: Database,
   aws_dynamodb_table: Table2,
   aws_elasticache_cluster: DatabaseZap,
   aws_ecr_repository: PackageOpen,

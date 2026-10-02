@@ -21,12 +21,18 @@ import { HidePanelButton, PanelGrip } from './PanelChrome';
 import { buildNewNode } from './newNode';
 import { useEditor } from './store';
 import { AddModuleButton } from '@/features/modules/AddModuleButton';
+import { presetsFor, type DataSourcePreset } from '@/features/data-sources/catalog';
+import { DataPaletteItem, filterPresets } from '@/features/data-sources/DataPaletteItem';
+import { dataSourceMessages } from '@/features/data-sources/dataSources.messages';
 
 const PROVIDERS: Provider[] = ['aws', 'azure', 'gcp'];
 
 /** roving-tabindex keys: one Tab stop for the whole list, arrows move inside */
 const itemKey = (def: ResourceDef) => `res:${def.type}`;
-const headerKey = (category: Category) => `cat:${category}`;
+const headerKey = (category: Category | 'data') => `cat:${category}`;
+/** the data sources section (src/features/data-sources) */
+const DATA_HEADER = headerKey('data');
+const dataKey = (p: DataSourcePreset) => `ds:${p.key}`;
 
 function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
   const m = useMessages(paletteMessages);
@@ -85,9 +91,9 @@ function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
 
 const COLLAPSED_KEY = 'cb-palette-collapsed';
 
-function readCollapsed(): Set<Category> {
+function readCollapsed(): Set<Category | 'data'> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as Category[]);
+    return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]') as Array<Category | 'data'>);
   } catch {
     return new Set();
   }
@@ -112,7 +118,7 @@ export function Palette() {
     [],
   );
 
-  const toggleCategory = (category: Category) => {
+  const toggleCategory = (category: Category | 'data') => {
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(category)) next.delete(category);
@@ -138,13 +144,18 @@ export function Palette() {
       }))
       .filter((g) => g.defs.length > 0);
   }, [provider, query]);
+  const dm = useMessages(dataSourceMessages);
+  const dataPresets = useMemo(() => filterPresets(presetsFor(provider), query), [provider, query]);
 
   // the list is one Tab stop; ↑/↓/Home/End move between categories and resources
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const uid = useId();
-  const isOpen = (category: Category) => query.trim() !== '' || !collapsed.has(category);
-  const keys = groups.flatMap((g) => [headerKey(g.category), ...(isOpen(g.category) ? g.defs.map(itemKey) : [])]);
+  const isOpen = (category: Category | 'data') => query.trim() !== '' || !collapsed.has(category);
+  const keys = [
+    ...groups.flatMap((g) => [headerKey(g.category), ...(isOpen(g.category) ? g.defs.map(itemKey) : [])]),
+    ...(dataPresets.length > 0 ? [DATA_HEADER, ...(isOpen('data') ? dataPresets.map(dataKey) : [])] : []),
+  ];
   const current = activeKey !== null && keys.includes(activeKey) ? activeKey : keys[0];
 
   const focusKey = (key: string | undefined) => {
@@ -164,7 +175,10 @@ export function Palette() {
     else if (e.key === 'End') next = keys[keys.length - 1];
     else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       // ← on a resource: up to its category; ←/→ on a category: collapse / expand
-      const group = groups.find((g) => key === headerKey(g.category) || g.defs.some((d) => itemKey(d) === key));
+      const inData = key === DATA_HEADER || key.startsWith('ds:');
+      const group = inData
+        ? { category: 'data' as const }
+        : groups.find((g) => key === headerKey(g.category) || g.defs.some((d) => itemKey(d) === key));
       if (!group) return;
       if (key !== headerKey(group.category)) {
         if (e.key === 'ArrowLeft') next = headerKey(group.category);
@@ -300,8 +314,34 @@ export function Palette() {
               </div>
             );
           })}
+          {dataPresets.length > 0 ? (
+            <div className="mb-2 border-t pt-1.5">
+              <h3>
+                <button
+                  type="button"
+                  aria-expanded={isOpen('data')}
+                  tabIndex={current === DATA_HEADER ? 0 : -1}
+                  data-rove={DATA_HEADER}
+                  title={dm.sectionHint}
+                  onClick={() => toggleCategory('data')}
+                  className="flex w-full items-center gap-1.5 rounded-[6px] px-2 pb-1 pt-1.5 text-[10.5px] font-bold uppercase tracking-wider text-faint outline-none transition-colors hover:text-muted focus-visible:bg-surface-2 focus-visible:text-foreground focus-visible:ring-1 focus-visible:ring-primary"
+                >
+                  <ChevronDown className={cn('h-3 w-3 transition-transform', !isOpen('data') && '-rotate-90')} />
+                  <span className="min-w-0 flex-1 truncate text-left">{dm.section}</span>
+                  <span className="font-medium normal-case tracking-normal">{dataPresets.length}</span>
+                </button>
+              </h3>
+              {isOpen('data') ? (
+                <div className="space-y-0.5">
+                  {dataPresets.map((p) => (
+                    <DataPaletteItem key={p.key} preset={p} roveKey={dataKey(p)} active={current === dataKey(p)} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
-        {groups.length === 0 ? (
+        {groups.length === 0 && dataPresets.length === 0 ? (
           <p className="px-2 py-6 text-center text-[12px] text-faint">{m.noMatch}</p>
         ) : null}
       </div>

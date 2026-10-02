@@ -5,12 +5,16 @@
  * other blocks read and — for a module of this project — what's inside it.
  * Every change is one canvas op, so one undo step.
  */
-import { AlertTriangle, ArrowUpRight, Code2, FolderOpen, PanelRightClose, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Code2, FolderOpen, PanelRightClose, Plus, ShieldCheck, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
+import { usd } from '@/cost/format';
+import { useViewCost } from '@/features/cost/useCost';
 import { inspectorMessages } from '@/features/editor/Inspector.messages';
+import { SEVERITY_COLORS, useProjectAudit, useSecurityUi } from '@/features/security/securityStore';
+import { SEVERITY_ORDER } from '@/security/audit';
 import { layoutMessages } from '@/features/editor/layout.messages';
 import { useEditor } from '@/features/editor/store';
 import { formatList } from '@/i18n/format';
@@ -280,6 +284,45 @@ function LiteralArg({
   );
 }
 
+/** "3 findings, ~$42/mo inside": what the audit and the estimate find in this call (nested calls included). */
+function InsideSummary({ node }: { node: ModuleNode }) {
+  const m = useMessages(moduleInspectorMessages);
+  const mm = useMessages(modulesMessages);
+  const project = useProjectAudit();
+  const cost = useViewCost();
+  const scope = useEditor((s) => s.scope);
+  const prefix = [...(scope?.path ?? []), node.name];
+  const findings = project.modules.filter((f) => prefix.every((p, i) => f.module.path[i] === p));
+  const inside = cost?.modules?.find((x) => x.id === node.id);
+  const amount = inside && inside.monthly !== null ? usd(inside.monthly) : null;
+  const worst = SEVERITY_ORDER.find((sev) => findings.some((f) => f.finding.severity === sev));
+  return (
+    <Section title={m.insideTitle}>
+      <div className="flex items-center gap-2 rounded-[8px] border bg-surface-2/60 px-2.5 py-2" data-testid="module-inside-summary">
+        {worst ? (
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: SEVERITY_COLORS[worst] }} aria-hidden="true" />
+        ) : (
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-success" aria-hidden="true" />
+        )}
+        <span className="min-w-0 flex-1 text-[12px] font-medium">
+          {mm.analysedInside(findings.length, amount)}
+          {inside && inside.monthly === null ? <span className="block text-[10.5px] text-warning">{m.instancesUnknown}</span> : null}
+        </span>
+        {findings.length > 0 ? (
+          <button
+            type="button"
+            title={m.reviewFindingsTitle}
+            onClick={() => useSecurityUi.getState().setPanel(true)}
+            className="shrink-0 rounded-[6px] border bg-surface-1 px-1.5 py-0.5 text-[11px] font-semibold text-primary transition-colors hover:border-primary/40"
+          >
+            {m.reviewFindings}
+          </button>
+        ) : null}
+      </div>
+    </Section>
+  );
+}
+
 function LocalContents({ child, node }: { child: LocalModule; node: ModuleNode }) {
   const m = useMessages(moduleInspectorMessages);
   const locale = useLocale((s) => s.locale);
@@ -446,6 +489,8 @@ export function ModuleInspector({ docked = false, onMinimize }: { docked?: boole
               ))}
             </ul>
           ) : null}
+
+          {child && !child.broken ? <InsideSummary node={node} /> : null}
 
           <NameField node={node} />
 

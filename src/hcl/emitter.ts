@@ -6,6 +6,7 @@
  * managed `# @blueprint:pos` comment re-emitted above each block.
  */
 import type {
+  DataNode,
   Expression,
   IR,
   ModuleNode,
@@ -247,6 +248,10 @@ export function emitResource(node: ResourceNode): string {
   );
 }
 
+export function emitData(node: DataNode): string {
+  return emitTopBlock(`data ${emitLabel(node.type)} ${emitLabel(node.name)}`, node.args, node.trivia, node.position);
+}
+
 /** `source` and `version` first, then a blank line and the inputs — the way Registry modules are called. */
 export function emitModule(m: ModuleNode): string {
   const header = `module ${emitLabel(m.name)}`;
@@ -288,6 +293,7 @@ export const DEFAULT_FILES = {
   provider: 'providers.tf',
   terraform: 'versions.tf',
   module: 'main.tf',
+  data: 'main.tf',
 } as const;
 
 interface FileChunk {
@@ -313,6 +319,10 @@ export function emitProject(ir: IR): Record<string, string> {
   }
   for (const p of ir.providers) {
     push(p.trivia.sourceFile ?? DEFAULT_FILES.provider, p.trivia.rawTextRange, emitProvider(p));
+  }
+  // lookups first: a fresh file reads them before the resources that use them
+  for (const d of ir.data) {
+    push(d.trivia.sourceFile ?? DEFAULT_FILES.data, d.trivia.rawTextRange, emitData(d));
   }
   for (const r of ir.resources) {
     push(r.trivia.sourceFile ?? DEFAULT_FILES.resource, r.trivia.rawTextRange, emitResource(r));

@@ -1,193 +1,63 @@
 /**
- * An opened child module, over the canvas: its resources drawn like the
- * root module's (containment, edges, nested module calls — which open one
- * level deeper), with a breadcrumb back (`root › network`) and its
- * interface (inputs, required or not, and outputs). Esc goes back up.
- *
- * Only its layout can change here — drag a block, Auto-arrange — patched
- * into the module's own files like the root canvas's moves (one undo step);
- * its code is edited in the code pane.
+ * The opened module's bar, on top of the canvas (the canvas itself then
+ * shows the module's blocks and edits them like the root module's, see the
+ * editor store's `scope`): the way back (`root › service › ecr`, Esc goes
+ * one level up once nothing is selected), what the module holds, its
+ * interface (inputs, required or not, and outputs) and its code.
  */
-import {
-  Background,
-  BackgroundVariant,
-  MarkerType,
-  Panel,
-  ReactFlow,
-  ReactFlowProvider,
-  useNodesState,
-  useReactFlow,
-  type Node,
-} from '@xyflow/react';
-import { ArrowLeft, ChevronRight, Code2, Eye, Maximize, Move, WandSparkles } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { showToast } from '@/components/Toast';
-import { useLayer } from '@/components/ui';
-import { arrangeMessages } from '@/features/editor/arrange.messages';
-import { buildFlow } from '@/features/editor/CanvasPane';
-import { canvasMessages } from '@/features/editor/CanvasPane.messages';
-import { computeTidyOps } from '@/features/editor/tidy';
-import { messagesFor } from '@/i18n/messages';
+import { ArrowLeft, ChevronDown, ChevronRight, Code2, Eye } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { hasOpenLayer, useLayer } from '@/components/ui';
 import { useLayout } from '@/features/editor/layoutStore';
-import { ContainerNodeView, FlowEdge, ResourceNodeView } from '@/features/editor/nodes';
 import { useEditor } from '@/features/editor/store';
-import { useLocale } from '@/i18n/locale';
+import { useSecurityUi } from '@/features/security/securityStore';
 import { useMessages } from '@/i18n/messages';
 import { exprPreview } from '@/ir/expr';
-import { deriveStructure } from '@/ir/graph';
 import { readLocalModule, type LocalModule } from '@/ir/localModules';
-import { layoutWithModules } from '@/ir/moduleLayout';
-import { findNode, moduleEdges, withModuleNodes } from '@/ir/modules';
-import type { Op } from '@/ir/ops';
-import type { CanvasPosition, IR } from '@/ir/types';
-import { motionMs } from '@/lib/motion';
 import { cn } from '@/lib/utils';
-import { getDef, isContainerType } from '@/resources/registry';
-import { ModuleNodeView } from './ModuleNode';
 import { moduleViewMessages } from './ModuleView.messages';
 import { moduleViewBack, moduleViewTo, useModuleView } from './moduleViewStore';
 
-const nodeTypes = { resource: ResourceNodeView, container: ContainerNodeView, module: ModuleNodeView };
-const edgeTypes = { flow: FlowEdge };
+const EDITABLE = 'input, textarea, select, [contenteditable]:not([contenteditable="false"]), .monaco-editor';
 
-/** A copy of the module's IR the layout may write positions into (the parsed one is cached and shared). */
-function layoutCopy(ir: IR): IR {
-  return {
-    ...ir,
-    resources: ir.resources.map((r) => ({ ...r, parentId: undefined, position: r.position && { ...r.position } })),
-    modules: ir.modules.map((m) => ({ ...m, position: m.position && { ...m.position } })),
-  };
-}
-
-function ModuleCanvas({ child, editable }: { child: LocalModule; editable: boolean }) {
-  const locale = useLocale((s) => s.locale);
-  const m = useMessages(canvasMessages);
-  const vm = useMessages(moduleViewMessages);
-  const am = useMessages(arrangeMessages);
-  const rf = useReactFlow();
-  const [arranging, setArranging] = useState(false);
-  /** where unpinned blocks were drawn last: pinning one (a drag) mustn't make the others jump */
-  const carried = useRef(new Map<string, CanvasPosition>());
-  const built = useMemo(() => {
-    const ir = layoutCopy(child.ir);
-    const irEdges = deriveStructure(ir, getDef);
-    for (const b of [...ir.resources, ...ir.modules]) {
-      const last = carried.current.get(b.id);
-      if (!b.position && last) b.position = { ...last };
-    }
-    irEdges.push(...moduleEdges(ir));
-    layoutWithModules(ir, isContainerType);
-    for (const b of [...ir.resources, ...ir.modules]) if (b.position) carried.current.set(b.id, { ...b.position });
-    const flow = buildFlow({ ir, edges: irEdges, warnings: [] }, null, locale);
-    return {
-      ir,
-      irEdges,
-      nodes: flow.nodes.map(
-        (n): Node =>
-          n.type === 'module'
-            ? { ...n, data: { ...n.data, nested: true }, connectable: false, deletable: false }
-            : { ...n, connectable: false, deletable: false },
-      ),
-      edges: flow.edges.map((e) => ({ ...e, markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: 'var(--edge-ref)' } })),
+/** Esc on the canvas: the selection goes first (the page clears it), then one level up. */
+function useEscapeGoesUp() {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || hasOpenLayer()) return;
+      if ((e.target as HTMLElement).closest?.(EDITABLE)) return;
+      if (useEditor.getState().selection || useLayout.getState().drawer || useSecurityUi.getState().panelOpen) return;
+      if (document.querySelector('[role="menu"], [data-bp-tooltip]')) return;
+      // the Esc is ours: a focused canvas node would otherwise take it too (React Flow unselects on it)
+      e.preventDefault();
+      e.stopPropagation();
+      moduleViewBack();
     };
-  }, [child, locale]);
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>(built.nodes);
-  useEffect(() => setNodes(built.nodes), [built.nodes, setNodes]);
-
-  /** a drag ends: the blocks moved keep their place (relative to their container, like the root canvas) */
-  const onNodeDragStop = useCallback(
-    (_e: unknown, node: Node, dragged: Node[]) => {
-      const ops: Op[] = (dragged.length > 0 ? dragged : [node]).flatMap((n) => {
-        const b = findNode(built.ir, n.id);
-        if (!b) return [];
-        const size = b.position?.w !== undefined ? { w: b.position.w, h: b.position.h } : {};
-        return [{ kind: 'move_node' as const, nodeId: n.id, position: { x: Math.round(n.position.x), y: Math.round(n.position.y), ...size } }];
-      });
-      useEditor.getState().applyModuleOps(child.dir, ops);
-    },
-    [built.ir, child.dir],
-  );
-
-  const arrange = async () => {
-    if (arranging) return;
-    setArranging(true);
-    try {
-      const ops = await computeTidyOps(withModuleNodes(built.ir), built.irEdges, isContainerType);
-      useEditor.getState().applyModuleOps(child.dir, ops);
-      setTimeout(() => void rf.fitView({ padding: 0.2, maxZoom: 1, duration: motionMs(400) }), motionMs(120) + 60);
-    } catch (err) {
-      showToast(messagesFor(arrangeMessages).failed((err as Error).message), 'error');
-    } finally {
-      setArranging(false);
-    }
-  };
-
-  return (
-    <ReactFlow
-      nodes={nodes}
-      edges={built.edges}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      onNodesChange={onNodesChange}
-      onNodeDragStop={onNodeDragStop}
-      nodesDraggable={editable}
-      nodesConnectable={false}
-      elementsSelectable={false}
-      selectNodesOnDrag={false}
-      snapToGrid
-      snapGrid={[8, 8]}
-      deleteKeyCode={null}
-      zoomOnDoubleClick={false}
-      fitView
-      fitViewOptions={{ padding: 0.2, maxZoom: 1 }}
-      minZoom={0.05}
-      maxZoom={2}
-      proOptions={{ hideAttribution: true }}
-      ariaLabelConfig={m.flowAria}
-      aria-label={vm.canvas}
-      className="!bg-canvas"
-    >
-      <Background variant={BackgroundVariant.Dots} gap={22} size={1.4} color="var(--canvas-grid)" />
-      {editable && built.ir.resources.length + built.ir.modules.length > 1 ? (
-        <Panel position="bottom-left">
-          <button
-            type="button"
-            onClick={() => void arrange()}
-            disabled={arranging}
-            className="inline-flex items-center gap-1.5 rounded-[9px] border bg-surface-1/90 px-2.5 py-1.5 text-[12px] font-semibold text-primary shadow-xs backdrop-blur-md transition-colors hover:bg-surface-2 disabled:opacity-60"
-          >
-            <WandSparkles className="h-3.5 w-3.5" /> {am.button}
-          </button>
-        </Panel>
-      ) : null}
-    </ReactFlow>
-  );
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, []);
 }
 
-function FitButton() {
-  const m = useMessages(canvasMessages);
-  const rf = useReactFlow();
-  return (
-    <button
-      type="button"
-      aria-label={m.fitView}
-      title={m.fitView}
-      onClick={() => void rf.fitView({ padding: 0.2, maxZoom: 1, duration: motionMs(300) })}
-      className="rounded-[7px] border bg-surface-2 p-1.5 text-muted transition-colors hover:border-primary/40 hover:text-primary"
-    >
-      <Maximize className="h-3.5 w-3.5" />
-    </button>
-  );
-}
-
-function Interface({ child }: { child: LocalModule }) {
+function InterfacePopover({ child, onClose, anchor }: { child: LocalModule; onClose(): void; anchor: React.RefObject<HTMLElement | null> }) {
   const m = useMessages(moduleViewMessages);
+  const ref = useRef<HTMLDivElement>(null);
+  useLayer(true, onClose, { kind: 'popup', node: ref });
+  useEffect(() => {
+    const onPointer = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!ref.current?.contains(target) && !anchor.current?.contains(target)) onClose();
+    };
+    window.addEventListener('pointerdown', onPointer, true);
+    return () => window.removeEventListener('pointerdown', onPointer, true);
+  }, [anchor, onClose]);
   return (
-    <details className="group pointer-events-auto w-[min(300px,calc(100vw-40px))] rounded-[12px] border bg-surface-1/95 shadow-lg backdrop-blur-md" open={typeof window === 'undefined' || window.innerWidth >= 700}>
-      <summary className="cursor-pointer select-none rounded-[12px] px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-faint hover:text-muted">
-        {m.interface}
-      </summary>
-      <div className="max-h-[50vh] space-y-3 overflow-y-auto border-t px-3 pb-3 pt-2">
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={m.interface}
+      className="bp-pop-in nowheel nodrag nopan absolute left-1/2 top-full z-20 mt-2 w-[min(320px,calc(100vw-32px))] -translate-x-1/2 rounded-[12px] border bg-surface-1 text-left shadow-xl"
+    >
+      <div className="max-h-[50vh] space-y-3 overflow-y-auto px-3 pb-3 pt-2.5">
         <section>
           <h3 className="mb-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.inputs(child.variables.length)}</h3>
           {child.variables.length === 0 ? <p className="text-[11.5px] text-faint">{m.noInputs}</p> : null}
@@ -196,12 +66,12 @@ function Interface({ child }: { child: LocalModule }) {
               <li key={v.name} className="rounded-[7px] bg-surface-2 px-2 py-1">
                 <span className="flex items-center gap-1.5">
                   <code className="min-w-0 flex-1 truncate font-mono text-[11.5px] font-semibold">{v.name}</code>
-                  <span className={cn('text-[10px] font-semibold uppercase tracking-wide', v.required ? 'text-warning' : 'text-faint')}>
+                  <span className={cn('text-[10px] font-semibold uppercase tracking-wide', v.required ? 'text-warning' : 'text-muted')}>
                     {v.required ? m.required : m.optional}
                   </span>
                 </span>
                 {v.type || v.default || v.description ? (
-                  <span className="block truncate font-mono text-[10px] text-faint" title={v.description}>
+                  <span className="block truncate font-mono text-[10px] text-muted" title={v.description}>
                     {[v.type, v.default ? `= ${exprPreview(v.default)}` : '', v.description ? `· ${v.description}` : ''].filter(Boolean).join(' ')}
                   </span>
                 ) : null}
@@ -212,22 +82,33 @@ function Interface({ child }: { child: LocalModule }) {
         <section>
           <h3 className="mb-1 text-[10.5px] font-bold uppercase tracking-wider text-faint">{m.outputs(child.outputs.length)}</h3>
           {child.outputs.length === 0 ? <p className="text-[11.5px] text-faint">{m.noOutputs}</p> : null}
-          <p className="font-mono text-[11px] leading-relaxed text-muted">{child.outputs.map((o) => o.name).join(', ')}</p>
+          <ul className="space-y-1">
+            {child.outputs.map((o) => (
+              <li key={o.name} className="rounded-[7px] bg-surface-2 px-2 py-1">
+                <code className="block truncate font-mono text-[11.5px] font-semibold">{o.name}</code>
+                {o.description ? <span className="block truncate text-[10px] text-muted">{o.description}</span> : null}
+              </li>
+            ))}
+          </ul>
         </section>
       </div>
-    </details>
+    </div>
   );
 }
+
+const PILL =
+  'inline-flex items-center gap-1 rounded-full border bg-surface-1/90 px-2.5 py-1 text-[11.5px] font-semibold shadow-xs backdrop-blur-md transition-colors';
 
 export default function ModuleView() {
   const m = useMessages(moduleViewMessages);
   const path = useModuleView((s) => s.path);
   const files = useEditor((s) => s.files);
-  const editable = useEditor((s) => !s.readOnly && !s.codeErrored);
-  const ref = useRef<HTMLElement>(null);
+  const readOnly = useEditor((s) => s.readOnly);
+  const [showInterface, setShowInterface] = useState(false);
+  const interfaceButton = useRef<HTMLButtonElement>(null);
+  const interfaceId = useId();
+  useEscapeGoesUp();
   const current = path[path.length - 1];
-  // Esc goes one level up (the layer stack gives it to the top-most layer)
-  useLayer(true, moduleViewBack, { kind: 'panel', node: ref });
   if (!current) return null;
   const child = readLocalModule(files, current.dir);
   const up = path.length > 1 ? path[path.length - 2].name : m.root;
@@ -239,83 +120,64 @@ export default function ModuleView() {
   };
 
   return (
-    <ReactFlowProvider key={current.dir}>
-      <section
-        ref={ref}
-        aria-label={m.label(current.name)}
-        className="bp-fade-in absolute inset-0 z-[15] flex flex-col bg-canvas"
-        data-testid="module-view"
-      >
-        <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b bg-surface-1/90 px-3 py-2 backdrop-blur-md">
-          <button
-            type="button"
-            onClick={moduleViewBack}
-            title={m.backTo(up)}
-            className="inline-flex items-center gap-1 rounded-[7px] border bg-surface-1 px-2 py-1 text-[12px] font-semibold text-foreground transition-colors hover:bg-surface-2"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" /> {m.back}
-          </button>
-          <nav aria-label={m.path} className="min-w-0">
-            <ol className="flex min-w-0 flex-wrap items-center gap-1 text-[12.5px]">
-              <li>
-                <button type="button" onClick={() => moduleViewTo(0)} className="rounded-[5px] px-1 font-medium text-primary hover:underline">
-                  {m.root}
-                </button>
-              </li>
-              {path.map((p, i) => (
-                <li key={`${i}:${p.dir}`} className="flex min-w-0 items-center gap-1">
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-faint" aria-hidden="true" />
-                  {i === path.length - 1 ? (
-                    <span aria-current="page" className="truncate font-semibold text-foreground">
-                      {p.name}
-                    </span>
-                  ) : (
-                    <button type="button" onClick={() => moduleViewTo(i + 1)} className="truncate rounded-[5px] px-1 font-medium text-primary hover:underline">
-                      {p.name}
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ol>
-          </nav>
-          <code className="hidden truncate font-mono text-[11px] text-faint sm:inline">{current.dir}</code>
-          <span className="flex-1" />
-          {child && !child.broken ? (
-            <span className="text-[11.5px] text-muted">{m.counts(child.ir.resources.length, child.ir.modules.length)}</span>
-          ) : null}
-          <span
-            className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-wide text-muted"
-            title={editable ? m.layoutOnlyHint : m.readOnlyHint}
-          >
-            {editable ? <Move className="h-3 w-3" /> : <Eye className="h-3 w-3" />} {editable ? m.layoutOnly : m.readOnly}
-          </span>
-          {child && !child.broken ? <FitButton /> : null}
-          {child ? (
-            <button
-              type="button"
-              onClick={openCode}
-              className="inline-flex items-center gap-1 rounded-[7px] border bg-surface-2 px-2 py-1 text-[11.5px] font-semibold text-muted transition-colors hover:border-primary/40 hover:text-primary"
-            >
-              <Code2 className="h-3.5 w-3.5" /> {m.openCode}
+    <section aria-label={m.label(current.name)} data-testid="module-view" className="relative flex max-w-full flex-wrap items-center justify-center gap-1">
+      <button type="button" onClick={moduleViewBack} title={m.backTo(up)} className={cn(PILL, 'text-foreground hover:border-border-strong')}>
+        <ArrowLeft className="h-3.5 w-3.5" /> {m.back}
+      </button>
+      <nav aria-label={m.path} className={cn(PILL, 'min-w-0 max-w-full font-medium')}>
+        <ol className="flex min-w-0 flex-wrap items-center gap-0.5">
+          <li>
+            <button type="button" onClick={() => moduleViewTo(0)} className="rounded-[5px] px-1 text-primary hover:underline">
+              {m.root}
             </button>
+          </li>
+          {path.map((p, i) => (
+            <li key={`${i}:${p.dir}`} className="flex min-w-0 items-center gap-0.5">
+              <ChevronRight className="h-3 w-3 shrink-0 text-faint" aria-hidden="true" />
+              {i === path.length - 1 ? (
+                <span aria-current="page" className="truncate font-semibold text-foreground" title={current.dir}>
+                  {p.name}
+                </span>
+              ) : (
+                <button type="button" onClick={() => moduleViewTo(i + 1)} className="truncate rounded-[5px] px-1 text-primary hover:underline">
+                  {p.name}
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+      </nav>
+      {child && !child.broken ? (
+        <span className="relative">
+          <button
+            ref={interfaceButton}
+            type="button"
+            aria-expanded={showInterface}
+            aria-haspopup="dialog"
+            aria-controls={showInterface ? interfaceId : undefined}
+            onClick={() => setShowInterface((v) => !v)}
+            className={cn(PILL, 'text-muted hover:border-border-strong hover:text-foreground', showInterface && 'border-border-strong')}
+          >
+            {m.interfaceCounts(child.variables.length, child.outputs.length)}
+            <ChevronDown className={cn('h-3 w-3 transition-transform', showInterface && 'rotate-180')} aria-hidden="true" />
+          </button>
+          {showInterface ? (
+            <span id={interfaceId}>
+              <InterfacePopover child={child} anchor={interfaceButton} onClose={() => setShowInterface(false)} />
+            </span>
           ) : null}
-        </header>
-        <div className="relative min-h-0 flex-1">
-          {child && !child.broken ? <ModuleCanvas child={child} editable={editable} /> : null}
-          {child && !child.broken ? (
-            <div className="pointer-events-none absolute left-3 top-3 z-10 flex flex-col gap-2">
-              <Interface child={child} />
-              {child.ir.resources.length === 0 && child.ir.modules.length === 0 ? (
-                <p className="pointer-events-auto rounded-[10px] border bg-surface-1/90 px-3 py-2 text-[12px] text-muted">{m.empty}</p>
-              ) : null}
-            </div>
-          ) : (
-            <p role="status" className="m-6 rounded-[12px] border border-dashed bg-surface-1/80 px-4 py-6 text-center text-[13px] text-muted">
-              {child ? m.broken : m.gone}
-            </p>
-          )}
-        </div>
-      </section>
-    </ReactFlowProvider>
+        </span>
+      ) : null}
+      {child ? (
+        <button type="button" onClick={openCode} className={cn(PILL, 'text-muted hover:border-primary/40 hover:text-primary')}>
+          <Code2 className="h-3.5 w-3.5" /> {m.openCode}
+        </button>
+      ) : null}
+      {readOnly ? (
+        <span className={cn(PILL, 'font-bold uppercase tracking-wide text-muted')} title={m.readOnlyHint}>
+          <Eye className="h-3 w-3" /> {m.readOnly}
+        </span>
+      ) : null}
+    </section>
   );
 }

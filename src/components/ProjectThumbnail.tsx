@@ -12,6 +12,7 @@ import { CATEGORY_COLORS, CategoryGlyph } from '@/resources/icons';
 import type { Category } from '@/resources/types';
 import { getDef, isContainerType } from '@/resources/registry';
 import { modulesMessages } from '@/features/modules/modules.messages';
+import { DATA_TILE } from '@/features/data-sources/tile';
 import { shellMessages } from './messages';
 
 export interface AbsRect {
@@ -148,6 +149,10 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
           <stop offset="0" stopColor="#94a3b8" />
           <stop offset="1" stopColor="#475569" />
         </linearGradient>
+        <linearGradient id={`${uid}-tile-data`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={DATA_TILE.from} />
+          <stop offset="1" stopColor={DATA_TILE.to} />
+        </linearGradient>
       </defs>
       {data.rects
         .filter((r) => r.isContainer)
@@ -206,6 +211,8 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
         .map((r) => {
           const category = getDef(r.node.type)?.category ?? 'compute';
           const isModule = r.node.type === 'module';
+          // data sources (withModuleNodes gives them type `data`): a dashed card on a cyan tile
+          const isData = r.node.type === 'data';
           const tile = 42;
           const tx = r.x + 14;
           const ty = r.y + (r.h - tile) / 2;
@@ -218,19 +225,34 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
                 height={r.h}
                 rx={13}
                 fill="var(--node-bg, #fff)"
-                stroke="var(--node-border, #d5deea)"
+                stroke={isData ? DATA_TILE.border : 'var(--node-border, #d5deea)'}
                 strokeWidth={2}
+                strokeDasharray={isData ? '7 5' : undefined}
               />
-              <rect x={tx} y={ty} width={tile} height={tile} rx={11} fill={`url(#${isModule ? `${uid}-tile-module` : gradId(category)})`} />
-              {isModule ? null : (
+              <rect
+                x={tx}
+                y={ty}
+                width={tile}
+                height={tile}
+                rx={11}
+                fill={`url(#${isModule ? `${uid}-tile-module` : isData ? `${uid}-tile-data` : gradId(category)})`}
+              />
+              {isModule || isData ? null : (
                 <g transform={`translate(${tx + 9} ${ty + 9}) scale(1)`} color="#fff">
                   <CategoryGlyph category={category} type={r.node.type} strokeWidth={2.2} />
                 </g>
               )}
               {detailed ? (
                 <>
-                  <text x={tx + tile + 12} y={r.y + 27} fontSize={10.5} fontWeight={700} letterSpacing={0.6} fill={isModule ? '#64748b' : CATEGORY_COLORS[category].solid}>
-                    {isModule ? moduleLabel : resourceShortName(r.node.type).toUpperCase()}
+                  <text
+                    x={tx + tile + 12}
+                    y={r.y + 27}
+                    fontSize={10.5}
+                    fontWeight={700}
+                    letterSpacing={0.6}
+                    fill={isModule ? '#64748b' : isData ? DATA_TILE.text : CATEGORY_COLORS[category].solid}
+                  >
+                    {isModule ? moduleLabel : isData ? 'DATA' : resourceShortName(r.node.type).toUpperCase()}
                   </text>
                   <text x={tx + tile + 12} y={r.y + 46} fontSize={15} fontWeight={600} fill="currentColor">
                     {r.node.name.length > 16 ? `${r.node.name.slice(0, 15)}…` : r.node.name}

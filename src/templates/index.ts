@@ -22,6 +22,7 @@ export type TemplateSlug =
   | 'aws-container-stack'
   | 'aws-serverless-api'
   | 'aws-secure-3tier'
+  | 'aws-subnets-per-az'
   | 'azure-web-app'
   | 'azure-static-site'
   | 'gcp-web-app'
@@ -29,7 +30,7 @@ export type TemplateSlug =
   | 'gcp-static-site'
   | 'multi-cloud-dr';
 
-export type TemplateTag = 'Web Apps' | 'Static Sites' | 'Containers' | 'Serverless' | 'Security' | 'Data';
+export type TemplateTag = 'Web Apps' | 'Static Sites' | 'Containers' | 'Serverless' | 'Security' | 'Networking' | 'Data';
 
 export interface TemplateDef {
   slug: TemplateSlug;
@@ -891,6 +892,117 @@ function buildAwsSecure3Tier(appName: string): Record<string, string> {
   return emitProject(ir);
 }
 
+// --- AWS · Subnets per AZ -------------------------------------------------------
+
+/**
+ * A VPC laid out with `count`: one public and one private subnet in each
+ * availability zone of `var.azs`, their ranges carved from the VPC's with
+ * `cidrsubnet`, one route table per tier and an association per subnet. Add
+ * a zone to the list and every tier grows by one; the canvas draws each
+ * repeated block once, as a stack.
+ */
+function buildAwsSubnetsPerAz(appName: string): Record<string, string> {
+  const { slug } = namer(appName);
+  const ir: IR = emptyIR();
+
+  ir.variables.push(
+    variable('app_name', { description: 'Application name', type: 'string', default: lit(slug) }),
+    variable('region', { description: 'AWS region', type: 'string', default: lit('us-east-1') }),
+    variable('azs', {
+      description: 'Availability zones of the region: one public and one private subnet in each',
+      type: 'list(string)',
+      default: list([lit('us-east-1a'), lit('us-east-1b'), lit('us-east-1c')]),
+    }),
+  );
+  ir.providers.push(providerBlock('aws', { region: ref('var.region') }));
+  ir.extras.push(versionsBlock(['aws']));
+
+  const perAz = raw('length(var.azs)');
+  const tier = (name: string, netnum: string, publicIps: boolean, y: number) =>
+    res(
+      'aws_subnet',
+      name,
+      {
+        count: perAz,
+        vpc_id: ref('aws_vpc.main.id'),
+        cidr_block: raw(`cidrsubnet(aws_vpc.main.cidr_block, 8, ${netnum})`),
+        availability_zone: raw('var.azs[count.index]'),
+        ...(publicIps ? { map_public_ip_on_launch: lit(true) } : {}),
+        tags: obj({ Name: raw(`"\${var.app_name}-${name}-\${var.azs[count.index]}"`) }),
+      },
+      { x: 32, y, w: 420, h: 196 },
+    );
+  const associations = (name: string, x: number) =>
+    res(
+      'aws_route_table_association',
+      name,
+      {
+        count: perAz,
+        subnet_id: ref(`aws_subnet.${name}[count.index].id`),
+        route_table_id: ref(`aws_route_table.${name}.id`),
+      },
+      { x, y: 650 },
+    );
+
+  ir.resources.push(
+    res(
+      'aws_vpc',
+      'main',
+      {
+        cidr_block: lit('10.0.0.0/16'),
+        enable_dns_support: lit(true),
+        enable_dns_hostnames: lit(true),
+        tags: obj({ Name: ref('var.app_name') }),
+      },
+      { x: 40, y: 60, w: 760, h: 540 },
+      ['# Network: a public and a private subnet in each availability zone of var.azs'],
+    ),
+    tier('public', 'count.index', true, 64),
+    tier('private', 'count.index + 10', false, 308),
+    res('aws_internet_gateway', 'igw', { vpc_id: ref('aws_vpc.main.id'), tags: obj({ Name: ref('var.app_name') }) }, { x: 500, y: 64 }, [
+      '# Internet access for the public subnets',
+    ]),
+    res(
+      'aws_route_table',
+      'public',
+      {
+        vpc_id: ref('aws_vpc.main.id'),
+        route: block({ cidr_block: lit('0.0.0.0/0'), gateway_id: ref('aws_internet_gateway.igw.id') }),
+      },
+      { x: 500, y: 176 },
+    ),
+    res('aws_eip', 'nat', { domain: lit('vpc') }, { x: 860, y: 140 }, [
+      '# Outbound internet for the private subnets: one NAT gateway, in the first public subnet',
+      '# (one per zone keeps them online through a zone outage, at a NAT gateway per zone)',
+    ]),
+    res(
+      'aws_nat_gateway',
+      'nat',
+      { allocation_id: ref('aws_eip.nat.id'), subnet_id: ref('aws_subnet.public[0].id'), connectivity_type: lit('public') },
+      { x: 28, y: 64 },
+    ),
+    res(
+      'aws_route_table',
+      'private',
+      {
+        vpc_id: ref('aws_vpc.main.id'),
+        route: block({ cidr_block: lit('0.0.0.0/0'), nat_gateway_id: ref('aws_nat_gateway.nat.id') }),
+      },
+      { x: 500, y: 352 },
+    ),
+    associations('public', 40),
+    associations('private', 300),
+  );
+
+  ir.outputs.push(
+    output('vpc_id', ref('aws_vpc.main.id')),
+    output('public_subnet_ids', ref('aws_subnet.public[*].id'), 'One public subnet per availability zone'),
+    output('private_subnet_ids', ref('aws_subnet.private[*].id'), 'One private subnet per availability zone'),
+  );
+
+  return emitProject(ir);
+}
+
 // --- Azure · Web App ----------------------------------------------------------
 
 function buildAzureWebApp(appName: string): Record<string, string> {
@@ -1481,6 +1593,16 @@ export const TEMPLATES: TemplateDef[] = [
     tags: ['Web Apps', 'Security'],
     resourceCount: 27,
     build: buildAwsSecure3Tier,
+  },
+  {
+    slug: 'aws-subnets-per-az',
+    name: 'Subnets per AZ on AWS',
+    description:
+      'A VPC with a public and a private subnet in each availability zone, written with count and cidrsubnet: an internet gateway, a NAT gateway and a route table per tier.',
+    providers: ['aws'],
+    tags: ['Networking'],
+    resourceCount: 10,
+    build: buildAwsSubnetsPerAz,
   },
   {
     slug: 'azure-web-app',

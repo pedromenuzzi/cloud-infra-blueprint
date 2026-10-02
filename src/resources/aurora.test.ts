@@ -1,15 +1,18 @@
 /**
- * The Aurora cluster (`aws_rds_cluster`) in the catalog — built from its own
- * HCL, no template: drawn inside its DB subnet group like an RDS instance,
- * the canvas's "create a DB subnet group" fix (and its security-group tip),
- * its cost by use, its name rule and its Portuguese text.
+ * The Aurora cluster (`aws_rds_cluster`) and its instances
+ * (`aws_rds_cluster_instance`) in the catalog — built from their own HCL, no
+ * template: the cluster drawn inside its DB subnet group like an RDS instance,
+ * the instances inside their cluster, the canvas's "create a DB subnet group"
+ * fix (and its security-group tip), drop reasons, cost, name rules and their
+ * Portuguese text.
  */
 import { describe, expect, it } from 'vitest';
 import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
-import { estimateResource } from '@/cost/estimate';
+import { estimateProject, estimateResource } from '@/cost/estimate';
+import { PRICE_BOOK } from '@/cost/prices/prices';
 import { TEST_BOOK } from '@/cost/testing';
 import { fixOps } from '@/features/editor/dropFixes';
-import { dropVerdict } from '@/features/editor/dropRules';
+import { dropVerdict, refusalReason } from '@/features/editor/dropRules';
 import { buildNewNode } from '@/features/editor/newNode';
 import { parseProject } from '@/hcl/parser';
 import { nameProblem } from '@/ir/checks/names';
@@ -178,5 +181,167 @@ resource "aws_rds_cluster" "serverless" {
       'Cobrado pelo uso: US$ 0,10 por GB-mês de armazenamento e US$ 0,20 por milhão de requisições de E/S (Aurora Standard).',
     );
     expect(serverless.assumptions).toContain('A capacidade sem servidor (ACUs) é cobrada por hora de uso, à parte');
+  });
+});
+
+const CLUSTER = `${NETWORK}
+resource "aws_db_subnet_group" "db" {
+  subnet_ids = [aws_subnet.private_a.id, aws_subnet.private_b.id]
+}
+
+resource "aws_rds_cluster" "orders" {
+  engine               = "aurora-postgresql"
+  engine_version       = "16.4"
+  db_subnet_group_name = aws_db_subnet_group.db.name
+}
+`;
+
+describe('aws_rds_cluster_instance (Aurora instance)', () => {
+  it('is in the catalog, in both languages, with a glyph and a name rule', () => {
+    const def = getDef('aws_rds_cluster_instance')!;
+    expect(def).toMatchObject({ provider: 'aws', category: 'database', nameArg: 'identifier' });
+    expect(resourceName('aws_rds_cluster_instance', 'en')).toBe('Aurora Instance');
+    expect(resourceName('aws_rds_cluster_instance', 'pt-BR')).toBe('Instância Aurora');
+    expect(fieldHelp('aws_rds_cluster_instance', 'cluster_identifier', 'pt-BR').label).toBe('Cluster Aurora');
+    expect(nameProblem(def, 'orders-1')).toBeUndefined();
+    expect(nameProblem(def, 'Orders_1')).toBeDefined();
+    // the cluster holds its instances
+    expect(isContainerType('aws_rds_cluster')).toBe(true);
+    expect(isContainerType('aws_rds_cluster_instance')).toBe(false);
+  });
+
+  it('is drawn inside the cluster cluster_identifier names, inside its DB subnet group, inside the VPC', () => {
+    const ir = project(`${CLUSTER}
+resource "aws_rds_cluster_instance" "orders" {
+  count              = 2
+  cluster_identifier = aws_rds_cluster.orders.id
+  instance_class     = "db.r6g.large"
+  engine             = aws_rds_cluster.orders.engine
+}
+`);
+    expect(node(ir, 'aws_rds_cluster_instance.orders').parentId).toBe('aws_rds_cluster.orders');
+    expect(node(ir, 'aws_rds_cluster.orders').parentId).toBe('aws_db_subnet_group.db');
+    expect(node(ir, 'aws_db_subnet_group.db').parentId).toBe('aws_vpc.main');
+  });
+
+  it('dropped in a cluster: nests, names it in cluster_identifier and takes its engine and version by reference', () => {
+    const ir = project(CLUSTER);
+    const def = getDef('aws_rds_cluster_instance')!;
+    const cluster = node(ir, 'aws_rds_cluster.orders');
+    const { node: n } = buildNewNode(ir, def, { x: 24, y: 56 }, cluster, { name: 'orders_writer' });
+    expect(n.args).toMatchObject({
+      identifier: lit('orders-writer'),
+      cluster_identifier: { kind: 'ref', path: 'aws_rds_cluster.orders.id' },
+      engine: { kind: 'ref', path: 'aws_rds_cluster.orders.engine' },
+      engine_version: { kind: 'ref', path: 'aws_rds_cluster.orders.engine_version' },
+      instance_class: lit('db.t4g.medium'),
+    });
+    const next = apply(ir, [{ kind: 'add_resource', node: n }]);
+    expect(node(next, 'aws_rds_cluster_instance.orders_writer').parentId).toBe('aws_rds_cluster.orders');
+    // nesting is the link: no edge drawn to its own cluster
+    expect(deriveStructure(next, getDef).filter((e) => e.source === n.id)).toEqual([]);
+  });
+
+  it('dropped elsewhere: its cluster is where it goes, in both languages', () => {
+    const ir = project(CLUSTER);
+    const reason = (over: string, locale: 'en' | 'pt-BR' = 'en') => refusalReason('aws_rds_cluster_instance', node(ir, over), locale);
+    expect(reason('aws_subnet.private_a')).toBe('An Aurora instance goes inside an Aurora cluster, not a subnet');
+    expect(reason('aws_db_subnet_group.db')).toBe(
+      'An Aurora instance goes inside an Aurora cluster, not directly in the DB subnet group. Drop it on an Aurora cluster',
+    );
+    expect(reason('aws_vpc.main')).toBe('An Aurora instance goes inside an Aurora cluster, not directly in the VPC. Drop it on an Aurora cluster');
+    expect(reason('aws_subnet.private_a', 'pt-BR')).toBe('Uma instância Aurora fica dentro de um cluster Aurora, não na sub-rede');
+    expect(reason('aws_db_subnet_group.db', 'pt-BR')).toBe(
+      'Uma instância Aurora fica dentro de um cluster Aurora, não direto no grupo de sub-redes do banco. Solte-a sobre um cluster Aurora',
+    );
+
+    // the drop verdict over the subnet group: refused (no fix: only a cluster takes it)
+    const rect = computeAbsoluteRects(ir).get('aws_db_subnet_group.db')!;
+    const verdict = dropVerdict(ir, computeAbsoluteRects(ir), { type: 'aws_rds_cluster_instance' }, { x: rect.x + 8, y: rect.y + rect.h - 8 }, 'en');
+    expect(verdict).toMatchObject({ kind: 'refuse', fix: undefined });
+    // …and over the cluster: nest
+    const c = computeAbsoluteRects(ir).get('aws_rds_cluster.orders')!;
+    const inside = dropVerdict(ir, computeAbsoluteRects(ir), { type: 'aws_rds_cluster_instance' }, { x: c.x + c.w / 2, y: c.y + c.h / 2 }, 'en');
+    expect(inside).toMatchObject({ kind: 'nest', parent: { id: 'aws_rds_cluster.orders' } });
+  });
+
+  it('is priced per instance-hour: a cluster with 2 instances has a real monthly estimate', () => {
+    const ir = project(`provider "aws" {
+  region = "us-east-1"
+}
+${CLUSTER}
+resource "aws_rds_cluster_instance" "orders" {
+  count              = 2
+  cluster_identifier = aws_rds_cluster.orders.id
+  instance_class     = "db.r6g.large"
+  engine             = aws_rds_cluster.orders.engine
+}
+`);
+    const one = estimateResource(node(ir, 'aws_rds_cluster_instance.orders'), ir, TEST_BOOK, 'en');
+    expect(one).toMatchObject({ kind: 'fixed' });
+    // 2 × 730 h × $0.26
+    expect(one.monthly).toBeCloseTo(379.6, 5);
+    expect(one.assumptions).toEqual(
+      expect.arrayContaining(['Aurora PostgreSQL, on an Aurora Standard cluster', 'Storage and I/O are billed on the cluster (aws_rds_cluster)']),
+    );
+    const total = estimateProject(ir, TEST_BOOK, 'en');
+    expect(total.total).toBeCloseTo(379.6, 5);
+    // and with the shipped table (us-east-1 list prices)
+    expect(estimateResource(node(ir, 'aws_rds_cluster_instance.orders'), ir, PRICE_BOOK, 'en').monthly).toBeGreaterThan(300);
+    const pt = estimateResource(node(ir, 'aws_rds_cluster_instance.orders'), ir, TEST_BOOK, 'pt-BR');
+    expect(pt.assumptions).toContain('Aurora PostgreSQL, em um cluster Aurora Standard');
+  });
+
+  it('on an I/O-Optimized cluster at that rate; Serverless v2 by ACU-hour; an unknown class unpriced', () => {
+    const ir = project(`resource "aws_rds_cluster" "fast" {
+  engine       = "aurora-mysql"
+  storage_type = "aurora-iopt1"
+}
+
+resource "aws_rds_cluster" "elastic" {
+  engine = "aurora-postgresql"
+
+  serverlessv2_scaling_configuration {
+    min_capacity = 0.5
+    max_capacity = 4
+  }
+}
+
+resource "aws_rds_cluster_instance" "fast" {
+  cluster_identifier = aws_rds_cluster.fast.id
+  instance_class     = "db.t4g.medium"
+  engine             = "aurora-mysql"
+}
+
+resource "aws_rds_cluster_instance" "elastic" {
+  cluster_identifier = aws_rds_cluster.elastic.id
+  instance_class     = "db.serverless"
+  engine             = aws_rds_cluster.elastic.engine
+}
+
+resource "aws_rds_cluster_instance" "odd" {
+  cluster_identifier = "somewhere-else"
+  instance_class     = "db.x9.huge"
+  engine             = "aurora-mysql"
+}
+`);
+    const fast = estimateResource(node(ir, 'aws_rds_cluster_instance.fast'), ir, TEST_BOOK, 'en');
+    expect(fast.monthly).toBeCloseTo(730 * 0.095, 5);
+    expect(fast.assumptions).toContain('Aurora MySQL, on an Aurora I/O-Optimized cluster');
+    const elastic = estimateResource(node(ir, 'aws_rds_cluster_instance.elastic'), ir, TEST_BOOK, 'en');
+    expect(elastic).toMatchObject({ kind: 'usage', note: 'Billed by use: $0.12 per ACU-hour (Aurora Serverless v2).' });
+    expect(elastic.assumptions).toContain("Scales between 0.5 and 4 ACUs (the cluster's serverlessv2_scaling_configuration)");
+    const elasticPt = estimateResource(node(ir, 'aws_rds_cluster_instance.elastic'), ir, TEST_BOOK, 'pt-BR');
+    expect(elasticPt.assumptions).toContain('Escala entre 0,5 e 4 ACUs (serverlessv2_scaling_configuration do cluster)');
+    const odd = estimateResource(node(ir, 'aws_rds_cluster_instance.odd'), ir, TEST_BOOK, 'en');
+    expect(odd.kind).toBe('unknown');
+  });
+
+  it('every instance class the catalog offers has a price in the shipped table', () => {
+    const field = getDef('aws_rds_cluster_instance')!.fields.find((f) => f.name === 'instance_class')!;
+    for (const cls of field.options!.filter((o) => o !== 'db.serverless')) {
+      expect(PRICE_BOOK.aws.rds.aurora[cls], cls).toBeDefined();
+      expect(PRICE_BOOK.aws.rds.aurora[cls].ioOptimized, cls).toBeGreaterThan(PRICE_BOOK.aws.rds.aurora[cls].standard);
+    }
   });
 });

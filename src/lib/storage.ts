@@ -11,6 +11,7 @@
  * - storage the browser blocks outright falls back to memory (`safeStorage`)
  *   and says so, instead of crashing.
  */
+import { safeRootPath } from './projectPath';
 import { messagesFor } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
 import { getTemplate } from '@/templates';
@@ -28,6 +29,8 @@ export interface Project {
   demo?: boolean;
   /** where a copy came from, for dedupe: `share:<hash>`, `tutorial:<slug>:<step>` */
   origin?: string;
+  /** the folder its root module was imported from (`envs/prod`), for the Terraform zip */
+  rootPath?: string;
   /** bumped on every write (always set on stored projects) */
   rev?: number;
   createdAt: string;
@@ -254,6 +257,7 @@ function normalizeProject(value: unknown): Normalized {
     templateSlug: str(value.templateSlug),
     demo: value.demo === true ? true : undefined,
     origin: str(value.origin),
+    rootPath: safeRootPath(value.rootPath),
     rev: typeof value.rev === 'number' && Number.isInteger(value.rev) && value.rev >= 0 ? value.rev : 0,
     createdAt,
     updatedAt: str(value.updatedAt) ?? createdAt,
@@ -455,6 +459,7 @@ export function createProject(input: {
   templateSlug?: string;
   demo?: boolean;
   origin?: string;
+  rootPath?: string;
 }): Project {
   const now = new Date().toISOString();
   const project: Project = {
@@ -466,6 +471,7 @@ export function createProject(input: {
     templateSlug: input.templateSlug,
     demo: input.demo || undefined,
     origin: input.origin,
+    rootPath: safeRootPath(input.rootPath),
     rev: 1,
     createdAt: now,
     updatedAt: now,
@@ -529,6 +535,7 @@ export function duplicateProject(id: string): Project | undefined {
     files: { ...source.files },
     description: source.description,
     templateSlug: source.templateSlug,
+    rootPath: source.rootPath,
   });
 }
 
@@ -622,6 +629,7 @@ export function putProjects(input: { add: Project[]; replace: Project[] }): PutP
       files: incoming.files,
       providers: detectProviders(incoming.files),
       templateSlug: incoming.templateSlug,
+      rootPath: incoming.rootPath,
       createdAt: incoming.createdAt,
       updatedAt: incoming.updatedAt,
       rev: (current.rev ?? 0) + 1,

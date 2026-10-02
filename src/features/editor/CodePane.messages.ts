@@ -16,8 +16,10 @@ export const codeMessages = defineMessages(
     loading: 'Loading code editor…',
     /* completion and hover */
     resourceSnippet: 'res: resource block',
+    dataSnippet: 'data: data block',
     required: ' · required',
     hoverMeta: (category: Category, provider: string) => `Category: ${category} · Provider: ${provider}`,
+    moduleOutput: (dir: string) => `output of ${dir}`,
   },
   {
     terraformCode: 'Código Terraform',
@@ -25,8 +27,10 @@ export const codeMessages = defineMessages(
     position: (line: number, col: number) => `Ln ${line}, Col ${col}`,
     loading: 'Carregando o editor de código…',
     resourceSnippet: 'res: bloco resource',
+    dataSnippet: 'data: bloco data',
     required: ' · obrigatório',
     hoverMeta: (category: Category, provider: string) =>
       `Categoria: ${categoryLabel(category, 'pt-BR')} · Provider: ${provider}`,
+    moduleOutput: (dir: string) => `output de ${dir}`,
   },
 );

@@ -1,3 +1,4 @@
+import { dataRef, isDataId } from '@/ir/dataSources';
 import { refTargetAddress } from '@/ir/expr';
 import { findNode, hasNode } from '@/ir/modules';
 import type { Op } from '@/ir/ops';
@@ -28,7 +29,8 @@ export function removeReferencesOps(ir: IR, refs: ReferenceToRemove[]): Op[] {
     const node = findNode(ir, source);
     const expr = node?.args[field];
     if (!node || !expr) continue;
-    const next = withoutRefs(expr, (path) => targets.has(refTargetAddress(path) ?? ''));
+    // a resource (`aws_vpc.main.id`) or a data source (`data.aws_ami.ubuntu.id`)
+    const next = withoutRefs(expr, (path) => targets.has(refTargetAddress(path) ?? dataRef(path)?.address ?? ''));
     if (next === undefined) continue;
     ops.push(next === null ? { kind: 'unset_arg', nodeId: source, field } : { kind: 'set_arg', nodeId: source, field, value: next });
   }
@@ -112,7 +114,8 @@ export function deleteResourcesOps(
   ops.push(
     ...removeReferencesOps(
       ir,
-      edges.filter((e) => removed.has(e.target) && !removed.has(e.source)),
+      // what read a deleted data source keeps its references (the user was asked, they show as warnings)
+      edges.filter((e) => removed.has(e.target) && !removed.has(e.source) && !isDataId(e.target)),
     ),
   );
   return { ops, removed: [...removed] };

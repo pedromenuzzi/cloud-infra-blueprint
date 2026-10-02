@@ -11,14 +11,18 @@ import { applyUpdate, usePwa } from './pwa';
 const OFFLINE_TOLD_KEY = 'cb-offline-ready-told';
 
 /**
- * "Update available — Reload": shown when a new version finished installing
- * in the background (instead of the old tab hitting missing chunks). Also
+ * "Update available, Reload": shown when a new version finished installing
+ * in the background (instead of the old tab hitting missing chunks), on the
+ * screens that hold work (the editor, a lesson, the viewer) or while a quiet
+ * screen is busy (an open dialog, typed text); see AutoUpdate.tsx. Also
  * says once, on the first visit, that the app now works offline. Portaled and
  * `data-bp-live`, so an open dialog doesn't make it inert.
  */
 export function UpdatePrompt() {
   const updateReady = usePwa((s) => s.updateReady);
   const offlineReady = usePwa((s) => s.offlineReady);
+  // applied without asking (a screen with nothing in progress, AutoUpdate.tsx): the reload is on its way
+  const autoApplying = usePwa((s) => s.autoApplying);
   const [dismissed, setDismissed] = useState(false);
   const [reloading, setReloading] = useState(false);
   const told = useRef(false);
@@ -31,7 +35,7 @@ export function UpdatePrompt() {
     showToast(messagesFor(dataMessages).nowOffline, 'success');
   }, [offlineReady]);
 
-  if (!updateReady || dismissed) return null;
+  if (!updateReady || dismissed || autoApplying) return null;
   return createPortal(
     <div
       data-bp-live=""

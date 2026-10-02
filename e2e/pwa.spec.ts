@@ -1,7 +1,7 @@
 /**
  * The offline app. The only spec that lets the service worker run
- * (playwright.config.ts blocks it everywhere else). Serial: the update test
- * changes dist/sw.js on disk for a moment, like a new deploy would.
+ * (playwright.config.ts blocks it everywhere else). Serial: the update tests
+ * change dist/sw.js on disk for a moment, like a new deploy would.
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -59,12 +59,10 @@ test('after one visit, the dashboard and the editor work offline', async ({ page
   await context.setOffline(false);
 });
 
-test('a new deploy shows "Update available — Reload" instead of failing later', async ({ page }) => {
-  await page.goto('/dashboard');
-  await controlled(page);
+/** a new build: index.html's precache revision changed (same length: the preview server's headers stay valid) */
+async function newDeploy(page: Page, run: () => Promise<void>) {
   const original = await readFile(SW_FILE, 'utf8');
   try {
-    // a new build: index.html's precache revision changed (same length: the preview server's headers stay valid)
     const changed = original.replace(/(url:"index\.html",revision:")(.)/, (_, head: string, c: string) => head + (c === '0' ? '1' : '0'));
     expect(changed).not.toBe(original);
     await writeFile(SW_FILE, changed);
@@ -72,25 +70,86 @@ test('a new deploy shows "Update available — Reload" instead of failing later'
       const reg = await navigator.serviceWorker.getRegistration();
       await reg?.update();
     });
-    const prompt = page.getByRole('status').filter({ hasText: 'Update available' });
-    await expect(prompt).toBeVisible({ timeout: 20_000 });
-
-    let reloads = 0;
-    page.on('load', () => (reloads += 1));
-    await prompt.getByRole('button', { name: 'Reload' }).click();
-    await expect.poll(() => reloads).toBe(1);
-    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
-    await expect(page.getByText('Update available')).toBeHidden();
-    // the new worker is the one in control now, and nothing is left waiting
-    expect(
-      await page.evaluate(async () => {
-        const reg = await navigator.serviceWorker.getRegistration();
-        return { waiting: reg?.waiting ?? null, active: reg?.active?.state };
-      }),
-    ).toEqual({ waiting: null, active: 'activated' });
+    await run();
   } finally {
     await writeFile(SW_FILE, original);
   }
+}
+
+/** the new worker is the one in control now, and nothing is left waiting */
+async function updated(page: Page) {
+  expect(
+    await page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      return { waiting: reg?.waiting ?? null, active: reg?.active?.state };
+    }),
+  ).toEqual({ waiting: null, active: 'activated' });
+}
+
+function countLoads(page: Page) {
+  const seen = { n: 0 };
+  page.on('load', () => (seen.n += 1));
+  return seen;
+}
+
+test('on the dashboard, a new deploy is applied on its own: one reload, no prompt', async ({ page }) => {
+  await page.goto('/dashboard');
+  await controlled(page);
+  const loads = countLoads(page);
+  await newDeploy(page, async () => {
+    await expect.poll(() => loads.n, { timeout: 20_000 }).toBe(1);
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
+    await expect(page.getByText('Update available')).toBeHidden();
+    await updated(page);
+    // once: the new version doesn't reload again
+    await page.waitForTimeout(2500);
+    expect(loads.n).toBe(1);
+  });
+});
+
+test('on the dashboard with a dialog open or a search typed, it waits, then applies once nothing is in progress', async ({ page }) => {
+  await page.goto('/dashboard');
+  await controlled(page);
+  const search = page.getByRole('searchbox', { name: 'Search projects' });
+  await search.fill('prod');
+  await page.getByRole('button', { name: /^New Project/ }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Start from a template' });
+  await expect(dialog).toBeVisible();
+  const loads = countLoads(page);
+  await newDeploy(page, async () => {
+    // busy: the prompt asks instead
+    const prompt = page.getByRole('status').filter({ hasText: 'Update available' });
+    await expect(prompt).toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(2500);
+    expect(loads.n).toBe(0);
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    // the typed search still holds it
+    await page.waitForTimeout(2500);
+    expect(loads.n).toBe(0);
+    await search.fill('');
+    await search.blur();
+    await expect.poll(() => loads.n, { timeout: 15_000 }).toBe(1);
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1 })).toBeVisible();
+    await updated(page);
+  });
+});
+
+test('in the editor, a new deploy shows "Update available, Reload" and waits for it', async ({ page }) => {
+  await openSeedProject(page, { monaco: false });
+  await controlled(page);
+  const loads = countLoads(page);
+  await newDeploy(page, async () => {
+    const prompt = page.getByRole('status').filter({ hasText: 'Update available' });
+    await expect(prompt).toBeVisible({ timeout: 20_000 });
+    await page.waitForTimeout(2500);
+    expect(loads.n).toBe(0);
+    await prompt.getByRole('button', { name: 'Reload' }).click();
+    await expect.poll(() => loads.n).toBe(1);
+    await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
+    await expect(page.getByText('Update available')).toBeHidden();
+    await updated(page);
+  });
 });
 
 test('the manifest makes the app installable under any base path', async ({ page }) => {

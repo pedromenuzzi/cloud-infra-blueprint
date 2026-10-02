@@ -94,6 +94,7 @@ function renameModule(next: IR, i: number, newName: string, acc: Acc) {
   next.variables = next.variables.map(retarget);
   next.outputs = next.outputs.map(retarget);
   next.providers = next.providers.map(retarget);
+  next.data = next.data.map(retarget);
   next.extras = next.extras.map((b) => {
     // `moved` / `removed` blocks keep the addresses they were written with (a chain
     // `a → b`, `b → c` is how Terraform follows successive renames)

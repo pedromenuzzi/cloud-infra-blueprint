@@ -38,6 +38,23 @@ const RDS_ENGINES: Record<string, string> = { postgres: 'PostgreSQL', mysql: 'My
 /** class/engine pairs AWS doesn't sell in us-east-1 (checked 2026-09-29: none) */
 const RDS_NOT_SOLD = new Set<string>();
 
+/**
+ * Aurora instance classes (aws_rds_cluster_instance). Their usage types are
+ * `InstanceUsage:<class>` on an Aurora Standard cluster and
+ * `InstanceUsageIOOptimized:<class>` on an I/O-Optimized one (the class is
+ * abbreviated there, `db.r6g.xl`, so products match on `instanceType`).
+ * Checked against the live offer file on 2026-10-01: one price each, the same
+ * for Aurora PostgreSQL and Aurora MySQL.
+ */
+export const AURORA_CLASSES = [
+  'db.t3.medium', 'db.t3.large', 'db.t4g.medium', 'db.t4g.large',
+  'db.r5.large', 'db.r6g.large', 'db.r6g.xlarge', 'db.r6i.large',
+  'db.r7g.large', 'db.r7g.xlarge', 'db.r8g.large',
+];
+
+/** Aurora's Price List engines (`databaseEngine`) */
+const AURORA_ENGINES = ['Aurora PostgreSQL', 'Aurora MySQL'];
+
 /** Terraform `storage_type` → Price List `volumeType` */
 const RDS_STORAGE: Record<string, string> = {
   gp2: 'General Purpose',
@@ -238,6 +255,34 @@ export async function refreshAws(): Promise<AwsPrices> {
     storage[type] = { single, multi };
   }
 
+  const aurora: AwsPrices['rds']['aurora'] = {};
+  for (const cls of AURORA_CLASSES) {
+    const rate = (engine: string, mode: 'InstanceUsage' | 'InstanceUsageIOOptimized') =>
+      price(rdsOffer, `Aurora ${cls} ${engine} ${mode}`, (a, f) =>
+        f === 'Database Instance' &&
+        a.instanceType === cls &&
+        a.databaseEngine === engine &&
+        a.deploymentOption === 'Single-AZ' &&
+        new RegExp(`^(?:[A-Z0-9]+-)?${mode}:`).test(a.usagetype ?? ''),
+      );
+    const standard = rate(AURORA_ENGINES[0], 'InstanceUsage');
+    const ioOptimized = rate(AURORA_ENGINES[0], 'InstanceUsageIOOptimized');
+    // one rate per class for both engines: prove it
+    for (const other of AURORA_ENGINES.slice(1)) {
+      if (rate(other, 'InstanceUsage') !== standard || rate(other, 'InstanceUsageIOOptimized') !== ioOptimized) {
+        fail(`Aurora ${cls} differs for ${other}`);
+      }
+    }
+    aurora[cls] = { standard, ioOptimized };
+  }
+  const acu = (usageType: string) => {
+    const [pg, ...others] = AURORA_ENGINES.map((engine) =>
+      price(rdsOffer, `Aurora Serverless v2 ${engine} ${usageType}`, (a, f) => f === 'ServerlessV2' && a.usagetype === usageType && a.databaseEngine === engine),
+    );
+    if (others.some((p) => p !== pg)) fail(`Aurora Serverless v2 ${usageType} differs between engines`);
+    return pg;
+  };
+
   const cacheOffer = await offers.get('AmazonElastiCache');
   const elasticache: AwsPrices['elasticache'] = {};
   for (const node of CACHE_NODES) {
@@ -274,7 +319,7 @@ export async function refreshAws(): Promise<AwsPrices> {
     regions: multipliers(ec2, byRegion, Object.keys(AWS_REGIONS), REGION),
     ec2: ordered(EC2_TYPES, ec2),
     ebs,
-    rds: { instance, storage },
+    rds: { instance, storage, aurora },
     elasticache,
     eks: { clusterHour: price(eks, 'EKS cluster', usage('USE1-AmazonEKS-Hours:perCluster')) },
     fargate: {
@@ -319,6 +364,8 @@ export async function refreshAws(): Promise<AwsPrices> {
       auroraGbMonth: price(rdsOffer, 'Aurora Standard storage', usage('Aurora:StorageUsage', 'Database Storage')),
       auroraIoPerMillion: perMillion(price(rdsOffer, 'Aurora Standard I/O', usage('Aurora:StorageIOUsage', 'System Operation'))),
       auroraIoOptimizedGbMonth: price(rdsOffer, 'Aurora I/O-Optimized storage', usage('Aurora:IO-OptimizedStorageUsage', 'Database Storage')),
+      auroraServerlessAcuHour: acu('Aurora:ServerlessV2Usage'),
+      auroraServerlessIoOptimizedAcuHour: acu('Aurora:ServerlessV2IOOptimizedUsage'),
     },
   };
 }
