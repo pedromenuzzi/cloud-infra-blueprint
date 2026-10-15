@@ -76,25 +76,25 @@ function PlayerCard({ progress }: { progress: LearnProgress }) {
       </div>
       <p className="mt-1.5 text-[12px] text-muted">{nextText}</p>
 
-      <dl className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4 border-t pt-4">
-        <div className="col-span-2 flex items-center gap-3">
-          <span
-            aria-hidden="true"
-            className={cn(
-              'flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px]',
-              streak > 0 ? 'bg-gradient-to-br from-[#fbbf24] to-[#ea580c] text-white shadow-sm' : 'bg-surface-2 text-faint',
-              streak > 0 && !today && 'opacity-70',
-            )}
-          >
-            <Flame className="h-5 w-5" fill={streak > 0 ? 'currentColor' : 'none'} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <dt className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">{m.streak}</dt>
-            <dd className="text-[15px] font-bold tabular-nums">{m.days(streak)}</dd>
-            <dd className="text-[11.5px] text-muted">{today ? m.streakToday : streak > 0 ? m.streakKeep : m.streakStart}</dd>
-          </div>
-          {best > 0 ? <dd className="shrink-0 self-start text-[11.5px] font-semibold tabular-nums text-muted">{m.bestStreak(best)}</dd> : null}
+      <div className="mt-4 flex items-center gap-3 border-t pt-4">
+        <span
+          aria-hidden="true"
+          className={cn(
+            'flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px]',
+            streak > 0 ? 'bg-gradient-to-br from-[#fbbf24] to-[#ea580c] text-white shadow-sm' : 'bg-surface-2 text-faint',
+            streak > 0 && !today && 'opacity-70',
+          )}
+        >
+          <Flame className="h-5 w-5" fill={streak > 0 ? 'currentColor' : 'none'} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">{m.streak}</p>
+          <p className="text-[15px] font-bold tabular-nums">{m.days(streak)}</p>
+          <p className="text-[11.5px] text-muted">{today ? m.streakToday : streak > 0 ? m.streakKeep : m.streakStart}</p>
         </div>
+        {best > 0 ? <p className="shrink-0 self-start text-[11.5px] font-semibold tabular-nums text-muted">{m.bestStreak(best)}</p> : null}
+      </div>
+      <dl className="mt-4 grid grid-cols-2 gap-x-3">
         <Stat label={m.badges} icon={<Award className="h-4 w-4 text-[#d97706]" />} value={m.countOf(earned, badges.length)} />
         <Stat label={m.lessons} icon={<Check className="h-4 w-4 text-success" />} value={m.countOf(done, ALL_LESSONS.length)} />
       </dl>
