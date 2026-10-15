@@ -36,7 +36,7 @@ export interface LearnProgress {
   drafts: Record<string, Files>;
   /** terminal commands that ran successfully, per lesson (each listed once) */
   runs: Record<string, SimCommand[]>;
-  /** the simulated state per lesson (null after destroy) */
+  /** the simulated state per lesson (null after destroy): the current workspace's, the others' inside it */
   sims: Record<string, SimState | null>;
   xp: number;
   /** badge id → local day it was earned */
@@ -111,6 +111,8 @@ interface LearnActions {
   resetLesson(slug: string): void;
   /** a terminal command ran successfully; `state` is what it left (apply / destroy) */
   recordRun(slug: string, command: SimCommand, state?: SimState | null): void;
+  /** the simulated state changed without a run (`terraform workspace new`, `select`, `delete`) */
+  setSim(slug: string, state: SimState | null): void;
   /** goals met right now (newly met ones count as progress for the streak) */
   noteGoals(slug: string, met: string[]): void;
   /** "Show solution" before finishing */
@@ -183,6 +185,8 @@ export const useLearn = create<LearnProgress & LearnActions>((set, get) => {
         days: withToday(days),
       });
     },
+
+    setSim: (slug, state) => commit({ sims: { ...get().sims, [slug]: state } }),
 
     noteGoals(slug, met) {
       const { lessons, days } = get();

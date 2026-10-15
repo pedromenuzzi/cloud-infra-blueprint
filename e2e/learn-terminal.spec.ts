@@ -67,3 +67,35 @@ test('answers help, history and a mistyped command', async ({ page }) => {
   await prompt.press('Enter');
   await expect(log.getByText('Commands in this simulated terminal:')).toHaveCount(0);
 });
+
+test('completes with Tab, applies a saved plan, and shows the workspace at the prompt', async ({ page }) => {
+  const panel = page.getByTestId('terminal-panel');
+  const log = panel.getByRole('log');
+  const prompt = panel.getByRole('textbox');
+  await panel.getByRole('button', { name: 'Run terraform init' }).click();
+  await expect(log.getByText('Terraform has been successfully initialized!')).toBeVisible();
+
+  await prompt.fill('terraform pl');
+  await prompt.press('Tab');
+  await expect(prompt).toHaveValue('terraform plan ');
+  await prompt.pressSequentially('-o');
+  await prompt.press('Tab');
+  await expect(prompt).toHaveValue('terraform plan -out=');
+  await prompt.pressSequentially('tfplan');
+  await prompt.press('Enter');
+  await expect(log.getByText('Saved the plan to: tfplan')).toBeVisible();
+
+  // a saved plan applies at once, no question
+  await prompt.fill('terraform apply tfplan');
+  await prompt.press('Enter');
+  await expect(log.getByText('Apply complete! Resources: 1 added, 0 changed, 0 destroyed.')).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+
+  await prompt.fill('terraform workspace new dev');
+  await prompt.press('Enter');
+  await expect(log.getByText('Created and switched to workspace "dev"!')).toBeVisible();
+  await expect(panel.getByTestId('prompt-workspace')).toHaveText('dev');
+  await prompt.fill('terraform workspace select default');
+  await prompt.press('Enter');
+  await expect(panel.getByTestId('prompt-workspace')).toHaveCount(0);
+});

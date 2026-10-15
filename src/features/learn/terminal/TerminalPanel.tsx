@@ -1,8 +1,9 @@
 /**
  * The simulated Terraform terminal of a lesson: buttons for the five
- * commands and a prompt that takes `terraform plan` (`tf plan`, history on
- * ↑ / ↓, `help`, `clear`), output streamed in the CLI's own format and
- * colors, the approval question of apply and destroy, and tabs for the
+ * commands and a prompt that takes `terraform plan` (`tf plan`, its flags,
+ * history on ↑ / ↓, Tab completion, `help`, `clear`, `terraform workspace`,
+ * `output`, `show`), output streamed in the CLI's own format and colors,
+ * the questions of apply, destroy and a backend migration, and tabs for the
  * state and the outputs the last apply left. Ctrl / ⌘ + Enter runs plan from
  * anywhere on the page.
  *
@@ -15,17 +16,18 @@
 import { ChevronDown, ChevronUp, Eraser, FlaskConical, TerminalSquare } from 'lucide-react';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { hasOpenLayer } from '@/components/ui';
+import { useEditor } from '@/features/editor/store';
 import { useMessages } from '@/i18n/messages';
-import { parseProject } from '@/hcl/parser';
 import { useLearn } from '@/learn/progress';
-import { decode, line, outputValueLines, problemLines, type Line, type Tone } from '@/learn/sim/render';
-import { declaredBlocks, initFingerprint, simulate, type SimResult } from '@/learn/sim/simulate';
+import { outputCommand, showCommand, workspaceCommand, workspaceNames, workspaceOf } from '@/learn/sim/commands';
+import { line, problemLines, type Line, type Tone } from '@/learn/sim/render';
+import { declaredBlocks, initFingerprint, simulate, type SavedPlan, type SimResult } from '@/learn/sim/simulate';
 import type { Files, SimCommand } from '@/learn/types';
 import { ariaShortcut, shortcut } from '@/lib/keys';
 import { prefersReducedMotion } from '@/lib/motion';
 import { safeStorage } from '@/lib/storage';
 import { cn } from '@/lib/utils';
-import { parseTyped, SIM_COMMANDS } from './input';
+import { complete, parseTyped, SIM_COMMANDS, type SimFlags } from './input';
 import { clearPlan, showPlan } from './planMarks';
 import { terminalMessages } from './terminal.messages';
 
@@ -50,6 +52,8 @@ const MAX_LINES = 3000;
 const screens = new Map<string, Shown[]>();
 /** what `init` installed, per lesson (after a reload, the code as it is counts as initialized) */
 const installed = new Map<string, string>();
+/** plans saved with `plan -out`, per lesson, by name (ponytail: for as long as the page is open, like the screen) */
+const plans = new Map<string, Map<string, SavedPlan>>();
 let seq = 0;
 const shown = (l: Line, kind: Shown['kind'] = 'cli'): Shown => ({ ...l, key: ++seq, kind });
 
@@ -125,7 +129,8 @@ function DiffLine({ text, tone }: { text: string; tone: Tone }) {
   );
 }
 
-function LineView({ l }: { l: Shown }) {
+/** `fresh`: it just came in (the apply's "Apply complete!" gets its little celebration then, not on a redraw) */
+function LineView({ l, fresh = false }: { l: Shown; fresh?: boolean }) {
   if (l.kind === 'cmd') {
     return (
       <div className="whitespace-pre-wrap break-all" translate="no" lang="en">
@@ -152,7 +157,11 @@ function LineView({ l }: { l: Shown }) {
     );
   }
   return (
-    <div className={cn('whitespace-pre-wrap break-words', tone && TONE_CLASS[tone])} translate="no" lang="en">
+    <div
+      className={cn('whitespace-pre-wrap break-words', tone && TONE_CLASS[tone], fresh && tone === 'success' && text.startsWith('Apply complete!') && 'bp-apply-done')}
+      translate="no"
+      lang="en"
+    >
       {body}
     </div>
   );
@@ -168,7 +177,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
   const [tab, setTab] = useState<Tab>('terminal');
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState<{ command: 'apply' | 'destroy'; rest: Line[]; result: SimResult } | null>(null);
+  const [asking, setAsking] = useState<{ command: SimCommand; rest: Line[]; result: SimResult } | null>(null);
   const [said, setSaid] = useState('');
   const [prefs, setPrefs] = useState(readPrefs);
   const viewport = useSyncExternalStore(onWindowResize, () => window.innerHeight);
@@ -186,10 +195,17 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
 
   // another lesson in the same panel: its own screen
   const [screenOf, setScreenOf] = useState(slug);
-  if (screenOf !== slug) {
+  // lines older than this were on screen before (another lesson, another tab): they don't celebrate again
+  const [freshFrom, setFreshFrom] = useState(seq);
+  const [tabOf, setTabOf] = useState(tab);
+  if (screenOf !== slug || tabOf !== tab) {
+    if (screenOf !== slug) {
+      setLines(screens.get(slug) ?? []);
+      setAsking(null);
+    }
     setScreenOf(slug);
-    setLines(screens.get(slug) ?? []);
-    setAsking(null);
+    setTabOf(tab);
+    setFreshFrom(seq);
   }
 
   useEffect(() => {
@@ -258,7 +274,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
   const finish = useCallback(
     (command: SimCommand, result: SimResult) => {
       const { slug: lesson } = live.current;
-      if (result.ok) useLearn.getState().recordRun(lesson, command, command === 'apply' || command === 'destroy' ? (result.state ?? null) : undefined);
+      if (result.ok) useLearn.getState().recordRun(lesson, command, result.state);
       if (command === 'apply' || command === 'destroy') clearPlan();
       const p = result.plan;
       setSaid(
@@ -285,8 +301,11 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
       if (!a) return;
       setAsking(null);
       append([shown(line(`  Enter a value: ${text}`, 'strong'))]);
+      const declined = a.result.declined;
       if (text.trim() === 'yes') {
         stream(a.rest.map((l) => shown(l)), () => finish(a.command, a.result));
+      } else if (declined) {
+        stream(declined.lines.map((l) => shown(l)), () => finish(a.command, { ...a.result, state: declined.state }));
       } else {
         append([shown(line()), shown(line(`${a.command === 'apply' ? 'Apply' : 'Destroy'} cancelled.`, 'strong'))]);
         clearPlan();
@@ -297,7 +316,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
   );
 
   const runSim = useCallback(
-    (command: SimCommand, autoApprove = false, echo = true) => {
+    (command: SimCommand, autoApprove = false, echo = true, flags: SimFlags = {}) => {
       flush();
       if (asking) answer('no');
       setTab('terminal');
@@ -305,15 +324,25 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
       if (echo) append([shown(line(`terraform ${command}${autoApprove ? ' -auto-approve' : ''}`), 'cmd')]);
       const initialized = isInitialized(lesson, code);
       const wasInit = useLearn.getState().runs[lesson]?.includes('init') ?? false;
-      const result = simulate(command, code, useLearn.getState().sims[lesson] ?? null, { initialized, autoApprove, installed: wasInit ? installed.get(lesson) : undefined });
+      const { planFile, ...rest } = flags;
+      const result = simulate(command, code, useLearn.getState().sims[lesson] ?? null, {
+        ...rest,
+        initialized,
+        autoApprove,
+        installed: wasInit ? installed.get(lesson) : undefined,
+        ...(planFile === undefined ? {} : { saved: { name: planFile, plan: plans.get(lesson)?.get(planFile) } }),
+      });
       if (command === 'init' && result.ok) installed.set(lesson, initFingerprint(code));
+      if (result.saved) plans.set(lesson, new Map(plans.get(lesson)).set(result.saved.name, result.saved));
+      // `-generate-config-out`: the file joins the lesson's code (undoable like any edit)
+      if (result.generated) useEditor.getState().replaceFiles({ ...useEditor.getState().files, [result.generated.file]: result.generated.text });
       if (result.plan && (command === 'plan' || result.confirmAt !== undefined)) showPlan(result.plan, declaredBlocks(code));
       else if (command === 'plan') clearPlan();
       const items = result.lines.map((l) => shown(l));
       if (result.confirmAt !== undefined) {
         const at = result.confirmAt;
         stream(items.slice(0, at), () => {
-          setAsking({ command: command as 'apply' | 'destroy', rest: result.lines.slice(at + 1), result });
+          setAsking({ command, rest: result.lines.slice(at + 1), result });
           setSaid(m.done.waiting);
           inputRef.current?.focus({ preventScroll: true });
         });
@@ -395,9 +424,22 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
       case 'help':
         return append(m.help.map((h) => shown(line(h), 'note')));
       case 'sim':
-        return runSim(t.command, t.autoApprove, false);
+        return runSim(t.command, t.autoApprove, false, t.flags);
       case 'version':
         return append([shown(line('Terraform v1.13.4')), shown(line('on linux_amd64'))]);
+      case 'show':
+        return append(showCommand(t.args, files, sim, (name) => plans.get(slug)?.get(name)).lines.map((l) => shown(l)));
+      case 'workspace': {
+        const r = workspaceCommand(t.args, sim);
+        if (r.state !== undefined) useLearn.getState().setSim(slug, r.state);
+        return append(r.lines.map((l) => shown(l)));
+      }
+      case 'bad-flag':
+        return append(
+          [...problemLines({ severity: 'error', summary: t.summary, detail: t.detail }), line(), line('For more help on using this command, run:'), line(`  terraform ${t.sub} -help`)].map((l) =>
+            shown(l),
+          ),
+        );
       case 'state-list': {
         const state = useLearn.getState().sims[slug];
         const addresses = Object.keys(state?.resources ?? {});
@@ -414,7 +456,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
         );
       }
       case 'output':
-        return append(outputLines().map((l) => shown(l)));
+        return append(outputCommand(t.args, files, sim).lines.map((l) => shown(l)));
       case 'not-here':
         return append([note(m.notHere(t.sub))]);
       case 'no-such':
@@ -426,25 +468,22 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
     }
   };
 
-  /** the outputs the state holds, as `terraform output` prints them */
-  function outputLines(): Line[] {
-    const outputs = Object.entries(sim?.outputs ?? {});
-    if (outputs.length === 0) {
-      return problemLines({
-        severity: 'warning',
-        summary: 'No outputs found',
-        detail: 'The state file either has no outputs defined, or all the defined outputs\nare empty. Please define an output in your configuration with the `output`\nkeyword and run `terraform apply` for it to become available.',
-      });
-    }
-    const { ir } = parseProject(files);
-    const secret = new Set(ir.outputs.filter((o) => o.args.sensitive?.kind === 'literal' && o.args.sensitive.value === true).map((o) => o.name));
-    return outputs.sort(([a], [b]) => a.localeCompare(b)).flatMap(([name, v]) => outputValueLines(name, decode(v), secret.has(name)));
-  }
-
   const onInputKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       submit();
+    } else if (e.key === 'Tab' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !asking && typed.trim() !== '') {
+      // a shell's Tab: complete the word; with several matches, list them (on an empty prompt Tab moves focus on)
+      const c = complete(typed, {
+        outputs: Object.keys(sim?.outputs ?? {}),
+        workspaces: workspaceNames(sim),
+        plans: [...(plans.get(slug)?.keys() ?? [])],
+        files: Object.keys(files),
+      });
+      if (!c) return;
+      e.preventDefault();
+      if (c.text !== typed) setTyped(c.text);
+      else if (c.options.length > 0) append([shown(line(typed.trim()), 'cmd'), shown(line(c.options.join('   ')))]);
     } else if (e.key === 'Escape' && (busy || asking)) {
       // the terminal's own Esc: skip ahead, or say no to the question (Ctrl+C in a real one)
       e.preventDefault();
@@ -491,6 +530,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
 
   const resources = Object.entries(sim?.resources ?? {});
   const outputs = Object.entries(sim?.outputs ?? {});
+  const workspace = workspaceOf(sim);
   const tabs: Array<{ id: Tab; label: string; count?: number }> = [
     { id: 'terminal', label: m.terminal },
     { id: 'state', label: m.state, count: resources.length },
@@ -613,7 +653,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
               >
                 {lines.length === 0 ? <div className="font-sans text-[13px] text-slate-400">{m.welcome}</div> : null}
                 {lines.map((l) => (
-                  <LineView key={l.key} l={l} />
+                  <LineView key={l.key} l={l} fresh={l.key > freshFrom} />
                 ))}
                 {busy ? <span aria-hidden className="inline-block h-[1.05em] w-[0.55em] translate-y-[2px] animate-pulse bg-slate-300" /> : null}
               </div>
@@ -624,7 +664,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
                 {outputs.length === 0 ? (
                   <p className="font-sans text-[13px] text-slate-400">{m.emptyOutputs}</p>
                 ) : (
-                  outputLines().map((l, i) => <LineView key={i} l={{ ...l, key: i, kind: 'cli' }} />)
+                  outputCommand([], files, sim).lines.map((l, i) => <LineView key={i} l={{ ...l, key: i, kind: 'cli' }} />)
                 )}
               </div>
             )}
@@ -635,6 +675,12 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
           <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-t border-white/[0.07] bg-[#0d1424] px-3 py-2 @2xl:gap-x-3">
             <label className="flex min-w-[120px] flex-1 items-center gap-2 font-mono text-[13px] @2xl:min-w-[220px]">
               <span className={cn('select-none font-semibold', asking ? 'text-amber-300' : 'text-cyan-300')} translate="no" lang="en">
+                {/* the workspace when it isn't the default one, as a shell prompt shows where you are */}
+                {!asking && workspace !== 'default' ? (
+                  <span className="mr-1.5 font-normal text-slate-400" title={m.workspace(workspace)} data-testid="prompt-workspace">
+                    {workspace}
+                  </span>
+                ) : null}
                 {asking ? 'Enter a value:' : '$'}
               </span>
               <input
