@@ -11,7 +11,7 @@
  * if lessons outgrow it.
  */
 import { formatAddress, parseCidrBlock } from '@/resources/cidr';
-import { isObject, type Val } from './eval';
+import { isObject, UNKNOWN, type Val } from './eval';
 
 export const ACCOUNT = '123456789012';
 const SUBSCRIPTION = '00000000-0000-0000-0000-000000000000';
@@ -56,6 +56,10 @@ interface TypeSpec {
   /** an id prefix (`vpc` → `vpc-0a1b2c…`) or how the id is made */
   id?: string | Make;
   computed?: Record<string, Make>;
+  /** computed attributes the provider already knows in the plan, partly (`UNKNOWN` where it doesn't) */
+  planned?: Record<string, Make>;
+  /** computed numbers each update raises by one (a launch template's `latest_version`) */
+  versioned?: string[];
   /** arguments whose change forces a replacement (`*`: any of them) */
   forceNew?: string[] | '*';
   /** seconds a create takes */
@@ -69,6 +73,37 @@ const upper = (f: Fake, n: number, salt: string) => hex(f, n, salt).toUpperCase(
 const ec2Arn = (kind: string) => (f: Fake) => `arn:aws:ec2:${f.region}:${ACCOUNT}:${kind}/${f.id}`;
 const named = (prefix = 'terraform') => (f: Fake) => str(f.config.name) ?? `${prefix}-${digitsOf(f.seed, 26)}`;
 const owner = () => ACCOUNT;
+/** `E2QWRUHAPOMQZL`: CloudFront's ids */
+const cfId = (f: Fake, salt: string) => `E${upper(f, 13, salt)}`;
+const lowerAlnum = (f: Fake, n: number, salt: string) => hex(f, n, salt).replace(/[0-9]/g, (d) => 'ghjkmnpqrs'[Number(d)]);
+const uuid = (f: Fake, salt: string) => [8, 4, 4, 4, 12].map((n, i) => hex(f, n, `${salt}${i}`)).join('-');
+/** an ACM certificate's DNS validation records: the domain names are known in the plan (the provider works them out), the records aren't */
+const validations = (f: Fake, known: boolean): Val => {
+  const sans = Array.isArray(f.config.subject_alternative_names) ? f.config.subject_alternative_names : [];
+  const names = [f.config.domain_name, ...sans].filter((d): d is string => typeof d === 'string' && d !== '');
+  return [...new Set(names)].sort().map((d) => ({
+    domain_name: d,
+    resource_record_name: known ? `_${hexOf(`${f.seed}${d}`, 32)}.${d.replace(/^\*\./, '')}.` : UNKNOWN,
+    resource_record_type: 'CNAME',
+    resource_record_value: known ? `_${hexOf(`${f.seed}${d}v`, 32)}.xlfgrmvvlj.acm-validations.aws.` : UNKNOWN,
+  }));
+};
+const nameServers = (f: Fake) =>
+  ['com', 'net', 'org', 'co.uk'].map((tld, i) => `ns-${hash(`${f.seed}ns${i}`) % 2048}.awsdns-${String(hash(`${f.seed}d${i}`) % 64).padStart(2, '0')}.${tld}`);
+const zoneId = (f: Fake) => `Z0${upper(f, 19, 'zone')}`;
+/** a Secrets Manager ARN: the name and the 6 random characters AWS adds */
+const secretArn = (f: Fake, name: string) => `arn:aws:secretsmanager:${f.region}:${ACCOUNT}:secret:${name}-${hex(f, 6, 'sec')}`;
+const ssmArn = (f: Fake, name: string) => `arn:aws:ssm:${f.region}:${ACCOUNT}:parameter${name.startsWith('/') ? '' : '/'}${name}`;
+
+/** ids of the AWS managed CloudFront policies (the same in every account) */
+const MANAGED_POLICIES: Record<string, string> = {
+  'Managed-CachingOptimized': '658327ea-f89d-4fab-a63d-7e88639e58f6',
+  'Managed-CachingDisabled': '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+  'Managed-CORS-S3Origin': '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf',
+  'Managed-AllViewer': '216adef6-5c7f-47e4-b989-5492eafa07d3',
+  'Managed-AllViewerExceptHostHeader': 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
+  'Managed-SecurityHeadersPolicy': '67f7725c-6f97-4210-82d7-5512b31e9d03',
+};
 
 /** an address inside a CIDR block, picked by the seed (the 4th and up: AWS keeps the first ones) */
 function hostIn(cidr: string | undefined, f: Fake): string {
@@ -214,6 +249,13 @@ const AWS: Record<string, TypeSpec> = {
       arn: (f) => `arn:aws:rds:${f.region}:${ACCOUNT}:db:${String(AWS.aws_db_instance.computed!.identifier(f))}`,
       address: (f) => `${String(AWS.aws_db_instance.computed!.identifier(f))}.c${hex(f, 11, 'h')}.${f.region}.rds.amazonaws.com`,
       endpoint: (f) => `${String(AWS.aws_db_instance.computed!.address(f))}:${String(f.config.port ?? (String(f.config.engine).includes('mysql') || f.config.engine === 'mariadb' ? 3306 : 5432))}`,
+      port: (f) => (String(f.config.engine).includes('mysql') || f.config.engine === 'mariadb' ? 3306 : 5432),
+      hosted_zone_id: () => 'Z2R2ITUGPM61AM',
+      // the password RDS keeps in Secrets Manager, with `manage_master_user_password = true`
+      master_user_secret: (f) =>
+        f.config.manage_master_user_password === true
+          ? [{ kms_key_id: `arn:aws:kms:${f.region}:${ACCOUNT}:key/${uuid(f, 'kms')}`, secret_arn: secretArn(f, `rds!db-${uuid(f, 'rds')}`), secret_status: 'active' }]
+          : [],
       resource_id: (f) => f.id,
       status: () => 'available',
     },
@@ -224,7 +266,9 @@ const AWS: Record<string, TypeSpec> = {
     id: (f) => AWS.aws_lb.computed!.arn(f) as string,
     computed: {
       arn: (f) => `arn:aws:elasticloadbalancing:${f.region}:${ACCOUNT}:loadbalancer/${f.config.load_balancer_type === 'network' ? 'net' : 'app'}/${named('tf-lb')(f)}/${hex(f, 16, 'lb')}`,
+      arn_suffix: (f) => String(AWS.aws_lb.computed!.arn(f)).replace(/^.*?:loadbalancer\//, ''),
       dns_name: (f) => `${named('tf-lb')(f)}-${digitsOf(f.seed, 10)}.${f.region}.elb.amazonaws.com`,
+      name: named('tf-lb'),
       zone_id: () => 'Z35SXDOTRQ7X7K',
     },
     forceNew: ['name', 'name_prefix', 'internal', 'load_balancer_type'],
@@ -232,7 +276,7 @@ const AWS: Record<string, TypeSpec> = {
   },
   aws_lb_target_group: {
     id: (f) => `arn:aws:elasticloadbalancing:${f.region}:${ACCOUNT}:targetgroup/${named('tf-tg')(f)}/${hex(f, 16, 'tg')}`,
-    computed: { arn: (f) => f.id },
+    computed: { arn: (f) => f.id, arn_suffix: (f) => f.id.replace(/^.*?:targetgroup\//, 'targetgroup/'), name: named('tf-tg') },
     forceNew: ['name', 'name_prefix', 'port', 'protocol', 'vpc_id', 'target_type'],
   },
   aws_lb_listener: {
@@ -246,12 +290,119 @@ const AWS: Record<string, TypeSpec> = {
       arn: (f) => `arn:aws:lambda:${f.region}:${ACCOUNT}:function:${f.id}`,
       invoke_arn: (f) => `arn:aws:apigateway:${f.region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${f.region}:${ACCOUNT}:function:${f.id}/invocations`,
       qualified_arn: (f) => `arn:aws:lambda:${f.region}:${ACCOUNT}:function:${f.id}:$LATEST`,
+      qualified_invoke_arn: (f) =>
+        `arn:aws:apigateway:${f.region}:lambda:path/2015-03-31/functions/arn:aws:lambda:${f.region}:${ACCOUNT}:function:${f.id}:$LATEST/invocations`,
+      function_name: (f) => f.id,
       version: () => '$LATEST',
+      last_modified: () => '2026-10-15T12:00:00.000+0000',
+      source_code_size: (f) => 300 + (hash(f.seed) % 4000),
     },
     forceNew: ['function_name'],
     seconds: 6,
   },
-  aws_dynamodb_table: { id: named(), computed: { arn: (f) => `arn:aws:dynamodb:${f.region}:${ACCOUNT}:table/${f.id}` }, forceNew: ['name', 'hash_key', 'range_key'], seconds: 7 },
+  aws_dynamodb_table: {
+    id: named(),
+    computed: {
+      arn: (f) => `arn:aws:dynamodb:${f.region}:${ACCOUNT}:table/${f.id}`,
+      // a stream only when it's turned on, like the provider
+      stream_arn: (f) => (f.config.stream_enabled === true ? `arn:aws:dynamodb:${f.region}:${ACCOUNT}:table/${f.id}/stream/2026-10-15T12:00:00.000` : ''),
+      stream_label: (f) => (f.config.stream_enabled === true ? '2026-10-15T12:00:00.000' : ''),
+    },
+    forceNew: ['name', 'hash_key', 'range_key'],
+    seconds: 7,
+  },
+  aws_lambda_permission: { id: (f) => str(f.config.statement_id) ?? `terraform-${digitsOf(f.seed, 26)}`, forceNew: '*' },
+  aws_lambda_function_url: {
+    id: (f) => str(f.config.function_name) ?? hex(f, 12),
+    computed: { function_url: (f) => `https://${lowerAlnum(f, 32, 'url')}.lambda-url.${f.region}.on.aws/`, url_id: (f) => lowerAlnum(f, 32, 'url') },
+    forceNew: ['function_name', 'qualifier'],
+  },
+  aws_apigatewayv2_api: {
+    id: (f) => lowerAlnum(f, 10, 'api'),
+    computed: {
+      api_endpoint: (f) => `https://${f.id}.execute-api.${f.region}.amazonaws.com`,
+      arn: (f) => `arn:aws:apigateway:${f.region}::/apis/${f.id}`,
+      execution_arn: (f) => `arn:aws:execute-api:${f.region}:${ACCOUNT}:${f.id}`,
+    },
+    forceNew: ['protocol_type'],
+    seconds: 2,
+  },
+  aws_apigatewayv2_stage: {
+    id: (f) => str(f.config.name) ?? '$default',
+    computed: {
+      arn: (f) => `arn:aws:apigateway:${f.region}::/apis/${str(f.config.api_id) ?? 'api'}/stages/${f.id}`,
+      execution_arn: (f) => `arn:aws:execute-api:${f.region}:${ACCOUNT}:${str(f.config.api_id) ?? 'api'}/${f.id}`,
+      // the $default stage is served at the API's root
+      invoke_url: (f) => `https://${str(f.config.api_id) ?? 'api'}.execute-api.${f.region}.amazonaws.com/${f.id === '$default' ? '' : f.id}`,
+    },
+    forceNew: ['api_id', 'name'],
+  },
+  aws_apigatewayv2_integration: { id: (f) => lowerAlnum(f, 7, 'int'), forceNew: ['api_id', 'integration_type'] },
+  aws_apigatewayv2_route: { id: (f) => lowerAlnum(f, 7, 'rt'), forceNew: ['api_id'] },
+  aws_cloudfront_distribution: {
+    id: (f) => cfId(f, 'cf'),
+    computed: {
+      arn: (f) => `arn:aws:cloudfront::${ACCOUNT}:distribution/${f.id}`,
+      domain_name: (f) => `d${lowerAlnum(f, 13, 'cfd')}.cloudfront.net`,
+      hosted_zone_id: () => 'Z2FDTNDATAQYW2',
+      etag: (f) => cfId(f, 'etag'),
+      status: () => 'Deployed',
+      caller_reference: (f) => `terraform-${digitsOf(f.seed, 26)}`,
+    },
+    forceNew: [],
+    seconds: 274,
+  },
+  aws_cloudfront_origin_access_control: { id: (f) => cfId(f, 'oac'), computed: { etag: (f) => cfId(f, 'etag') }, forceNew: [] },
+  aws_cloudfront_origin_access_identity: {
+    id: (f) => cfId(f, 'oai'),
+    computed: {
+      iam_arn: (f) => `arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${f.id}`,
+      cloudfront_access_identity_path: (f) => `origin-access-identity/cloudfront/${f.id}`,
+      etag: (f) => cfId(f, 'etag'),
+    },
+    forceNew: [],
+  },
+  aws_acm_certificate: {
+    id: (f) => `arn:aws:acm:${f.region}:${ACCOUNT}:certificate/${uuid(f, 'acm')}`,
+    computed: { arn: (f) => f.id, domain_validation_options: (f) => validations(f, true), status: () => 'PENDING_VALIDATION' },
+    planned: { domain_validation_options: (f) => validations(f, false) },
+    forceNew: ['domain_name', 'subject_alternative_names', 'validation_method', 'key_algorithm'],
+  },
+  aws_acm_certificate_validation: { id: () => '2026-10-15 12:00:00.000 +0000 UTC', forceNew: '*', seconds: 32 },
+  aws_route53_zone: {
+    id: zoneId,
+    computed: { zone_id: (f) => f.id, arn: (f) => `arn:aws:route53:::hostedzone/${f.id}`, name_servers: nameServers, primary_name_server: (f) => nameServers(f)[0] },
+    forceNew: ['name', 'delegation_set_id'],
+    seconds: 41,
+  },
+  aws_route53_record: {
+    id: (f) => `${str(f.config.zone_id) ?? 'Z0'}_${str(f.config.name) ?? f.name}_${str(f.config.type) ?? 'A'}`,
+    computed: { fqdn: (f) => (str(f.config.name) ?? f.name).replace(/\.$/, '').toLowerCase() },
+    forceNew: ['name', 'type', 'zone_id', 'set_identifier'],
+    seconds: 37,
+  },
+  aws_launch_template: {
+    id: awsId('lt'),
+    computed: { arn: (f) => `arn:aws:ec2:${f.region}:${ACCOUNT}:launch-template/${f.id}`, latest_version: () => 1, default_version: () => 1, name: named() },
+    versioned: ['latest_version'],
+    forceNew: ['name', 'name_prefix'],
+  },
+  aws_autoscaling_group: {
+    id: named(),
+    computed: {
+      arn: (f) => `arn:aws:autoscaling:${f.region}:${ACCOUNT}:autoScalingGroup:${uuid(f, 'asg')}:autoScalingGroupName/${f.id}`,
+      name: (f) => f.id,
+    },
+    forceNew: ['name', 'name_prefix'],
+    seconds: 52,
+  },
+  aws_secretsmanager_secret: { id: (f) => secretArn(f, named()(f)), computed: { arn: (f) => f.id, name: named() }, forceNew: ['name', 'name_prefix'] },
+  aws_secretsmanager_secret_version: {
+    id: (f) => `${str(f.config.secret_id) ?? 'secret'}|${uuid(f, 'ver')}`,
+    computed: { arn: (f) => str(f.config.secret_id) ?? '', version_id: (f) => uuid(f, 'ver'), version_stages: () => ['AWSCURRENT'] },
+    forceNew: ['secret_id', 'secret_string', 'secret_binary'],
+  },
+  aws_ssm_parameter: { id: (f) => str(f.config.name) ?? f.name, computed: { arn: (f) => ssmArn(f, f.id), version: () => 1, tier: () => 'Standard' }, forceNew: ['name'] },
   aws_cloudwatch_log_group: { id: named(), computed: { arn: (f) => `arn:aws:logs:${f.region}:${ACCOUNT}:log-group:${f.id}` }, forceNew: ['name', 'name_prefix'] },
   aws_sqs_queue: {
     id: (f) => `https://sqs.${f.region}.amazonaws.com/${ACCOUNT}/${named()(f)}`,
@@ -337,6 +488,12 @@ function spec(type: string): TypeSpec {
 
 /** the attributes the provider fills in for a type (besides `id`) */
 export const computedOf = (type: string): string[] => Object.keys(spec(type).computed ?? {});
+
+/** a computed number an update raises (`latest_version`): unknown in the plan, one up after the apply */
+export const versioned = (type: string, attr: string): boolean => spec(type).versioned?.includes(attr) === true;
+
+/** what the plan already knows of a computed attribute (undefined: nothing yet, `(known after apply)`) */
+export const plannedAttr = (attr: string, f: Omit<Fake, 'id'>): Val | undefined => spec(f.type).planned?.[attr]?.({ ...f, id: '' });
 
 /** changing `attr` replaces the resource */
 export function forcesNew(type: string, attr: string): boolean {
@@ -460,7 +617,67 @@ const DATA: Record<string, Record<string, Make>> = {
     owner_id: owner,
   },
   aws_iam_policy_document: { id: (f) => String(hash(policyJson(f))), json: policyJson, minified_json: (f) => JSON.stringify(JSON.parse(policyJson(f))) },
+  aws_secretsmanager_secret: {
+    id: (f) => str(f.config.arn) ?? secretArn(f, str(f.config.name) ?? 'secret'),
+    arn: (f) => DATA.aws_secretsmanager_secret.id(f),
+    name: (f) => str(f.config.name) ?? 'secret',
+  },
+  aws_secretsmanager_secret_version: {
+    id: (f) => `${str(f.config.secret_id) ?? 'secret'}|${str(f.config.version_stage) ?? 'AWSCURRENT'}`,
+    arn: (f) => (str(f.config.secret_id)?.startsWith('arn:') ? str(f.config.secret_id)! : secretArn(f, str(f.config.secret_id) ?? 'secret')),
+    // what lessons keep in a secret: a database login
+    secret_string: (f) => JSON.stringify({ username: 'app', password: hex(f, 24, 'pw') }),
+    version_id: (f) => uuid(f, 'ver'),
+    version_stages: () => ['AWSCURRENT'],
+  },
+  aws_ssm_parameter: {
+    id: (f) => str(f.config.name) ?? 'parameter',
+    arn: (f) => ssmArn(f, str(f.config.name) ?? 'parameter'),
+    // a public AMI parameter (`/aws/service/ami-amazon-linux-latest/…`) holds an AMI id
+    value: (f) => (/ami/.test(str(f.config.name) ?? '') ? awsId('ami')(f) : `value-${hex(f, 12, 'v')}`),
+    insecure_value: (f) => DATA.aws_ssm_parameter.value(f),
+    type: () => 'String',
+    version: () => 1,
+  },
+  aws_route53_zone: {
+    id: zoneId,
+    zone_id: zoneId,
+    name: (f) => (str(f.config.name) ?? 'example.com').replace(/\.$/, ''),
+    arn: (f) => `arn:aws:route53:::hostedzone/${zoneId(f)}`,
+    name_servers: nameServers,
+  },
+  aws_acm_certificate: {
+    id: (f) => `arn:aws:acm:${f.region}:${ACCOUNT}:certificate/${uuid(f, 'acm')}`,
+    arn: (f) => DATA.aws_acm_certificate.id(f),
+    domain: (f) => str(f.config.domain) ?? 'example.com',
+    status: () => 'ISSUED',
+  },
+  aws_cloudfront_cache_policy: { id: (f) => MANAGED_POLICIES[str(f.config.name) ?? ''] ?? uuid(f, 'cp'), etag: (f) => cfId(f, 'etag') },
+  aws_cloudfront_origin_request_policy: { id: (f) => MANAGED_POLICIES[str(f.config.name) ?? ''] ?? uuid(f, 'orp'), etag: (f) => cfId(f, 'etag') },
+  aws_cloudfront_response_headers_policy: { id: (f) => MANAGED_POLICIES[str(f.config.name) ?? ''] ?? uuid(f, 'rhp'), etag: (f) => cfId(f, 'etag') },
+  // the archive provider's zip of a folder or a file (a Lambda's code)
+  archive_file: {
+    id: (f) => hexOf(`${f.seed}sha1`, 40),
+    output_path: (f) => str(f.config.output_path) ?? `${f.name}.zip`,
+    output_base64sha256: (f) => `${btoa(hexOf(`${f.seed}sha`, 32)).slice(0, 43)}=`,
+    output_md5: (f) => hexOf(`${f.seed}md5`, 32),
+    output_sha: (f) => hexOf(`${f.seed}sha1`, 40),
+    output_size: (f) => 300 + (hash(f.seed) % 4000),
+  },
 };
+
+/** attributes the provider's schema marks sensitive: the plan prints `(sensitive value)` for them, and for what's made from them */
+const SENSITIVE: Record<string, string[]> = {
+  aws_db_instance: ['password'],
+  aws_rds_cluster: ['master_password'],
+  aws_secretsmanager_secret_version: ['secret_string', 'secret_binary'],
+  aws_ssm_parameter: ['value'],
+  aws_iam_access_key: ['secret'],
+  random_password: ['result', 'bcrypt_hash'],
+  tls_private_key: ['private_key_pem', 'private_key_openssh'],
+};
+
+export const sensitiveAttrs = (type: string): readonly string[] => SENSITIVE[type] ?? [];
 
 /**
  * The simulated providers know what this data source returns. Other types
