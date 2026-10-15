@@ -74,6 +74,7 @@ export const NOUNS: Record<string, Noun> = {
   aws_route_table_association: n('route table association', 'associação de tabela de rotas', { f: true }),
   aws_route: n('route', 'rota', { f: true }),
   aws_s3_bucket_public_access_block: n('public access block', 'bloqueio de acesso público'),
+  aws_s3_bucket_versioning: n('versioning configuration', 'configuração de versionamento', { f: true }),
   aws_db_subnet_group: n('DB subnet group', 'grupo de sub-redes do banco'),
   aws_elasticache_subnet_group: n('cache subnet group', 'grupo de sub-redes do cache'),
   // Azure
@@ -188,6 +189,7 @@ export const FAMILY: Record<string, Family> = {
   aws_lb_listener: 'partOf',
   aws_ecs_task_definition: 'partOf',
   aws_s3_bucket_public_access_block: 'partOf',
+  aws_s3_bucket_versioning: 'partOf',
   aws_sns_topic_subscription: 'partOf',
   aws_vpc_security_group_ingress_rule: 'partOf',
   aws_vpc_security_group_egress_rule: 'partOf',
@@ -212,6 +214,7 @@ export const OWNER: Record<string, string> = {
   aws_lb_listener: 'aws_lb',
   aws_ecs_task_definition: 'aws_ecs_service',
   aws_s3_bucket_public_access_block: 'aws_s3_bucket',
+  aws_s3_bucket_versioning: 'aws_s3_bucket',
   aws_sns_topic_subscription: 'aws_sns_topic',
   aws_vpc_security_group_ingress_rule: 'aws_security_group',
   aws_vpc_security_group_egress_rule: 'aws_security_group',

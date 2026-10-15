@@ -301,6 +301,7 @@ const FREE: Record<string, ((m: ServiceMessages) => string) | undefined> = {
   aws_lambda_permission: undefined,
   aws_sns_topic_subscription: (m) => m.aws.free.subscription,
   aws_s3_bucket_public_access_block: undefined,
+  aws_s3_bucket_versioning: undefined,
   aws_launch_template: (m) => m.aws.free.launchTemplate,
 };
 

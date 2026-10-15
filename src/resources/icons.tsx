@@ -20,6 +20,7 @@ import {
   FileKey,
   FolderOpen,
   Globe,
+  History,
   KeyRound,
   Layers2,
   LayoutTemplate,
@@ -204,6 +205,7 @@ const SERVICE_GLYPHS: Record<string, Glyph> = {
   aws_db_subnet_group: Layers3,
   aws_elasticache_subnet_group: Layers3,
   aws_s3_bucket_public_access_block: ShieldBan,
+  aws_s3_bucket_versioning: History,
   // --- Azure
   azurerm_resource_group: FolderOpen,
   azurerm_virtual_network: Cloud,

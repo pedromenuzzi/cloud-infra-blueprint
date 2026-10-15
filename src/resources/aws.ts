@@ -1213,6 +1213,24 @@ export const AWS_RESOURCES = [
   }),
 
   defineResource({
+    type: 'aws_s3_bucket_versioning',
+    provider: 'aws',
+    category: 'storage',
+    displayName: 'S3 Bucket Versioning',
+    shortName: 'Versioning',
+    description: 'Keeps every version of a bucket\'s objects',
+    fields: [{ name: 'bucket', type: 'string', required: true, refTo: ['aws_s3_bucket'] }],
+    defaults: {
+      versioning_configuration: block({ status: lit('Enabled') }),
+    },
+    connections: [{ targetTypes: ['aws_s3_bucket'], arg: 'bucket', attr: 'id', mode: 'set' }],
+    subtitle: (args) => {
+      const config = args.versioning_configuration;
+      return config?.kind === 'block' ? litStr(config.body.status) : undefined;
+    },
+  }),
+
+  defineResource({
     type: 'aws_s3_bucket_public_access_block',
     provider: 'aws',
     category: 'identity',

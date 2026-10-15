@@ -281,6 +281,11 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     shortName: 'Associação de RT',
     description: 'Associa uma tabela de rotas a uma sub-rede',
   },
+  aws_s3_bucket_versioning: {
+    name: 'Versionamento do bucket S3',
+    shortName: 'Versionamento',
+    description: 'Guarda todas as versões dos objetos de um bucket',
+  },
   aws_s3_bucket_public_access_block: {
     name: 'Bloqueio de acesso público do S3',
     shortName: 'Bloqueio de acesso público',

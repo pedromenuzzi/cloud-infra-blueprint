@@ -81,8 +81,8 @@ export const lessons: Lesson[] = [
         pt: '*Tags*, para qualquer pessoa saber para que serve o recurso e qual orçamento paga por ele: adicione `Project` e `Environment` no inspetor. Um *bloqueio de acesso público*, ligado como na lição 0.5, para os arquivos nunca vazarem por engano.',
       },
       {
-        en: 'And *versioning*, so overwriting or deleting a file keeps the old copy. In AWS provider v5 it is a separate resource that points at the bucket, and it is already in the code: `aws_s3_bucket_versioning`. The palette doesn\'t offer it yet, so this part is typed: in the code panel, change its `status` from `"Suspended"` to `"Enabled"`.',
-        pt: 'E *versionamento*, para que sobrescrever ou excluir um arquivo mantenha a cópia antiga. Na versão 5 do provider da AWS ele é um recurso separado que aponta para o bucket, e já está no código: `aws_s3_bucket_versioning`. A paleta ainda não o oferece, então esta parte é digitada: no painel de código, troque o `status` de `"Suspended"` para `"Enabled"`.',
+        en: 'And *versioning*, so overwriting or deleting a file keeps the old copy. In AWS provider v5 it is a separate resource that points at the bucket, and it is already in the code: `aws_s3_bucket_versioning`. It starts switched off, and turning it on is one word typed: in the code panel, change its `status` from `"Suspended"` to `"Enabled"`.',
+        pt: 'E *versionamento*, para que sobrescrever ou excluir um arquivo mantenha a cópia antiga. Na versão 5 do provider da AWS ele é um recurso separado que aponta para o bucket, e já está no código: `aws_s3_bucket_versioning`. Ele começa desligado, e ligar é digitar uma palavra: no painel de código, troque o `status` de `"Suspended"` para `"Enabled"`.',
       },
     ],
     asides: [
@@ -147,7 +147,7 @@ ${PUBLIC_ACCESS_BLOCK('site')}`),
         test: all(applied('aws_s3_bucket_versioning'), applied('aws_s3_bucket_public_access_block')),
       },
     ],
-    teaches: ['aws_s3_bucket'],
+    teaches: ['aws_s3_bucket', 'aws_s3_bucket_versioning', 'aws_s3_bucket_public_access_block'],
   },
   {
     slug: 'variables',
