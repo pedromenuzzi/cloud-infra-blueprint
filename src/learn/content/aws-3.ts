@@ -627,9 +627,9 @@ resource "aws_instance" "web" {
       },
     ],
     start: level3(`# Challenge: a web server in the public subnet from network.tf.
-#   - reachable from the internet on HTTPS (443), and nothing else
-#   - no SSH
-#   - IMDSv2 required
+#   * reachable from the internet on HTTPS (443), and nothing else
+#   * no SSH
+#   * IMDSv2 required
 `),
     solution: level3(`${AMI}\n${WEB_SG}\n${LOCKED_INSTANCE}`),
     goals: [
