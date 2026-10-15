@@ -16,7 +16,7 @@ export const landingMessages = defineMessages(
     navLearn: 'Learn',
     openApp: 'Open the app',
     badgeNew: 'New',
-    badgeText: (services: number) => `${services} services · command palette · auto-layout`,
+    badgeText: 'Learning map: hands-on Terraform lessons with XP and badges',
     heroTitle: 'Design cloud infrastructure visually.',
     heroAccent: 'Ship Terraform instantly.',
     heroBody:
@@ -123,7 +123,7 @@ export const landingMessages = defineMessages(
     navLearn: 'Aprender',
     openApp: 'Abrir o app',
     badgeNew: 'Novo',
-    badgeText: (services: number) => `${services} serviços · paleta de comandos · layout automático`,
+    badgeText: 'Mapa de aprendizado: lições práticas de Terraform com XP e conquistas',
     heroTitle: 'Desenhe sua nuvem.',
     heroAccent: 'Gere o Terraform na hora.',
     heroBody:
