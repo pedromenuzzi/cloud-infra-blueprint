@@ -96,6 +96,7 @@ export function ShareLinkHost() {
         files: payload.files,
         description: m.importedFromShare,
         origin,
+        rootPath: payload.rootPath,
       });
       showToast(m.importedToast(payload.name), 'success');
       navigate(`/editor/${project.id}`);

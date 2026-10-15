@@ -51,6 +51,21 @@ describe('share links', () => {
     expect(Object.keys(decodeShare(encodeShare({ name: 'X', files: tricky }))!.files)).toEqual(['main.tf']);
   });
 
+  it('carries the folder the root module came from, and still opens links without it', () => {
+    const files = { 'main.tf': 'module "net" {\n  source = "../../modules/net"\n}\n', 'modules/net/main.tf': 'resource "aws_vpc" "this" {}\n' };
+    expect(decodeShare(encodeShare({ name: 'Shop', files, rootPath: 'envs/prod' }))).toEqual({ name: 'Shop', files, rootPath: 'envs/prod' });
+    // a link made before root paths travelled: the same bytes as before, no root path
+    expect(encodeShare({ name: 'Shop', files })).toBe(pack({ v: 1, n: 'Shop', f: files }));
+    expect(decodeShare(pack({ v: 1, n: 'Shop', f: files }))).toEqual({ name: 'Shop', files });
+    // an unsafe one is dropped, the project still opens
+    for (const r of ['../etc', '/abs', 'a//b', 42]) {
+      expect(decodeShare(pack({ v: 1, n: 'Shop', f: files, r }))).toEqual({ name: 'Shop', files });
+    }
+    // an older copy without it isn't taken for this one; links without it hash as before
+    expect(shareHash({ name: 'Shop', files, rootPath: 'envs/prod' })).not.toBe(shareHash({ name: 'Shop', files }));
+    expect(shareHash({ name: 'Shop', files, rootPath: undefined })).toBe(shareHash({ name: 'Shop', files }));
+  });
+
   it('validates the version and the shape', () => {
     expect(decodeShareResult(pack({ v: 1, n: 'ok', f: { 'main.tf': 'x' } })).ok).toBe(true);
     expect(decodeShareResult(pack({ v: 2, n: 'future', f: {} }))).toEqual({ ok: false, error: 'version' });

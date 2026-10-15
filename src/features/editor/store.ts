@@ -84,8 +84,25 @@ function derive(ir: IR, prev: IR | undefined, files: Record<string, string>): De
   }
   const edges = deriveStructure(ir, getDef);
   if (ir.modules.length > 0) edges.push(...moduleEdges(ir));
-  layoutWithModules(ir, isContainerType);
+  const moved = layoutWithModules(ir, isContainerType);
+  if (moved.size > 0) unpinned.set(ir, moved);
   return { ir, edges, warnings: validateAll(ir, files) };
+}
+
+/**
+ * Nodes drawn somewhere else than their saved spot, per derived IR: a
+ * container saved before its type held anything, drawn around its children
+ * (src/ir/layout.ts). The next canvas edit writes those spots down with it,
+ * in the same undo step, so the text and the drawing agree from then on.
+ */
+const unpinned = new WeakMap<IR, Set<string>>();
+
+function withPins(ir: IR, ops: Op[]): Op[] {
+  const pins = [...(unpinned.get(ir) ?? [])].flatMap((nodeId): Op[] => {
+    const position = findNode(ir, nodeId)?.position;
+    return position ? [{ kind: 'move_node', nodeId, position: { ...position } }] : [];
+  });
+  return pins.length > 0 ? [...pins, ...ops] : ops;
 }
 
 /** the last view of each opened module folder: blocks the text doesn't place keep their spot when it opens again */
@@ -487,6 +504,7 @@ export const useEditor = create<EditorState>((set, get) => {
         return;
       }
       const { files, ir, scope } = get();
+      ops = withPins(ir, ops);
       let outcome: { files: Record<string, string>; ir: IR; renamed: Map<string, string> };
       /** the root module's fresh parse diagnostics (an opened module's patch leaves the root's alone) */
       let rootDiagnostics: Diagnostic[] | undefined;

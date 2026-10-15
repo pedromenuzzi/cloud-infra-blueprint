@@ -30,6 +30,7 @@ import { moduleCheckMessages } from '@/ir/modules.messages';
 import { backupMessages } from '@/lib/backup.messages';
 import { githubMessages } from '@/lib/githubImport.messages';
 import { libMessages } from '@/lib/messages';
+import { glyphMessages } from '@/lib/pdf/glyphs.messages';
 import { CATALOG_PROVIDERS, catalogProject } from '@/resources/catalogProject';
 import { reasonMessages } from '@/resources/dropReasons';
 import { categoryLabel, fieldHelp, resourceDescription, resourceName, resourceShortName } from '@/resources/i18n';
@@ -157,6 +158,7 @@ describe('sentence dashes: messages', () => {
     editMessages,
     exportMessages,
     githubMessages,
+    glyphMessages,
     hclMessages,
     instanceCheckMessages,
     instanceMessages,

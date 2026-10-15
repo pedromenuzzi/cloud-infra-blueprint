@@ -123,6 +123,62 @@ module "broken" {
     ]);
   });
 
+  it('puts in the module’s locals that are literal once the inputs are in, and follows the caller’s locals', () => {
+    const LOCALS = `variable "env" {}
+variable "office" {}
+
+locals {
+  cidrs     = [var.office]
+  ports     = { ssh = 22, tls = "\${var.env}" }
+  type      = local.base_type
+  base_type = "t3.large"
+  name      = "\${var.env}-app"
+  a         = local.b
+  b         = local.a
+}
+
+resource "aws_security_group" "web" {
+  ingress {
+    from_port   = local.ports.ssh
+    to_port     = local.ports.tls
+    cidr_blocks = local.cidrs
+  }
+}
+
+resource "aws_instance" "app" {
+  instance_type = local.type
+  name          = local.name
+  loop          = local.a
+}
+
+data "aws_ami" "base" {
+  owners = local.cidrs
+}
+`;
+    const files = {
+      'main.tf': `locals {\n  office = "203.0.113.0/24"\n}\n\nmodule "web" {\n  source = "./modules/locals"\n  env    = "prod"\n  office = local.office\n}\n`,
+      'modules/locals/main.tf': LOCALS,
+    };
+    const [web] = moduleInstances(parseProject(files).ir, files);
+    expect(web.fromInputs.size).toBe(0);
+    const sg = web.ir.resources.find((r) => r.id === 'aws_security_group.web')!;
+    const ingress = sg.args.ingress.kind === 'block' ? sg.args.ingress.body : {};
+    expect(ingress.cidr_blocks).toEqual({ kind: 'list', items: [lit('203.0.113.0/24')] });
+    expect(ingress.from_port).toEqual(lit(22));
+    // a field of a local that isn't a literal stays as written
+    expect(ingress.to_port).toEqual({ kind: 'ref', path: 'local.ports.tls' });
+    const app = web.ir.resources.find((r) => r.id === 'aws_instance.app')!;
+    expect(app.args.instance_type).toEqual(lit('t3.large'));
+    expect(app.args.name).toEqual({ kind: 'ref', path: 'local.name' });
+    // locals that read each other in a circle stay as written
+    expect(app.args.loop).toEqual({ kind: 'ref', path: 'local.a' });
+    expect(web.ir.data[0].args.owners).toEqual({ kind: 'list', items: [lit('203.0.113.0/24')] });
+    // the opened module's view reads the same
+    const view = parseProject({ 'main.tf': LOCALS }).ir;
+    const inst = instantiatePath(parseProject(files).ir, files, ['web'], view)!;
+    expect(inst.resources.find((r) => r.id === 'aws_instance.app')!.args.instance_type).toEqual(lit('t3.large'));
+  });
+
   it('follows a path of calls to an opened module, with that view as its blocks', () => {
     const { files, ir } = project(`module "web" {\n  source = "./modules/web"\n  cidr   = "10.1.0.0/16"\n}\n`);
     const view = parseProject({ 'main.tf': MODULE }).ir;

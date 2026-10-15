@@ -208,6 +208,70 @@ test('renaming inside a module writes its moved block there, in module-relative 
   await expect(node(page, 'aws_subnet.app')).toBeVisible();
 });
 
+test('a data source inside an opened module has the same inspector as at the root, edits landing in its file', async ({ page }) => {
+  const lookup = `data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+`;
+  const main = `${lookup}${NETWORK['main.tf'].replace('cidr_block = "10.20.1.0/24" # app tier', 'cidr_block        = "10.20.1.0/24" # app tier\n  availability_zone = data.aws_availability_zones.available.names[0]').replace('vpc_id     =', 'vpc_id            =')}`;
+  await page.addInitScript(() => localStorage.setItem('cb-tips-dismissed', '1'));
+  await page.goto('/dashboard');
+  await page.getByLabel('Import Terraform files').setInputFiles([
+    {
+      name: 'shop.zip',
+      mimeType: 'application/zip',
+      buffer: Buffer.from(
+        zipSync({
+          'shop/envs/prod/main.tf': strToU8(ROOT),
+          'shop/modules/network/main.tf': strToU8(main),
+          ...Object.fromEntries(Object.entries(NETWORK).filter(([f]) => f !== 'main.tf').map(([f, t]) => [`shop/modules/network/${f}`, strToU8(t)])),
+        }),
+      ),
+    },
+  ]);
+  await expect(node(page, 'module.network')).toBeVisible();
+  const moduleFile = async () => (await files(page))['modules/network/main.tf'];
+
+  // the module call says what's inside it, lookups included
+  await select(page, 'module.network');
+  await expect(page.getByText('Data sources inside (1):')).toBeVisible();
+  await openModule(page, 'module.network');
+  await expect(canvasStats(page)).toHaveText(/1 data source/);
+
+  await select(page, 'data.aws_availability_zones.available');
+  const inspector = page.getByRole('complementary', { name: 'Data source inspector' });
+  await expect(inspector.getByRole('heading', { name: 'Availability Zones' })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'aws_subnet.private' })).toBeVisible();
+  await expect(inspector.getByRole('button', { name: 'Copy data.aws_availability_zones.available.names' })).toBeVisible({ timeout: 15_000 });
+
+  // a literal edited in place: one line of the module's file
+  const state = inspector.getByRole('textbox', { name: 'state', exact: true });
+  await state.fill('unavailable');
+  await state.press('Enter');
+  await expect.poll(moduleFile).toBe(main.replace('state = "available"', 'state = "unavailable"'));
+  expect((await files(page))['main.tf']).toBe(ROOT);
+
+  // renamed: its readers in the module follow, no moved block
+  const name = inspector.getByLabel('Terraform name');
+  await name.fill('zones');
+  await name.press('Enter');
+  await expect(page.getByTestId('inspector-address')).toHaveText('data.aws_availability_zones.zones');
+  await expect.poll(moduleFile).toContain('availability_zone = data.aws_availability_zones.zones.names[0]');
+  expect(await moduleFile()).not.toContain('moved {');
+
+  // deleting one that is read asks first; one undo step brings it back
+  await page.keyboard.press('Delete');
+  const confirm = page.getByRole('alertdialog', { name: 'Delete data.aws_availability_zones.zones?' });
+  await expect(confirm).toContainText('Still read by aws_subnet.private.');
+  await confirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(node(page, 'data.aws_availability_zones.zones')).toHaveCount(0);
+  await expect.poll(moduleFile).not.toContain('data "aws_availability_zones"');
+  await page.keyboard.press('Control+z');
+  await expect(node(page, 'data.aws_availability_zones.zones')).toBeVisible();
+  expect((await files(page))['main.tf']).toBe(ROOT);
+});
+
 test('the cost and the security of what the module calls hold', async ({ page }) => {
   await importShop(page);
   // the module call's inspector sums it up

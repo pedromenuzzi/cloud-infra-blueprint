@@ -154,7 +154,7 @@ export function Topbar() {
 
   const doViewLink = () => {
     const { projectName: name, files } = useEditor.getState();
-    const link = viewLinkInfo({ name, files });
+    const link = viewLinkInfo({ name, files, rootPath: openProjectRootPath() });
     if (link.tooLarge) {
       showToast(link.warning!, 'error');
       return;
@@ -167,7 +167,7 @@ export function Topbar() {
 
   const doShare = () => {
     const { projectName: name, files } = useEditor.getState();
-    const link = shareLinkInfo({ name, files });
+    const link = shareLinkInfo({ name, files, rootPath: openProjectRootPath() });
     if (link.tooLarge) {
       showToast(link.warning!, 'error');
       return;

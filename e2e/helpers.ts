@@ -44,6 +44,7 @@ interface StoredProject {
   id: string;
   name: string;
   files: Record<string, string>;
+  rootPath?: string;
 }
 
 /** Projects as persisted by the app (the source of truth after autosave). */

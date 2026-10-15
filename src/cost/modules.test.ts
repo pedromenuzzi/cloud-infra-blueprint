@@ -113,17 +113,24 @@ module "fleet" {
     expect(projectCostWithModules(ir, { ...files }, book)).not.toBe(cost);
   });
 
-  it('says an input given as an expression is not priced', () => {
+  it('says an input given as an expression is not priced, and follows the caller’s locals', () => {
     const { files, ir } = project(`module "web" {
+  source = "./modules/app"
+  size   = lookup(local.sizes, "web")
+}
+
+module "local" {
   source = "./modules/app"
   size   = local.size
 }
 
 locals {
-  size = "m5.large"
+  size  = "m5.large"
+  sizes = { web = "m5.large" }
 }
 `);
-    const [web] = estimateWithModules(ir, files, book).modules!;
+    const [web, local] = estimateWithModules(ir, files, book).modules!;
     expect(web.items[0].kind).toBe('unknown');
+    expect(local.items[0].kind).toBe('fixed');
   });
 });

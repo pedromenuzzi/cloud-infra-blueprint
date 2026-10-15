@@ -20,7 +20,7 @@ import { repeatOf } from '@/ir/repeat';
 import type { Expression, IR, IREdge, Provider, ResourceNode } from '@/ir/types';
 import { repeatLabel } from '@/features/editor/repeatLabel';
 import { providerOfSourceName } from '@/ir/types';
-import { fitText, splitToWidth, textWidth, wrapText, type PdfFont } from '@/lib/pdf/metrics';
+import { fitText, spellGlyphsIn, splitToWidth, textWidth, wrapText, type PdfFont } from '@/lib/pdf/metrics';
 import { PAPER, PdfDocument, tint, type PdfColor, type PdfPage } from '@/lib/pdf/writer';
 import { categoryLabel as catalogCategory, resourceName, resourceShortName } from '@/resources/i18n';
 import { CATEGORY_COLORS } from '@/resources/icons';
@@ -1466,6 +1466,8 @@ function footers(doc: PdfDocument, title: string, t: DocMessages) {
 /** the document, built in steps; each `yield` names the next step */
 function* build(input: ArchDocInput): Generator<string, Uint8Array> {
   const locale = input.locale ?? currentLocale();
+  // emoji the fonts lack read as words in the document's language (src/lib/pdf/glyphs.messages.ts)
+  spellGlyphsIn(locale);
   const t = messagesFor(docMessages, locale);
   const { ir, edges } = input;
   const doc = new PdfDocument(
@@ -1540,6 +1542,7 @@ function* build(input: ArchDocInput): Generator<string, Uint8Array> {
   }
 
   footers(doc, input.title, t);
+  spellGlyphsIn(null);
   // compressing is the heaviest step: a page at a time
   const saving = doc.saveSteps();
   for (let step = saving.next(); ; step = saving.next()) {

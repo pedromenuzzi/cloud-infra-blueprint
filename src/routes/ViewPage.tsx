@@ -62,6 +62,7 @@ function viewProject(payload: SharePayload): Project {
     id: `view_${shareHash(payload)}`,
     name: payload.name,
     files: payload.files,
+    rootPath: payload.rootPath,
     providers: detectProviders(payload.files),
     createdAt: EPOCH,
     updatedAt: EPOCH,
@@ -200,7 +201,7 @@ function ViewerTopbar({
     item('svg', m.diagramSvg, FileImage, () => void canvasApi()?.exportImage('svg')),
     'separator',
     item('zip', m.terraformZip, FileArchive, () => {
-      exportZip(payload.name, payload.files);
+      exportZip(payload.name, payload.files, { rootPath: payload.rootPath });
       showToast(messagesFor(routeMessages).zipDownloaded, 'success');
     }),
   ];

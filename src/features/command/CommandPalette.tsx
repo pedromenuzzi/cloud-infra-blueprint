@@ -388,7 +388,7 @@ export function CommandPalette() {
                       label={m.copyShareLink}
                       onSelect={() =>
                         run(() => {
-                          const link = shareLinkInfo({ name: editor().projectName, files: editor().files });
+                          const link = shareLinkInfo({ name: editor().projectName, files: editor().files, rootPath: openProjectRootPath() });
                           if (link.tooLarge) {
                             showToast(link.warning!, 'error');
                             return;

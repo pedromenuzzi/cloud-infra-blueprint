@@ -24,6 +24,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "templates:emit": "vite-node scripts/emit-templates.ts",
+    "lessons:emit": "vite-node scripts/emit-lessons.ts",
     "catalog:emit": "vite-node scripts/emit-catalog.ts",
     "schema:generate": "vite-node scripts/generate-schema.ts"
   },

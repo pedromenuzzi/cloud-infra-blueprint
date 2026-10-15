@@ -11,7 +11,7 @@
  *   downloadBytes(doc.save(), 'hello.pdf', 'application/pdf');
  */
 import { zlibSync } from 'fflate';
-import { encodeWinAnsi, textWidth, type PdfFont } from './metrics';
+import { BOX, charWidth, encodeWinAnsi, textWidth, type PdfFont } from './metrics';
 import type { PathSeg } from './svgPath';
 
 /** '#rrggbb' */
@@ -172,9 +172,23 @@ export class PdfPage {
       const w = textWidth(text, font, size);
       left = align === 'right' ? x - w : x - w / 2;
     }
-    const hex = codes.map((c) => c.toString(16).padStart(2, '0')).join('');
-    const op = `BT /${FONTS[font].res} ${num(size)} Tf ${rgb(color)} rg ${num(left)} ${num(this.y(y))} Td <${hex}> Tj ET`;
+    // what the fonts can't show leaves a gap in the text (a TJ offset) and a small box is drawn in it
+    const show = codes.includes(BOX)
+      ? `[${codes.map((c) => (c === BOX ? ` ${-charWidth(c, font)} ` : `<${c.toString(16).padStart(2, '0')}>`)).join('')}] TJ`
+      : `<${codes.map((c) => c.toString(16).padStart(2, '0')).join('')}> Tj`;
+    const op = `BT /${FONTS[font].res} ${num(size)} Tf ${rgb(color)} rg ${num(left)} ${num(this.y(y))} Td ${show} ET`;
     this.ops.push(opacity !== undefined && opacity < 1 ? `q ${this.gs(this.alpha * opacity)} ${op} Q` : op);
+    if (!codes.includes(BOX)) return;
+    let at = left;
+    for (const c of codes) {
+      const advance = (charWidth(c, font) * size) / 1000;
+      if (c === BOX) {
+        const w = size * 0.5;
+        const h = size * 0.62;
+        this.rect(at + (advance - w) / 2, y - h, w, h, { stroke: color, lineWidth: size * 0.07, radius: size * 0.08, opacity });
+      }
+      at += advance;
+    }
   }
 
   private rectPath(x: number, y: number, w: number, h: number, radius = 0): string {

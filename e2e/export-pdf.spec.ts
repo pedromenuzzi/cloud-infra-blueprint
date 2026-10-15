@@ -221,9 +221,14 @@ test.describe('PDF document export', () => {
     await expect(warning).toBeHidden();
     await dialog.getByLabel('Title').fill('Produção — café');
     await expect(warning).toBeHidden();
+    // common emoji print as words
+    await dialog.getByLabel('Notes for the reader').fill('Launch 🚀 ✅');
+    await expect(warning).toBeHidden();
     await dialog.getByLabel('Notes for the reader').fill('生产环境 🚀');
     await expect(warning).toBeVisible();
     await expect(warning).toContainText('生');
+    await expect(warning).not.toContainText('🚀');
+    await expect(warning).toContainText('small box');
   });
 
   test('remembers which sections to include', async ({ page }) => {
