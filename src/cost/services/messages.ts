@@ -74,6 +74,9 @@ export const serviceMessages = defineMessages(
       nodeGroupNodes: (nodes: number, defaultType: boolean) =>
         `${count(nodes, 'node', 'nodes')} (desired_size; autoscaling changes this)${defaultType ? ', t3.medium (the default instance type)' : ''}`,
       nodeGroupDisk: (gb: number) => `${gb} GB gp2 root disk per node (the EKS default)`,
+      asgInstances: (instances: number, from: 'desired_capacity' | 'min_size') =>
+        `${count(instances, 'instance', 'instances')} (${from}; scaling changes this), Linux, shared tenancy`,
+      asgSize: "Neither desired_capacity nor min_size is a literal number",
       albLcu: (rate: string) => `Plus ${rate} per LCU-hour, by usage (connections, traffic, rule evaluations)`,
       nlbLcu: (rate: string) => `Plus ${rate} per NLCU-hour, by usage`,
       natGateway: 'NAT gateway',
@@ -274,6 +277,9 @@ export const serviceMessages = defineMessages(
       nodeGroupNodes: (nodes: number, defaultType: boolean) =>
         `${countPt(nodes, 'nó', 'nós')} (desired_size; o autoscaling muda isso)${defaultType ? ', t3.medium (o tipo de instância padrão)' : ''}`,
       nodeGroupDisk: (gb: number) => `Disco raiz gp2 de ${n(gb)} GB por nó (o padrão do EKS)`,
+      asgInstances: (instances: number, from: 'desired_capacity' | 'min_size') =>
+        `${countPt(instances, 'instância', 'instâncias')} (${from}; a escala muda isso), Linux, locação compartilhada`,
+      asgSize: 'Nem desired_capacity nem min_size é um número literal',
       albLcu: (rate: string) => `Mais ${rate} por LCU-hora, conforme o uso (conexões, tráfego, avaliações de regras)`,
       nlbLcu: (rate: string) => `Mais ${rate} por NLCU-hora, conforme o uso`,
       natGateway: 'NAT gateway',

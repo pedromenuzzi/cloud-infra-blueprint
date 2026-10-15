@@ -188,6 +188,8 @@ const SERVICE_GLYPHS: Record<string, Glyph> = {
   aws_sns_topic_subscription: Mail,
   aws_iam_role: UserCog,
   aws_iam_role_policy: FileKey,
+  aws_launch_template: ScrollText,
+  aws_autoscaling_group: Boxes,
   aws_iam_role_policy_attachment: FileKey,
   aws_iam_instance_profile: UserCog,
   aws_lambda_permission: BadgeCheck,

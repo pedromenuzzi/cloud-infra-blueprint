@@ -118,6 +118,63 @@ export const AWS_RESOURCES = [
   }),
 
   defineResource({
+    type: 'aws_launch_template',
+    provider: 'aws',
+    category: 'compute',
+    displayName: 'Launch Template',
+    shortName: 'Launch Template',
+    description: 'The recipe Auto Scaling uses to start instances',
+    fields: [
+      { name: 'name_prefix', type: 'string' },
+      { name: 'image_id', type: 'string', placeholder: 'ami-0c02fb55956c7d316' },
+      {
+        name: 'instance_type',
+        type: 'select',
+        options: ['t3.micro', 't3.small', 't3.medium', 't3.large', 'm5.large', 'c5.large'],
+      },
+      { name: 'vpc_security_group_ids', type: 'list', refTo: ['aws_security_group'], label: 'Security groups' },
+      { name: 'tags', type: 'tags' },
+    ],
+    defaults: {
+      image_id: lit('ami-0c02fb55956c7d316'),
+      instance_type: lit('t3.micro'),
+    },
+    connections: [{ targetTypes: ['aws_security_group'], arg: 'vpc_security_group_ids', attr: 'id', mode: 'append' }],
+    subtitle: (args) => litStr(args.instance_type),
+  }),
+
+  defineResource({
+    type: 'aws_autoscaling_group',
+    provider: 'aws',
+    category: 'compute',
+    displayName: 'Auto Scaling Group',
+    shortName: 'ASG',
+    description: 'Keeps a fleet of instances running across subnets',
+    fields: [
+      { name: 'name_prefix', type: 'string' },
+      { name: 'min_size', type: 'number', required: true, min: 0 },
+      { name: 'max_size', type: 'number', required: true, min: 0 },
+      { name: 'desired_capacity', type: 'number', min: 0 },
+      { name: 'vpc_zone_identifier', type: 'list', refTo: ['aws_subnet'], label: 'Subnets' },
+      { name: 'target_group_arns', type: 'list', refTo: ['aws_lb_target_group'], refAttr: 'arn', label: 'Target groups' },
+    ],
+    defaults: {
+      min_size: lit(1),
+      max_size: lit(2),
+      launch_template: block({ id: lit('lt-0123456789abcdef0'), version: lit('$Latest') }),
+    },
+    connections: [
+      { targetTypes: ['aws_subnet'], arg: 'vpc_zone_identifier', attr: 'id', mode: 'append' },
+      { targetTypes: ['aws_lb_target_group'], arg: 'target_group_arns', attr: 'arn', mode: 'append' },
+    ],
+    subtitle: (args, locale) => {
+      const min = args.min_size?.kind === 'literal' ? String(args.min_size.value) : undefined;
+      const max = args.max_size?.kind === 'literal' ? String(args.max_size.value) : undefined;
+      return min !== undefined && max !== undefined ? t(locale).instanceRange(min, max) : undefined;
+    },
+  }),
+
+  defineResource({
     type: 'aws_db_instance',
     provider: 'aws',
     category: 'database',

@@ -186,6 +186,21 @@ const nodeGroup: Rule = (ctx) => {
   return fixed(lines, [m.aws.nodeGroupNodes(nodes, !listed), m.aws.nodeGroupDisk(disk)]);
 };
 
+/** an Auto Scaling group: its desired (else minimum) number of instances, of its launch template's type */
+const autoScalingGroup: Rule = (ctx) => {
+  const { m } = ctx;
+  const spec = ctx.block('launch_template');
+  const template = spec ? referenced({ ...ctx.r, args: spec }, 'id', ctx.ir) : undefined;
+  const type = template ? resolveString(template.args.instance_type, ctx.ir) : undefined;
+  if (!type) return unknown(m.aws.fromLaunchTemplate);
+  const hourRate = ctx.book.aws.ec2[type];
+  if (hourRate === undefined) return ctx.unpriced('instance_type', type);
+  const desired = ctx.num('desired_capacity');
+  const instances = desired ?? ctx.num('min_size');
+  if (instances === undefined) return unknown(m.aws.asgSize);
+  return fixed([ctx.hourly(type, ctx.at(hourRate), instances)], [m.aws.asgInstances(instances, desired === undefined ? 'min_size' : 'desired_capacity')]);
+};
+
 const loadBalancer: Rule = (ctx) => {
   const { elb } = ctx.book.aws;
   const type = ctx.str('load_balancer_type') ?? 'application';
@@ -314,6 +329,7 @@ export const AWS_RULES: Record<string, Rule> = {
   aws_ecs_service: ecsService,
   aws_eks_cluster: eksCluster,
   aws_eks_node_group: nodeGroup,
+  aws_autoscaling_group: autoScalingGroup,
   aws_lb: loadBalancer,
   aws_nat_gateway: natGateway,
   aws_eip: eip,

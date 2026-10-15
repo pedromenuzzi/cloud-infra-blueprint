@@ -190,6 +190,15 @@ describe('RDS, ElastiCache, containers', () => {
     const ng = cost(`${AWS}resource "aws_eks_node_group" "ng" {\n  instance_types = ["t3.medium"]\n  scaling_config {\n    desired_size = 2\n    max_size = 3\n    min_size = 1\n  }\n}\n`, 'aws_eks_node_group.ng');
     close(ng.monthly, 2 * 730 * 0.0416 + 2 * 20 * 0.1);
   });
+
+  it('prices an Auto Scaling group as its desired (else minimum) instances of its launch template type', () => {
+    const lt = `resource "aws_launch_template" "web" {\n  instance_type = "t3.medium"\n}\n`;
+    const asg = (sizes: string) =>
+      cost(`${AWS}${lt}resource "aws_autoscaling_group" "web" {\n${sizes}  launch_template {\n    id = aws_launch_template.web.id\n  }\n}\n`, 'aws_autoscaling_group.web');
+    close(asg('  min_size = 1\n  max_size = 4\n  desired_capacity = 3\n').monthly, 3 * 730 * 0.0416);
+    close(asg('  min_size = 2\n  max_size = 4\n').monthly, 2 * 730 * 0.0416);
+    expect(cost(`${AWS}resource "aws_autoscaling_group" "web" {\n  min_size = 1\n  max_size = 2\n}\n`, 'aws_autoscaling_group.web').kind).toBe('unknown');
+  });
 });
 
 describe('network and usage-based services', () => {

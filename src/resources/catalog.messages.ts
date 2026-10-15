@@ -101,6 +101,18 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     shortName: 'Perfil de instância',
     description: 'Entrega um perfil do IAM às instâncias EC2',
   },
+  aws_launch_template: {
+    name: 'Launch template',
+    shortName: 'Launch template',
+    description: 'A receita que o Auto Scaling usa para iniciar instâncias',
+    fields: { vpc_security_group_ids: { label: 'Grupos de segurança' } },
+  },
+  aws_autoscaling_group: {
+    name: 'Grupo de Auto Scaling',
+    shortName: 'ASG',
+    description: 'Mantém uma frota de instâncias rodando entre sub-redes',
+    fields: { vpc_zone_identifier: { label: 'Sub-redes' }, target_group_arns: { label: 'Target groups' } },
+  },
   aws_lb: {
     name: 'Application Load Balancer',
     shortName: 'ALB',
