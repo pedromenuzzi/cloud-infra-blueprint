@@ -22,9 +22,10 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
-  # Real `terraform validate` on every starter template and on one project per
-  # provider holding every palette resource as it's dropped — any diagnostic,
-  # warnings and deprecations included, fails the build.
+  # Real `terraform validate` on every starter template, every learning-map
+  # lesson's solution and one project per provider holding every palette
+  # resource as it's dropped — any diagnostic, warnings and deprecations
+  # included, fails the build.
   terraform:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -51,15 +52,18 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ${{ env.TF_PLUGIN_CACHE_DIR }}
-          key: terraform-plugins-${{ runner.os }}-${{ steps.plugins.outputs.week }}-${{ hashFiles('src/templates/index.ts') }}
+          key: terraform-plugins-${{ runner.os }}-${{ steps.plugins.outputs.week }}-${{ hashFiles('src/templates/index.ts', 'src/learn/content/*.ts') }}
           restore-keys: |
             terraform-plugins-${{ runner.os }}-
-      - name: Emit templates and palette catalog
+      - name: Emit templates, lesson solutions and palette catalog
         run: |
           pnpm templates:emit .tf-out/templates
+          pnpm lessons:emit .tf-out/lessons
           pnpm exec vite-node scripts/emit-catalog.ts .tf-out/catalog
       - name: Validate templates (init, validate -json, fmt -check)
         run: bash scripts/terraform-validate.sh .tf-out/templates
+      - name: Validate lesson solutions (init, validate -json, fmt -check)
+        run: bash scripts/terraform-validate.sh .tf-out/lessons
       - name: Validate palette catalog (init, validate -json, fmt -check)
         run: bash scripts/terraform-validate.sh .tf-out/catalog
       - name: Catalog fields match the provider schemas
