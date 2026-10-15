@@ -136,6 +136,31 @@ describe('backup zip', () => {
     const parsed = b.parseBackup(nested);
     expect(parsed.ok && parsed.backup.projects.map((p) => p.name)).toEqual(['web']);
   });
+
+  it('carries the learning progress when there is some, and backups without it still restore', async () => {
+    const b = await load();
+    const progress = { start: 'aws', xp: 120, lessons: { 'first-resource': { status: 'done', met: ['bucket'] } } };
+    const zip = b.buildBackup([project({ id: 'prj_a', name: 'web' })], NOW, progress);
+    const manifest = JSON.parse(strFromU8(unzipSync(zip)['manifest.json']));
+    expect(manifest.learning).toBe('learning.json');
+    const parsed = b.parseBackup(zip);
+    expect(parsed.ok && parsed.backup.learning).toEqual(progress);
+
+    // a learning-only backup, and one from before learning progress existed
+    const only = b.parseBackup(b.buildBackup([], NOW, progress));
+    expect(only.ok && only.backup.projects.length === 0 && only.backup.learning).toEqual(progress);
+    const before = b.parseBackup(b.buildBackup([project({ id: 'prj_a', name: 'web' })], NOW));
+    expect(before.ok && 'learning' in before.backup).toBe(false);
+  });
+
+  it('a damaged learning.json is left out: the projects still restore', async () => {
+    const b = await load();
+    const files = unzipSync(b.buildBackup([project({ id: 'prj_a', name: 'web' })], NOW, { xp: 1 }));
+    files['learning.json'] = strToU8('{ not json');
+    const parsed = b.parseBackup(zipSync(files));
+    expect(parsed.ok && parsed.backup.projects.map((p) => p.name)).toEqual(['web']);
+    expect(parsed.ok && parsed.backup.learning).toBeUndefined();
+  });
 });
 
 describe('telling a backup from Terraform', () => {

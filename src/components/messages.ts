@@ -20,7 +20,7 @@ export const shellMessages = defineMessages(
     primaryNav: 'Primary',
     home: 'Cloud Blueprint home',
     projects: 'Projects',
-    tutorials: 'Tutorials',
+    learn: 'Learn',
     templates: 'Templates',
     githubRepo: 'GitHub repository',
     // AppErrorScreen
@@ -70,10 +70,9 @@ export const shellMessages = defineMessages(
     restoreProject: 'Restore project',
     loadOther: 'Load other version',
     keepMine: 'Keep mine',
-    // ProjectThumbnail / HclSnippet
+    // ProjectThumbnail
     emptyCanvas: 'Empty canvas',
     architecturePreview: 'Architecture preview',
-    newLine: 'new',
   },
   {
     close: 'Fechar',
@@ -87,7 +86,7 @@ export const shellMessages = defineMessages(
     primaryNav: 'Principal',
     home: 'Página inicial do Cloud Blueprint',
     projects: 'Projetos',
-    tutorials: 'Tutoriais',
+    learn: 'Aprender',
     templates: 'Templates',
     githubRepo: 'Repositório no GitHub',
     somethingWrong: 'Algo deu errado',
@@ -138,6 +137,5 @@ export const shellMessages = defineMessages(
     keepMine: 'Manter a minha',
     emptyCanvas: 'Canvas vazio',
     architecturePreview: 'Prévia da arquitetura',
-    newLine: 'novo',
   },
 );

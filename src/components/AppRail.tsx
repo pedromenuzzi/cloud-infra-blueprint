@@ -12,7 +12,7 @@ export function AppRail({
   active,
   onTemplates,
 }: {
-  active: 'projects' | 'tutorials';
+  active: 'projects' | 'learn';
   onTemplates?: () => void;
 }) {
   const navigate = useNavigate();
@@ -38,10 +38,10 @@ export function AppRail({
       <Button
         variant="ghost"
         size="icon"
-        aria-label={m.tutorials}
-        title={m.tutorials}
-        className={cn(active === 'tutorials' && 'bg-primary-soft text-primary')}
-        onClick={() => navigate('/tutorials')}
+        aria-label={m.learn}
+        title={m.learn}
+        className={cn(active === 'learn' && 'bg-primary-soft text-primary')}
+        onClick={() => navigate('/learn')}
       >
         <GraduationCap className="h-4 w-4" />
       </Button>

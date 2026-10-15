@@ -2,12 +2,15 @@
  * Restore from backup: validate the .zip, show what would happen to each
  * project (new / already here / differs), let the user choose copies or
  * replacement, then store everything in one write. Loaded on first use.
+ * A backup with learning progress offers to restore it too, saying what it
+ * replaces in this browser.
  */
-import { AlertTriangle, ArchiveRestore, Check, FileWarning } from 'lucide-react';
+import { AlertTriangle, ArchiveRestore, Check, FileWarning, GraduationCap } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Modal } from '@/components/ui';
 import { formatDate } from '@/i18n/format';
 import { messagesFor, useMessages } from '@/i18n/messages';
+import { readProgress, useLearn, type LearnProgress } from '@/learn/progress';
 import {
   applyRestore,
   parseBackup,
@@ -26,7 +29,11 @@ import { formatBytes } from './meter';
 export interface RestoreSummary {
   added: number;
   replaced: number;
+  /** the backup's learning progress replaced this browser's */
+  learning: boolean;
 }
+
+const finished = (p: Pick<LearnProgress, 'lessons'>) => Object.values(p.lessons).filter((l) => l?.status === 'done').length;
 
 type Phase =
   | { kind: 'reading' }
@@ -83,8 +90,18 @@ export default function RestoreDialog({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [applyError, setApplyError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // the backup's learning progress, read like stored progress (anything odd falls back to empty)
+  const learning = useMemo(
+    () => (phase.kind === 'ready' && phase.backup.learning !== undefined ? readProgress(phase.backup.learning) : null),
+    [phase],
+  );
+  const [withLearning, setWithLearning] = useState(true);
+  const restoringLearning = learning !== null && withLearning;
+  const hereXp = useLearn((s) => s.xp);
+  const hereDone = finished({ lessons: useLearn((s) => s.lessons) });
   const modeName = useId();
   const listId = useId();
+  const learningHintId = useId();
   const readyFocus = useRef<HTMLElement | null>(null);
   const m = useMessages(dataMessages);
 
@@ -139,12 +156,13 @@ export default function RestoreDialog({
     });
 
   const restore = () => {
-    if (!resolved || total === 0) return;
+    if (!resolved || (total === 0 && !restoringLearning)) return;
     setBusy(true);
-    const result = applyRestore(resolved);
+    const result = total > 0 ? applyRestore(resolved) : ({ ok: true, added: [], replaced: [] } as const);
     setBusy(false);
     if (result.ok) {
-      onRestored({ added: result.added.length, replaced: result.replaced.length });
+      if (restoringLearning) useLearn.getState().replace(learning);
+      onRestored({ added: result.added.length, replaced: result.replaced.length, learning: restoringLearning });
       return;
     }
     if (result.reason === 'quota') {
@@ -322,6 +340,31 @@ export default function RestoreDialog({
               </ul>
             </div>
 
+            {learning ? (
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border bg-surface-1 px-3 py-2.5 hover:bg-surface-2/60">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--primary)]"
+                  checked={withLearning}
+                  onChange={(e) => setWithLearning(e.target.checked)}
+                  aria-describedby={learningHintId}
+                />
+                <GraduationCap className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block text-[13px] font-semibold">{m.restoreLearning}</span>
+                  <span id={learningHintId} className="mt-0.5 block text-[12px] text-muted">
+                    {m.learningInBackup(learning.xp, finished(learning))}
+                    {hereXp > 0 || hereDone > 0 ? (
+                      <span className={cn('mt-0.5 flex items-start gap-1', withLearning && 'text-warning')}>
+                        {withLearning ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> : null}
+                        {m.learningReplaces(hereXp, hereDone)}
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+              </label>
+            ) : null}
+
             {applyError ? (
               <p role="alert" className="flex gap-2 rounded-md border border-danger/30 bg-danger/8 px-3 py-2.5 text-[12.5px] text-danger">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -338,7 +381,7 @@ export default function RestoreDialog({
           <div className="flex flex-wrap items-center justify-end gap-2 border-t px-5 py-3.5 max-sm:px-4">
             <p className="mr-auto text-[12px] text-muted">
               {total === 0 ? (
-                m.nothingSelected
+                restoringLearning ? m.learningOnly : m.nothingSelected
               ) : (
                 <>
                   <Check className="mr-1 inline h-3.5 w-3.5 text-success" />
@@ -355,10 +398,10 @@ export default function RestoreDialog({
             <Button
               ref={(el) => void (readyFocus.current ??= el)}
               variant={replacing > 0 ? 'danger' : 'primary'}
-              disabled={total === 0 || busy}
+              disabled={(total === 0 && !restoringLearning) || busy}
               onClick={restore}
             >
-              {replacing > 0 ? m.restoreAndReplace(replacing) : m.restoreProjects(total)}
+              {replacing > 0 ? m.restoreAndReplace(replacing) : total === 0 && restoringLearning ? m.restoreLearningButton : m.restoreProjects(total)}
             </Button>
           </div>
         </>

@@ -8,7 +8,16 @@ export const dataMessages = defineMessages(
     // backing up
     nothingToBackUp: 'There are no projects to back up yet',
     backupDownloaded: (n: number) => `Backup downloaded: ${n} project${s(n)}`,
+    backupHasLearning: 'Your learning progress is in it too.',
     backupFailed: 'The backup could not be created',
+    // the learning map's progress in a backup
+    restoreLearning: 'Restore my learning progress',
+    learningInBackup: (xp: number, lessons: number) => `The backup holds ${xp} XP and ${lessons} finished lesson${s(lessons)}.`,
+    learningReplaces: (xp: number, lessons: number) =>
+      `It replaces the progress in this browser (${xp} XP, ${lessons} finished lesson${s(lessons)}).`,
+    learningOnly: 'Only the learning progress',
+    restoreLearningButton: 'Restore learning progress',
+    learningRestored: 'Learning progress restored',
     restoreInput: 'Restore from backup file',
 
     // DataPanel — storage
@@ -209,6 +218,15 @@ export const dataMessages = defineMessages(
   {
     nothingToBackUp: 'Ainda não há projetos para fazer backup',
     backupDownloaded: (n: number) => `Backup baixado: ${n} projeto${s(n)}`,
+    backupHasLearning: 'Seu progresso de aprendizado também está nele.',
+    restoreLearning: 'Restaurar meu progresso de aprendizado',
+    learningInBackup: (xp: number, lessons: number) =>
+      `O backup tem ${xp} XP e ${lessons} ${lessons === 1 ? 'lição concluída' : 'lições concluídas'}.`,
+    learningReplaces: (xp: number, lessons: number) =>
+      `Ele substitui o progresso deste navegador (${xp} XP, ${lessons} ${lessons === 1 ? 'lição concluída' : 'lições concluídas'}).`,
+    learningOnly: 'Só o progresso de aprendizado',
+    restoreLearningButton: 'Restaurar o progresso de aprendizado',
+    learningRestored: 'Progresso de aprendizado restaurado',
     backupFailed: 'Não foi possível criar o backup',
     restoreInput: 'Arquivo de backup para restaurar',
 
