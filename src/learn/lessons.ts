@@ -6,6 +6,9 @@ import { lessons as aws0 } from './content/aws-0';
 import { lessons as aws1 } from './content/aws-1';
 import { lessons as aws2 } from './content/aws-2';
 import { lessons as aws3 } from './content/aws-3';
+import { lessons as aws4 } from './content/aws-4';
+import { lessons as aws5 } from './content/aws-5';
+import { lessons as aws6 } from './content/aws-6';
 import { lessons as azure0 } from './content/azure-0';
 import type { Lesson, Level, StartChoice, Track } from './types';
 
@@ -53,6 +56,36 @@ export const TRACKS: Track[] = [
           pt: 'Security groups, EC2, achados de segurança como feedback, um perfil do IAM.',
         },
         lessons: aws3,
+      },
+      {
+        id: 'aws-4',
+        index: 4,
+        title: { en: 'References and data', pt: 'Referências e dados' },
+        summary: {
+          en: 'How Terraform orders the work, `depends_on`, `data` lookups and expressions.',
+          pt: 'Como o Terraform ordena o trabalho, `depends_on`, consultas com `data` e expressões.',
+        },
+        lessons: aws4,
+      },
+      {
+        id: 'aws-5',
+        index: 5,
+        title: { en: 'Repetition', pt: 'Repetição' },
+        summary: {
+          en: '`count`, `for_each`, `dynamic` blocks, conditional resources and `moved`.',
+          pt: '`count`, `for_each`, blocos `dynamic`, recursos condicionais e `moved`.',
+        },
+        lessons: aws5,
+      },
+      {
+        id: 'aws-6',
+        index: 6,
+        title: { en: 'Modules', pt: 'Módulos' },
+        summary: {
+          en: 'Package infrastructure into modules: inputs, outputs, reuse and the Registry.',
+          pt: 'Empacote infraestrutura em módulos: entradas, saídas, reúso e o Registry.',
+        },
+        lessons: aws6,
       },
     ],
   },
