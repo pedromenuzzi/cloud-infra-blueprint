@@ -1,6 +1,7 @@
+import { strToU8, zipSync } from 'fflate';
 import { expect, test } from '@playwright/test';
 import { encodeShare } from '../src/lib/share';
-import { canvasStats, storedProjects, waitForMonaco } from './helpers';
+import { canvasStats, storedProject, storedProjects, waitForMonaco } from './helpers';
 
 const files = {
   'main.tf': [
@@ -54,6 +55,42 @@ test('a link pasted into a tab that is already open is picked up', async ({ page
     location.hash = hash;
   }, link.slice(2));
   await expect(page.getByRole('dialog', { name: /Import a copy of shared-from-e2e/ })).toBeVisible();
+});
+
+test('a project imported from a subfolder keeps its root folder through a share link', async ({ page }) => {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __copied: string[] };
+    w.__copied = [];
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (t: string) => void w.__copied.push(t) } });
+    localStorage.setItem('cb-tips-dismissed', '1');
+  });
+  await page.goto('/dashboard');
+  await page.getByLabel('Import Terraform files').setInputFiles([
+    {
+      name: 'shop.zip',
+      mimeType: 'application/zip',
+      buffer: Buffer.from(
+        zipSync({
+          'shop/envs/prod/main.tf': strToU8('module "net" {\n  source = "../../modules/net"\n}\n'),
+          'shop/modules/net/main.tf': strToU8('resource "aws_vpc" "this" {\n  cidr_block = "10.0.0.0/16"\n}\n'),
+        }),
+      ),
+    },
+  ]);
+  await expect(page).toHaveURL(/\/editor\//);
+  await expect.poll(async () => (await storedProject(page, 'shop'))?.rootPath).toBe('shop/envs/prod');
+  await page.locator('header').first().getByRole('button', { name: 'Share' }).click();
+  await expect(page.getByText(/^Share link copied/)).toBeVisible();
+  const copied = await page.evaluate(() => (window as unknown as { __copied: string[] }).__copied[0]!);
+
+  // opened elsewhere: the copy keeps it, so its Terraform zip lays the folders out the same
+  await page.evaluate(() => localStorage.removeItem('cb-projects-v1'));
+  await page.goto(copied);
+  await page.getByRole('dialog', { name: /Import a copy of shop/ }).getByRole('button', { name: 'Import copy' }).click();
+  await expect(page).toHaveURL(/\/editor\//);
+  await expect
+    .poll(async () => (await storedProjects(page)).filter((p) => p.name.startsWith('shop')).map((p) => [p.name, p.rootPath]))
+    .toEqual([['shop', 'shop/envs/prod']]);
 });
 
 test('a damaged link says so and is cleared from the URL', async ({ page }) => {
