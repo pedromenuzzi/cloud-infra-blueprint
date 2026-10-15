@@ -110,6 +110,12 @@ describe('module blocks in the IR', () => {
     const { ir } = parseProject({ ...files, 'modules/app/main.tf': 'resource "aws_s3_bucket" "inside" {}\n' });
     expect(ir.resources.map((r) => r.id)).toEqual(['aws_instance.web', 'aws_subnet.extra']);
   });
+
+  it('variable files hold values, not code: no parse error, no blocks', () => {
+    const { ir, diagnostics } = parseProject({ ...files, 'prod.tfvars': 'environment   = "prod"\ninstance_type = "t3.large"\n' });
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(ir.resources.map((r) => r.id)).toEqual(['aws_instance.web', 'aws_subnet.extra']);
+  });
 });
 
 describe('patches on module blocks touch only what changes', () => {

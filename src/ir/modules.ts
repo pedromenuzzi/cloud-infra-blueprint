@@ -28,8 +28,8 @@ const RAW_ENTRY_KEY = /[\s"]/;
 
 /* ------------------------------------------------------------- files */
 
-/** A file of the root module: no folder in its project path. */
-export const isRootModuleFile = (path: string): boolean => !path.includes('/');
+/** A file of the root module: no folder in its project path, and code (a `.tfvars` file holds values, not blocks). */
+export const isRootModuleFile = (path: string): boolean => !path.includes('/') && !/\.tfvars(\.json)?$/.test(path);
 
 /** The files of the root module only (what the IR is parsed from). */
 export function rootModuleFiles(files: Record<string, string>): Record<string, string> {
