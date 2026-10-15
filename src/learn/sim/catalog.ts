@@ -71,7 +71,8 @@ const hex = (f: Fake, n: number, salt = '') => hexOf(f.seed + salt, n);
 const awsId = (prefix: string) => (f: Fake) => `${prefix}-0${hex(f, 16, prefix)}`;
 const upper = (f: Fake, n: number, salt: string) => hex(f, n, salt).toUpperCase().replace(/[0-9]/g, (d) => 'ABCDEFGHJK'[Number(d)]);
 const ec2Arn = (kind: string) => (f: Fake) => `arn:aws:ec2:${f.region}:${ACCOUNT}:${kind}/${f.id}`;
-const named = (prefix = 'terraform') => (f: Fake) => str(f.config.name) ?? `${prefix}-${digitsOf(f.seed, 26)}`;
+/** `name`, else `name_prefix` and the digits the provider adds (`web-2026…`), else a generated name */
+const named = (prefix = 'terraform') => (f: Fake) => str(f.config.name) ?? (str(f.config.name_prefix) ? `${str(f.config.name_prefix)}${digitsOf(f.seed, 26)}` : `${prefix}-${digitsOf(f.seed, 26)}`);
 const owner = () => ACCOUNT;
 /** `E2QWRUHAPOMQZL`: CloudFront's ids */
 const cfId = (f: Fake, salt: string) => `E${upper(f, 13, salt)}`;
@@ -488,6 +489,15 @@ function spec(type: string): TypeSpec {
 
 /** the attributes the provider fills in for a type (besides `id`) */
 export const computedOf = (type: string): string[] => Object.keys(spec(type).computed ?? {});
+
+/**
+ * Computed attributes that are numbers: the state keeps strings, so they're read back as numbers
+ * (a template's `latest_version` inside the block that names it compares equal again).
+ *
+ * ponytail: by name; keep the state's types if lessons need more.
+ */
+const NUMBERS = new Set(['latest_version', 'default_version', 'port', 'source_code_size', 'output_size']);
+export const isNumberAttr = (attr: string): boolean => NUMBERS.has(attr);
 
 /** a computed number an update raises (`latest_version`): unknown in the plan, one up after the apply */
 export const versioned = (type: string, attr: string): boolean => spec(type).versioned?.includes(attr) === true;

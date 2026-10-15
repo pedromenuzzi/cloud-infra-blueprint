@@ -32,7 +32,7 @@ import { validateProject } from '@/ir/validate';
 import { getDef } from '@/resources/registry';
 import { constraintAllows } from '@/schema/versions';
 import type { Files, PlanSummary, SimCommand, SimState } from '../types';
-import { computedOf, createSeconds, dataAttrs, forcesNew, knowsData, makeAttr, makeId, plannedAttr, readData, sensitiveAttrs, versioned, type Fake } from './catalog';
+import { computedOf, createSeconds, dataAttrs, forcesNew, isNumberAttr, knowsData, makeAttr, makeId, plannedAttr, readData, sensitiveAttrs, versioned, type Fake } from './catalog';
 import { dynamicLabel, evaluate, evaluateRecord, hasUnknown, instanceEnv, isObject, Opaque, UNKNOWN, type Scope, type Val } from './eval';
 import {
   changeLines,
@@ -676,7 +676,7 @@ function visitResource(eng: Engine, mod: Mod, r: ResourceNode) {
     const id = eng.apply && fresh ? makeId(fake) : undefined;
     for (const k of [...computed, ...kept]) {
       if (action === 'update' && prev?.[k] !== undefined && versioned(r.type, k)) value[k] = eng.apply ? Number(prev[k]) + 1 : UNKNOWN;
-      else if (!fresh && prev?.[k] !== undefined) value[k] = decode(prev[k]);
+      else if (!fresh && prev?.[k] !== undefined) value[k] = decode(prev[k], isNumberAttr(k) ? 0 : undefined);
       else if (!eng.apply) value[k] = plannedAttr(k, fake) ?? UNKNOWN;
       else value[k] = k === 'id' ? (id ?? makeId(fake)) : makeAttr(k, { ...fake, id: id ?? String(value.id ?? prev?.id ?? '') });
     }
