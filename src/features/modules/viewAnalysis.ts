@@ -1,7 +1,7 @@
 /**
  * What the analyses read for the IR on the canvas. The root module is read
  * as it is; an opened module is read as the calls that lead to it make it —
- * its `var.x` replaced by the literal inputs they give (src/ir/moduleInstance.ts)
+ * its `var.x` (and the `local.x` built from them) replaced by the literal inputs they give (src/ir/moduleInstance.ts)
  * — so the inspector's cost line and security card, and the security lens,
  * say what that module call will cost and expose.
  *

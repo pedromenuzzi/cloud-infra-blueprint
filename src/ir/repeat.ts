@@ -70,9 +70,8 @@ function parseLocals(text: string): Record<string, Expression> {
   return block?.kind === 'labeled' ? block.args : {};
 }
 
-/** the value of `local.<name>`, from the project's `locals { … }` blocks */
-export function localValue(ir: IR | undefined, name: string): Expression | undefined {
-  if (!ir) return undefined;
+/** every `local.<name>` value, from the project's `locals { … }` blocks */
+export function localValues(ir: IR): Map<string, Expression> {
   let map = localsCache.get(ir);
   if (!map) {
     map = new Map();
@@ -82,7 +81,12 @@ export function localValue(ir: IR | undefined, name: string): Expression | undef
     }
     localsCache.set(ir, map);
   }
-  return map.get(name);
+  return map;
+}
+
+/** the value of `local.<name>`, from the project's `locals { … }` blocks */
+export function localValue(ir: IR | undefined, name: string): Expression | undefined {
+  return ir ? localValues(ir).get(name) : undefined;
 }
 
 /** a variable's default or a local's value behind `var.x` / `local.x` */
