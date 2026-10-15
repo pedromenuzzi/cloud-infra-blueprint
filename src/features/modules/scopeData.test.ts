@@ -50,6 +50,18 @@ describe('data blocks inside an opened module', () => {
     expect(editor().ir.data).toEqual([]);
   });
 
+  it('a data source selected before a module opens is selected again on the way back', () => {
+    const main = `${MAIN}\ndata "aws_region" "current" {}\n`;
+    editor().load(createProject({ name: 'scope-data-back', files: { ...FILES, 'main.tf': main } }));
+    editor().setSelection('data.aws_region.current');
+    openModuleView('modules/app', 'app');
+    editor().setSelection('data.aws_ami.ubuntu');
+    expect(editor().selection).toBe('data.aws_ami.ubuntu');
+    moduleViewBack();
+    expect(editor().scope).toBeNull();
+    expect(editor().selection).toBe('data.aws_region.current');
+  });
+
   it('edit and rename in the module’s own file, comments and the root untouched', () => {
     openModuleView('modules/app', 'app');
     editor().applyCanvasOps([{ kind: 'set_arg', nodeId: 'data.aws_ami.ubuntu', field: 'most_recent', value: lit(false) }]);

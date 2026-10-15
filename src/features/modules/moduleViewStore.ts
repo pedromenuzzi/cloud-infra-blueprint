@@ -7,6 +7,7 @@
  */
 import { create } from 'zustand';
 import { useEditor } from '@/features/editor/store';
+import { hasNode } from '@/ir/modules';
 
 export interface OpenedModule {
   /** project folder, `modules/network` */
@@ -58,7 +59,7 @@ export function moduleViewTo(depth: number) {
   const back = path[Math.max(0, depth)]?.from ?? null;
   applyPath(path.slice(0, Math.max(0, depth)));
   const { ir, setSelection } = useEditor.getState();
-  if (back && (ir.modules.some((m) => m.id === back) || ir.resources.some((r) => r.id === back))) setSelection(back);
+  if (back && hasNode(ir, back)) setSelection(back);
 }
 
 /** One level up (to the root canvas from a first-level module). */
