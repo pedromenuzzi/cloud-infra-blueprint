@@ -2,6 +2,8 @@
  * Monaco wiring: HCL language (Monarch tokenizer), blueprint themes,
  * catalog-aware completion and hover. Loaded lazily with the editor route.
  */
+// first: Monaco words its menus and widgets as it loads (./nls.ts)
+import './nls';
 import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
 import './contribs';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';

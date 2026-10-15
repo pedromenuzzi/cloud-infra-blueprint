@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath, URL } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -51,6 +52,37 @@ function lazyAssetsManifest(): Plugin {
   };
 }
 
+/**
+ * Monaco's own words (find, suggestions, hovers, its context menu) in the UI
+ * language. Monaco 0.52 ships no Portuguese, and its ESM `localize` returns
+ * the English it is given: patched, it looks that English up first in the
+ * table src/features/editor/monaco/nls.ts keeps on `globalThis`. Applied to
+ * the build and to the dev server's pre-bundled copy of Monaco alike.
+ */
+const MONACO_NLS = /monaco-editor[\\/]esm[\\/]vs[\\/]nls\.js$/;
+
+function localizeMonaco(code: string): string {
+  const out = code
+    // localize(key, message, ...args)
+    .replace('return _format(message, args);', 'return _format(globalThis.__cbMonacoNls?.[message] ?? message, args);')
+    // localize2(key, originalMessage, ...args): `original` stays English
+    .replace('message = originalMessage;', 'message = globalThis.__cbMonacoNls?.[originalMessage] ?? originalMessage;');
+  if (out.split('__cbMonacoNls').length !== 3) {
+    throw new Error('monaco-editor/esm/vs/nls.js changed: update localizeMonaco in vite.config.ts');
+  }
+  return out;
+}
+
+function monacoNls(): Plugin {
+  return {
+    name: 'cb-monaco-nls',
+    enforce: 'pre',
+    transform(code, id) {
+      return MONACO_NLS.test(id) ? localizeMonaco(code) : undefined;
+    },
+  };
+}
+
 // VITE_BASE lets CI (e.g. GitHub Pages) build under a sub-path.
 export default defineConfig({
   base: process.env.VITE_BASE || '/',
@@ -58,6 +90,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     lazyAssetsManifest(),
+    monacoNls(),
     // build-time only: generates dist/sw.js (Workbox); the app registers it itself (pwa.ts)
     VitePWA({
       registerType: 'prompt',
@@ -113,6 +146,21 @@ export default defineConfig({
   ],
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      plugins: [
+        {
+          name: 'cb-monaco-nls',
+          setup(build) {
+            build.onLoad({ filter: MONACO_NLS }, async (args) => ({
+              contents: localizeMonaco(await readFile(args.path, 'utf8')),
+              loader: 'js',
+            }));
+          },
+        },
+      ],
+    },
   },
   build: {
     chunkSizeWarningLimit: 4000,
