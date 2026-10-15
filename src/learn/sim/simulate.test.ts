@@ -305,6 +305,28 @@ describe('modules', () => {
     expect(simulate('validate', envs('module "net" {\n  source = "./modules/net"\n  cidr   = "10.0.0.0/16"\n}\n'), null).ok).toBe(true);
     expect(simulate('plan', envs('module "net" {\n  source = "./modules/net"\n}\n'), null).ok).toBe(false);
   });
+
+  it('validate looks inside the modules too: their references and required arguments', () => {
+    const call = main('module "net" {\n  source = "./modules/net"\n  cidr   = "10.0.0.0/16"\n}\n');
+    const broken = `${NET.replace('cidr_block = var.cidr', 'cidr_block = var.cdir')}\nresource "aws_subnet" "a" {\n  cidr_block = "10.0.1.0/24"\n}\n\noutput "typo" {\n  value = aws_vpc.thsi.id\n}\n`;
+    const out = text(simulate('validate', { ...call, 'modules/net/main.tf': broken }, null));
+    expect(out).toContain('│ Error: Reference to undeclared input variable\n│\n│   on modules/net/main.tf line 10, in resource "aws_vpc" "this":');
+    expect(out).toContain('│ A managed resource "aws_vpc" "thsi" has not been declared in module.net.');
+    expect(out).toContain('│   on modules/net/main.tf line 20, in resource "aws_subnet" "a":');
+    expect(out).toContain('│ The argument "vpc_id" is required, but no definition was found.');
+  });
+
+  it('a module added since the last init is not installed, as Terraform says', () => {
+    const before = main('');
+    const after = envs('module "net" {\n  source = "./modules/net"\n  cidr   = "10.0.0.0/16"\n}\n');
+    const r = simulate('plan', after, null, { initialized: false, installed: initFingerprint(before) });
+    expect(r.ok).toBe(false);
+    expect(text(r)).toContain('│ Error: Module not installed\n│\n│   on main.tf line 14:\n│   14: module "net" {');
+    expect(text(r)).toContain('│ This module is not yet installed. Run "terraform init" to install all modules');
+    // a provider changed too: the lock file is what's out of date
+    const both = { ...after, 'main.tf': `${after['main.tf']}\nresource "random_id" "x" {\n  byte_length = 4\n}\n` };
+    expect(text(simulate('plan', both, null, { initialized: false, installed: initFingerprint(before) }))).toContain('Error: Inconsistent dependency lock file');
+  });
 });
 
 describe('data sources', () => {
@@ -411,6 +433,28 @@ output "ami_name" {
     // the bucket exists now: the next plan reads it right away
     const again = text(simulate('plan', main(DEFERRED), done.state!));
     expect(again).toContain('data.aws_iam_policy_document.read: Read complete after 0s');
+    expect(again).toContain('No changes.');
+  });
+
+  it('reads one filter block like two (an Ubuntu lookup gets an Ubuntu name)', () => {
+    const code = 'data "aws_ami" "ubuntu" {\n  most_recent = true\n  owners      = ["099720109477"]\n  filter {\n    name   = "name"\n    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]\n  }\n}\n\noutput "name" {\n  value = data.aws_ami.ubuntu.name\n}\n';
+    expect(text(simulate('plan', main(code), null))).toContain('+ name = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-20260901"');
+  });
+
+  it('depends_on something with changes pending: read during apply, then in plan once applied', () => {
+    const code = 'resource "aws_s3_bucket" "b" {\n  bucket = "acme-logs"\n}\n\ndata "aws_caller_identity" "me" {\n  depends_on = [aws_s3_bucket.b]\n}\n\noutput "account" {\n  value = data.aws_caller_identity.me.account_id\n}\n';
+    const r = simulate('plan', main(code), null);
+    const out = text(r);
+    expect(out).toContain('  # data.aws_caller_identity.me will be read during apply\n  # (depends on a resource or a module with changes pending)\n <= data "aws_caller_identity" "me" {');
+    expect(out).toContain('  + account = (known after apply)');
+    expect(out).toContain('Plan: 1 to add, 0 to change, 0 to destroy.');
+    const done = simulate('apply', main(code), null, auto);
+    const log = text(done);
+    expect(log.indexOf('aws_s3_bucket.b: Creation complete')).toBeLessThan(log.indexOf('data.aws_caller_identity.me: Reading...'));
+    expect(done.state?.outputs.account).toBe('123456789012');
+    expect(Object.keys(done.state!.resources)).toEqual(['aws_s3_bucket.b']);
+    const again = text(simulate('plan', main(code), done.state!));
+    expect(again).toContain('data.aws_caller_identity.me: Read complete after 0s [id=123456789012]');
     expect(again).toContain('No changes.');
   });
 

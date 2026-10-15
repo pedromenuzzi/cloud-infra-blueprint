@@ -216,7 +216,7 @@ export interface ResourceChange {
   forced?: Set<string>;
   /** `lifecycle { create_before_destroy = true }` */
   createFirst?: boolean;
-  /** why a delete happens, when it isn't obvious */
+  /** why a delete happens, when it isn't obvious; why a read waits for the apply */
   because?: string;
   /** the address a `moved` block took it from */
   movedFrom?: string;
@@ -238,7 +238,7 @@ export function changeLines(c: ResourceChange): Line[] {
   const moveOnly = c.action === 'noop' && c.movedFrom !== undefined;
   const out: Line[] = [line(moveOnly ? `  # ${c.movedFrom} has moved to ${c.address}` : `  # ${c.address} ${HEADS[c.action]}`, 'strong')];
   if (c.movedFrom !== undefined && !moveOnly) out.push(line(`  # (moved from ${c.movedFrom})`, 'strong'));
-  if (c.action === 'read') out.push(line('  # (config refers to values not yet known)', 'strong'));
+  if (c.action === 'read') out.push(line(`  # (${c.because ?? 'config refers to values not yet known'})`, 'strong'));
   else if (c.because) out.push(line(`  # (because ${c.because})`, 'strong'));
   const open = `${c.action === 'read' ? 'data' : 'resource'} "${c.type}" "${c.name}" {`;
   if (c.action === 'create' || c.action === 'read') {

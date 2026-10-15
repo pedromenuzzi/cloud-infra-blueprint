@@ -49,6 +49,8 @@ export interface SimContext {
   initialized: boolean;
   /** `-auto-approve`: apply and destroy don't stop to ask */
   autoApprove?: boolean;
+  /** the `initFingerprint` of the last `init`: says what changed since (a module: "Module not installed") */
+  installed?: string;
 }
 
 export interface SimResult {
@@ -166,15 +168,40 @@ function diagnose(files: Files, ir: IR, parseDiagnostics: ReturnType<typeof pars
     out.push({ severity: d.severity, summary: d.message, file: d.file, line: d.start?.line, source });
   }
   if (out.some((p) => p.severity === 'error')) return out;
+  checkModule(files, ir, 'the root module', out, new Set(), 0);
+  if (warnings) {
+    const errorLines = new Set(out.map((p) => `${p.file}:${p.line}`));
+    for (const d of validateProject(ir, getDef)) {
+      if (d.severity !== 'warning' || errorLines.has(`${d.file}:${d.start?.line}`)) continue;
+      const source = d.start ? (files[d.file] ?? '').split('\n')[d.start.line - 1] : undefined;
+      out.push({ severity: 'warning', summary: d.message, file: d.file, line: d.start?.line, source });
+    }
+  }
+  return out;
+}
 
+/**
+ * One module's errors (`where`: "the root module", "module.net"), then
+ * those of the modules of this project it calls, each folder once: its
+ * references, the required arguments of its resources, and each module call
+ * held to that module's variables and outputs.
+ */
+function checkModule(files: Files, ir: IR, where: string, out: Problem[], checked: Set<string>, depth: number) {
   const vars = new Set(ir.variables.map((v) => v.name));
   const data = new Set(ir.data.map((d) => d.id));
   const modules = new Set(ir.modules.map((m) => m.name));
-  /** the root's calls to modules of this project, by name: their inputs and outputs are known */
+  /** the calls to modules of this project, by name: their inputs and outputs are known */
   const children = new Map<string, LocalModule>();
   for (const m of ir.modules) {
     const target = moduleTarget(files, m);
-    if (target.kind === 'local' && target.module && !target.module.broken) children.set(m.name, target.module);
+    if (target.kind !== 'local' || !target.module) continue;
+    if (!target.module.broken) children.set(m.name, target.module);
+    else if (!checked.has(target.dir)) {
+      checked.add(target.dir);
+      for (const d of target.module.diagnostics.filter((x) => x.severity === 'error')) {
+        out.push({ severity: 'error', summary: d.message, file: d.file, line: d.start?.line, source: d.start ? (files[d.file] ?? '').split('\n')[d.start.line - 1] : undefined });
+      }
+    }
   }
   const resources = new Set(ir.resources.map((r) => r.id));
   const types = new Set(ir.resources.map((r) => r.type));
@@ -195,20 +222,20 @@ function diagnose(files: Files, ir: IR, parseDiagnostics: ReturnType<typeof pars
       } else if (root === 'local' && !localValue(ir, second)) {
         problem = { summary: 'Reference to undeclared local value', detail: `A local value with the name "${second}" has not been declared.` };
       } else if (root === 'module' && !modules.has(second)) {
-        problem = { summary: 'Reference to undeclared module', detail: `No module call named "${second}" is declared in the root module.` };
+        problem = { summary: 'Reference to undeclared module', detail: `No module call named "${second}" is declared in ${where}.` };
       } else if (root === 'module' && third !== undefined && children.has(second) && !children.get(second)!.outputs.some((o) => o.name === third)) {
         problem = { summary: 'Unsupported attribute', detail: `This object does not have an attribute named "${third}".` };
       } else if (root === 'data' && third !== undefined && !data.has(`data.${second}.${third}`)) {
-        problem = { summary: 'Reference to undeclared resource', detail: `A data resource "${second}" "${third}" has not been declared in the root module.` };
+        problem = { summary: 'Reference to undeclared resource', detail: `A data resource "${second}" "${third}" has not been declared in ${where}.` };
       } else if ((RESOURCE_ROOT.test(root) || types.has(root)) && second !== undefined && !resources.has(`${root}.${second}`)) {
-        problem = { summary: 'Reference to undeclared resource', detail: `A managed resource "${root}" "${second}" has not been declared in the root module.` };
+        problem = { summary: 'Reference to undeclared resource', detail: `A managed resource "${root}" "${second}" has not been declared in ${where}.` };
       }
       if (!problem) continue;
-      const where = at(files, b, undefined, start + t.start);
-      const key = `${where.file}:${where.line}:${t.path}`;
+      const place = at(files, b, undefined, start + t.start);
+      const key = `${place.file}:${place.line}:${t.path}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ severity: 'error', ...problem, ...where });
+      out.push({ severity: 'error', ...problem, ...place });
     }
   }
   for (const r of ir.resources) {
@@ -222,7 +249,6 @@ function diagnose(files: Files, ir: IR, parseDiagnostics: ReturnType<typeof pars
       });
     }
   }
-  // ponytail: only the root's module calls are held to their module's variables; nested calls are checked when planned
   for (const m of ir.modules) {
     const child = children.get(m.name);
     if (!child) continue;
@@ -235,16 +261,11 @@ function diagnose(files: Files, ir: IR, parseDiagnostics: ReturnType<typeof pars
       if (child.variables.some((v) => v.name === k)) continue;
       out.push({ severity: 'error', summary: 'Unsupported argument', detail: `An argument named "${k}" is not expected here.`, ...at(files, m, k) });
     }
+    // a module that (through others) calls itself stops here, like the plan's walk
+    if (checked.has(child.dir) || depth >= 8) continue;
+    checked.add(child.dir);
+    checkModule(files, child.ir, `${where === 'the root module' ? '' : `${where}.`}module.${m.name}`, out, checked, depth + 1);
   }
-  if (warnings) {
-    const errorLines = new Set(out.map((p) => `${p.file}:${p.line}`));
-    for (const d of validateProject(ir, getDef)) {
-      if (d.severity !== 'warning' || errorLines.has(`${d.file}:${d.start?.line}`)) continue;
-      const source = d.start ? (files[d.file] ?? '').split('\n')[d.start.line - 1] : undefined;
-      out.push({ severity: 'warning', summary: d.message, file: d.file, line: d.start?.line, source });
-    }
-  }
-  return out;
 }
 
 /* ------------------------------------------------------------------ the walk */
@@ -544,13 +565,22 @@ function visitData(eng: Engine, mod: Mod, d: IR['data'][number]) {
   const args = Object.fromEntries(Object.entries(d.args).filter(([k]) => !META.has(k)));
   const values: Array<[string | number | undefined, Val]> = [];
   const known = knowsData(d.type);
+  // `depends_on` something with changes pending: read once those are applied
+  const refs: Array<{ field: string; path: string }> = [];
+  if (d.args.depends_on) collectRefs(d.args.depends_on, '', refs);
+  const waits = refs.some(({ path }) => {
+    const key = blockKey(path);
+    const target = key === null ? '' : mod.prefix + key;
+    return key !== null && eng.changes.some((c) => c.action !== 'noop' && (c.address === target || c.address.startsWith(`${target}[`) || c.address.startsWith(`${target}.`)));
+  });
   for (const inst of expanded.instances) {
     const config = nonNull(evaluateRecord(args, scope, inst.env));
     const reads = mod.reads.get(d.id) ?? new Set<string>();
-    const read = (after: Record<string, Val>): ResourceChange => ({ address: inst.address, type: d.type, name: d.name, action: 'read', after, blocks: blocksOf(args, config) });
+    const because = waits ? 'depends on a resource or a module with changes pending' : 'config refers to values not yet known';
+    const read = (after: Record<string, Val>): ResourceChange => ({ address: inst.address, type: d.type, name: d.name, action: 'read', after, blocks: blocksOf(args, config), because });
     let value: Record<string, Val>;
-    if (!eng.apply && (hasUnknown(config) || !known)) {
-      // it reads something an apply creates (or a type the simulator can't answer for): Terraform reads it during the apply
+    if (!eng.apply && (hasUnknown(config) || waits || !known)) {
+      // it reads something an apply creates, or waits on one (or the simulator can't answer for the type): Terraform reads it during the apply
       value = { ...config, ...Object.fromEntries(['id', ...dataAttrs(d.type), ...reads].filter((k) => !(k in config)).map((k) => [k, UNKNOWN])) };
       if (known) eng.changes.push(read(value));
     } else {
@@ -942,6 +972,29 @@ function notInitialized(files: Files, command: SimCommand): SimResult {
   };
 }
 
+/** the providers are as the last init left them, but module calls aren't installed: Terraform names each one */
+function modulesNotInstalled(files: Files, installed: string | undefined): SimResult | null {
+  if (!installed) return null;
+  const { ir } = parseProject(tfFiles(files));
+  const now = JSON.parse(initFingerprint(files)) as [unknown, Array<[string, string]>];
+  const before = JSON.parse(installed) as [unknown, Array<[string, string]>];
+  if (JSON.stringify(now[0]) !== JSON.stringify(before[0])) return null;
+  const had = new Set(before[1].map((x) => JSON.stringify(x)));
+  const missing = ir.modules.filter((m) => !had.has(JSON.stringify([m.name, exprString(m.args.source)])));
+  if (missing.length === 0) return null;
+  // `on main.tf line 14:` with no block after it, as Terraform prints this one
+  const problems = missing.map(
+    (m): Problem => ({
+      severity: 'error',
+      summary: 'Module not installed',
+      detail: 'This module is not yet installed. Run "terraform init" to install all modules\nrequired by this configuration.',
+      ...at(files, m),
+      block: undefined,
+    }),
+  );
+  return { ok: false, lines: problems.flatMap(problemLines) };
+}
+
 function init(files: Files, initialized: boolean): SimResult {
   const parsed = parseProject(tfFiles(files));
   const out: Line[] = [line('Initializing the backend...', 'strong')];
@@ -1174,7 +1227,7 @@ function destroy(files: Files, previous: SimState | null, autoApprove: boolean):
  */
 export function simulate(command: SimCommand, files: Files, previous: SimState | null, ctx: SimContext = { initialized: true }): SimResult {
   if (command === 'init') return init(files, ctx.initialized);
-  if (!ctx.initialized && requiredProviders(files).length > 0) return notInitialized(files, command);
+  if (!ctx.initialized && requiredProviders(files).length > 0) return modulesNotInstalled(files, ctx.installed) ?? notInitialized(files, command);
   switch (command) {
     case 'validate':
       return validate(files);

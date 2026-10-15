@@ -305,7 +305,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
       if (echo) append([shown(line(`terraform ${command}${autoApprove ? ' -auto-approve' : ''}`), 'cmd')]);
       const initialized = isInitialized(lesson, code);
       const wasInit = useLearn.getState().runs[lesson]?.includes('init') ?? false;
-      const result = simulate(command, code, useLearn.getState().sims[lesson] ?? null, { initialized, autoApprove });
+      const result = simulate(command, code, useLearn.getState().sims[lesson] ?? null, { initialized, autoApprove, installed: wasInit ? installed.get(lesson) : undefined });
       if (command === 'init' && result.ok) installed.set(lesson, initFingerprint(code));
       if (result.plan && (command === 'plan' || result.confirmAt !== undefined)) showPlan(result.plan, declaredBlocks(code));
       else if (command === 'plan') clearPlan();
