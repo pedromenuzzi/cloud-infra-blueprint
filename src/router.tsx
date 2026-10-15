@@ -17,6 +17,10 @@ const DashboardPage = lazyWithReload(() => import('./routes/DashboardPage'));
 const EditorPage = lazyWithReload(() => import('./routes/EditorPage'));
 const TutorialsPage = lazyWithReload(() => import('./routes/TutorialsPage'));
 const TutorialPlayerPage = lazyWithReload(() => import('./routes/TutorialPlayerPage'));
+const LearnPage = lazyWithReload(() => import('./routes/LearnPage'));
+const LessonPage = lazyWithReload(() => import('./routes/LessonPage'));
+// XP, badges and finished lessons: only on the learning side
+const CelebrationHost = lazyWithReload(() => import('@/features/learn/CelebrationHost'));
 const NotFoundPage = lazyWithReload(() => import('./routes/NotFoundPage'));
 // shares the editor store's chunk — only loaded on /editor
 const ProjectConflictHost = lazyWithReload(() => import('@/components/ProjectConflictHost'));
@@ -40,6 +44,7 @@ function IndexRoute() {
 
 function Root() {
   const inEditor = useMatch('/editor/:id') !== null;
+  const learning = useMatch('/learn/*') !== null;
   // an embedded view (iframe): the diagram only — no palette, no storage banners
   const embed = isEmbedHash(useLocation().hash);
   return (
@@ -59,6 +64,11 @@ function Root() {
       <ShareLinkHost />
       {/* a new version on a screen with nothing in progress: applied without asking */}
       <AutoUpdate />
+      {learning ? (
+        <Suspense fallback={null}>
+          <CelebrationHost />
+        </Suspense>
+      ) : null}
       {inEditor ? (
         <Suspense fallback={null}>
           <ProjectConflictHost />
@@ -85,6 +95,8 @@ export const router = createBrowserRouter(
             { path: 'editor/:id', element: <EditorPage /> },
             { path: 'tutorials', element: <TutorialsPage /> },
             { path: 'tutorials/:slug', element: <TutorialPlayerPage /> },
+            { path: 'learn', element: <LearnPage /> },
+            { path: 'learn/:slug', element: <LessonPage /> },
             { path: '*', element: <NotFoundPage /> },
           ],
         },
