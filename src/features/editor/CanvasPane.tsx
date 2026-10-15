@@ -65,6 +65,7 @@ import { ModuleNodeView, moduleFlowNodes } from '@/features/modules/ModuleNode';
 import { ModulesHost, ModuleViewBar } from '@/features/modules/ModulesHost';
 import { duplicateModuleCall } from '@/features/modules/duplicateModule';
 import { modulesMessages } from '@/features/modules/modules.messages';
+import { PlanGone } from '@/features/learn/terminal/PlanMarks';
 import { repeatOf } from '@/ir/repeat';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
@@ -1122,6 +1123,8 @@ function CanvasInner() {
           </span>
           {/* an opened module: its way back, below the stats (clear of the canvas's top-left controls) */}
           <ModuleViewBar />
+          {/* a lesson's plan: what it destroys that has no node any more */}
+          <PlanGone />
           {overview ? <OverviewPopover onClose={() => setOverview(false)} /> : null}
           {codeErrored ? (
             <span
