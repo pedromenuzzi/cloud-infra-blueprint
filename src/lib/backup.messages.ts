@@ -29,7 +29,8 @@ ${count} project${count === 1 ? '' : 's'}, exported ${exportedAt}.
 
 Each folder is one project: its Terraform files, ready for \`terraform init\`.
 \`manifest.json\` keeps names, ids, templates and dates so the backup can be
-restored as it was.
+restored as it was. \`learning.json\`, when there is one, is your progress on the
+learning map.
 
 To restore: open Cloud Blueprint → Projects → **Restore from backup…** and pick
 this .zip. Nothing is overwritten without asking.
@@ -63,7 +64,8 @@ ${count} projeto${count === 1 ? '' : 's'}, exportado${count === 1 ? '' : 's'} em
 
 Cada pasta é um projeto: os arquivos Terraform dele, prontos para \`terraform init\`.
 O \`manifest.json\` guarda nomes, ids, templates e datas para que o backup possa
-ser restaurado como estava.
+ser restaurado como estava. O \`learning.json\`, quando existe, é o seu progresso
+no mapa de aprendizado.
 
 Para restaurar: abra o Cloud Blueprint → Projetos → **Restaurar backup…** e escolha
 este .zip. Nada é sobrescrito sem perguntar.
