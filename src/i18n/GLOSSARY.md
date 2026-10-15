@@ -7,7 +7,9 @@ One word per idea across the whole app. Tone: natural Brazilian Portuguese,
 (`cidr_block`, `db_subnet_group_name`), resource type addresses
 (`aws_instance.web`), provider and product names (AWS, Azure, GCP, EC2, S3,
 RDS, Lambda, VPC, Cloud Run, Monaco), file names, keyboard shortcuts, CIS /
-FSBP control IDs, port and protocol names (SSH, HTTPS, TCP). Key names keep
+FSBP control IDs, port and protocol names (SSH, HTTPS, TCP), Terraform CLI
+commands (`init`, `validate`, `plan`, `apply`, `destroy`, also as the
+lesson terminal's buttons). "Terminal" is the same word in both. Key names keep
 their keyboard spelling (Enter, Esc, Del, Ctrl, ⌘); the gestures around them
 are words ("Clique duplo", "Botão direito", "Espaço", "Arrastar").
 
