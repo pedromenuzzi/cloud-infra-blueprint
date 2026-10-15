@@ -243,4 +243,23 @@ describe('layout store', () => {
     s().show('code');
     expect(s().drawer).toBe('code');
   });
+
+  it('lends the layout to a page without touching the saved one, and gets it back', () => {
+    const s = () => useLayout.getState();
+    const before = storage.getItem(LAYOUT_KEY);
+    const giveBack = s().borrow({ palette: false, code: true, split: 58 });
+    expect(s().panels).toMatchObject({ palette: false, code: true });
+    expect(s().split).toBe(58);
+    s().toggle('palette');
+    s().setSplit(30);
+    expect(s().panels.palette).toBe(true);
+    expect(storage.getItem(LAYOUT_KEY)).toBe(before);
+
+    giveBack();
+    expect(s().panels).toEqual({ palette: true, canvas: true, code: false, inspector: true });
+    expect(s().split).toBe(DEFAULT_PREFS.split);
+    // the user's own changes are saved again
+    s().toggle('code');
+    expect(saved().code).toBe(true);
+  });
 });
