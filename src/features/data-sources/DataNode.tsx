@@ -20,6 +20,8 @@ import { repeatOf } from '@/ir/repeat';
 import type { IR, Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { DataSourceIcon } from './DataSourceIcon';
+import { getDef } from '@/resources/registry';
+import { typeDef } from './catalog';
 import { DATA_TILE } from './tile';
 import { dataSourceMessages } from './dataSources.messages';
 import { dataSourceShortName } from './i18n';
@@ -73,6 +75,8 @@ export function DataNodeView({ data, selected }: NodeProps<DataFlowNode>) {
           <span
             data-type-label=""
             title={data.type}
+            // a type outside both catalogs is named by its Terraform type: code, in either language
+            translate={typeDef(data.type) || getDef(data.type) ? undefined : 'no'}
             className="block break-words pt-0.5 text-[9.5px] font-bold uppercase leading-[12px] tracking-[0.07em] text-(--data-text)"
           >
             {data.typeLabel}
