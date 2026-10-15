@@ -14,11 +14,11 @@ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button, hasOpenLayer } from '@/components/ui';
 import { canvasApi } from '@/features/editor/canvasApi';
-import { useCanvasDrag, useCanvasDragTracking } from '@/features/editor/canvasDrag';
+import { isCanvasDragging, useCanvasDrag, useCanvasDragTracking } from '@/features/editor/canvasDrag';
 import { CanvasPane } from '@/features/editor/CanvasPane';
 import { codeMessages } from '@/features/editor/CodePane.messages';
 import { Inspector } from '@/features/editor/Inspector';
-import { floatingInspectorSlot, INSPECTOR_WIDTH, securityPanelSlot } from '@/features/editor/inspectorPlacement';
+import { dockedInspector, floatingInspectorSlot, INSPECTOR_WIDTH, securityPanelSlot } from '@/features/editor/inspectorPlacement';
 import { useKeepSelectionVisible, useRevealOpensCode } from '@/features/editor/layoutEffects';
 import type { LayoutPrefs } from '@/features/editor/layoutPrefs';
 import { SPLIT_DEFAULT } from '@/features/editor/layoutPrefs';
@@ -32,6 +32,8 @@ import { RulesEditor } from '@/features/security/RulesEditor';
 import { SecurityPanel } from '@/features/security/SecurityPanel';
 import { GRADE_COLORS, useProjectAudit, useSecurityUi } from '@/features/security/securityStore';
 import { useMessages } from '@/i18n/messages';
+import { nodeIds } from '@/ir/modules';
+import type { IR } from '@/ir/types';
 import type { Lesson, LessonMode } from '@/learn/types';
 import { shortcut } from '@/lib/keys';
 import { cn } from '@/lib/utils';
@@ -40,18 +42,23 @@ import { playerMessages } from './player.messages';
 
 const CodePane = lazy(() => import('@/features/editor/CodePane').then((m) => ({ default: m.CodePane })));
 
-/** where each mode starts; everything else comes from the user's editor layout */
+/**
+ * Where each mode starts; everything else comes from the user's editor layout.
+ * The live diagram is the point of a lesson, so the canvas gets the most room
+ * the mode allows (the code column never goes below 300 px).
+ */
 const MODE_LAYOUT: Record<LessonMode, Partial<LayoutPrefs>> = {
-  // drag from the palette: the canvas gets the room, the code it writes alongside
-  canvas: { palette: true, code: true, split: 34 },
-  mixed: { palette: true, code: true, split: 46 },
-  // typing: the code leads and the canvas still draws it live; resources stay one click away
-  code: { palette: false, code: true, split: 58 },
+  // drag from the palette: the canvas leads, the code it writes alongside
+  canvas: { palette: true, code: true, split: 30 },
+  mixed: { palette: true, code: true, split: 42 },
+  // typing: the code leads, the canvas still draws it live; resources stay one click away
+  code: { palette: false, code: true, split: 52 },
 };
 const LESSON_LAYOUT: Partial<LayoutPrefs> = {
   canvas: true,
   inspector: true,
-  inspectorMode: 'floating',
+  // the inspector sits on top of the code column, never over the canvas (compact screens float it)
+  inspectorMode: 'docked',
   paletteSide: 'left',
   codeSide: 'right',
 };
@@ -91,6 +98,41 @@ function useNarrowerThan(ref: RefObject<HTMLElement | null>, px: number): boolea
     return () => observer.disconnect();
   }, [ref, px]);
   return narrow;
+}
+
+/** some block of the diagram is (partly) outside the canvas's visible area */
+function outOfView(host: HTMLElement | null): boolean {
+  const pane = host?.querySelector('.react-flow');
+  if (!pane) return false;
+  const box = pane.getBoundingClientRect();
+  return Array.from(pane.querySelectorAll('.react-flow__node')).some((node) => {
+    const r = node.getBoundingClientRect();
+    return r.left < box.left || r.right > box.right || r.top < box.top || r.bottom > box.bottom;
+  });
+}
+
+const blockSet = (ir: IR) => [...nodeIds(ir)].sort().join('\n');
+
+/**
+ * The diagram stays in view as blocks come and go (a drop, typed code, the
+ * solution): when one lands outside the visible area, the canvas fits the
+ * view. Nothing moves while the learner drags, or when everything is in view.
+ */
+function useDiagramInView(canvas: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const off = useEditor.subscribe((state, prev) => {
+      if (state.ir === prev.ir || blockSet(state.ir) === blockSet(prev.ir)) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!isCanvasDragging() && outOfView(canvas.current)) canvasApi()?.fitView();
+      }, 400);
+    });
+    return () => {
+      clearTimeout(timer);
+      off();
+    };
+  }, [canvas]);
 }
 
 /** The editor's keys, outside fields and Monaco (which handle their own): undo / redo, panels, Esc, fit view. */
@@ -139,6 +181,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
   const drawer = useLayout((s) => s.drawer);
   const split = useLayout((s) => s.split);
   const floatingSlot = useLayout(floatingInspectorSlot);
+  const docked = useLayout(dockedInspector);
   const securitySlot = useLayout(securityPanelSlot);
   const selection = useEditor((s) => s.selection);
   const securityPanel = useSecurityUi((s) => s.panelOpen);
@@ -169,6 +212,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
   useCanvasDragTracking(canvasRef);
   useRevealOpensCode(() => useLayout.getState().show('code'));
   useKeepSelectionVisible();
+  useDiagramInView(canvasRef);
 
   // a hidden canvas stays mounted (viewport and canvas actions keep working) but out of reach
   useEffect(() => {
@@ -220,9 +264,15 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
     useLayout.getState().setVisible('inspector', false);
     focusSoon('[data-strip="inspector"]');
   };
+  const dockedEl =
+    docked && panels.inspector && selection ? (
+      <div className="flex min-h-0 flex-[3] flex-col border-b bg-surface-1" data-testid="docked-inspector">
+        <Inspector docked onMinimize={minimizeInspector} />
+      </div>
+    ) : null;
   const codePane = (
     <Suspense fallback={<CodeFallback />}>
-      <CodePane controls={<CodePaneControls />} />
+      <CodePane controls={<CodePaneControls />} wrap />
     </Suspense>
   );
   const securityEl =
@@ -283,16 +333,25 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
     codeSlot.push(
       <div
         key="code"
-        id={CODE_TARGET}
-        tabIndex={-1}
-        className={cn('min-w-[260px] outline-none', !canvasShown && 'min-w-0 flex-1')}
+        className={cn('flex flex-col', canvasShown ? 'min-w-[300px] shrink-0' : 'min-w-0 flex-1')}
         style={canvasShown ? { width: `${split}%` } : undefined}
       >
-        {codePane}
+        {canvasShown ? dockedEl : null}
+        <div id={CODE_TARGET} tabIndex={-1} className="min-h-0 flex-[2] outline-none">
+          {codePane}
+        </div>
       </div>,
     );
   } else if (wide) {
     codeSlot.push(<CollapsedStrip key="code-strip" panel="code" edge={codeSide === 'right' ? 'left' : 'right'} />);
+    // the code is hidden: the inspector keeps a column of its own
+    if (dockedEl) {
+      codeSlot.push(
+        <div key="inspector" className="flex shrink-0 flex-col border-l" style={{ width: INSPECTOR_WIDTH }}>
+          {dockedEl}
+        </div>,
+      );
+    }
   }
   if (codeSide === 'left') codeSlot.reverse();
   const canvasColumn: ReactNode[] = [canvasSlot];

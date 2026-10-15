@@ -184,12 +184,21 @@ function ArgList({ title, entries }: { title: string; entries: SchemaEntry[] }) 
               <code className={cn('font-mono text-[12px] font-semibold', e.deprecated ? 'text-muted line-through' : 'text-foreground')}>
                 {e.name}
               </code>
-              <span className="font-mono text-[10.5px] text-faint">{e.kind === 'block' ? m.docsBlock : e.type}</span>
+              {e.kind === 'block' ? (
+                <span className="font-mono text-[10.5px] text-faint">{m.docsBlock}</span>
+              ) : (
+                <code className="font-mono text-[10.5px] text-faint">{e.type}</code>
+              )}
               {e.deprecated ? (
                 <span className="rounded-full bg-warning/15 px-1.5 text-[10px] font-semibold text-warning">{m.docsDeprecated}</span>
               ) : null}
             </dt>
-            {e.description ? <dd className="mt-0.5 text-[12px] leading-relaxed text-muted">{e.description}</dd> : null}
+            {/* the provider's own words, in English whatever the UI language */}
+            {e.description ? (
+              <dd lang="en" className="mt-0.5 text-[12px] leading-relaxed text-muted">
+                {e.description}
+              </dd>
+            ) : null}
           </div>
         ))}
       </dl>

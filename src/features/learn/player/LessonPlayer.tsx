@@ -18,7 +18,7 @@ import { plain } from './rich';
 import { useLiveGoals } from './useLiveGoals';
 
 const PANEL_KEY = 'cb-lesson-panel';
-const PANEL_DEFAULT = 380;
+const PANEL_DEFAULT = 340;
 const PANEL_MIN = 300;
 const PANEL_MAX = 560;
 const PHONE = '(max-width: 767px)';
