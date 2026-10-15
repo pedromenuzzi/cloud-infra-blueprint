@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { parseProject } from '@/hcl/parser';
+import { collectRefs, refTargetAddress } from '@/ir/expr';
 import { AWS_HEADER } from '../content/shared';
+import { getLesson } from '../lessons';
 import type { SimState } from '../types';
 import { evaluate, UNKNOWN, type Scope } from './eval';
 import { initFingerprint, simulate } from './simulate';
@@ -254,6 +257,75 @@ describe('modules', () => {
   it('leaves a Registry module out, with a note', () => {
     const r = simulate('plan', main('module "vpc" {\n  source  = "terraform-aws-modules/vpc/aws"\n  version = "5.8.1"\n}\n'), null);
     expect(text(r)).toContain('module.vpc: not simulated');
+  });
+});
+
+describe('what the lessons rely on', () => {
+  const lesson = (slug: string) => {
+    const l = getLesson(slug);
+    expect(l, slug).toBeDefined();
+    return l!;
+  };
+
+  it('0.1: a plan right after apply has nothing to do', () => {
+    const { solution } = lesson('what-is-terraform');
+    expect(text(simulate('plan', solution, applied(solution)))).toContain('No changes. Your infrastructure matches the configuration.');
+  });
+
+  it('0.5: apply creates what is referenced before what references it', () => {
+    const { solution } = lesson('references');
+    const out = text(simulate('apply', solution, null, auto));
+    const { ir } = parseProject(solution);
+    let pairs = 0;
+    for (const r of ir.resources) {
+      const refs: Array<{ field: string; path: string }> = [];
+      for (const e of Object.values(r.args)) collectRefs(e, '', refs);
+      for (const target of new Set(refs.map((x) => refTargetAddress(x.path)).filter((a) => a && a !== r.id))) {
+        expect(out.indexOf(`${target}: Creating...`), `${target} before ${r.id}`).toBeLessThan(out.indexOf(`${r.id}: Creating...`));
+        pairs++;
+      }
+    }
+    expect(pairs).toBeGreaterThan(0);
+    // even when the referencing block comes first in the file
+    const first = text(simulate('apply', main('resource "aws_s3_bucket_versioning" "v" {\n  bucket = aws_s3_bucket.b.id\n  versioning_configuration {\n    status = "Enabled"\n  }\n}\n\nresource "aws_s3_bucket" "b" {\n  bucket = "acme-b"\n}\n'), null, auto));
+    expect(first.indexOf('aws_s3_bucket.b: Creating...')).toBeLessThan(first.indexOf('aws_s3_bucket_versioning.v: Creating...'));
+  });
+
+  it('0.6: a new bucket name replaces the bucket, new tags change it in place', () => {
+    const code = 'resource "aws_s3_bucket" "b" {\n  bucket = "acme-a"\n  tags = {\n    Environment = "dev"\n  }\n}\n';
+    const state = applied(main(code));
+    const renamed = text(simulate('plan', main(code.replace('acme-a', 'acme-z')), state));
+    expect(renamed).toContain('  # aws_s3_bucket.b must be replaced\n-/+ resource "aws_s3_bucket" "b" {');
+    expect(renamed).toContain('~ bucket                      = "acme-a" -> "acme-z" # forces replacement');
+    const retagged = text(simulate('plan', main(code.replace('"dev"', '"prod"')), state));
+    expect(retagged).toContain('  # aws_s3_bucket.b will be updated in-place\n  ~ resource "aws_s3_bucket" "b" {');
+    expect(retagged).toContain('~ "Environment" = "dev" -> "prod"');
+    expect(retagged).not.toContain('forces replacement');
+  });
+
+  it('1.4: the plan shows arn and id as known after apply, apply prints the outputs', () => {
+    const { solution } = lesson('outputs');
+    const plan = text(simulate('plan', solution, null));
+    expect(plan).toMatch(/\+ arn +=\s\(known after apply\)/);
+    expect(plan).toMatch(/\+ id +=\s\(known after apply\)/);
+    const r = simulate('apply', solution, null, auto);
+    const out = text(r);
+    expect(out).toContain('\nOutputs:\n\n');
+    for (const [name, value] of Object.entries(r.state!.outputs)) {
+      expect(value).not.toBe('');
+      expect(out).toContain(`${name} = "${value}"`);
+    }
+    expect(Object.values(r.state!.outputs).some((v) => v.startsWith('arn:aws:s3:::'))).toBe(true);
+  });
+
+  it('1.3: moving literal values into locals (templates, maps from variables, merge) plans no changes', () => {
+    const { start, solution } = lesson('locals');
+    expect(text(simulate('plan', solution, applied(start)))).toContain('No changes. Your infrastructure matches the configuration.');
+    const literal = main('resource "aws_s3_bucket" "b" {\n  bucket = "acme-dev-logs"\n  tags = {\n    Project     = "acme"\n    Environment = "dev"\n    Team        = "data"\n  }\n}\n');
+    const withLocals = main(
+      'variable "env" {\n  default = "dev"\n}\n\nlocals {\n  prefix = "acme-${var.env}"\n  common = {\n    Project     = "acme"\n    Environment = var.env\n  }\n}\n\nresource "aws_s3_bucket" "b" {\n  bucket = "${local.prefix}-logs"\n  tags   = merge(local.common, { Team = "data" })\n}\n',
+    );
+    expect(text(simulate('plan', withLocals, applied(literal)))).toContain('No changes.');
   });
 });
 
