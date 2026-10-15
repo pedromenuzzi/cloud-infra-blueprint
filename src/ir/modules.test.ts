@@ -20,6 +20,7 @@ import {
 } from './modules';
 import { moduleMoveOps } from './moduleMoved';
 import { readMoved } from '@/hcl/moved';
+import { readLocalModule } from './localModules';
 import type { Op } from './ops';
 import type { ModuleNode } from './types';
 
@@ -115,6 +116,15 @@ describe('module blocks in the IR', () => {
     const { ir, diagnostics } = parseProject({ ...files, 'prod.tfvars': 'environment   = "prod"\ninstance_type = "t3.large"\n' });
     expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
     expect(ir.resources.map((r) => r.id)).toEqual(['aws_instance.web', 'aws_subnet.extra']);
+  });
+
+  it('a variable file inside a module folder does not break the module', () => {
+    const project = {
+      ...files,
+      'modules/app/main.tf': 'variable "size" {}\nresource "aws_s3_bucket" "inside" {}\n',
+      'modules/app/dev.tfvars': 'size = "small"\n',
+    };
+    expect(readLocalModule(project, 'modules/app')?.broken).toBe(false);
   });
 });
 

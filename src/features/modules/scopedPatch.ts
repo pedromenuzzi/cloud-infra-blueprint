@@ -12,7 +12,7 @@
  */
 import { applyOpsWithPatches } from '@/hcl/patch';
 import { buildIR, parseFile, parseProject } from '@/hcl/parser';
-import { dirOfPath } from '@/ir/modules';
+import { dirOfPath, isCodeFile } from '@/ir/modules';
 import type { Op } from '@/ir/ops';
 import type { Diagnostic, IR, Trivia } from '@/ir/types';
 
@@ -108,7 +108,7 @@ export function applyOpsInScope(files: Record<string, string>, dir: string, ir: 
 /** The blocks of folder `dir` (project paths in `sourceFile`), freshly parsed; null when the project has no files there. */
 export function parseFolder(files: Record<string, string>, dir: string): { ir: IR; diagnostics: Diagnostic[] } | null {
   const texts = Object.entries(files)
-    .filter(([path]) => dirOfPath(path) === dir)
+    .filter(([path]) => dirOfPath(path) === dir && isCodeFile(path))
     .sort(([a], [b]) => a.localeCompare(b));
   if (dir === '' || texts.length === 0) return null;
   return buildIR(texts.map(([file, text]) => ({ file, ...parseFile(file, text) })));
