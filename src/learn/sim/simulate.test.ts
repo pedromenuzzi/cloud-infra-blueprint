@@ -5,7 +5,8 @@ import { AWS_HEADER } from '../content/shared';
 import { getLesson } from '../lessons';
 import type { SimState } from '../types';
 import { evaluate, UNKNOWN, type Scope } from './eval';
-import { initFingerprint, simulate } from './simulate';
+import { outputCommand, showCommand, workspaceCommand, workspaceOf } from './commands';
+import { initFingerprint, simulate, type VarArg } from './simulate';
 
 const main = (body: string, more: Record<string, string> = {}) => ({ 'main.tf': `${AWS_HEADER}\n${body}`, ...more });
 const text = (r: { lines: Array<{ text: string }> }) => r.lines.map((l) => l.text).join('\n');
@@ -459,11 +460,11 @@ output "ami_name" {
   });
 
   it('leaves a type it knows nothing about unknown until apply', () => {
-    const code = 'data "aws_ssm_parameter" "p" {\n  name = "/app/ami"\n}\n\nresource "aws_instance" "web" {\n  ami           = data.aws_ssm_parameter.p.value\n  instance_type = "t3.micro"\n}\n';
+    const code = 'data "aws_ec2_managed_prefix_list" "p" {\n  name = "com.amazonaws.global.cloudfront.origin-facing"\n}\n\nresource "aws_instance" "web" {\n  ami           = data.aws_ec2_managed_prefix_list.p.id\n  instance_type = "t3.micro"\n}\n';
     const plan = text(simulate('plan', main(code), null));
-    expect(plan).not.toContain('data.aws_ssm_parameter.p: Reading...');
+    expect(plan).not.toContain('data.aws_ec2_managed_prefix_list.p: Reading...');
     expect(plan).toContain('+ ami                          = (known after apply)');
-    expect(text(simulate('apply', main(code), null, auto))).toContain('data.aws_ssm_parameter.p: Read complete after 0s');
+    expect(text(simulate('apply', main(code), null, auto))).toContain('data.aws_ec2_managed_prefix_list.p: Read complete after 0s');
   });
 });
 
@@ -698,5 +699,517 @@ describe('the evaluator', () => {
   it('is unknown when it reads something only an apply knows', () => {
     expect(ev('"${aws_vpc.main.id}-x"')).toBe(UNKNOWN);
     expect(ev('length([aws_vpc.main.id])')).toBe(1);
+  });
+});
+
+/* ------------------------------------------------------------------ production work */
+
+const S3_BACKEND = `terraform {
+  backend "s3" {
+    bucket       = "acme-tfstate"
+    key          = "app/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+  }
+}
+`;
+const BUCKET = 'resource "aws_s3_bucket" "site" {\n  bucket = "acme-site"\n}\n';
+
+describe('backends', () => {
+  it('init configures the backend', () => {
+    const r = simulate('init', main(BUCKET, { 'backend.tf': S3_BACKEND }), null, { initialized: false });
+    expect(r.ok).toBe(true);
+    expect(text(r)).toContain(
+      'Initializing the backend...\n\nSuccessfully configured the backend "s3"! Terraform will automatically\nuse this backend unless the backend configuration changes.',
+    );
+    // a second init has nothing to say about it
+    const installed = initFingerprint(main(BUCKET, { 'backend.tf': S3_BACKEND }));
+    expect(text(simulate('init', main(BUCKET, { 'backend.tf': S3_BACKEND }), null, { initialized: true, installed }))).not.toContain('Successfully configured');
+  });
+
+  it('a backend added or changed since init asks for init again', () => {
+    const installed = initFingerprint(main(BUCKET));
+    const r = simulate('plan', main(BUCKET, { 'backend.tf': S3_BACKEND }), null, { initialized: false, installed });
+    expect(r.ok).toBe(false);
+    expect(text(r)).toContain('Error: Backend initialization required, please run "terraform init"');
+    expect(text(r)).toContain('│ Reason: Initial configuration of the requested backend "s3"');
+    const moved = simulate('plan', main(BUCKET, { 'backend.tf': S3_BACKEND.replace('app/', 'web/') }), null, {
+      initialized: false,
+      installed: initFingerprint(main(BUCKET, { 'backend.tf': S3_BACKEND })),
+    });
+    expect(text(moved)).toContain('│ Reason: Backend configuration block has changed');
+  });
+
+  it('init asks to copy the existing state into a new backend; no starts empty', () => {
+    const state = applied(main(BUCKET));
+    const r = simulate('init', main(BUCKET, { 'backend.tf': S3_BACKEND }), state, { initialized: true, installed: initFingerprint(main(BUCKET)) });
+    expect(r.ok).toBe(true);
+    expect(r.lines[r.confirmAt!].text).toBe('  Enter a value: yes');
+    expect(text(r)).toContain('Do you want to copy existing state to the new backend?\n  Pre-existing state was found while migrating the previous "local" backend to the');
+    expect(r.state).toBeUndefined();
+    expect(r.declined?.state).toBeNull();
+    expect(r.declined?.lines.map((l) => l.text).join('\n')).toContain('Successfully configured the backend "s3"!');
+  });
+
+  it('a backend that changed from another one wants -migrate-state or -reconfigure', () => {
+    const state = applied(main(BUCKET));
+    const before = initFingerprint(main(BUCKET, { 'backend.tf': S3_BACKEND }));
+    const files = main(BUCKET, { 'backend.tf': S3_BACKEND.replace('acme-tfstate', 'acme-state') });
+    const r = simulate('init', files, state, { initialized: true, installed: before });
+    expect(r.ok).toBe(false);
+    expect(text(r)).toContain('Error: Backend configuration changed');
+    expect(simulate('init', files, state, { initialized: true, installed: before, backendFlag: 'migrate-state' }).confirmAt).toBeDefined();
+    const re = simulate('init', files, state, { initialized: true, installed: before, backendFlag: 'reconfigure' });
+    expect(re.confirmAt).toBeUndefined();
+    expect(text(re)).toContain('Successfully configured the backend "s3"!');
+  });
+
+  it('a locking backend holds the state lock around plan and apply', () => {
+    const files = main(BUCKET, { 'backend.tf': S3_BACKEND });
+    const plan = text(simulate('plan', files, null));
+    expect(plan.startsWith('Acquiring state lock. This may take a few moments...\n')).toBe(true);
+    expect(plan.endsWith('Releasing state lock. This may take a few moments...')).toBe(true);
+    const r = simulate('apply', files, null);
+    expect(r.lines[r.confirmAt!].text).toBe('  Enter a value: yes');
+    expect(text(r)).toContain('Releasing state lock. This may take a few moments...\n\nApply complete!');
+    // without use_lockfile (nor a DynamoDB table), S3 doesn't lock
+    expect(text(simulate('plan', main(BUCKET, { 'backend.tf': S3_BACKEND.replace('use_lockfile = true', '') }), null))).not.toContain('state lock');
+  });
+});
+
+describe('input variables', () => {
+  const VARS = 'variable "env" {\n  default = "dev"\n}\n\nresource "aws_s3_bucket" "b" {\n  bucket = "acme-${var.env}"\n}\n';
+  const bucket = (files: Record<string, string>, vars: VarArg[] = []) => applied2(files, vars).resources['aws_s3_bucket.b'].bucket;
+  const applied2 = (files: Record<string, string>, vars: VarArg[]) => {
+    const r = simulate('apply', files, null, { ...auto, vars });
+    expect(r.ok, text(r)).toBe(true);
+    return r.state!;
+  };
+
+  it('reads terraform.tfvars, then *.auto.tfvars in order, then -var-file and -var as given', () => {
+    expect(bucket(main(VARS))).toBe('acme-dev');
+    expect(bucket(main(VARS, { 'terraform.tfvars': 'env = "qa"\n' }))).toBe('acme-qa');
+    const files = main(VARS, { 'terraform.tfvars': 'env = "qa"\n', 'b.auto.tfvars': 'env = "b"\n', 'a.auto.tfvars': 'env = "a"\n', 'prod.tfvars': 'env = "prod"\n' });
+    expect(bucket(files)).toBe('acme-b');
+    expect(bucket(files, [{ kind: 'file', name: 'prod.tfvars' }])).toBe('acme-prod');
+    expect(bucket(files, [{ kind: 'var', text: 'env=cli' }, { kind: 'file', name: 'prod.tfvars' }])).toBe('acme-prod');
+    expect(bucket(files, [{ kind: 'file', name: 'prod.tfvars' }, { kind: 'var', text: 'env=cli' }])).toBe('acme-cli');
+  });
+
+  it('fails on a var file that does not exist, a variable nobody declared, a value that breaks a validation', () => {
+    const missing = simulate('plan', main(VARS), null, { initialized: true, vars: [{ kind: 'file', name: 'staging.tfvars' }] });
+    expect(text(missing)).toContain('Error: Failed to read variables file');
+    expect(text(missing)).toContain('│ Given variables file staging.tfvars does not exist.');
+    const undeclared = simulate('plan', main(VARS), null, { initialized: true, vars: [{ kind: 'var', text: 'region=us-east-2' }] });
+    expect(text(undeclared)).toContain('Error: Value for undeclared variable');
+    const checked = VARS.replace('default = "dev"', 'default = "dev"\n  validation {\n    condition     = contains(["dev", "prod"], var.env)\n    error_message = "env must be dev or prod."\n  }');
+    const bad = simulate('plan', main(checked), null, { initialized: true, vars: [{ kind: 'var', text: 'env=qa' }] });
+    expect(bad.ok).toBe(false);
+    expect(text(bad)).toContain('Error: Invalid value for variable');
+    expect(text(bad)).toContain('│ env must be dev or prod.');
+  });
+
+  it('reads a -var by the variable type: a number, a list', () => {
+    const code = 'variable "n" {\n  type = number\n}\n\nvariable "names" {\n  type = list(string)\n}\n\nresource "aws_s3_bucket" "b" {\n  count  = var.n\n  bucket = var.names[count.index]\n}\n';
+    const state = applied2(main(code), [
+      { kind: 'var', text: 'n=2' },
+      { kind: 'var', text: 'names=["a", "b"]' },
+    ]);
+    expect(Object.keys(state.resources)).toEqual(['aws_s3_bucket.b[0]', 'aws_s3_bucket.b[1]']);
+    expect(state.resources['aws_s3_bucket.b[1]'].bucket).toBe('b');
+  });
+});
+
+describe('workspaces', () => {
+  const CODE = 'resource "aws_s3_bucket" "b" {\n  bucket = "acme-${terraform.workspace}"\n}\n';
+
+  it('new, select, list, show and delete, each workspace with its own state', () => {
+    const def = applied(main(CODE));
+    expect(def.resources['aws_s3_bucket.b'].bucket).toBe('acme-default');
+    const created = workspaceCommand(['new', 'dev'], def);
+    expect(created.lines.map((l) => l.text)[0]).toBe('Created and switched to workspace "dev"!');
+    const dev = created.state!;
+    expect(workspaceOf(dev)).toBe('dev');
+    expect(dev.resources).toEqual({});
+    // terraform.workspace is the current one, and the plan starts from its (empty) state
+    const plan = simulate('plan', main(CODE), dev);
+    expect(text(plan)).toContain('+ bucket                      = "acme-dev"');
+    expect(text(plan)).toContain('Plan: 1 to add, 0 to change, 0 to destroy.');
+    const devApplied = applied(main(CODE), dev);
+    expect(devApplied.workspace).toBe('dev');
+    expect(devApplied.workspaces?.default.resources['aws_s3_bucket.b'].bucket).toBe('acme-default');
+    expect(workspaceCommand(['list'], devApplied).lines.map((l) => l.text)).toEqual(['  default', '* dev', '']);
+    expect(workspaceCommand(['show'], devApplied).lines[0].text).toBe('dev');
+    // back to default: its state comes back, dev's is kept
+    const back = workspaceCommand(['select', 'default'], devApplied).state!;
+    expect(back.workspace).toBeUndefined();
+    expect(back.resources['aws_s3_bucket.b'].bucket).toBe('acme-default');
+    expect(back.workspaces?.dev.resources['aws_s3_bucket.b'].bucket).toBe('acme-dev');
+    // dev still tracks a bucket: delete refuses unless forced
+    expect(text(workspaceCommand(['delete', 'dev'], back))).toContain('Workspace "dev" is currently tracking the following resource instances:');
+    expect(workspaceCommand(['delete', '-force', 'dev'], back).state?.workspaces).toEqual({});
+    expect(text(workspaceCommand(['select', 'qa'], back))).toContain('Workspace "qa" doesn\'t exist.');
+    expect(text(workspaceCommand(['delete', 'default'], back))).toContain('is your active workspace');
+  });
+
+  it('destroy in a workspace keeps the others', () => {
+    const dev = applied(main(CODE), workspaceCommand(['new', 'dev'], applied(main(CODE))).state!);
+    const r = simulate('destroy', main(CODE), dev, auto);
+    expect(r.state?.resources).toEqual({});
+    expect(r.state?.workspace).toBe('dev');
+    expect(r.state?.workspaces?.default.resources['aws_s3_bucket.b']).toBeDefined();
+  });
+});
+
+describe('import and removed blocks', () => {
+  const IMPORT = 'import {\n  to = aws_s3_bucket.logs\n  id = "acme-logs"\n}\n\nresource "aws_s3_bucket" "logs" {\n  bucket = "acme-logs"\n}\n';
+
+  it('plans an import, and apply adopts the object with the given id', () => {
+    const plan = simulate('plan', main(IMPORT), null);
+    const out = text(plan);
+    expect(out).toContain('aws_s3_bucket.logs: Preparing import... [id=acme-logs]');
+    expect(out).toContain('  # aws_s3_bucket.logs will be imported\n    resource "aws_s3_bucket" "logs" {');
+    expect(out).toContain('        arn                         = "arn:aws:s3:::acme-logs"');
+    expect(out).toContain('Plan: 1 to import, 0 to add, 0 to change, 0 to destroy.');
+    const r = simulate('apply', main(IMPORT), null, auto);
+    expect(text(r)).toContain('aws_s3_bucket.logs: Importing... [id=acme-logs]\naws_s3_bucket.logs: Import complete [id=acme-logs]');
+    expect(text(r)).toContain('Apply complete! Resources: 1 imported, 0 added, 0 changed, 0 destroyed.');
+    expect(r.state?.resources['aws_s3_bucket.logs'].id).toBe('acme-logs');
+    // once in the state, the import block has nothing left to do
+    expect(text(simulate('plan', main(IMPORT), r.state!))).toContain('No changes.');
+  });
+
+  it('an import with no configuration fails, unless -generate-config-out writes it', () => {
+    const code = 'import {\n  to = aws_s3_bucket.logs\n  id = "acme-logs"\n}\n';
+    const r = simulate('plan', main(code), null);
+    expect(r.ok).toBe(false);
+    expect(text(r)).toContain('Error: Configuration for import target does not exist');
+    const g = simulate('plan', main(code), null, { initialized: true, generateConfig: 'generated.tf' });
+    expect(g.ok, text(g)).toBe(true);
+    expect(g.generated?.file).toBe('generated.tf');
+    expect(g.generated?.text).toContain('# __generated__ by Terraform from "acme-logs"\nresource "aws_s3_bucket" "logs" {\n  bucket = "acme-logs"\n}');
+    expect(text(g)).toContain('  # aws_s3_bucket.logs will be imported\n  # (config will be generated)');
+    expect(text(g)).toContain('Terraform has generated configuration and written it to generated.tf.');
+    // the file is there now: an import like any other
+    expect(text(simulate('plan', main(code, { 'generated.tf': g.generated!.text }), null))).toContain('Plan: 1 to import, 0 to add, 0 to change, 0 to destroy.');
+    expect(text(simulate('plan', main(code, { 'generated.tf': '' }), null, { initialized: true, generateConfig: 'generated.tf' }))).toContain(
+      'Error: Target generated file already exists',
+    );
+  });
+
+  it('removed with destroy = false forgets the object instead of destroying it', () => {
+    const state = applied(main(`${BUCKET}\nresource "aws_s3_bucket" "old" {\n  bucket = "acme-old"\n}\n`));
+    const code = `${BUCKET}\nremoved {\n  from = aws_s3_bucket.old\n\n  lifecycle {\n    destroy = false\n  }\n}\n`;
+    const plan = text(simulate('plan', main(code), state));
+    expect(plan).toContain('  # aws_s3_bucket.old will no longer be managed by Terraform\n . resource "aws_s3_bucket" "old" {');
+    expect(plan).toContain('Plan: 0 to add, 0 to change, 0 to destroy, 1 to forget.');
+    expect(plan).toContain('Warning: Some objects will no longer be managed by Terraform');
+    const r = simulate('apply', main(code), state, auto);
+    expect(text(r)).not.toContain('Destroying');
+    expect(text(r)).toContain('Apply complete! Resources: 0 added, 0 changed, 0 destroyed, 1 forgotten.');
+    expect(Object.keys(r.state!.resources)).toEqual(['aws_s3_bucket.site']);
+    // still declared: Terraform refuses
+    expect(text(simulate('plan', main(`${code}\nresource "aws_s3_bucket" "old" {\n  bucket = "acme-old"\n}\n`), state))).toContain('Error: Removed resource still exists');
+  });
+});
+
+describe('lifecycle', () => {
+  const INSTANCE = (ami: string, life = '') => `resource "aws_instance" "web" {\n  ami           = "${ami}"\n  instance_type = "t3.micro"\n${life}}\n`;
+
+  it('prevent_destroy stops a destroy too', () => {
+    const code = INSTANCE('ami-1', '  lifecycle {\n    prevent_destroy = true\n  }\n');
+    const r = simulate('destroy', main(code), applied(main(code)), auto);
+    expect(r.ok).toBe(false);
+    expect(text(r)).toContain('Error: Instance cannot be destroyed');
+    expect(text(r)).toContain('Resource aws_instance.web has lifecycle.prevent_destroy set');
+  });
+
+  it('create_before_destroy plans +/- and creates the new one before the old one goes', () => {
+    const life = '  lifecycle {\n    create_before_destroy = true\n  }\n';
+    const state = applied(main(INSTANCE('ami-1', life)));
+    const plan = text(simulate('plan', main(INSTANCE('ami-2', life)), state));
+    expect(plan).toContain('+/- create replacement and then destroy');
+    expect(plan).toContain('+/- resource "aws_instance" "web" {');
+    const out = text(simulate('apply', main(INSTANCE('ami-2', life)), state, auto));
+    expect(out.indexOf('aws_instance.web: Creation complete')).toBeLessThan(out.indexOf('aws_instance.web (deposed object'));
+  });
+
+  it('ignore_changes leaves those arguments as the state has them', () => {
+    const life = '  lifecycle {\n    ignore_changes = [ami]\n  }\n';
+    const state = applied(main(INSTANCE('ami-1', life)));
+    expect(text(simulate('plan', main(INSTANCE('ami-2', life)), state))).toContain('No changes.');
+    const tagged = INSTANCE('ami-2', `  tags = {\n    Name = "web"\n  }\n${life}`);
+    const r = simulate('apply', main(tagged), state, auto);
+    expect(text(r)).toContain('1 changed');
+    expect(r.state?.resources['aws_instance.web'].ami).toBe('ami-1');
+  });
+
+  it('replace_triggered_by replaces it when what it points at changes', () => {
+    const code = (version: string) =>
+      `resource "aws_ssm_parameter" "release" {\n  name  = "/app/release"\n  type  = "String"\n  value = "${version}"\n}\n\n${INSTANCE('ami-1', '  lifecycle {\n    replace_triggered_by = [aws_ssm_parameter.release.value]\n  }\n')}`;
+    const state = applied(main(code('1')));
+    const r = simulate('plan', main(code('2')), state);
+    expect(text(r)).toContain('  # aws_instance.web will be replaced due to changes in replace_triggered_by');
+    expect(r.plan?.changes.map((c) => [c.address, c.action])).toEqual([
+      ['aws_instance.web', 'replace'],
+      ['aws_ssm_parameter.release', 'update'],
+    ]);
+    expect(text(simulate('plan', main(code('1')), state))).toContain('No changes.');
+  });
+
+  it('a launch template change raises latest_version, and the group that follows it is replaced first', () => {
+    const code = (type: string) => `resource "aws_launch_template" "web" {
+  name_prefix   = "web-"
+  image_id      = "ami-1"
+  instance_type = "${type}"
+}
+
+resource "aws_autoscaling_group" "web" {
+  name     = "web"
+  min_size = 1
+  max_size = 2
+
+  launch_template {
+    id      = aws_launch_template.web.id
+    version = aws_launch_template.web.latest_version
+  }
+
+  lifecycle {
+    create_before_destroy = true
+    replace_triggered_by  = [aws_launch_template.web.latest_version]
+  }
+}
+`;
+    const state = applied(main(code('t3.micro')));
+    const plan = text(simulate('plan', main(code('t3.small')), state));
+    expect(plan).toContain('  # aws_autoscaling_group.web will be replaced due to changes in replace_triggered_by\n+/- resource "aws_autoscaling_group" "web" {');
+    expect(plan).toContain('~ latest_version = "1" -> (known after apply)');
+    const next = applied(main(code('t3.small')), state);
+    expect(next.resources['aws_launch_template.web'].latest_version).toBe('2');
+    expect(next.resources['aws_autoscaling_group.web'].launch_template).toContain('"version":2');
+  });
+});
+
+describe('sensitive values', () => {
+  const DB = `variable "db_password" {
+  type      = string
+  sensitive = true
+}
+
+resource "aws_ssm_parameter" "db" {
+  name  = "/app/db"
+  type  = "SecureString"
+  value = var.db_password
+}
+
+resource "aws_s3_bucket" "b" {
+  bucket = "acme"
+  tags = {
+    Secret = var.db_password
+  }
+}
+
+output "password" {
+  value     = var.db_password
+  sensitive = true
+}
+`;
+  const files = main(DB, { 'terraform.tfvars': 'db_password = "hunter2"\n' });
+
+  it('the plan hides them, and what is made from them', () => {
+    const out = text(simulate('plan', files, null));
+    expect(out).not.toContain('hunter2');
+    expect(out).toContain('+ value   = (sensitive value)');
+    expect(out).toContain('+ tags                        = (sensitive value)');
+    expect(out).toContain('+ password = (sensitive value)');
+  });
+
+  it('an output made from one must say sensitive = true', () => {
+    const open = DB.replace('  value     = var.db_password\n  sensitive = true\n', '  value = var.db_password\n');
+    const r = simulate('plan', main(open, { 'terraform.tfvars': 'db_password = "x"\n' }), null);
+    expect(r.ok).toBe(false);
+    expect(text(r)).toContain('Error: Output refers to sensitive values');
+    // nonsensitive() says it's fine to show
+    expect(simulate('plan', main(open.replace('"password" {\n  value = var.db_password', '"password" {\n  value = nonsensitive(var.db_password)'), { 'terraform.tfvars': 'db_password = "x"\n' }), null).ok).toBe(true);
+  });
+
+  it('terraform output hides it, by name (or -raw) shows it', () => {
+    const r = simulate('apply', files, null, auto);
+    expect(text(r)).toContain('password = <sensitive>');
+    expect(text(outputCommand([], files, r.state!))).toBe('password = <sensitive>');
+    expect(text(outputCommand(['password'], files, r.state!))).toBe('"hunter2"');
+    expect(text(outputCommand(['-raw', 'password'], files, r.state!))).toBe('hunter2');
+    expect(text(outputCommand(['nope'], files, r.state!))).toContain('Error: Output "nope" not found');
+    expect(text(showCommand([], files, r.state!, () => undefined))).toContain('password = (sensitive value)');
+  });
+});
+
+describe('saved plans', () => {
+  it('plan -out saves it; apply runs exactly that plan without asking; show prints it', () => {
+    const p = simulate('plan', main(BUCKET), null, { initialized: true, out: 'tfplan' });
+    expect(text(p)).toContain('Saved the plan to: tfplan\n\nTo perform exactly these actions, run the following command to apply:\n    terraform apply "tfplan"');
+    expect(text(p)).not.toContain("You didn't use the -out option");
+    const saved = p.saved!;
+    const r = simulate('apply', main(BUCKET), null, { initialized: true, saved: { name: 'tfplan', plan: saved } });
+    expect(r.confirmAt).toBeUndefined();
+    expect(text(r)).not.toContain('Terraform will perform the following actions');
+    expect(text(r)).toContain('aws_s3_bucket.site: Creation complete');
+    expect(text(r)).toContain('Apply complete! Resources: 1 added, 0 changed, 0 destroyed.');
+    expect(text(showCommand(['tfplan'], main(BUCKET), r.state!, () => saved))).toContain('  # aws_s3_bucket.site will be created');
+    // the state changed since: stale
+    expect(text(simulate('apply', main(BUCKET), r.state!, { initialized: true, saved: { name: 'tfplan', plan: saved } }))).toContain('Error: Saved plan is stale');
+  });
+
+  it('a plan whose code changed is stale; a plan file nobody saved fails to load', () => {
+    const saved = simulate('plan', main(BUCKET), null, { initialized: true, out: 'tfplan' }).saved!;
+    expect(text(simulate('apply', main(BUCKET.replace('acme-site', 'acme-www')), null, { initialized: true, saved: { name: 'tfplan', plan: saved } }))).toContain(
+      'Error: Saved plan is stale',
+    );
+    expect(text(simulate('apply', main(BUCKET), null, { initialized: true, saved: { name: 'other' } }))).toContain('Error: Failed to load "other" as a plan file');
+  });
+});
+
+describe('the guided projects resources', () => {
+  it('a static site: CloudFront, a certificate validated through Route 53', () => {
+    const code = `resource "aws_route53_zone" "main" {
+  name = "acme.dev"
+}
+
+resource "aws_acm_certificate" "site" {
+  domain_name               = "acme.dev"
+  subject_alternative_names = ["www.acme.dev"]
+  validation_method         = "DNS"
+}
+
+resource "aws_route53_record" "validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.site.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+  zone_id = aws_route53_zone.main.zone_id
+  name    = each.value.name
+  type    = each.value.type
+  ttl     = 60
+  records = [each.value.record]
+}
+
+resource "aws_cloudfront_distribution" "site" {
+  enabled = true
+}
+
+output "url" {
+  value = "https://\${aws_cloudfront_distribution.site.domain_name}"
+}
+
+output "name_servers" {
+  value = aws_route53_zone.main.name_servers
+}
+`;
+    const plan = simulate('plan', main(code), null);
+    expect(plan.ok, text(plan)).toBe(true);
+    expect(plan.plan?.changes.map((c) => c.address)).toContain('aws_route53_record.validation["www.acme.dev"]');
+    const state = applied(main(code));
+    expect(state.outputs.url).toMatch(/^https:\/\/d[a-z]{13}\.cloudfront\.net$/);
+    expect(JSON.parse(state.outputs.name_servers)).toHaveLength(4);
+    expect(state.resources['aws_route53_zone.main'].zone_id).toMatch(/^Z0[A-Z]{19}$/);
+    expect(state.resources['aws_acm_certificate.site'].arn).toMatch(/^arn:aws:acm:us-east-1:123456789012:certificate\/[0-9a-f-]{36}$/);
+    expect(state.resources['aws_route53_record.validation["acme.dev"]'].name).toMatch(/^_[0-9a-f]{32}\.acme\.dev\.$/);
+  });
+
+  it('an HTTP API in front of a Lambda over DynamoDB', () => {
+    const code = `resource "aws_dynamodb_table" "items" {
+  name         = "items"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "id"
+}
+
+resource "aws_lambda_function" "api" {
+  function_name = "items-api"
+  role          = "arn:aws:iam::123456789012:role/lambda"
+  handler       = "index.handler"
+  runtime       = "nodejs20.x"
+  filename      = "lambda.zip"
+}
+
+resource "aws_apigatewayv2_api" "http" {
+  name          = "items"
+  protocol_type = "HTTP"
+}
+
+output "endpoint" {
+  value = aws_apigatewayv2_api.http.api_endpoint
+}
+
+output "invoke_arn" {
+  value = aws_lambda_function.api.invoke_arn
+}
+
+output "table_arn" {
+  value = aws_dynamodb_table.items.arn
+}
+`;
+    const state = applied(main(code));
+    expect(state.outputs.endpoint).toMatch(/^https:\/\/[a-z]{10}\.execute-api\.us-east-1\.amazonaws\.com$/);
+    expect(state.outputs.invoke_arn).toBe(
+      'arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:items-api/invocations',
+    );
+    expect(state.outputs.table_arn).toBe('arn:aws:dynamodb:us-east-1:123456789012:table/items');
+    expect(state.resources['aws_apigatewayv2_api.http'].execution_arn).toMatch(/^arn:aws:execute-api:us-east-1:123456789012:[a-z]{10}$/);
+  });
+
+  it('a load balancer, a launch template, and a database whose password is a secret', () => {
+    const code = `data "aws_secretsmanager_secret_version" "db" {
+  secret_id = "prod/db"
+}
+
+data "aws_ssm_parameter" "ami" {
+  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+}
+
+resource "aws_lb" "web" {
+  name               = "web"
+  load_balancer_type = "application"
+}
+
+resource "aws_launch_template" "web" {
+  name_prefix   = "web-"
+  image_id      = data.aws_ssm_parameter.ami.value
+  instance_type = "t3.micro"
+}
+
+resource "aws_db_instance" "db" {
+  identifier        = "app-db"
+  engine            = "postgres"
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
+  username          = "app"
+  password          = jsondecode(data.aws_secretsmanager_secret_version.db.secret_string).password
+}
+
+output "alb" {
+  value = aws_lb.web.dns_name
+}
+
+output "db_endpoint" {
+  value = aws_db_instance.db.endpoint
+}
+
+output "template_version" {
+  value = aws_launch_template.web.latest_version
+}
+`;
+    const plan = text(simulate('plan', main(code), null));
+    expect(plan).toMatch(/\+ password +=  ?\(sensitive value\)/);
+    expect(plan).toContain('+ image_id        = (sensitive value)');
+    const state = applied(main(code));
+    expect(state.outputs.alb).toMatch(/^web-\d{10}\.us-east-1\.elb\.amazonaws\.com$/);
+    expect(state.outputs.db_endpoint).toMatch(/^app-db\.c[0-9a-f]{11}\.us-east-1\.rds\.amazonaws\.com:5432$/);
+    expect(state.outputs.template_version).toBe('1');
+    expect(state.resources['aws_launch_template.web'].id).toMatch(/^lt-0[0-9a-f]{16}$/);
+    expect(state.resources['aws_launch_template.web'].image_id).toMatch(/^ami-0[0-9a-f]{16}$/);
+    expect(state.resources['aws_db_instance.db'].port).toBe('5432');
   });
 });

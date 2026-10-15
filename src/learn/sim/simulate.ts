@@ -12,6 +12,13 @@
  * to b`); data sources read during the plan, or during the apply when their
  * arguments wait on it (`<=`); local modules planned resource by resource
  * (`module.net.aws_vpc.this`), Registry ones left out with a note.
+ *
+ * And what production work leans on: a backend (`init` configures it, and
+ * migrates the state into it; a remote one locks the state around each run),
+ * variables from `terraform.tfvars`, `*.auto.tfvars`, `-var-file` and `-var`
+ * (in Terraform's order of precedence), workspaces (`terraform.workspace`,
+ * a state each), `import` and `removed` blocks, the `lifecycle` arguments,
+ * sensitive values kept out of the output, and plans saved with `-out`.
  * Pure: the same files and state always print the same thing.
  */
 import { movedBlocks } from '@/hcl/moved';
@@ -19,13 +26,13 @@ import { lineColOf, parseFile, parseProject } from '@/hcl/parser';
 import { collectRefs, refTargetAddress, scanTraversals } from '@/ir/expr';
 import { moduleTarget, type LocalModule } from '@/ir/localModules';
 import { moduleInputs } from '@/ir/modules';
-import { instanceAddress, localValue, repeatOf } from '@/ir/repeat';
-import type { Expression, IR, ModuleNode, ResourceNode, Trivia } from '@/ir/types';
+import { exprText, instanceAddress, localValue, repeatOf } from '@/ir/repeat';
+import type { Expression, IR, ModuleNode, RawBlock, ResourceNode, Trivia } from '@/ir/types';
 import { validateProject } from '@/ir/validate';
 import { getDef } from '@/resources/registry';
 import { constraintAllows } from '@/schema/versions';
 import type { Files, PlanSummary, SimCommand, SimState } from '../types';
-import { computedOf, createSeconds, dataAttrs, forcesNew, knowsData, makeAttr, makeId, readData, type Fake } from './catalog';
+import { computedOf, createSeconds, dataAttrs, forcesNew, knowsData, makeAttr, makeId, plannedAttr, readData, sensitiveAttrs, versioned, type Fake } from './catalog';
 import { dynamicLabel, evaluate, evaluateRecord, hasUnknown, instanceEnv, isObject, Opaque, UNKNOWN, type Scope, type Val } from './eval';
 import {
   changeLines,
@@ -44,13 +51,36 @@ import {
 
 export type { Line, Tone } from './render';
 
+/** `-var 'name=value'` or `-var-file=prod.tfvars` */
+export type VarArg = { kind: 'var'; text: string } | { kind: 'file'; name: string };
+
+/** a plan `plan -out` saved: what `apply tfplan` carries out and `show tfplan` prints */
+export interface SavedPlan {
+  name: string;
+  /** the code and the state it was made from: when either changed, it's stale */
+  stamp: string;
+  vars: VarArg[];
+  /** the plan as `terraform show` prints it */
+  lines: Line[];
+}
+
 export interface SimContext {
   /** `terraform init` ran for these providers and modules (see `initFingerprint`) */
   initialized: boolean;
   /** `-auto-approve`: apply and destroy don't stop to ask */
   autoApprove?: boolean;
-  /** the `initFingerprint` of the last `init`: says what changed since (a module: "Module not installed") */
+  /** the `initFingerprint` of the last `init`: says what changed since (a module: "Module not installed", the backend) */
   installed?: string;
+  /** `-var` and `-var-file`, in the order given */
+  vars?: VarArg[];
+  /** `plan -out=tfplan` */
+  out?: string;
+  /** `apply tfplan`: the plan saved under that name (`plan` undefined: there's no such file) */
+  saved?: { name: string; plan?: SavedPlan };
+  /** `plan -generate-config-out=generated.tf` */
+  generateConfig?: string;
+  /** `init -migrate-state` / `init -reconfigure`, for a backend that changed */
+  backendFlag?: 'migrate-state' | 'reconfigure';
 }
 
 export interface SimResult {
@@ -60,8 +90,14 @@ export interface SimResult {
   state?: SimState | null;
   /** the resource changes plan, apply and destroy worked out */
   plan?: PlanSummary;
-  /** apply / destroy without `-auto-approve`: the index of the `Enter a value: yes` line (Terraform asks there) */
+  /** apply / destroy without `-auto-approve`, init migrating the state: the index of the `Enter a value: yes` line (Terraform asks there) */
   confirmAt?: number;
+  /** what follows the question when the answer is no, when that isn't a cancel (init: start with an empty state) */
+  declined?: { lines: Line[]; state: SimState | null };
+  /** `plan -out`: the plan to keep under its name */
+  saved?: SavedPlan;
+  /** `plan -generate-config-out`: the file to write into the project */
+  generated?: { file: string; text: string };
 }
 
 const REGION = 'us-east-1';
@@ -126,16 +162,48 @@ export function requiredProviders(files: Files): ProviderReq[] {
   return [...out.values()].sort((a, b) => a.source.localeCompare(b.source));
 }
 
-/** what `init` installs: when it changes (a provider added, a version constraint, a module), Terraform asks for `init` again */
+/** what `init` installs: when it changes (a provider added, a version constraint, a module, the backend), Terraform asks for `init` again */
 export function initFingerprint(files: Files): string {
   const { ir } = parseProject(tfFiles(files));
+  const backend = backendOf(files);
   return JSON.stringify([
     requiredProviders(files).map((p) => [p.source, p.constraint ?? '']),
     ir.modules.map((m) => [m.name, exprString(m.args.source)]),
+    backend ? [backend.type, backend.config] : null,
   ]);
 }
 
 const exprString = (e: Expression | undefined) => (e?.kind === 'literal' ? String(e.value) : '');
+
+interface Backend {
+  type: string;
+  /** its arguments, whitespace folded: a change means init again */
+  config: string;
+  /** it locks the state (S3 with `use_lockfile` or a DynamoDB table; the others always do) */
+  locks: boolean;
+}
+
+/** the `backend "s3" { … }` of the `terraform` block (null: the local one) */
+export function backendOf(files: Files): Backend | null {
+  const { ir } = parseProject(tfFiles(files));
+  for (const x of ir.extras) {
+    const m = /^\s*terraform\s*\{[\s\S]*?\bbackend\s+"([^"]+)"\s*\{/.exec(x.text);
+    if (!m) continue;
+    let depth = 1;
+    let end = m[0].length;
+    for (; end < x.text.length && depth > 0; end++) depth += x.text[end] === '{' ? 1 : x.text[end] === '}' ? -1 : 0;
+    const body = x.text.slice(m[0].length, end - 1).replace(/(#|\/\/).*$/gm, '');
+    const locks = m[1] === 's3' ? /\buse_lockfile\s*=\s*true\b|\bdynamodb_table\s*=/.test(body) : ['azurerm', 'gcs', 'consul', 'pg', 'kubernetes'].includes(m[1]);
+    return { type: m[1], config: body.replace(/\s+/g, ' ').trim(), locks };
+  }
+  return null;
+}
+
+/** the backend an `initFingerprint` recorded: `[type, config]`, null (local), undefined (no init yet) */
+function installedBackend(installed: string | undefined): [string, string] | null | undefined {
+  if (!installed) return undefined;
+  return (JSON.parse(installed) as unknown[])[2] as [string, string] | null | undefined ?? null;
+}
 
 /* ------------------------------------------------------------------ diagnostics */
 
@@ -291,6 +359,10 @@ interface Engine {
   movedFrom: Map<string, string>;
   /** every resource reached (`module.net.aws_subnet.a`) → how it repeats; and every module instance (`module.env["prod"]`) */
   reached: Map<string, 'count' | 'for_each' | 'none' | 'module'>;
+  /** `terraform.workspace` */
+  workspace: string;
+  /** `import` blocks: the address → the id it imports */
+  imports: Map<string, string>;
 }
 
 interface Mod {
@@ -305,6 +377,39 @@ interface Mod {
   blocks: Map<string, Val>;
   /** attributes read from each block anywhere in the module: `aws_vpc.main` → {id, arn} */
   reads: Map<string, Set<string>>;
+  /** its variables declared `sensitive = true` */
+  secret: Set<string>;
+}
+
+const sensitiveVars = (ir: IR) => new Set(ir.variables.filter((v) => v.args.sensitive?.kind === 'literal' && v.args.sensitive.value === true).map((v) => v.name));
+
+/**
+ * The value holds something sensitive: a sensitive variable, an attribute
+ * the provider marks sensitive (a password, a secret's string), through
+ * locals too; unless `nonsensitive()` unwraps it.
+ *
+ * ponytail: tracked by what an expression references, not value by value:
+ * a whole attribute is hidden (not one key of its map), and a resource
+ * argument set from a secret doesn't make that attribute secret where
+ * others read it. Mark values instead if lessons need finer grain.
+ */
+function isSensitive(e: Expression, mod: Mod, seen = new Set<string>()): boolean {
+  if (e.kind === 'raw' && /\bnonsensitive\s*\(/.test(e.hcl)) return false;
+  if (e.kind === 'raw' && /(^|[^\w])sensitive\s*\(/.test(e.hcl)) return true;
+  const refs: Array<{ field: string; path: string }> = [];
+  collectRefs(e, '', refs);
+  return refs.some(({ path }) => {
+    const [root, a, b, c] = path.split('.').map((s) => s.replace(/\[.*$/, ''));
+    if (root === 'var') return mod.secret.has(a);
+    if (root === 'local') {
+      if (seen.has(a)) return false;
+      seen.add(a);
+      const value = localValue(mod.ir, a);
+      return value !== undefined && isSensitive(value, mod, seen);
+    }
+    if (root === 'data') return c !== undefined && sensitiveAttrs(a).includes(c);
+    return b !== undefined && sensitiveAttrs(root).includes(b);
+  });
 }
 
 function scopeOf(mod: Mod, eng: Engine): Scope {
@@ -326,7 +431,7 @@ function scopeOf(mod: Mod, eng: Engine): Scope {
         case 'path':
           return name === 'module' ? mod.dir || '.' : name === 'root' || name === 'cwd' ? '.' : undefined;
         case 'terraform':
-          return name === 'workspace' ? 'default' : undefined;
+          return name === 'workspace' ? eng.workspace : undefined;
         case 'data':
           return declared(`data.${name}`, mod.ir.data);
         case 'module':
@@ -391,20 +496,50 @@ interface Lifecycle {
   preventDestroy: boolean;
   /** argument names whose changes are ignored (`all`: every one) */
   ignore: Set<string> | 'all';
+  /** `replace_triggered_by`: references whose change replaces this one */
+  triggers: string[];
 }
 
 function lifecycleOf(r: ResourceNode): Lifecycle {
   const body = r.args.lifecycle?.kind === 'block' ? r.args.lifecycle.body : {};
   const flag = (e: Expression | undefined) => e?.kind === 'literal' && e.value === true;
   const ignore = body.ignore_changes;
+  const triggers = body.replace_triggered_by;
   return {
     createFirst: flag(body.create_before_destroy),
     preventDestroy: flag(body.prevent_destroy),
     ignore:
-      ignore?.kind === 'raw' && ignore.hcl.trim() === 'all'
+      (ignore?.kind === 'raw' && ignore.hcl.trim() === 'all') || (ignore?.kind === 'ref' && ignore.path === 'all')
         ? 'all'
-        : new Set(ignore?.kind === 'list' ? ignore.items.map((i) => (i.kind === 'ref' ? i.path : i.kind === 'literal' ? String(i.value) : '')) : []),
+        : // `tags["Owner"]` ignores the whole map (ponytail: one key of it would need a path-aware diff)
+          new Set(ignore?.kind === 'list' ? ignore.items.map((i) => (i.kind === 'ref' ? i.path : i.kind === 'literal' ? String(i.value) : '').replace(/[[.].*$/, '')) : []),
+    triggers: triggers?.kind === 'list' ? triggers.items.flatMap((i) => (i.kind === 'ref' ? [i.path] : [])) : [],
   };
+}
+
+/** a `replace_triggered_by` reference changes in this plan: a whole instance with any change, an attribute whose value changes */
+function triggered(eng: Engine, mod: Mod, paths: string[]): boolean {
+  return paths.some((path) => {
+    const key = blockKey(path);
+    if (!key || !path.startsWith(key)) return false;
+    const target = mod.prefix + key;
+    const attr = /^(?:\[[^\]]*\])*\.([A-Za-z_][\w-]*)/.exec(path.slice(key.length))?.[1];
+    return eng.changes.some((c) => {
+      if ((c.address !== target && !c.address.startsWith(`${target}[`)) || c.action === 'noop' || c.action === 'read') return false;
+      if (attr === undefined || c.action !== 'update') return true;
+      const after = c.after?.[attr];
+      return after === undefined || hasUnknown(after) || c.before?.[attr] !== serialize(after);
+    });
+  });
+}
+
+/** what an `import` reads: the object as the configuration describes it, with the id given and what the provider computes */
+function importedObject(fake: Omit<Fake, 'id'>, id: string, computed: string[]): Record<string, string> {
+  const f: Fake = { ...fake, seed: `${fake.seed}@import`, id };
+  const out: Record<string, string> = { id };
+  for (const k of computed) if (k !== 'id') out[k] = serialize(makeAttr(k, f));
+  for (const [k, v] of Object.entries(fake.config)) if (!hasUnknown(v) && !(v instanceof Opaque)) out[k] = serialize(v);
+  return out;
 }
 
 interface Instance {
@@ -493,27 +628,40 @@ function visitResource(eng: Engine, mod: Mod, r: ResourceNode) {
   eng.reached.set(mod.prefix + r.id, expanded.kind ?? 'none');
   const scope = scopeOf(mod, eng);
   const life = lifecycleOf(r);
+  const ignored = (k: string) => life.ignore === 'all' || life.ignore.has(k);
   const args = Object.fromEntries(Object.entries(r.args).filter(([k]) => !META.has(k)));
+  const secret = new Set([...Object.keys(args).filter((k) => isSensitive(args[k], mod)), ...sensitiveAttrs(r.type)]);
   const values: Array<[string | number | undefined, Val]> = [];
   for (const inst of expanded.instances) {
     const config = nonNull(evaluateRecord(args, scope, inst.env));
     const blocks = blocksOf(args, config);
-    const prev = eng.previous?.resources[inst.address];
+    const fake: Omit<Fake, 'id'> = {
+      type: r.type,
+      name: r.name,
+      seed: `${inst.address}@${eng.gen}`,
+      config,
+      region: regionOf(eng, r, config),
+      byId: (id) => findById(eng, id),
+    };
     const computed = [...new Set(['id', ...computedOf(r.type), ...(mod.reads.get(r.id) ?? [])])].filter((k) => !(k in config));
+    // an `import` block for an address the state doesn't have yet: the plan compares against the object it reads
+    const importing = eng.previous?.resources[inst.address] ? undefined : eng.imports.get(inst.address);
+    const prev = importing !== undefined ? importedObject(fake, importing, computed) : eng.previous?.resources[inst.address];
     // arguments left out that the provider keeps (they're computed, or the ones that would force a replacement)
     const kept = Object.keys(prev ?? {}).filter((k) => !(k in config) && (computed.includes(k) || forcesNew(r.type, k)));
     let action: ChangeAction;
     let forced = new Set<string>();
+    let byTrigger = false;
     if (eng.actions) action = eng.actions.get(inst.address) ?? 'create';
     else if (!prev) action = 'create';
     else {
-      const ignored = (k: string) => life.ignore === 'all' || life.ignore.has(k);
       const changed = Object.entries(config)
         .filter(([k, v]) => !ignored(k) && (hasUnknown(v) || prev[k] !== serialize(v)))
         .map(([k]) => k);
       for (const k of Object.keys(prev)) if (!(k in config) && !kept.includes(k) && !ignored(k)) changed.push(k);
       forced = new Set(changed.filter((k) => k in config && forcesNew(r.type, k)));
-      action = forced.size > 0 ? 'replace' : changed.length > 0 ? 'update' : 'noop';
+      byTrigger = forced.size === 0 && importing === undefined && triggered(eng, mod, life.triggers);
+      action = forced.size > 0 || byTrigger ? 'replace' : changed.length > 0 ? 'update' : 'noop';
       if (action === 'replace' && life.preventDestroy) {
         eng.problems.push({
           severity: 'error',
@@ -525,22 +673,18 @@ function visitResource(eng: Engine, mod: Mod, r: ResourceNode) {
     }
     const fresh = action === 'create' || action === 'replace';
     const value: Record<string, Val> = {};
-    const fake: Omit<Fake, 'id'> = {
-      type: r.type,
-      name: r.name,
-      seed: `${inst.address}@${eng.gen}`,
-      config,
-      region: regionOf(eng, r, config),
-      byId: (id) => findById(eng, id),
-    };
     const id = eng.apply && fresh ? makeId(fake) : undefined;
     for (const k of [...computed, ...kept]) {
-      if (!fresh && prev?.[k] !== undefined) value[k] = decode(prev[k]);
-      else if (!eng.apply) value[k] = UNKNOWN;
+      if (action === 'update' && prev?.[k] !== undefined && versioned(r.type, k)) value[k] = eng.apply ? Number(prev[k]) + 1 : UNKNOWN;
+      else if (!fresh && prev?.[k] !== undefined) value[k] = decode(prev[k]);
+      else if (!eng.apply) value[k] = plannedAttr(k, fake) ?? UNKNOWN;
       else value[k] = k === 'id' ? (id ?? makeId(fake)) : makeAttr(k, { ...fake, id: id ?? String(value.id ?? prev?.id ?? '') });
     }
     Object.assign(value, config);
+    // ignore_changes: the object keeps what the state has for those arguments
+    if (prev && !fresh) for (const k of Object.keys(config)) if (ignored(k) && prev[k] !== undefined) value[k] = decode(prev[k], config[k]);
     eng.values.set(inst.address, value);
+    const hidden = [...secret].filter((k) => k in value);
     eng.changes.push({
       address: inst.address,
       type: r.type,
@@ -552,6 +696,9 @@ function visitResource(eng: Engine, mod: Mod, r: ResourceNode) {
       forced,
       createFirst: life.createFirst,
       movedFrom: eng.movedFrom.get(inst.address),
+      ...(importing !== undefined ? { importing } : {}),
+      ...(byTrigger ? { triggered: true } : {}),
+      ...(hidden.length > 0 ? { sensitive: new Set(hidden) } : {}),
     });
     values.push([inst.key, value]);
   }
@@ -633,7 +780,7 @@ function visitModule(eng: Engine, mod: Mod, m: ModuleNode) {
       }
     }
     eng.reached.set(inst.address, 'module');
-    const inner: Mod = { prefix: `${inst.address}.`, ir: child.ir, dir: target.dir, vars, locals: new Map(), blocks: new Map(), reads: readsOf(child.ir) };
+    const inner: Mod = { prefix: `${inst.address}.`, ir: child.ir, dir: target.dir, vars, locals: new Map(), blocks: new Map(), reads: readsOf(child.ir), secret: sensitiveVars(child.ir) };
     walk(eng, inner);
     const innerScope = scopeOf(inner, eng);
     values.push([inst.key, Object.fromEntries(child.ir.outputs.map((o) => [o.name, o.args.value ? evaluate(o.args.value, innerScope) : null]))]);
@@ -740,19 +887,101 @@ function whyGone(eng: Engine, address: string): string {
   return numeric ? 'resource does not use count' : 'resource does not use for_each';
 }
 
-/** tfvars files: `terraform.tfvars` and `*.auto.tfvars` */
-function tfvars(files: Files): Record<string, Val> {
-  const out: Record<string, Val> = {};
-  const none: Scope = { ref: () => undefined };
-  for (const [file, text] of Object.entries(files)) {
-    if (file.includes('/') || !(file === 'terraform.tfvars' || file.endsWith('.auto.tfvars'))) continue;
-    const [block] = parseFile(file, `output "tfvars" {\n${text}\n}\n`).blocks;
-    if (block?.kind === 'labeled') Object.assign(out, evaluateRecord(block.args, none));
-  }
-  return out;
+/** a `-var` value: a string, unless the variable's type says it's a number, a bool or a structure (then read as HCL) */
+function cliValue(text: string, type: Expression | undefined): Val {
+  const t = type ? exprText(type).trim() : 'string';
+  if (t === 'number' && /^-?\d+(\.\d+)?$/.test(text.trim())) return Number(text);
+  if (t === 'bool' && /^(true|false)$/.test(text.trim())) return text.trim() === 'true';
+  if (t === 'string' || t === 'number' || t === 'bool' || t === 'any') return text;
+  const [block] = parseFile('cli.tfvars', `output "v" {\n  value = ${text}\n}\n`).blocks;
+  return block?.kind === 'labeled' && block.args.value ? evaluate(block.args.value, { ref: () => undefined }) : text;
 }
 
-function run(files: Files, applied: SimState | null, actions?: Map<string, ChangeAction>): Planned {
+/**
+ * The root module's input values, in Terraform's order of precedence (each
+ * one over the ones before it): `terraform.tfvars`, `*.auto.tfvars` in
+ * lexical order, then `-var-file` and `-var` in the order given.
+ */
+function inputVars(files: Files, ir: IR, args: VarArg[]): { given: Record<string, Val>; problems: Problem[] } {
+  const given: Record<string, Val> = {};
+  const problems: Problem[] = [];
+  const none: Scope = { ref: () => undefined };
+  const read = (file: string) => {
+    const [block] = parseFile(file, `output "tfvars" {\n${files[file]}\n}\n`).blocks;
+    if (block?.kind === 'labeled') Object.assign(given, evaluateRecord(block.args, none));
+  };
+  const auto = Object.keys(files)
+    .filter((f) => !f.includes('/') && f.endsWith('.auto.tfvars'))
+    .sort();
+  for (const f of [...(files['terraform.tfvars'] !== undefined ? ['terraform.tfvars'] : []), ...auto]) read(f);
+  for (const a of args) {
+    if (a.kind === 'file') {
+      const file = a.name.replace(/^\.\//, '');
+      if (files[file] !== undefined) read(file);
+      else problems.push({ severity: 'error', summary: 'Failed to read variables file', detail: `Given variables file ${a.name} does not exist.` });
+      continue;
+    }
+    const eq = a.text.indexOf('=');
+    const name = eq > 0 ? a.text.slice(0, eq).trim() : '';
+    const v = ir.variables.find((x) => x.name === name);
+    if (!name) {
+      problems.push({
+        severity: 'error',
+        summary: 'Invalid -var option',
+        detail: `The given -var option "${a.text}" is not correctly specified. Must be a variable name\nand value separated by an equals sign, like -var="key=value".`,
+      });
+    } else if (!v) {
+      problems.push({
+        severity: 'error',
+        summary: 'Value for undeclared variable',
+        detail: `A variable named "${name}" was assigned on the command line, but the root module does\nnot declare a variable of that name. To use this value, add a "variable" block to the\nconfiguration.`,
+      });
+    } else given[name] = cliValue(a.text.slice(eq + 1), v.args.type);
+  }
+  return { given, problems };
+}
+
+/** a variable's `validation` blocks that its value fails: Terraform's error, with the rule's message */
+function validationProblems(files: Files, v: IR['variables'][number], value: Val): Problem[] {
+  const rule = v.args.validation;
+  const rules = rule?.kind === 'block' ? [rule.body] : rule?.kind === 'blocks' ? rule.items : [];
+  const scope: Scope = { ref: (root, name) => (root === 'var' && name === v.name ? value : undefined) };
+  return rules
+    .filter((r) => r.condition && evaluate(r.condition, scope) === false)
+    .map((r) => {
+      const message = r.error_message ? evaluate(r.error_message, scope) : null;
+      return { severity: 'error', summary: 'Invalid value for variable', detail: typeof message === 'string' ? message : undefined, ...at(files, v) };
+    });
+}
+
+/** the root module's `import` or `removed` blocks, read as an output's body */
+function stateBlocks(ir: IR, kind: 'import' | 'removed'): Array<{ args: Record<string, Expression>; x: RawBlock }> {
+  const head = new RegExp(`^\\s*${kind}\\s*\\{`);
+  return ir.extras.flatMap((x) => {
+    if (!head.test(x.text)) return [];
+    const [block] = parseFile(x.trivia.sourceFile ?? 'main.tf', x.text.replace(head, 'output "x" {')).blocks;
+    return block?.kind === 'labeled' ? [{ args: block.args, x }] : [];
+  });
+}
+
+/** where a verbatim block (an `import`, a `removed`) starts, for an error box */
+const atBlock = (files: Files, x: RawBlock, block: string): Pick<Problem, 'file' | 'line' | 'block' | 'source'> => {
+  const file = x.trivia.sourceFile ?? 'main.tf';
+  const text = files[file] ?? '';
+  const start = x.trivia.rawTextRange?.start;
+  const lineNo = start === undefined ? undefined : lineColOf(text, start).line;
+  return { file, line: lineNo, block, source: lineNo === undefined ? undefined : text.split('\n')[lineNo - 1] };
+};
+
+/** an address in the configuration's terms: `aws_s3_bucket.logs`, without spaces */
+const addressOf = (e: Expression | undefined) => (e ? exprText(e).replace(/\s+/g, '') : '');
+
+interface RunOpts {
+  vars: VarArg[];
+  workspace: string;
+}
+
+function run(files: Files, applied: SimState | null, opts: RunOpts, actions?: Map<string, ChangeAction>): Planned {
   const parsed = parseProject(tfFiles(files));
   const { ir } = parsed;
   const problems = diagnose(files, ir, parsed.diagnostics, false).filter((p) => p.severity === 'error');
@@ -771,14 +1000,19 @@ function run(files: Files, applied: SimState | null, actions?: Map<string, Chang
     regions: new Map(),
     movedFrom,
     reached: new Map(),
+    workspace: opts.workspace,
+    imports: new Map(),
   };
-  if (problems.length > 0) return { problems, changes: [], outputs: [], outputValues: new Map(), values: eng.values, reads: [], notes: [], state: previous };
+  const nothing = (): Planned => ({ problems, changes: [], outputs: [], outputValues: new Map(), values: eng.values, reads: [], notes: [], state: previous });
+  if (problems.length > 0) return nothing();
 
-  const given = tfvars(files);
+  const input = inputVars(files, ir, opts.vars);
+  problems.push(...input.problems);
+  if (problems.length > 0) return nothing();
   const vars = new Map<string, Val>();
   const none: Scope = { ref: () => undefined };
   for (const v of ir.variables) {
-    if (v.name in given) vars.set(v.name, given[v.name]);
+    if (v.name in input.given) vars.set(v.name, input.given[v.name]);
     else if (v.args.default) vars.set(v.name, evaluate(v.args.default, none));
     else {
       vars.set(v.name, UNKNOWN);
@@ -788,23 +1022,67 @@ function run(files: Files, applied: SimState | null, actions?: Map<string, Chang
         detail: `The root module input variable "${v.name}" is not set, and has no default value. Use a\n-var or -var-file command line argument to provide a value for this variable.`,
         ...at(files, v),
       });
+      continue;
     }
+    problems.push(...validationProblems(files, v, vars.get(v.name)!));
   }
-  const root: Mod = { prefix: '', ir, dir: '', vars, locals: new Map(), blocks: new Map(), reads: readsOf(ir) };
+  const root: Mod = { prefix: '', ir, dir: '', vars, locals: new Map(), blocks: new Map(), reads: readsOf(ir), secret: sensitiveVars(ir) };
   const scope = scopeOf(root, eng);
   for (const p of ir.providers) {
     const region = p.args.region ? evaluate(p.args.region, scope) : undefined;
     const alias = p.args.alias ? evaluate(p.args.alias, scope) : '';
     if (typeof region === 'string' && typeof alias === 'string') eng.regions.set(alias, region);
   }
+  const imports = stateBlocks(ir, 'import');
+  for (const { args } of imports) {
+    const id = args.id ? evaluate(args.id, scope) : null;
+    if (typeof id === 'string') eng.imports.set(addressOf(args.to), id);
+  }
   walk(eng, root);
 
-  // what the state holds that the configuration doesn't any more
   const planned = new Set(eng.changes.map((c) => c.address));
+  // ponytail: an import target that is an instance of a module call, or `for_each` in an import block, isn't followed
+  for (const { args, x } of imports) {
+    const to = addressOf(args.to);
+    if (planned.has(to)) continue;
+    problems.push({
+      severity: 'error',
+      summary: 'Configuration for import target does not exist',
+      detail: `The configuration for the given import target ${to} does not exist. All target\ninstances must have an associated configuration to be imported.`,
+      ...atBlock(files, x, 'import'),
+    });
+  }
+
+  // `removed` blocks with `destroy = false`: what the state holds there is forgotten, not destroyed
+  const forgotten: string[] = [];
+  for (const { args, x } of stateBlocks(ir, 'removed')) {
+    const from = addressOf(args.from);
+    const life = args.lifecycle?.kind === 'block' ? args.lifecycle.body : {};
+    if (eng.reached.has(from)) {
+      problems.push({
+        severity: 'error',
+        summary: 'Removed resource still exists',
+        detail: `This statement declares that ${from} was removed, but it is still declared in\nconfiguration.`,
+        ...atBlock(files, x, 'removed'),
+      });
+    } else if (life.destroy?.kind === 'literal' && life.destroy.value === false) forgotten.push(from);
+  }
+  const forgets = (address: string) => forgotten.some((f) => address === f || address.startsWith(`${f}[`) || address.startsWith(`${f}.`));
+
+  // what the state holds that the configuration doesn't any more
   for (const [address, before] of Object.entries(previous?.resources ?? {})) {
     if (planned.has(address)) continue;
     const [type, name] = address.replace(/\[[^\]]*\]$/, '').split('.').slice(-2);
-    eng.changes.push({ address, type, name, action: 'delete', before, blocks: new Set(), because: whyGone(eng, address) });
+    const hidden = sensitiveAttrs(type).filter((k) => k in before);
+    eng.changes.push({
+      address,
+      type,
+      name,
+      blocks: new Set(),
+      before,
+      ...(forgets(address) ? { action: 'forget' as const } : { action: 'delete' as const, because: whyGone(eng, address) }),
+      ...(hidden.length > 0 ? { sensitive: new Set(hidden) } : {}),
+    });
   }
 
   // root outputs
@@ -813,6 +1091,22 @@ function run(files: Files, applied: SimState | null, actions?: Map<string, Chang
   for (const o of ir.outputs) {
     const value = o.args.value ? evaluate(o.args.value, scope) : null;
     const sensitive = o.args.sensitive?.kind === 'literal' && o.args.sensitive.value === true;
+    if (!sensitive && o.args.value && isSensitive(o.args.value, root)) {
+      problems.push({
+        severity: 'error',
+        summary: 'Output refers to sensitive values',
+        detail: [
+          'To reduce the risk of accidentally exporting sensitive data that was intended to be',
+          'only internal, Terraform requires that any root module output containing sensitive',
+          'data be explicitly marked as sensitive, to confirm your intent.',
+          '',
+          'If you do intend to export this data, annotate the output value as sensitive by adding',
+          'the following argument:',
+          '    sensitive = true',
+        ].join('\n'),
+        ...at(files, o),
+      });
+    }
     outputValues.set(o.name, { value, sensitive });
     const before = previous?.outputs[o.name];
     if (before === undefined || hasUnknown(value) || before !== serialize(value)) outputs.push({ name: o.name, before, after: value, sensitive });
@@ -828,17 +1122,18 @@ const byAddress = (a: { address: string }, b: { address: string }) => a.address.
 
 /** the changes as the canvas and the lesson read them */
 function summary(changes: ResourceChange[]): PlanSummary {
-  const real = changes.filter((c) => c.action !== 'noop' && c.action !== 'read').sort(byAddress);
+  const real = changes.filter((c) => c.action !== 'noop' && c.action !== 'read' && c.action !== 'forget').sort(byAddress);
   const text = (v: Val | undefined) => (v === undefined || v === null || v === UNKNOWN || v instanceof Opaque ? null : serialize(v));
   return {
     changes: real.map((c) => {
       const before = c.before ?? {};
       const after = c.after ?? {};
       const keys = c.action === 'delete' ? Object.keys(before) : Object.keys(after).filter((k) => c.action === 'create' || before[k] !== text(after[k]));
+      const hide = (k: string, v: string | null) => (v !== null && c.sensitive?.has(k) ? '(sensitive value)' : v);
       return {
         address: c.address,
         action: c.action as PlanSummary['changes'][number]['action'],
-        attributes: Object.fromEntries(keys.sort().map((k) => [k, [before[k] ?? null, c.action === 'delete' ? null : text(after[k])]])),
+        attributes: Object.fromEntries(keys.sort().map((k) => [k, [hide(k, before[k] ?? null), c.action === 'delete' ? null : hide(k, text(after[k]))]])),
       };
     }),
     add: real.filter((c) => c.action === 'create' || c.action === 'replace').length,
@@ -847,6 +1142,12 @@ function summary(changes: ResourceChange[]): PlanSummary {
   };
 }
 
+/** imports and forgets: they count apart from add, change and destroy */
+const extraCounts = (changes: ResourceChange[]) => ({
+  imported: changes.filter((c) => c.importing !== undefined).length,
+  forgotten: changes.filter((c) => c.action === 'forget').length,
+});
+
 const LEGEND: Record<string, Line> = {
   create: line('  + create', 'add'),
   update: line('  ~ update in-place', 'change'),
@@ -854,18 +1155,24 @@ const LEGEND: Record<string, Line> = {
   replace: line('-/+ destroy and then create replacement', 'replace'),
   createFirst: line('+/- create replacement and then destroy', 'replace'),
   read: line(' <= read (data resources)', 'change'),
+  forget: line('  . forget'),
 };
 
-/** the plan as Terraform prints it, from the refresh to the summary (and the output changes) */
-function planLines(p: Planned): { lines: Line[]; empty: boolean } {
+/** the plan as Terraform prints it, from the refresh to the summary (and the output changes); `body`: where the refresh ends */
+function planLines(p: Planned): { lines: Line[]; empty: boolean; body: number } {
   const out: Line[] = [];
+  for (const c of p.changes) {
+    if (c.importing !== undefined) out.push(line(`${c.address}: Preparing import... [id=${c.importing}]`, undefined, true));
+  }
   for (const [address, attrs] of Object.entries(p.state?.resources ?? {})) {
     out.push(line(`${address}: Refreshing state... [id=${attrs.id ?? ''}]`, undefined, true));
   }
+  for (const c of p.changes) if (c.importing !== undefined) out.push(line(`${c.address}: Refreshing state... [id=${c.importing}]`, undefined, true));
   out.push(...p.reads);
   if (out.length > 0) out.push(line());
-  // a move with nothing else to do is still shown: `# a has moved to b`
-  const real = p.changes.filter((c) => c.action !== 'noop' || c.movedFrom !== undefined).sort(byAddress);
+  const body = out.length;
+  // a move with nothing else to do is still shown: `# a has moved to b` (an import too)
+  const real = p.changes.filter((c) => c.action !== 'noop' || c.movedFrom !== undefined || c.importing !== undefined).sort(byAddress);
   if (real.length === 0 && p.outputs.length === 0) {
     out.push(
       line('No changes. Your infrastructure matches the configuration.', 'success'),
@@ -874,20 +1181,48 @@ function planLines(p: Planned): { lines: Line[]; empty: boolean } {
       line('and found no differences, so no changes are needed.'),
     );
     if (p.notes.length > 0) out.push(line(), ...p.notes);
-    return { lines: out, empty: true };
+    return { lines: out, empty: true, body };
   }
   if (real.length > 0) {
-    out.push(
-      line('Terraform used the selected providers to generate the following execution'),
-      line('plan. Resource actions are indicated with the following symbols:'),
-    );
+    // the symbols' legend, when there are any (a plan of moves and imports alone has none)
     const used = new Set(real.map((c) => (c.action === 'replace' && c.createFirst ? 'createFirst' : c.action)));
-    for (const k of ['create', 'update', 'delete', 'replace', 'createFirst', 'read'] as const) if (used.has(k)) out.push(LEGEND[k]);
-    out.push(line(), line('Terraform will perform the following actions:'), line());
+    const legend = (['create', 'update', 'delete', 'replace', 'createFirst', 'read', 'forget'] as const).filter((k) => used.has(k)).map((k) => LEGEND[k]);
+    if (legend.length > 0) {
+      out.push(
+        line('Terraform used the selected providers to generate the following execution'),
+        line('plan. Resource actions are indicated with the following symbols:'),
+        ...legend,
+        line(),
+      );
+    }
+    out.push(line('Terraform will perform the following actions:'), line());
     for (const c of real) out.push(...changeLines(c));
     if (p.notes.length > 0) out.push(...p.notes, line());
     const s = summary(p.changes);
-    out.push(line(`Plan: ${s.add} to add, ${s.change} to change, ${s.destroy} to destroy.`, 'strong'));
+    const { imported, forgotten } = extraCounts(p.changes);
+    out.push(
+      line(
+        `Plan: ${imported > 0 ? `${imported} to import, ` : ''}${s.add} to add, ${s.change} to change, ${s.destroy} to destroy${forgotten > 0 ? `, ${forgotten} to forget` : ''}.`,
+        'strong',
+      ),
+    );
+    const gone = p.changes.filter((c) => c.action === 'forget').map((c) => c.address);
+    if (gone.length > 0) {
+      out.push(
+        ...problemLines({
+          severity: 'warning',
+          summary: 'Some objects will no longer be managed by Terraform',
+          detail: [
+            'If you apply this plan, Terraform will discard its tracking information for the',
+            'following objects, but it will not delete them:',
+            ...gone.map((a) => ` - ${a}`),
+            '',
+            'After applying this plan, Terraform will no longer manage these objects. You will',
+            'need to import them into Terraform to manage them again.',
+          ].join('\n'),
+        }),
+      );
+    }
   } else if (p.notes.length > 0) out.push(...p.notes, line());
   if (p.outputs.length > 0) {
     if (real.length > 0) out.push(line());
@@ -900,7 +1235,7 @@ function planLines(p: Planned): { lines: Line[]; empty: boolean } {
       );
     }
   }
-  return { lines: out, empty: false };
+  return { lines: out, empty: false, body };
 }
 
 const RULE = '─'.repeat(77);
@@ -995,7 +1330,93 @@ function modulesNotInstalled(files: Files, installed: string | undefined): SimRe
   return { ok: false, lines: problems.flatMap(problemLines) };
 }
 
-function init(files: Files, initialized: boolean): SimResult {
+/** the backend isn't the one the last init configured: every command but init stops here */
+function backendRequired(files: Files, installed: string | undefined): SimResult | null {
+  const before = installedBackend(installed);
+  const now = backendOf(files);
+  if (before === undefined || JSON.stringify(before) === JSON.stringify(now ? [now.type, now.config] : null)) return null;
+  const reason = !before ? `Initial configuration of the requested backend "${now!.type}"` : !now ? `Unsetting the previously set backend "${before[0]}"` : 'Backend configuration block has changed';
+  return {
+    ok: false,
+    lines: problemLines({
+      severity: 'error',
+      summary: 'Backend initialization required, please run "terraform init"',
+      detail: [
+        `Reason: ${reason}`,
+        '',
+        'The "backend" is the interface that Terraform uses to store state,',
+        'perform operations, etc. If this message is showing up, it means that the',
+        "Terraform configuration you're using is using a custom configuration for",
+        'the Terraform backend.',
+        '',
+        'Changes to backend configurations require reinitialization. This allows',
+        'Terraform to set up the new configuration, copy existing state, etc. Please run',
+        '"terraform init" with either the "-reconfigure" or "-migrate-state" flags to',
+        'use the current configuration.',
+        '',
+        'If the change reason above is incorrect, please verify your configuration',
+        "hasn't changed and try again. At this point, no changes to your existing",
+        'configuration or state have been applied.',
+      ].join('\n'),
+    }),
+  };
+}
+
+/**
+ * What init says about the backend: configured (the first time, or after a
+ * change), and, when there's state to carry, the question whether to copy
+ * it there (`confirmAt` is the index of its answer). A backend that changed
+ * from another remote one wants `-migrate-state` or `-reconfigure`.
+ *
+ * ponytail: one state per lesson (per workspace), so `-reconfigure` keeps it
+ * as it is; a real new backend location would start out empty.
+ */
+function backendLines(files: Files, ctx: SimContext, previous: SimState | null): { lines: Line[]; confirmAt?: number; failed?: boolean } {
+  const before = installedBackend(ctx.installed) ?? null;
+  const now = backendOf(files);
+  if (JSON.stringify(before) === JSON.stringify(now ? [now.type, now.config] : null)) return { lines: [] };
+  const done = now
+    ? [line(), line(`Successfully configured the backend "${now.type}"! Terraform will automatically`, 'success'), line('use this backend unless the backend configuration changes.', 'success'), line()]
+    : [line(), line(`Successfully unset the backend "${before![0]}". Terraform will now operate locally.`, 'success'), line()];
+  const lead = before && !now ? [line(`Terraform has detected you're unconfiguring your previously set "${before[0]}" backend.`)] : [];
+  if (before && now && !ctx.backendFlag) {
+    return {
+      failed: true,
+      lines: problemLines({
+        severity: 'error',
+        summary: 'Backend configuration changed',
+        detail: [
+          'A change in the backend configuration has been detected, which may require',
+          'migrating existing state.',
+          '',
+          'If you wish to attempt automatic migration of the state, use "terraform init',
+          '-migrate-state".',
+          'If you wish to store the current configuration with no changes to the state,',
+          'use "terraform init -reconfigure".',
+        ].join('\n'),
+      }),
+    };
+  }
+  const hasState = Object.keys(previous?.resources ?? {}).length > 0;
+  if (!hasState || ctx.backendFlag === 'reconfigure') return { lines: [...lead, ...done] };
+  const from = before?.[0] ?? 'local';
+  const to = now?.type ?? 'local';
+  const lines = [
+    ...lead,
+    line('Do you want to copy existing state to the new backend?', 'strong'),
+    line(`  Pre-existing state was found while migrating the previous "${from}" backend to the`),
+    line(`  newly configured "${to}" backend. No existing state was found in the newly`),
+    line(`  configured "${to}" backend. Do you want to copy this state to the new "${to}"`),
+    line('  backend? Enter "yes" to copy and "no" to start with an empty state.'),
+    line(),
+    line('  Enter a value: yes', 'strong'),
+  ];
+  return { lines: [...lines, line(), ...done], confirmAt: lines.length - 1 };
+}
+
+function init(files: Files, ctx: SimContext, previous: SimState | null): SimResult {
+  // the lock file still holds these providers when only the modules or the backend changed
+  const initialized = ctx.initialized || (ctx.installed !== undefined && JSON.stringify(JSON.parse(ctx.installed)[0]) === JSON.stringify(JSON.parse(initFingerprint(files))[0]));
   const parsed = parseProject(tfFiles(files));
   const out: Line[] = [line('Initializing the backend...', 'strong')];
   const errors = parsed.diagnostics.filter((d) => d.severity === 'error');
@@ -1021,6 +1442,10 @@ function init(files: Files, initialized: boolean): SimResult {
     for (const p of diagnose(files, parsed.ir, errors, false)) out.push(...problemLines(p));
     return { ok: false, lines: out };
   }
+  const backend = backendLines(files, ctx, previous);
+  const confirmAt = backend.confirmAt === undefined ? undefined : out.length + backend.confirmAt;
+  out.push(...backend.lines);
+  if (backend.failed) return { ok: false, lines: out };
   if (parsed.ir.modules.length > 0) {
     out.push(line('Initializing modules...', 'strong'));
     for (const m of parsed.ir.modules) {
@@ -1079,7 +1504,8 @@ function init(files: Files, initialized: boolean): SimResult {
     line('rerun this command to reinitialize your working directory. If you forget, other'),
     line('commands will detect it and remind you to do so if necessary.'),
   );
-  return { ok: true, lines: out };
+  // answered no: the new backend starts with an empty state
+  return { ok: true, lines: out, ...(confirmAt === undefined ? {} : { confirmAt, declined: { lines: out.slice(confirmAt + 1), state: carry(previous, null) } }) };
 }
 
 function validate(files: Files): SimResult {
@@ -1094,36 +1520,143 @@ function validate(files: Files): SimResult {
   return { ok: true, lines: out };
 }
 
-function plan(files: Files, previous: SimState | null): SimResult {
-  const p = run(files, previous);
-  if (p.problems.length > 0) return { ok: false, lines: p.problems.flatMap(problemLines) };
-  const { lines, empty } = planLines(p);
-  if (!empty) {
-    lines.push(
-      line(),
-      line(RULE, 'muted'),
-      line(),
-      line('Note: You didn\'t use the -out option to save this plan, so Terraform can\'t', 'muted'),
-      line('guarantee to take exactly these actions if you run "terraform apply" now.', 'muted'),
-    );
+/** what a run reads besides the code and the state: the `-var`s, and the workspace the state belongs to */
+const runOpts = (previous: SimState | null, vars: VarArg[] | undefined): RunOpts => ({ vars: vars ?? [], workspace: previous?.workspace ?? 'default' });
+
+/** what a saved plan was made from: applying it once either changed is refused */
+const stampOf = (files: Files, previous: SimState | null) => JSON.stringify([files, previous]);
+
+/** the argument an imported object's id names (a bucket's `bucket`), for the configuration `-generate-config-out` writes */
+const IDENTITY: Record<string, string> = {
+  aws_s3_bucket: 'bucket',
+  aws_iam_role: 'name',
+  aws_iam_user: 'name',
+  aws_iam_group: 'name',
+  aws_dynamodb_table: 'name',
+  aws_lambda_function: 'function_name',
+  aws_db_instance: 'identifier',
+  aws_ssm_parameter: 'name',
+  aws_cloudwatch_log_group: 'name',
+  aws_ecr_repository: 'name',
+  aws_key_pair: 'key_name',
+};
+
+/**
+ * The configuration `-generate-config-out` writes for import targets the
+ * code doesn't declare (root module, no instance key: like Terraform).
+ *
+ * ponytail: the provider would read every attribute of the real object; the
+ * simulation knows only the id, so it writes the argument the id names and
+ * the required ones (as null, to fill in).
+ */
+function generatedConfig(files: Files, file: string): { problem: Problem } | { text?: string; targets: Set<string> } {
+  const { ir } = parseProject(tfFiles(files));
+  const declared = new Set(ir.resources.map((r) => r.id));
+  const missing = stateBlocks(ir, 'import')
+    .map(({ args }) => ({ to: addressOf(args.to), id: args.id?.kind === 'literal' ? String(args.id.value) : undefined }))
+    .filter(({ to }) => /^[\w-]+\.[\w-]+$/.test(to) && !declared.has(to));
+  if (missing.length === 0) return { targets: new Set() };
+  if (files[file] !== undefined) {
+    return {
+      problem: {
+        severity: 'error',
+        summary: 'Target generated file already exists',
+        detail: 'Terraform can only write generated config into a new file. Either choose a different\ntarget location or move all existing configuration out of the target file, delete it\nand try again.',
+      },
+    };
   }
-  return { ok: true, lines, plan: summary(p.changes) };
+  const blocks = missing.map(({ to, id }) => {
+    const [type, name] = to.split('.');
+    const identity = IDENTITY[type];
+    const required = (getDef(type)?.fields ?? []).filter((f) => f.required && f.name !== identity).map((f) => `  ${f.name} = null`);
+    const body = [...(identity && id !== undefined ? [`  ${identity} = ${JSON.stringify(id)}`] : []), ...required];
+    return `# __generated__ by Terraform${id === undefined ? '' : ` from ${JSON.stringify(id)}`}\nresource "${type}" "${name}" {\n${body.map((l) => `${l}\n`).join('')}}\n`;
+  });
+  return {
+    text: `# __generated__ by Terraform\n# Please review these resources and move them into your main configuration files.\n\n${blocks.join('\n')}`,
+    targets: new Set(missing.map((m) => m.to)),
+  };
 }
 
-function apply(files: Files, previous: SimState | null, autoApprove: boolean): SimResult {
-  const p = run(files, previous);
+function plan(files: Files, previous: SimState | null, ctx: SimContext): SimResult {
+  let code = files;
+  let generated: SimResult['generated'];
+  let targets = new Set<string>();
+  if (ctx.generateConfig) {
+    const g = generatedConfig(files, ctx.generateConfig);
+    if ('problem' in g) return { ok: false, lines: problemLines(g.problem) };
+    if (g.text) {
+      generated = { file: ctx.generateConfig, text: g.text };
+      code = { ...files, [generated.file]: g.text };
+      targets = g.targets;
+    }
+  }
+  const p = run(code, previous, runOpts(previous, ctx.vars));
   if (p.problems.length > 0) return { ok: false, lines: p.problems.flatMap(problemLines) };
-  const { lines, empty } = planLines(p);
+  for (const c of p.changes) if (targets.has(c.address)) c.generated = true;
+  const { lines, empty, body } = planLines(p);
+  const shown = lines.slice(body);
+  if (generated) {
+    lines.push(
+      ...problemLines({
+        severity: 'warning',
+        summary: 'Config generation is experimental',
+        detail: 'Generating configuration during import is currently experimental, and the generated\nconfiguration format may change in future versions.',
+      }),
+    );
+  }
+  const tail: Line[][] = [];
+  if (generated) {
+    tail.push([
+      line(`Terraform has generated configuration and written it to ${generated.file}. Please review the`),
+      line('configuration and edit it as necessary before adding it to version control.'),
+    ]);
+  }
+  if (ctx.out) {
+    tail.push([line(`Saved the plan to: ${ctx.out}`), line(), line('To perform exactly these actions, run the following command to apply:'), line(`    terraform apply "${ctx.out}"`)]);
+  } else if (!empty) {
+    tail.push([
+      line("Note: You didn't use the -out option to save this plan, so Terraform can't", 'muted'),
+      line('guarantee to take exactly these actions if you run "terraform apply" now.', 'muted'),
+    ]);
+  }
+  if (tail.length > 0) lines.push(line(), line(RULE, 'muted'), ...tail.flatMap((t) => [line(), ...t]));
+  const saved: SavedPlan | undefined = ctx.out ? { name: ctx.out, stamp: stampOf(code, previous), vars: ctx.vars ?? [], lines: shown } : undefined;
+  return { ok: true, lines, plan: summary(p.changes), ...(saved ? { saved } : {}), ...(generated ? { generated } : {}) };
+}
+
+/** apply: the plan and its question (none with `-auto-approve`), then the run; a saved plan (`apply tfplan`) runs at once, as it was made */
+function apply(files: Files, previous: SimState | null, ctx: SimContext): SimResult {
+  const saved = ctx.saved;
+  if (saved && !saved.plan) {
+    return { ok: false, lines: problemLines({ severity: 'error', summary: `Failed to load "${saved.name}" as a plan file`, detail: `Error: stat ${saved.name}: no such file or directory` }) };
+  }
+  if (saved?.plan && saved.plan.stamp !== stampOf(files, previous)) {
+    return {
+      ok: false,
+      lines: problemLines({
+        severity: 'error',
+        summary: 'Saved plan is stale',
+        detail: 'The given plan file can no longer be applied because the state was changed by\nanother operation after the plan was created.',
+      }),
+    };
+  }
+  const opts = runOpts(previous, saved?.plan ? saved.plan.vars : ctx.vars);
+  const p = run(files, previous, opts);
+  if (p.problems.length > 0) return { ok: false, lines: p.problems.flatMap(problemLines) };
+  const planned = planLines(p);
+  const empty = planned.empty;
+  const lines = saved ? [] : planned.lines;
   let confirmAt: number | undefined;
-  if (!empty && !autoApprove) {
+  if (!empty && !ctx.autoApprove && !saved) {
     lines.push(...confirmLines(false));
     confirmAt = lines.length - 1;
   }
-  if (!empty) lines.push(line());
+  if (!empty && !saved) lines.push(line());
 
   // the apply itself: the plan's actions, with ids made as each instance is created
   const actions = new Map(p.changes.map((c) => [c.address, c.action]));
-  const done = run(files, previous, actions);
+  const done = run(files, previous, opts, actions);
   const old = p.state?.resources ?? {};
   const deletes = p.changes.filter((c) => c.action === 'delete');
   const replaced = p.changes.filter((c) => c.action === 'replace');
@@ -1131,6 +1664,7 @@ function apply(files: Files, previous: SimState | null, autoApprove: boolean): S
   for (const c of [...replaced].reverse()) if (!c.createFirst) lines.push(...destroyLines(c.address, old[c.address].id ?? '', c.type));
   for (const c of done.changes) {
     const id = String(c.after?.id ?? '');
+    if (c.importing !== undefined) lines.push(line(`${c.address}: Importing... [id=${c.importing}]`, undefined, true), line(`${c.address}: Import complete [id=${c.importing}]`));
     if (c.action === 'create' || c.action === 'replace') lines.push(...createLines(c.address, id, c.type));
     else if (c.action === 'read') lines.push(line(`${c.address}: Reading...`, undefined, true), line(`${c.address}: Read complete after 0s [id=${id}]`));
     else if (c.action === 'update') {
@@ -1140,13 +1674,19 @@ function apply(files: Files, previous: SimState | null, autoApprove: boolean): S
   for (const c of replaced) if (c.createFirst) lines.push(...destroyLines(c.address, old[c.address].id ?? '', c.type, hashShort(c.address)));
 
   const s = summary(p.changes);
+  const { imported, forgotten } = extraCounts(p.changes);
   lines.push(line());
-  lines.push(line(`Apply complete! Resources: ${s.add} added, ${s.change} changed, ${s.destroy} destroyed.`, 'success'));
+  lines.push(
+    line(
+      `Apply complete! Resources: ${imported > 0 ? `${imported} imported, ` : ''}${s.add} added, ${s.change} changed, ${s.destroy} destroyed${forgotten > 0 ? `, ${forgotten} forgotten` : ''}.`,
+      'success',
+    ),
+  );
   lines.push(...outputsSection(done.outputValues));
 
   const resources: SimState['resources'] = {};
   for (const c of done.changes) {
-    if (c.action === 'delete' || c.action === 'read' || !c.after) continue;
+    if (c.action === 'delete' || c.action === 'read' || c.action === 'forget' || !c.after) continue;
     resources[c.address] = Object.fromEntries(Object.entries(c.after).map(([k, v]) => [k, serialize(v)]));
   }
   const outputs = Object.fromEntries([...done.outputValues].map(([k, { value }]) => [k, serialize(value)]));
@@ -1220,24 +1760,35 @@ function destroy(files: Files, previous: SimState | null, autoApprove: boolean):
   return { ok: true, lines: out, state: null, plan: summary(changes), confirmAt };
 }
 
+/** a workspace's new state keeps the workspace it belongs to and the other workspaces' states */
+function carry(previous: SimState | null, next: SimState | null): SimState | null {
+  const meta = { ...(previous?.workspace ? { workspace: previous.workspace } : {}), ...(previous?.workspaces ? { workspaces: previous.workspaces } : {}) };
+  if (Object.keys(meta).length === 0) return next;
+  return { ...(next ?? { serial: (previous?.serial ?? 0) + 1, resources: {}, outputs: {} }), ...meta };
+}
+
+/** a backend that locks: the run holds the state lock (Terraform says so when it takes a moment, as a remote one does) */
+function locked(files: Files, r: SimResult): SimResult {
+  if (!backendOf(files)?.locks) return r;
+  const lines = [line('Acquiring state lock. This may take a few moments...'), ...r.lines];
+  const end = lines.findIndex((l) => /^(Apply|Destroy) complete!/.test(l.text));
+  lines.splice(end > 0 ? end - 1 : lines.length, 0, line('Releasing state lock. This may take a few moments...'));
+  return { ...r, lines, ...(r.confirmAt === undefined ? {} : { confirmAt: r.confirmAt + 1 }) };
+}
+
 /**
  * Run a Terraform command over `files`, from the state `previous` left
  * (null: nothing applied yet). Before `init`, every other command fails as
  * the real CLI does (unless the configuration needs no provider at all).
  */
 export function simulate(command: SimCommand, files: Files, previous: SimState | null, ctx: SimContext = { initialized: true }): SimResult {
-  if (command === 'init') return init(files, ctx.initialized);
-  if (!ctx.initialized && requiredProviders(files).length > 0) return modulesNotInstalled(files, ctx.installed) ?? notInitialized(files, command);
-  switch (command) {
-    case 'validate':
-      return validate(files);
-    case 'plan':
-      return plan(files, previous);
-    case 'apply':
-      return apply(files, previous, ctx.autoApprove === true);
-    case 'destroy':
-      return destroy(files, previous, ctx.autoApprove === true);
+  if (command === 'init') return init(files, ctx, previous);
+  if (!ctx.initialized && requiredProviders(files).length > 0) {
+    return backendRequired(files, ctx.installed) ?? modulesNotInstalled(files, ctx.installed) ?? notInitialized(files, command);
   }
+  if (command === 'validate') return validate(files);
+  const result = command === 'plan' ? plan(files, previous, ctx) : command === 'apply' ? apply(files, previous, ctx) : destroy(files, previous, ctx.autoApprove === true);
+  return locked(files, result.state === undefined ? result : { ...result, state: carry(previous, result.state) });
 }
 
 /** the root module's instance addresses the configuration declares (to tell which deletes have no node left) */

@@ -55,7 +55,11 @@ function jsonValue(v: Val): Val | undefined {
   }
 }
 
+/** what stands for a sensitive value in the plan */
+export const SECRET = new Opaque('(sensitive value)');
+
 export function scalar(v: Val): string {
+  if (v === SECRET) return SECRET.text;
   if (v === UNKNOWN || v instanceof Opaque) return '(known after apply)';
   if (v === null) return 'null';
   if (typeof v === 'string') return v.includes('\n') ? `<<-EOT\n${v}EOT` : JSON.stringify(v);
@@ -197,8 +201,8 @@ function itemLines(sym: Sym, col: number, v: Val, bare: boolean): Line[] {
 
 /* ------------------------------------------------------------------ resource changes */
 
-/** `read`: a data source read during apply (`<=`) */
-export type ChangeAction = 'create' | 'update' | 'replace' | 'delete' | 'read' | 'noop';
+/** `read`: a data source read during apply (`<=`); `forget`: a `removed` block drops it from the state, nothing is destroyed */
+export type ChangeAction = 'create' | 'update' | 'replace' | 'delete' | 'read' | 'noop' | 'forget';
 
 export interface ResourceChange {
   /** `aws_subnet.public[0]`, `module.net.aws_vpc.this` */
@@ -220,6 +224,14 @@ export interface ResourceChange {
   because?: string;
   /** the address a `moved` block took it from */
   movedFrom?: string;
+  /** an `import` block adopts it: the id it imports */
+  importing?: string;
+  /** `-generate-config-out` writes its configuration */
+  generated?: boolean;
+  /** replaced because of `replace_triggered_by` */
+  triggered?: boolean;
+  /** attributes printed as `(sensitive value)` */
+  sensitive?: Set<string>;
 }
 
 /** attributes an update always shows, changed or not (what identifies the object) */
@@ -232,20 +244,41 @@ const HEADS: Record<ChangeAction, string> = {
   delete: 'will be destroyed',
   read: 'will be read during apply',
   noop: '',
+  forget: 'will no longer be managed by Terraform',
 };
 
+/** a record with its sensitive attributes hidden */
+const masked = (body: Record<string, Val>, secret: Set<string> | undefined): Record<string, Val> =>
+  secret?.size ? Object.fromEntries(Object.entries(body).map(([k, v]) => [k, secret.has(k) && v !== null ? SECRET : v])) : body;
+
+const decodeAll = (r: Record<string, string> | undefined): Record<string, Val> => Object.fromEntries(Object.entries(r ?? {}).map(([k, v]) => [k, decode(v)]));
+
 export function changeLines(c: ResourceChange): Line[] {
-  const moveOnly = c.action === 'noop' && c.movedFrom !== undefined;
-  const out: Line[] = [line(moveOnly ? `  # ${c.movedFrom} has moved to ${c.address}` : `  # ${c.address} ${HEADS[c.action]}`, 'strong')];
+  const moveOnly = c.action === 'noop' && c.movedFrom !== undefined && c.importing === undefined;
+  const head =
+    moveOnly
+      ? `  # ${c.movedFrom} has moved to ${c.address}`
+      : c.action === 'noop' && c.importing !== undefined
+        ? `  # ${c.address} will be imported`
+        : c.triggered
+          ? `  # ${c.address} will be replaced due to changes in replace_triggered_by`
+          : `  # ${c.address} ${HEADS[c.action]}`;
+  const out: Line[] = [line(head, 'strong')];
+  if (c.generated) out.push(line('  # (config will be generated)', 'strong'));
+  if (c.importing !== undefined && c.action !== 'noop') out.push(line(`  # (imported from "${c.importing}")`, 'strong'));
   if (c.movedFrom !== undefined && !moveOnly) out.push(line(`  # (moved from ${c.movedFrom})`, 'strong'));
   if (c.action === 'read') out.push(line(`  # (${c.because ?? 'config refers to values not yet known'})`, 'strong'));
   else if (c.because) out.push(line(`  # (because ${c.because})`, 'strong'));
   const open = `${c.action === 'read' ? 'data' : 'resource'} "${c.type}" "${c.name}" {`;
   if (c.action === 'create' || c.action === 'read') {
-    out.push(c.action === 'read' ? line(` <= ${open}`, 'change') : line(`  + ${open}`, 'add'), ...bodyLines('+', 6, c.after ?? {}, c.blocks));
+    out.push(c.action === 'read' ? line(` <= ${open}`, 'change') : line(`  + ${open}`, 'add'), ...bodyLines('+', 6, masked(c.after ?? {}, c.sensitive), c.blocks));
   } else if (c.action === 'delete') {
-    const body: Record<string, Val> = Object.fromEntries(Object.entries(c.before ?? {}).map(([k, v]) => [k, decode(v)]));
-    out.push(line(`  - ${open}`, 'destroy'), ...bodyLines('-', 6, body, new Set(), true));
+    out.push(line(`  - ${open}`, 'destroy'), ...bodyLines('-', 6, masked(decodeAll(c.before), c.sensitive), new Set(), true));
+  } else if (c.action === 'forget') {
+    out.push(line(` . ${open}`), ...bodyLines(' ', 6, masked(decodeAll(c.before), c.sensitive), new Set()));
+  } else if (c.action === 'noop' && c.importing !== undefined) {
+    // an import with nothing to change: the whole object as it was read
+    out.push(line(`    ${open}`), ...bodyLines(' ', 6, masked(c.after ?? {}, c.sensitive), c.blocks));
   } else {
     out.push(
       c.action === 'noop' ? line(`    ${open}`) : c.action === 'update' ? line(`  ~ ${open}`, 'change') : line(`${c.createFirst ? '+/-' : '-/+'} ${open}`, 'replace'),
@@ -259,10 +292,14 @@ export function changeLines(c: ResourceChange): Line[] {
     const shownSame = attrs.filter((k) => !changed.includes(k) && IDENTIFYING.has(k) && val(k) !== undefined);
     const width = Math.max(0, ...[...changed, ...shownSame].map((k) => keyText(k, true).length));
     for (const k of attrs) {
-      if (shownSame.includes(k)) out.push(...entry(' ', 6, keyText(k, true), width, val(k)!, false));
-      else if (changed.includes(k)) {
-        out.push(...diffEntry(6, keyText(k, true), width, val(k), after[k], false, c.forced?.has(k) ? ' # forces replacement' : ''));
+      const secret = c.sensitive?.has(k);
+      const forces = c.forced?.has(k) ? ' # forces replacement' : '';
+      if (shownSame.includes(k)) out.push(...entry(' ', 6, keyText(k, true), width, secret ? SECRET : val(k)!, false));
+      else if (changed.includes(k) && secret) {
+        const sym: Sym = val(k) === undefined ? '+' : after[k] === undefined || after[k] === null ? '-' : '~';
+        out.push(line(`${pad(6)}${sym} ${keyText(k, true).padEnd(width)} = ${SECRET.text}${sym === '-' ? ' -> null' : ''}${forces}`, TONE[sym]));
       }
+      else if (changed.includes(k)) out.push(...diffEntry(6, keyText(k, true), width, val(k), after[k], false, forces));
     }
     let sameBlocks = 0;
     for (const k of [...c.blocks].sort()) {
@@ -345,6 +382,23 @@ export function outputValueLines(name: string, v: Val, sensitive: boolean): Line
   };
   const [first, ...rest] = plain(v, 0);
   return [line(`${name} = ${first}`), ...rest.map((t) => line(t))];
+}
+
+/** the state as `terraform show` prints it: each resource as HCL, then its outputs (`secret`: sensitive output names) */
+export function stateLines(resources: Record<string, Record<string, string>>, outputs: Record<string, string>, secret: Set<string>): Line[] {
+  const entries = Object.entries(resources);
+  if (entries.length === 0 && Object.keys(outputs).length === 0) return [line('No state.')];
+  const out: Line[] = [];
+  for (const [address, attrs] of entries) {
+    const [type, name] = address.replace(/\[[^\]]*\]$/, '').split('.').slice(-2);
+    out.push(line(`# ${address}:`), line(`resource "${type}" "${name}" {`), ...bodyLines(' ', 2, decodeAll(attrs), new Set()), line('}'), line());
+  }
+  const names = Object.keys(outputs).sort();
+  if (names.length > 0) {
+    out.push(line(), line('Outputs:'), line());
+    for (const n of names) out.push(...(secret.has(n) ? [line(`${n} = ${SECRET.text}`)] : outputValueLines(n, decode(outputs[n]), false)));
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------------ diagnostics */
