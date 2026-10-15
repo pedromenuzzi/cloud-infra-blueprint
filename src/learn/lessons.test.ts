@@ -6,6 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { sentenceDash } from '@/i18n/dashes';
+import { readLocalModule } from '@/ir/localModules';
+import { dirOfPath } from '@/ir/modules';
 import { getDef } from '@/resources/registry';
 import { checkGoals, lessonContext } from './goals';
 import { ALL_LESSONS, ALL_LEVELS, TRACKS, startLesson } from './lessons';
@@ -34,6 +36,10 @@ function texts(value: unknown, out: T[] = []): T[] {
   }
   return out;
 }
+
+/** module folders of a lesson whose code doesn't parse (the root is checked through the lesson context) */
+const brokenModules = (files: Record<string, string>): string[] =>
+  [...new Set(Object.keys(files).map(dirOfPath))].filter((dir) => dir !== '' && readLocalModule(files, dir)?.broken);
 
 const codeSpans = (s: string) => s.split('`').filter((_, i) => i % 2 === 1);
 
@@ -81,12 +87,14 @@ describe.each(ALL_LESSONS.map((l) => [l.slug, l] as const))('lesson %s', (_slug,
   it('starts with code that parses and does not pass yet', () => {
     const ctx = lessonContext(lesson.start);
     expect(ctx.errored).toBe(false);
+    expect(brokenModules(lesson.start)).toEqual([]);
     expect(checkGoals(lesson.goals, ctx).every(Boolean)).toBe(false);
   });
 
   it('is solved by its solution', () => {
     const ctx = lessonContext(lesson.solution, { ran: EVERY_COMMAND, state: appliedState(lesson.solution) });
     expect(ctx.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+    expect(brokenModules(lesson.solution)).toEqual([]);
     const results = checkGoals(lesson.goals, ctx);
     const failing = lesson.goals.filter((_, i) => !results[i]).map((g) => g.id);
     expect(failing).toEqual([]);
