@@ -272,7 +272,7 @@ test.describe('the inspector stays out of the way', () => {
     await expect(inspector(page)).toBeVisible();
     await page.waitForTimeout(500);
     const target = await box(inspector(page));
-    const bucket = palette(page).getByRole('button', { name: /^Add S3 Bucket/ });
+    const bucket = palette(page).getByRole('button', { name: /^Add S3 Bucket \(/ });
     await bucket.hover();
     await page.mouse.down();
     await page.mouse.move(target.x + 120, target.y + target.height - 160, { steps: 12 });
