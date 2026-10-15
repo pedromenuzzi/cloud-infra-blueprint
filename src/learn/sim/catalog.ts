@@ -397,6 +397,27 @@ const policyJson = (f: Fake): string => {
 
 const AZS = (f: Fake) => ['a', 'b', 'c'].map((z) => `${f.region}${z}`);
 
+/** the first value of the `filter { name = … }` block of that name */
+const filterValue = (f: Fake, name: string): string | undefined => {
+  const filters: Val[] = Array.isArray(f.config.filter) ? f.config.filter : isObject(f.config.filter ?? null) ? [f.config.filter!] : [];
+  const found = filters.filter(isObject).find((x) => x.name === name);
+  return Array.isArray(found?.values) ? str(found.values[0]) : undefined;
+};
+
+const REGION_NAMES: Record<string, string> = {
+  'us-east-1': 'US East (N. Virginia)',
+  'us-east-2': 'US East (Ohio)',
+  'us-west-1': 'US West (N. California)',
+  'us-west-2': 'US West (Oregon)',
+  'sa-east-1': 'South America (Sao Paulo)',
+  'eu-west-1': 'Europe (Ireland)',
+  'eu-central-1': 'Europe (Frankfurt)',
+};
+
+/** the account's default VPC: one per region, whatever the data block is called */
+const defaultVpc = (f: Fake) => awsId('vpc')({ ...f, seed: `default-vpc@${f.region}` });
+const vpcOf = (f: Fake) => str(f.config.id) ?? (f.config.default === true ? defaultVpc(f) : awsId('vpc')(f));
+
 const DATA: Record<string, Record<string, Make>> = {
   aws_availability_zones: {
     id: (f) => f.region,
@@ -407,25 +428,52 @@ const DATA: Record<string, Record<string, Make>> = {
       return [1, 2, 3].map((n) => `${a}${b?.[0] ?? ''}${c ?? ''}-az${n}`);
     },
   },
-  aws_region: { id: (f) => f.region, name: (f) => f.region, region: (f) => f.region, description: (f) => f.region },
+  aws_region: { id: (f) => f.region, name: (f) => f.region, region: (f) => f.region, description: (f) => REGION_NAMES[f.region] ?? f.region, endpoint: (f) => `ec2.${f.region}.amazonaws.com` },
   aws_caller_identity: { id: owner, account_id: owner, arn: () => `arn:aws:iam::${ACCOUNT}:user/learner`, user_id: (f) => `AIDA${upper(f, 17, 'u')}` },
   aws_partition: { id: () => 'aws', partition: () => 'aws', dns_suffix: () => 'amazonaws.com' },
   aws_ami: {
     id: awsId('ami'),
     image_id: (f) => DATA.aws_ami.id(f),
     arn: (f) => `arn:aws:ec2:${f.region}::image/${String(DATA.aws_ami.id(f))}`,
-    architecture: () => 'x86_64',
-    name: (f) => {
-      const filters = Array.isArray(f.config.filter) ? f.config.filter.filter(isObject) : [];
-      const byName = filters.find((x) => x.name === 'name');
-      const pattern = Array.isArray(byName?.values) ? str(byName.values[0]) : undefined;
-      return (pattern ?? 'al2023-ami-2023.6.20260901.0-kernel-6.1-x86_64').replace(/\*/g, '20260901');
-    },
+    architecture: (f) => filterValue(f, 'architecture') ?? (/arm64|aarch64/.test(filterValue(f, 'name') ?? '') ? 'arm64' : 'x86_64'),
+    name: (f) => (filterValue(f, 'name') ?? 'al2023-ami-2023.6.20260901.0-kernel-6.1-x86_64').replace(/\*/g, '20260901'),
+    owner_id: (f) => (Array.isArray(f.config.owners) ? str(f.config.owners[0]) : undefined) ?? '137112412989',
+    root_device_type: () => 'ebs',
+    virtualization_type: () => 'hvm',
   },
-  aws_vpc: { id: awsId('vpc'), cidr_block: (f) => str(f.config.cidr_block) ?? '172.31.0.0/16', arn: ec2Arn('vpc') },
+  aws_vpc: {
+    id: vpcOf,
+    cidr_block: (f) => str(f.config.cidr_block) ?? '172.31.0.0/16',
+    arn: (f) => `arn:aws:ec2:${f.region}:${ACCOUNT}:vpc/${f.id}`,
+    default: (f) => f.config.default === true,
+    owner_id: owner,
+  },
   aws_subnets: { id: (f) => f.region, ids: (f) => [0, 1, 2].map((i) => awsId('subnet')({ ...f, seed: `${f.seed}${i}` })) },
+  // a default subnet: a /20 of the default VPC, one per zone
+  aws_subnet: {
+    id: (f) => str(f.config.id) ?? awsId('subnet')(f),
+    availability_zone: (f) => str(f.config.availability_zone) ?? filterValue(f, 'availability-zone') ?? `${f.region}a`,
+    cidr_block: (f) => str(f.config.cidr_block) ?? `172.31.${16 * Math.max(0, 'abcdef'.indexOf(String(DATA.aws_subnet.availability_zone(f)).slice(-1)))}.0/20`,
+    vpc_id: (f) => str(f.config.vpc_id) ?? filterValue(f, 'vpc-id') ?? defaultVpc(f),
+    arn: (f) => `arn:aws:ec2:${f.region}:${ACCOUNT}:subnet/${f.id}`,
+    map_public_ip_on_launch: (f) => f.config.default_for_az === true,
+    owner_id: owner,
+  },
   aws_iam_policy_document: { id: (f) => String(hash(policyJson(f))), json: policyJson, minified_json: (f) => JSON.stringify(JSON.parse(policyJson(f))) },
 };
+
+/**
+ * The simulated providers know what this data source returns. Other types
+ * are read during apply (their values unknown in the plan): nothing here
+ * could say what a real read returns.
+ *
+ * ponytail: an unknown type stays unknown in every plan, so what reads it
+ * plans a change each time; add the type to DATA when a lesson uses one.
+ */
+export const knowsData = (type: string): boolean => Object.hasOwn(DATA, type);
+
+/** the attributes a data source returns, besides `id` */
+export const dataAttrs = (type: string): string[] => Object.keys(DATA[type] ?? {}).filter((k) => k !== 'id');
 
 /** what a data source reads: its known attributes, plus a stand-in for each other one asked for */
 export function readData(type: string, f: Omit<Fake, 'id'>, attrs: Iterable<string>): Record<string, Val> {

@@ -13,7 +13,7 @@
  * simulator's (src/learn/sim).
  */
 import { ChevronDown, ChevronUp, Eraser, FlaskConical, TerminalSquare } from 'lucide-react';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { hasOpenLayer } from '@/components/ui';
 import { useMessages } from '@/i18n/messages';
 import { parseProject } from '@/hcl/parser';
@@ -60,14 +60,23 @@ export function runCommand(command: SimCommand) {
   runner?.(command);
 }
 
-function readPrefs(): { height: number; collapsed: boolean } {
+/** `height` null: never resized, the terminal takes `autoHeight` */
+function readPrefs(): { height: number | null; collapsed: boolean } {
   try {
     const p = JSON.parse(safeStorage.getItem(PREFS) ?? '{}') as { height?: unknown; collapsed?: unknown };
-    return { height: typeof p.height === 'number' && p.height >= MIN_H ? p.height : 280, collapsed: p.collapsed === true };
+    return { height: typeof p.height === 'number' && p.height >= MIN_H ? p.height : null, collapsed: p.collapsed === true };
   } catch {
-    return { height: 280, collapsed: false };
+    return { height: null, collapsed: false };
   }
 }
+
+/** until it's resized, the terminal takes a share of the window: a short screen keeps a comfortable canvas */
+const autoHeight = (viewport: number) => Math.round(Math.min(360, Math.max(200, viewport * 0.3)));
+
+const onWindowResize = (cb: () => void) => {
+  window.addEventListener('resize', cb);
+  return () => window.removeEventListener('resize', cb);
+};
 
 function isInitialized(slug: string, files: Files): boolean {
   if (!useLearn.getState().runs[slug]?.includes('init')) return false;
@@ -89,9 +98,9 @@ const SYMBOL_CLASS: Partial<Record<Tone, string>> = {
   destroy: 'text-red-400',
 };
 
-/** a diff line: only its symbol is colored, like the CLI (`-/+` red and green); `# forces replacement` in red */
+/** a diff line: only its symbol is colored, like the CLI (`-/+` red and green, `<=` cyan); `# forces replacement` in red */
 function DiffLine({ text, tone }: { text: string; tone: Tone }) {
-  const m = /^(\s*)(-\/\+|\+\/-|[+~-])( .*|$)/.exec(text);
+  const m = /^(\s*)(-\/\+|\+\/-|<=|[+~-])( .*|$)/.exec(text);
   if (!m) return <>{text}</>;
   const [, lead, symbol, rest] = m;
   const forces = rest.endsWith(' # forces replacement');
@@ -106,7 +115,9 @@ function DiffLine({ text, tone }: { text: string; tone: Tone }) {
           <span className={symbol[2] === '+' ? 'text-emerald-400' : 'text-red-400'}>{symbol[2]}</span>
         </span>
       ) : (
-        <span className={cn('font-bold', SYMBOL_CLASS[tone] ?? SYMBOL_CLASS[symbol === '+' ? 'add' : symbol === '-' ? 'destroy' : 'change'])}>{symbol}</span>
+        <span className={cn('font-bold', symbol === '<=' ? 'text-cyan-300' : (SYMBOL_CLASS[tone] ?? SYMBOL_CLASS[symbol === '+' ? 'add' : symbol === '-' ? 'destroy' : 'change']))}>
+          {symbol}
+        </span>
       )}
       {tone === 'replace' && symbol.length !== 3 ? <span className="font-bold">{body}</span> : body}
       {forces ? <span className="text-red-400"> # forces replacement</span> : null}
@@ -160,6 +171,8 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
   const [asking, setAsking] = useState<{ command: 'apply' | 'destroy'; rest: Line[]; result: SimResult } | null>(null);
   const [said, setSaid] = useState('');
   const [prefs, setPrefs] = useState(readPrefs);
+  const viewport = useSyncExternalStore(onWindowResize, () => window.innerHeight);
+  const height = prefs.height ?? autoHeight(viewport);
   const history = useRef<string[]>([]);
   const browsing = useRef(-1);
   const logRef = useRef<HTMLDivElement>(null);
@@ -292,7 +305,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
       if (echo) append([shown(line(`terraform ${command}${autoApprove ? ' -auto-approve' : ''}`), 'cmd')]);
       const initialized = isInitialized(lesson, code);
       const wasInit = useLearn.getState().runs[lesson]?.includes('init') ?? false;
-      const result = simulate(command, code, useLearn.getState().sims[lesson] ?? null, { initialized, autoApprove });
+      const result = simulate(command, code, useLearn.getState().sims[lesson] ?? null, { initialized, autoApprove, installed: wasInit ? installed.get(lesson) : undefined });
       if (command === 'init' && result.ok) installed.set(lesson, initFingerprint(code));
       if (result.plan && (command === 'plan' || result.confirmAt !== undefined)) showPlan(result.plan, declaredBlocks(code));
       else if (command === 'plan') clearPlan();
@@ -453,7 +466,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
   const startResize = (e: React.PointerEvent) => {
     e.preventDefault();
     const startY = e.clientY;
-    const startH = prefs.height;
+    const startH = height;
     let h = startH;
     const max = () => Math.max(MIN_H, Math.round(window.innerHeight * 0.75));
     const onMove = (ev: PointerEvent) => {
@@ -472,7 +485,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
   const onResizeKey = (e: ReactKeyboardEvent) => {
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
     e.preventDefault();
-    const h = Math.min(Math.round(window.innerHeight * 0.75), Math.max(MIN_H, prefs.height + (e.key === 'ArrowUp' ? 24 : -24)));
+    const h = Math.min(Math.round(window.innerHeight * 0.75), Math.max(MIN_H, height + (e.key === 'ArrowUp' ? 24 : -24)));
     savePrefs({ collapsed: false, height: h });
   };
 
@@ -488,15 +501,16 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
     <section
       aria-label={m.region}
       data-testid="terminal-panel"
-      className={cn('relative flex min-h-0 flex-col overflow-hidden border-t border-slate-800 bg-[#0b1120] text-[#d5dbe5] [font-variant-ligatures:none] dark:border-slate-700/60', className)}
-      style={prefs.collapsed ? undefined : { height: prefs.height }}
+      // a container: the header and the prompt row compact themselves in a narrow terminal (code mode, small screens)
+      className={cn('@container relative flex min-h-0 flex-col overflow-hidden border-t border-slate-800 bg-[#0b1120] text-[#d5dbe5] [font-variant-ligatures:none] dark:border-slate-700/60', className)}
+      style={prefs.collapsed ? undefined : { height }}
     >
       {prefs.collapsed ? null : (
         <div
           role="separator"
           aria-orientation="horizontal"
           aria-label={m.resize}
-          aria-valuenow={prefs.height}
+          aria-valuenow={height}
           aria-valuemin={MIN_H}
           aria-valuemax={Math.max(MIN_H, Math.round(window.innerHeight * 0.75))}
           tabIndex={0}
@@ -535,13 +549,17 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
           ))}
         </div>
         <span className="flex-1" />
+        {/* the whole sentence when there's room, else "Simulated", else the flask alone (the sentence in its tooltip and for screen readers) */}
         <span
           title={m.simulatedLong}
-          className="flex min-w-0 items-center gap-1.5 rounded-full bg-amber-400/10 px-2.5 py-1 text-[11.5px] font-medium text-amber-200 ring-1 ring-amber-300/25"
+          data-testid="sim-badge"
+          className="flex shrink-0 items-center gap-1.5 rounded-full bg-amber-400/10 px-1.5 py-1 text-[11.5px] font-medium text-amber-200 ring-1 ring-amber-300/25 @lg:px-2.5"
         >
           <FlaskConical className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          <span className="hidden truncate sm:inline">{m.simulatedLong}</span>
-          <span className="sm:hidden">{m.simulated}</span>
+          <span className="sr-only @3xl:not-sr-only">{m.simulatedLong}</span>
+          <span className="hidden @lg:inline @3xl:hidden" aria-hidden>
+            {m.simulated}
+          </span>
         </span>
         <button
           type="button"
@@ -613,8 +631,9 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
           </div>
 
           {/* the prompt and the command buttons */}
-          <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/[0.07] bg-[#0d1424] px-3 py-2">
-            <label className="flex min-w-[220px] flex-1 items-center gap-2 font-mono text-[13px]">
+          {/* one row down to a narrow terminal (compact buttons, no shortcut hint); wraps only past that */}
+          <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-2 border-t border-white/[0.07] bg-[#0d1424] px-3 py-2 @2xl:gap-x-3">
+            <label className="flex min-w-[120px] flex-1 items-center gap-2 font-mono text-[13px] @2xl:min-w-[220px]">
               <span className={cn('select-none font-semibold', asking ? 'text-amber-300' : 'text-cyan-300')} translate="no" lang="en">
                 {asking ? 'Enter a value:' : '$'}
               </span>
@@ -628,7 +647,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
                 spellCheck={false}
                 autoCapitalize="off"
                 autoComplete="off"
-                className="h-8 min-w-0 flex-1 bg-transparent text-slate-50 caret-cyan-300 outline-none placeholder:font-sans placeholder:text-[12.5px] placeholder:text-slate-400"
+                className="h-8 min-w-0 flex-1 text-ellipsis bg-transparent text-slate-50 caret-cyan-300 outline-none placeholder:font-sans placeholder:text-[12.5px] placeholder:text-slate-400"
               />
             </label>
             {asking ? (
@@ -660,7 +679,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
                     title={`${m.what[command]}${command === 'plan' ? ` (${shortcut('mod', 'Enter')})` : ''}`}
                     data-command={command}
                     className={cn(
-                      'flex h-7 items-center gap-1.5 rounded-md px-2.5 font-mono text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-cyan-300',
+                      'flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-[12px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-cyan-300 @2xl:px-2.5',
                       command === 'plan'
                         ? 'bg-cyan-400/15 text-cyan-100 ring-1 ring-cyan-300/40 hover:bg-cyan-400/25'
                         : command === 'apply'
@@ -672,7 +691,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
                   >
                     {command}
                     {command === 'plan' ? (
-                      <kbd className="hidden rounded-[4px] bg-black/30 px-1 font-sans text-[10px] font-semibold text-cyan-200/80 md:inline" translate="no">
+                      <kbd className="hidden rounded-[4px] bg-black/30 px-1 font-sans text-[10px] font-semibold text-cyan-200/80 @2xl:inline" translate="no">
                         {shortcut('mod', 'Enter')}
                       </kbd>
                     ) : null}
