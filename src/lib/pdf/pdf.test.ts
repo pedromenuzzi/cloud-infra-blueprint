@@ -1,6 +1,6 @@
 import { unzlibSync, zlibSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { encodeWinAnsi, fitText, splitToWidth, textWidth, unsupportedChars, wrapText } from './metrics';
+import { BOX, encodeWinAnsi, fitText, spellGlyphsIn, splitToWidth, textWidth, unsupportedChars, wrapText } from './metrics';
 import { parseSvgPath, pathEnd, pointOnPath, shapePathData, type PathSeg } from './svgPath';
 import { expectWellFormed, latin1, pdfLayout, pdfText } from './testing';
 import { PdfDocument } from './writer';
@@ -19,7 +19,38 @@ describe('pdf metrics', () => {
     expect(encodeWinAnsi('€ • …')).toEqual([0x80, 0x20, 0x95, 0x20, 0x85]);
     expect(encodeWinAnsi('a→b')).toEqual([0x61, 0x2d, 0x3e, 0x62]);
     expect(encodeWinAnsi('ő')).toEqual([0x6f]);
-    expect(encodeWinAnsi('🚀')).toEqual([0x3f]);
+    expect(encodeWinAnsi('生')).toEqual([BOX]);
+  });
+
+  it('spells known emoji as words in the document’s language, and draws a box for the rest', () => {
+    const read = (text: string) => String.fromCharCode(...encodeWinAnsi(text).map((c) => (c === BOX ? 0x25a1 : c)));
+    try {
+      spellGlyphsIn('en');
+      // presentation selectors and skin tones go with the emoji they shape
+      expect(read('🚀 Launch ✅ ⚠️ done 👍🏽')).toBe('(rocket) Launch (ok) (warning) done (thumbs up)');
+      expect(read('├── main.tf\n│   └── vpc ★')).toBe('+-- main.tf|   +-- vpc *');
+      expect(read('Infra 生产 😀 ?')).toBe('Infra □□ □ ?');
+      spellGlyphsIn('pt-BR');
+      expect(read('🚀 Pronto ❌ 🔒')).toBe('(foguete) Pronto (não) (trancado)');
+    } finally {
+      spellGlyphsIn(null);
+    }
+    // measured as printed: a box is as wide as a digit
+    expect(textWidth('生', 'regular', 10)).toBeCloseTo(5.56, 5);
+    expect(textWidth('a️', 'regular', 10)).toBeCloseTo(textWidth('a', 'regular', 10), 5);
+  });
+
+  it('leaves a gap in the text for what it draws as a box, as wide as measured', () => {
+    const doc = new PdfDocument({ title: 'x' }, false);
+    const page = doc.addPage(200, 100);
+    page.text('ab生c', 10, 50, { size: 10, color: '#112233' });
+    const bytes = doc.save();
+    expect(latin1(bytes)).toContain('[<61><62> -556 <63>] TJ');
+    expect(pdfText(bytes)).toBe('ab□c');
+    const { runs } = pdfLayout(bytes);
+    expect(runs[0].width).toBeCloseTo(textWidth('ab生c', 'regular', 10), 5);
+    // the box: a stroked rounded rectangle in the gap, in the text's color
+    expect(latin1(bytes)).toMatch(/0\.067 0\.133 0\.2 RG/);
   });
 
   it('wraps words to a width and splits words that are too long', () => {
@@ -59,7 +90,7 @@ describe('pdf metrics', () => {
 
   it('lists the characters the standard fonts cannot print', () => {
     expect(unsupportedChars('Produção — café, naïve')).toEqual([]);
-    expect(unsupportedChars('Infra 生产 🚀 שלום?')).toEqual(['生', '产', '🚀', 'ש', 'ל', 'ו', 'ם']);
+    expect(unsupportedChars('Infra 生产 🚀 שלום?')).toEqual(['生', '产', 'ש', 'ל', 'ו', 'ם']);
     // transliterated symbols print fine
     expect(unsupportedChars('a → b ≥ c')).toEqual([]);
   });

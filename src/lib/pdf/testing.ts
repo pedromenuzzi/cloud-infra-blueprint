@@ -1,6 +1,6 @@
 /** Test helpers for reading back PDFs written by writer.ts. */
 import { expect } from 'vitest';
-import { charWidth, type PdfFont } from './metrics';
+import { BOX, charWidth, type PdfFont } from './metrics';
 
 export const latin1 = (bytes: Uint8Array) => Array.from(bytes, (b) => String.fromCharCode(b)).join('');
 
@@ -28,10 +28,19 @@ export function expectWellFormed(bytes: Uint8Array) {
 const cp1252 = new TextDecoder('windows-1252');
 const decodeHex = (hex: string) => (hex.match(/../g) ?? []).map((h) => parseInt(h, 16));
 
+/** a run of text: `<…> Tj`, or `[…] TJ` when it leaves gaps for drawn boxes */
+const SHOWN = /(<[0-9a-f]*> Tj|\[[^\]]*\] TJ)/g;
+
+/** the codes a run shows, a gap standing for the box drawn in it */
+const shownCodes = (show: string) => [...show.matchAll(/<([0-9a-f]*)>| -?\d+ /g)].flatMap((m) => (m[1] !== undefined ? decodeHex(m[1]) : [BOX]));
+
+/** WinAnsi decoded, a drawn box as □ */
+const decodeCodes = (codes: number[]) => codes.map((c) => (c === BOX ? '□' : cp1252.decode(new Uint8Array([c])))).join('');
+
 /** the text drawn on the pages of an uncompressed PDF (WinAnsi decoded) */
 export function pdfText(bytes: Uint8Array): string {
   const out: string[] = [];
-  for (const m of latin1(bytes).matchAll(/<([0-9a-f]*)> Tj/g)) out.push(cp1252.decode(new Uint8Array(decodeHex(m[1]))));
+  for (const m of latin1(bytes).matchAll(SHOWN)) out.push(decodeCodes(shownCodes(m[1])));
   return out.join('\n');
 }
 
@@ -117,15 +126,15 @@ export function pdfLayout(bytes: Uint8Array): { pages: PdfPageInfo[]; runs: Text
         clipped = true;
         continue;
       }
-      const t = /BT \/(F\d) ([\d.]+) Tf [\d. ]+ rg ([-\d.]+) ([-\d.]+) Td <([0-9a-f]*)> Tj ET/.exec(line);
+      const t = /BT \/(F\d) ([\d.]+) Tf [\d. ]+ rg ([-\d.]+) ([-\d.]+) Td (<[0-9a-f]*> Tj|\[[^\]]*\] TJ) ET/.exec(line);
       if (t) {
         const font = FONT_OF[t[1]];
         const size = Number(t[2]);
-        const codes = decodeHex(t[5]);
+        const codes = shownCodes(t[5]);
         const width = (codes.reduce((sum, c) => sum + charWidth(c, font), 0) * size) / 1000;
         runs.push({
           page: page.index,
-          text: cp1252.decode(new Uint8Array(codes)),
+          text: decodeCodes(codes),
           font,
           size,
           x: Number(t[3]),

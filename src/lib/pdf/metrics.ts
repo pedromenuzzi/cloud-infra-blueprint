@@ -4,8 +4,13 @@
  * Every PDF viewer ships Helvetica, Helvetica-Bold and Courier, so nothing is
  * embedded. They are single-byte fonts: text is encoded as WinAnsi (CP1252),
  * which covers English and the Western European accents (á, ç, ã, ü…).
- * Anything else is transliterated or replaced with '?'.
+ * Anything else is transliterated, spelled as a word (emoji) or drawn as a
+ * small box.
  */
+
+import { currentLocale, type Locale } from '@/i18n/locale';
+import { messagesFor } from '@/i18n/messages';
+import { GLYPH_WORDS, glyphMessages } from './glyphs.messages';
 
 export type PdfFont = 'regular' | 'bold' | 'mono';
 
@@ -51,9 +56,35 @@ const WIN_ANSI_HIGH: Record<number, number> = {
 /** common symbols outside CP1252, spelled with characters that exist in it */
 const TRANSLITERATE: Record<string, string> = {
   '→': '->', '←': '<-', '↔': '<->', '⇒': '=>', '≥': '>=', '≤': '<=', '≠': '!=', '≈': '~',
-  '✓': 'v', '✔': 'v', '✗': 'x', '✕': 'x', '⋯': '...', '−': '-', '‑': '-',
+  '✓': 'v', '✔': 'v', '✗': 'x', '✕': 'x', '✘': 'x', '⋯': '...', '−': '-', '‑': '-',
+  '↑': '^', '↓': 'v', '⬆': '^', '⬇': 'v', '➡': '->', '⬅': '<-', '👉': '->', '👈': '<-',
+  '▶': '>', '►': '>', '▸': '>', '◀': '<', '◄': '<', '◂': '<',
+  '●': '•', '▪': '•', '■': '•', '◆': '•', '◦': 'o', '○': 'o', '★': '*', '☆': '*', '✱': '*', '✳': '*',
+  '☐': '[ ]', '☒': '[x]', '❗': '!', '❕': '!', '‼': '!!', '❓': '?', '❔': '?', '⁉': '!?', '∞': 'inf',
+  '′': "'", '″': '"',
+  // box drawing (trees and tables in comments)
+  '─': '-', '━': '-', '═': '=', '│': '|', '┃': '|', '║': '|',
+  '┌': '+', '┐': '+', '└': '+', '┘': '+', '├': '+', '┤': '+', '┬': '+', '┴': '+', '┼': '+',
+  '╭': '+', '╮': '+', '╰': '+', '╯': '+', '╔': '+', '╗': '+', '╚': '+', '╝': '+',
   ' ': ' ', ' ': ' ', '\t': '  ',
 };
+
+/**
+ * Code of a character the fonts lack, drawn as a small box rather than
+ * printed (writer.ts): 0x7F has no glyph in WinAnsi.
+ */
+export const BOX = 0x7f;
+
+/** emoji presentation selectors, skin tones, joiners and keycaps: they only shape the emoji before them */
+const EMOJI_MODIFIERS = /[︎️‍⃣]|\uD83C[\uDFFB-\uDFFF]/g;
+
+/** the language emoji are spelled in: the document being written, else the UI's */
+let glyphLocale: Locale | null = null;
+
+/** Spell emoji in `locale` while a document is written (null: the UI language again). */
+export function spellGlyphsIn(locale: Locale | null): void {
+  glyphLocale = locale;
+}
 
 function codeOf(ch: string): number | undefined {
   const cp = ch.codePointAt(0)!;
@@ -64,27 +95,32 @@ function codeOf(ch: string): number | undefined {
 /**
  * Encode text as WinAnsi byte codes. Characters the fonts can't show are
  * transliterated (→ becomes ->), stripped of accents the encoding lacks
- * (ő becomes o) or, as a last resort, replaced with '?'.
+ * (ő becomes o), spelled as a word when they are a known emoji (🚀 reads
+ * "(rocket)") or, as a last resort, drawn as a small box (`BOX`).
  */
 export function encodeWinAnsi(text: string): number[] {
   const out: number[] = [];
-  for (const ch of text.normalize('NFC')) {
+  for (const ch of text.normalize('NFC').replace(EMOJI_MODIFIERS, '')) {
     const code = codeOf(ch);
     if (code !== undefined) {
       out.push(code);
       continue;
     }
     if (ch === '\n' || ch === '\r') continue;
-    const spelled = TRANSLITERATE[ch] ?? ch.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const word = GLYPH_WORDS[ch];
+    const spelled =
+      TRANSLITERATE[ch] ??
+      (word ? `(${messagesFor(glyphMessages, glyphLocale ?? currentLocale())[word]})` : ch.normalize('NFD').replace(/[̀-ͯ]/g, ''));
     const codes = [...spelled].map(codeOf);
     if (spelled && spelled !== ch && codes.every((c) => c !== undefined)) out.push(...(codes as number[]));
-    else out.push(0x3f);
+    else out.push(BOX);
   }
   return out;
 }
 
 export function charWidth(code: number, font: PdfFont): number {
   if (font === 'mono') return 600;
+  if (code === BOX) return 556;
   const w = (font === 'bold' ? HELVETICA_BOLD : HELVETICA)[code - 32];
   return w || 556;
 }
@@ -105,7 +141,7 @@ function charUnits(ch: string, font: PdfFont): number {
 
 /**
  * Split `text` into pieces no wider than `max` points, on character
- * boundaries — measured as rendered (→ is two glyphs, an emoji one '?') and
+ * boundaries — measured as rendered (→ is two glyphs, an unknown emoji one box) and
  * never inside a surrogate pair. Linear in the length of the text.
  */
 export function splitToWidth(text: string, max: number, font: PdfFont, size: number): string[] {
@@ -172,12 +208,12 @@ export function fitText(text: string, max: number, font: PdfFont, size: number):
   return `${cut.trimEnd()}…`;
 }
 
-/** the characters of `text` the standard fonts can't show (they print as '?'), each listed once */
+/** the characters of `text` the standard fonts can't show (they are drawn as a small box), each listed once */
 export function unsupportedChars(text: string): string[] {
   const out = new Set<string>();
   for (const ch of text.normalize('NFC')) {
-    if (ch === '?' || ch === '\n' || ch === '\r') continue;
-    if (encodeWinAnsi(ch).includes(0x3f)) out.add(ch);
+    if (ch === '\n' || ch === '\r') continue;
+    if (encodeWinAnsi(ch).includes(BOX)) out.add(ch);
   }
   return [...out];
 }

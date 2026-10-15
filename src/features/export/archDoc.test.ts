@@ -494,7 +494,7 @@ resource "aws_instance" "web" {
       expect(chunks.length).toBeGreaterThan(1);
       expectLaidOut(bytes, 'long code lines');
       // the chunks put back together are the whole line, as printed
-      expect(chunks.map((r) => r.text).join('')).toBe(long.replace(/→/g, '->').replace(/≥/g, '>=').replace(/😀/g, '?'));
+      expect(chunks.map((r) => r.text).join('')).toBe(long.replace(/→/g, '->').replace(/≥/g, '>=').replace(/😀/g, '□'));
     });
   });
 
@@ -573,6 +573,18 @@ describe('in Portuguese', () => {
       ),
     };
   };
+
+  it('spells emoji as words in the document’s language and draws a box for the rest, never a “?”', () => {
+    const main = 'resource "aws_s3_bucket" "b" {\n  bucket = "assets" # 🚀 launch bucket ✅\n}\n';
+    const notes = 'Pronto para produção 🚀 ⚠️ 生产';
+    const pt = pdfText(buildArchitecturePdf(ptInput({ 'main.tf': main }, { title: 'Loja 🛒', notes })));
+    expect(pt).toContain('Pronto para produção (foguete) (atenção) □□');
+    expect(pt).toContain('# (foguete) launch bucket (ok)');
+    expect(pt).toContain('Loja □');
+    const en = pdfText(buildArchitecturePdf(inputFor({ 'main.tf': main }, { notes })));
+    expect(en).toContain('(rocket) (warning) □□');
+    for (const text of [pt, en]) expect(text).not.toMatch(/[^ ]\?|\? /);
+  });
 
   it('every heading, finding, path and control in Portuguese, accents intact', { timeout: 20_000 }, () => {
     const bytes = buildArchitecturePdf(ptInput(withSsh(), { notes: 'Revisão pendente — não compartilhar.' }));
