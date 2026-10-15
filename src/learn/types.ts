@@ -117,7 +117,7 @@ export interface Lesson {
   solution: Files;
   /** checked live, in order; all met = lesson complete */
   goals: Goal[];
-  /** resource / data types this lesson teaches: the editor links to it ("Learn about this") */
+  /** resource types (`aws_vpc`) and data sources (`data.aws_ami`) this lesson teaches: the editor links to it ("Learn about this") */
   teaches?: string[];
 }
 

@@ -716,6 +716,7 @@ export const lessons: Lesson[] = [
         test: all(ran('apply'), applied('aws_instance')),
       },
     ],
+    teaches: ['data.aws_ami', 'data.aws_availability_zones'],
   },
 
   /* ------------------------------------------------------------ 4.4 */
@@ -822,6 +823,7 @@ export const lessons: Lesson[] = [
         test: all(ran('apply'), applied('aws_s3_bucket')),
       },
     ],
+    teaches: ['data.aws_vpc', 'data.aws_caller_identity', 'data.aws_region'],
   },
 
   /* ------------------------------------------------------------ 4.5 */
