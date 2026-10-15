@@ -352,7 +352,7 @@ function StationItem({
               align === 'start' ? 'md:left-0' : align === 'end' ? 'md:right-0' : 'md:left-1/2 md:-translate-x-1/2',
             )}
           >
-            {t(lesson.summary)}
+            {richText(t(lesson.summary), 'font-mono text-[11px]')}
           </span>
           <span className="mt-1 flex items-center gap-1.5 text-[11.5px] text-faint md:justify-center">
             <span>{m.minutes(lesson.minutes)}</span>
@@ -499,7 +499,7 @@ function LevelIsland({
           <h3 id={headingId} className={cn('mt-0.5 font-bold tracking-[-0.02em]', small ? 'text-[16px]' : 'text-[21px]')}>
             {t(level.title)}
           </h3>
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">{t(level.summary)}</p>
+          <p className="mt-1 text-[13px] leading-relaxed text-muted">{richText(t(level.summary), 'font-mono text-[12px]')}</p>
         </div>
         {tally.total > 0 ? (
           <div className="w-full sm:mt-1 sm:w-52">

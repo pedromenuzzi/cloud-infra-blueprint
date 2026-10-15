@@ -560,7 +560,8 @@ export function analyzeSecurity(ir: IR, locale: Locale = currentLocale()): Secur
   const explicitTable = new Map<string, { table: string; association: string }>();
   for (const r of ir.resources) {
     if (r.type !== 'aws_route_table_association') continue;
-    const [s] = ofType(r.args.subnet_id, 'aws_subnet');
+    // `for_each = aws_subnet.public` with `subnet_id = each.value.id`: the subnets come from for_each
+    const [s] = [...ofType(r.args.subnet_id, 'aws_subnet'), ...ofType(r.args.for_each, 'aws_subnet')];
     const [t] = refsIn(r.args.route_table_id);
     if (s && t) explicitTable.set(s, { table: t, association: r.id });
   }

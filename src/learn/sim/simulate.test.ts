@@ -258,6 +258,338 @@ describe('modules', () => {
     const r = simulate('plan', main('module "vpc" {\n  source  = "terraform-aws-modules/vpc/aws"\n  version = "5.8.1"\n}\n'), null);
     expect(text(r)).toContain('module.vpc: not simulated');
   });
+
+  const NET = 'variable "cidr" {\n  type = string\n}\n\nvariable "name" {\n  default = "net"\n}\n\nresource "aws_vpc" "this" {\n  cidr_block = var.cidr\n  tags = {\n    Name = var.name\n  }\n}\n\noutput "vpc_id" {\n  value = aws_vpc.this.id\n}\n';
+  const envs = (body: string) => ({ ...main(body), 'modules/net/main.tf': NET });
+  const EACH = 'module "env" {\n  for_each = toset(["prod", "staging"])\n  source   = "./modules/net"\n  cidr     = each.key == "prod" ? "10.1.0.0/16" : "10.0.0.0/16"\n  name     = each.key\n}\n\nresource "aws_subnet" "a" {\n  vpc_id     = module.env["prod"].vpc_id\n  cidr_block = "10.1.1.0/24"\n}\n\noutput "ids" {\n  value = { for k, m in module.env : k => m.vpc_id }\n}\n';
+
+  it('repeats a module with for_each, and resolves its outputs in the root after apply', () => {
+    const plan = text(simulate('plan', envs(EACH), null));
+    expect(plan).toContain('  # module.env["prod"].aws_vpc.this will be created');
+    expect(plan).toContain('  # module.env["staging"].aws_vpc.this will be created');
+    expect(plan).toContain('+ vpc_id            = (known after apply)');
+    expect(plan).toContain('Plan: 3 to add, 0 to change, 0 to destroy.');
+    const state = applied(envs(EACH));
+    const prod = state.resources['module.env["prod"].aws_vpc.this'];
+    expect(prod.cidr_block).toBe('10.1.0.0/16');
+    expect(state.resources['aws_subnet.a'].vpc_id).toBe(prod.id);
+    expect(JSON.parse(state.outputs.ids)).toEqual({ prod: prod.id, staging: state.resources['module.env["staging"].aws_vpc.this'].id });
+    expect(text(simulate('plan', envs(EACH), state))).toContain('No changes.');
+  });
+
+  it('repeats a module with count', () => {
+    const r = simulate('plan', envs('module "net" {\n  count  = 2\n  source = "./modules/net"\n  cidr   = "10.${count.index}.0.0/16"\n}\n'), null);
+    expect(r.plan?.changes.map((c) => c.address)).toEqual(['module.net[0].aws_vpc.this', 'module.net[1].aws_vpc.this']);
+    expect(text(r)).toContain('+ cidr_block                = "10.1.0.0/16"');
+  });
+
+  it('destroys what a module instance held when its key goes', () => {
+    const state = applied(envs(EACH));
+    const out = text(simulate('plan', envs(EACH.replace('toset(["prod", "staging"])', 'toset(["prod"])')), state));
+    expect(out).toContain('  # module.env["staging"].aws_vpc.this will be destroyed\n  # (because module.env["staging"] is not in configuration)');
+    expect(out).toContain('Plan: 0 to add, 0 to change, 1 to destroy.');
+  });
+
+  it('validate holds a call to its module: required inputs, unknown arguments, unknown outputs', () => {
+    const missing = simulate('validate', envs('module "net" {\n  source = "./modules/net"\n}\n'), null);
+    expect(missing.ok).toBe(false);
+    expect(text(missing)).toContain('│ Error: Missing required argument\n│\n│   on main.tf line 14, in module "net":');
+    expect(text(missing)).toContain('│ The argument "cidr" is required, but no definition was found.');
+    const extra = text(simulate('validate', envs('module "net" {\n  source = "./modules/net"\n  cidr   = "10.0.0.0/16"\n  cdir   = "x"\n}\n'), null));
+    expect(extra).toContain('│ Error: Unsupported argument');
+    expect(extra).toContain('│   17:   cdir   = "x"');
+    expect(extra).toContain('│ An argument named "cdir" is not expected here.');
+    const output = text(simulate('validate', envs('module "net" {\n  source = "./modules/net"\n  cidr   = "10.0.0.0/16"\n}\n\noutput "id" {\n  value = module.net.vpc\n}\n'), null));
+    expect(output).toContain('│ This object does not have an attribute named "vpc".');
+    // the default of an input that has one is used
+    expect(simulate('validate', envs('module "net" {\n  source = "./modules/net"\n  cidr   = "10.0.0.0/16"\n}\n'), null).ok).toBe(true);
+    expect(simulate('plan', envs('module "net" {\n  source = "./modules/net"\n}\n'), null).ok).toBe(false);
+  });
+
+  it('validate looks inside the modules too: their references and required arguments', () => {
+    const call = main('module "net" {\n  source = "./modules/net"\n  cidr   = "10.0.0.0/16"\n}\n');
+    const broken = `${NET.replace('cidr_block = var.cidr', 'cidr_block = var.cdir')}\nresource "aws_subnet" "a" {\n  cidr_block = "10.0.1.0/24"\n}\n\noutput "typo" {\n  value = aws_vpc.thsi.id\n}\n`;
+    const out = text(simulate('validate', { ...call, 'modules/net/main.tf': broken }, null));
+    expect(out).toContain('│ Error: Reference to undeclared input variable\n│\n│   on modules/net/main.tf line 10, in resource "aws_vpc" "this":');
+    expect(out).toContain('│ A managed resource "aws_vpc" "thsi" has not been declared in module.net.');
+    expect(out).toContain('│   on modules/net/main.tf line 20, in resource "aws_subnet" "a":');
+    expect(out).toContain('│ The argument "vpc_id" is required, but no definition was found.');
+  });
+
+  it('a module added since the last init is not installed, as Terraform says', () => {
+    const before = main('');
+    const after = envs('module "net" {\n  source = "./modules/net"\n  cidr   = "10.0.0.0/16"\n}\n');
+    const r = simulate('plan', after, null, { initialized: false, installed: initFingerprint(before) });
+    expect(r.ok).toBe(false);
+    expect(text(r)).toContain('│ Error: Module not installed\n│\n│   on main.tf line 14:\n│   14: module "net" {');
+    expect(text(r)).toContain('│ This module is not yet installed. Run "terraform init" to install all modules');
+    // a provider changed too: the lock file is what's out of date
+    const both = { ...after, 'main.tf': `${after['main.tf']}\nresource "random_id" "x" {\n  byte_length = 4\n}\n` };
+    expect(text(simulate('plan', both, null, { initialized: false, installed: initFingerprint(before) }))).toContain('Error: Inconsistent dependency lock file');
+  });
+});
+
+describe('data sources', () => {
+  const READS = `data "aws_ami" "ubuntu" {
+  most_recent = true
+  owners      = ["099720109477"]
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-arm64-server-*"]
+  }
+  filter {
+    name   = "architecture"
+    values = ["arm64"]
+  }
+}
+
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+data "aws_caller_identity" "me" {}
+
+data "aws_region" "here" {}
+
+data "aws_partition" "p" {}
+
+data "aws_vpc" "default" {
+  default = true
+}
+
+resource "aws_instance" "web" {
+  ami               = data.aws_ami.ubuntu.id
+  instance_type     = "t4g.micro"
+  availability_zone = data.aws_availability_zones.available.names[1]
+  tags = {
+    Arch    = data.aws_ami.ubuntu.architecture
+    Account = data.aws_caller_identity.me.account_id
+    Region  = data.aws_region.here.description
+    Arn     = "arn:\${data.aws_partition.p.partition}:s3:::x"
+  }
+}
+
+output "default_cidr" {
+  value = data.aws_vpc.default.cidr_block
+}
+
+output "ami_name" {
+  value = data.aws_ami.ubuntu.name
+}
+`;
+
+  it('reads them during plan, and what references them is known in the plan', () => {
+    const r = simulate('plan', main(READS), null);
+    const out = text(r);
+    expect(out).toMatch(/data\.aws_ami\.ubuntu: Reading\.\.\.\ndata\.aws_ami\.ubuntu: Read complete after 0s \[id=ami-0[0-9a-f]{16}\]/);
+    expect(out).toContain('data.aws_caller_identity.me: Read complete after 0s [id=123456789012]');
+    expect(out).toMatch(/\+ ami +?= "ami-0[0-9a-f]{16}"/);
+    expect(out).toContain('+ availability_zone            = "us-east-1b"');
+    expect(out).toContain('+ "Arch"    = "arm64"');
+    expect(out).toContain('+ "Account" = "123456789012"');
+    expect(out).toContain('+ "Region"  = "US East (N. Virginia)"');
+    expect(out).toContain('+ "Arn"     = "arn:aws:s3:::x"');
+    expect(out).toContain('+ ami_name     = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-arm64-server-20260901"');
+    expect(out).toContain('+ default_cidr = "172.31.0.0/16"');
+    expect(r.plan?.changes.map((c) => c.address)).toEqual(['aws_instance.web']);
+  });
+
+  it('follows the provider region, and a plan after apply reads them again with nothing to change', () => {
+    const west = { 'main.tf': main(READS)['main.tf'].replace('region = "us-east-1"', 'region = "us-west-2"') };
+    expect(text(simulate('plan', west, null))).toContain('+ availability_zone            = "us-west-2b"');
+    const state = applied(main(READS));
+    const again = text(simulate('plan', main(READS), state));
+    expect(again).toContain('data.aws_ami.ubuntu: Reading...');
+    expect(again).toContain('No changes. Your infrastructure matches the configuration.');
+  });
+
+  it('gives the default VPC one id whatever the block is called, and its subnets', () => {
+    const r = simulate('apply', main('data "aws_vpc" "a" {\n  default = true\n}\n\ndata "aws_vpc" "b" {\n  default = true\n}\n\ndata "aws_subnet" "s" {\n  availability_zone = "us-east-1b"\n  default_for_az    = true\n}\n\noutput "same" {\n  value = data.aws_vpc.a.id == data.aws_vpc.b.id && data.aws_subnet.s.vpc_id == data.aws_vpc.a.id\n}\n\noutput "subnet" {\n  value = data.aws_subnet.s.cidr_block\n}\n'), null, auto);
+    expect(r.state?.outputs).toEqual({ same: 'true', subnet: '172.31.16.0/20' });
+  });
+
+  it('renders a policy document from its statements', () => {
+    const r = simulate('plan', main('data "aws_iam_policy_document" "assume" {\n  statement {\n    actions = ["sts:AssumeRole"]\n    principals {\n      type        = "Service"\n      identifiers = ["ec2.amazonaws.com"]\n    }\n  }\n}\n\nresource "aws_iam_role" "r" {\n  name               = "r"\n  assume_role_policy = data.aws_iam_policy_document.assume.json\n}\n'), null);
+    expect(text(r)).toContain('+ assume_role_policy = jsonencode(\n            {\n              + Statement = [\n                  + {\n                      + Action    = "sts:AssumeRole"');
+  });
+
+  const DEFERRED = 'resource "aws_s3_bucket" "b" {\n  bucket = "acme-logs"\n}\n\ndata "aws_iam_policy_document" "read" {\n  statement {\n    actions   = ["s3:GetObject"]\n    resources = ["${aws_s3_bucket.b.arn}/*"]\n  }\n}\n\nresource "aws_s3_bucket_policy" "p" {\n  bucket = aws_s3_bucket.b.id\n  policy = data.aws_iam_policy_document.read.json\n}\n';
+
+  it('reads during apply when its arguments wait on the apply (<=)', () => {
+    const r = simulate('plan', main(DEFERRED), null);
+    const out = text(r);
+    expect(out).toContain('  + create\n <= read (data resources)');
+    expect(out).toContain('  # data.aws_iam_policy_document.read will be read during apply\n  # (config refers to values not yet known)\n <= data "aws_iam_policy_document" "read" {');
+    expect(out).toContain('      + json          = (known after apply)');
+    expect(out).toContain('      + statement {');
+    expect(out).toContain('Plan: 2 to add, 0 to change, 0 to destroy.');
+    expect(r.plan?.changes.map((c) => c.address).sort()).toEqual(['aws_s3_bucket.b', 'aws_s3_bucket_policy.p']);
+    const done = simulate('apply', main(DEFERRED), null, auto);
+    const log = text(done);
+    expect(log.indexOf('aws_s3_bucket.b: Creation complete')).toBeLessThan(log.indexOf('data.aws_iam_policy_document.read: Reading...'));
+    expect(log.indexOf('data.aws_iam_policy_document.read: Read complete after 0s')).toBeLessThan(log.indexOf('aws_s3_bucket_policy.p: Creating...'));
+    expect(Object.keys(done.state!.resources)).not.toContain('data.aws_iam_policy_document.read');
+    expect(done.state!.resources['aws_s3_bucket_policy.p'].policy).toContain('arn:aws:s3:::acme-logs/*');
+    // the bucket exists now: the next plan reads it right away
+    const again = text(simulate('plan', main(DEFERRED), done.state!));
+    expect(again).toContain('data.aws_iam_policy_document.read: Read complete after 0s');
+    expect(again).toContain('No changes.');
+  });
+
+  it('reads one filter block like two (an Ubuntu lookup gets an Ubuntu name)', () => {
+    const code = 'data "aws_ami" "ubuntu" {\n  most_recent = true\n  owners      = ["099720109477"]\n  filter {\n    name   = "name"\n    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]\n  }\n}\n\noutput "name" {\n  value = data.aws_ami.ubuntu.name\n}\n';
+    expect(text(simulate('plan', main(code), null))).toContain('+ name = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-20260901"');
+  });
+
+  it('depends_on something with changes pending: read during apply, then in plan once applied', () => {
+    const code = 'resource "aws_s3_bucket" "b" {\n  bucket = "acme-logs"\n}\n\ndata "aws_caller_identity" "me" {\n  depends_on = [aws_s3_bucket.b]\n}\n\noutput "account" {\n  value = data.aws_caller_identity.me.account_id\n}\n';
+    const r = simulate('plan', main(code), null);
+    const out = text(r);
+    expect(out).toContain('  # data.aws_caller_identity.me will be read during apply\n  # (depends on a resource or a module with changes pending)\n <= data "aws_caller_identity" "me" {');
+    expect(out).toContain('  + account = (known after apply)');
+    expect(out).toContain('Plan: 1 to add, 0 to change, 0 to destroy.');
+    const done = simulate('apply', main(code), null, auto);
+    const log = text(done);
+    expect(log.indexOf('aws_s3_bucket.b: Creation complete')).toBeLessThan(log.indexOf('data.aws_caller_identity.me: Reading...'));
+    expect(done.state?.outputs.account).toBe('123456789012');
+    expect(Object.keys(done.state!.resources)).toEqual(['aws_s3_bucket.b']);
+    const again = text(simulate('plan', main(code), done.state!));
+    expect(again).toContain('data.aws_caller_identity.me: Read complete after 0s [id=123456789012]');
+    expect(again).toContain('No changes.');
+  });
+
+  it('leaves a type it knows nothing about unknown until apply', () => {
+    const code = 'data "aws_ssm_parameter" "p" {\n  name = "/app/ami"\n}\n\nresource "aws_instance" "web" {\n  ami           = data.aws_ssm_parameter.p.value\n  instance_type = "t3.micro"\n}\n';
+    const plan = text(simulate('plan', main(code), null));
+    expect(plan).not.toContain('data.aws_ssm_parameter.p: Reading...');
+    expect(plan).toContain('+ ami                          = (known after apply)');
+    expect(text(simulate('apply', main(code), null, auto))).toContain('data.aws_ssm_parameter.p: Read complete after 0s');
+  });
+});
+
+describe('moved blocks', () => {
+  const OLD = 'resource "aws_s3_bucket" "old" {\n  bucket = "acme-logs"\n}\n';
+  const NEW = 'resource "aws_s3_bucket" "new" {\n  bucket = "acme-logs"\n}\n';
+  const MOVED = (from: string, to: string) => `\nmoved {\n  from = ${from}\n  to   = ${to}\n}\n`;
+
+  it('a rename with moved: no destroy, no create, the state re-keyed', () => {
+    const state = applied(main(OLD));
+    const files = main(NEW + MOVED('aws_s3_bucket.old', 'aws_s3_bucket.new'));
+    const out = text(simulate('plan', files, state));
+    expect(out).toContain('aws_s3_bucket.new: Refreshing state... [id=acme-logs]');
+    expect(out).toContain('  # aws_s3_bucket.old has moved to aws_s3_bucket.new\n    resource "aws_s3_bucket" "new" {\n        id = "acme-logs"\n        # (5 unchanged attributes hidden)\n    }');
+    expect(out).toContain('Plan: 0 to add, 0 to change, 0 to destroy.');
+    const r = simulate('apply', files, state, auto);
+    expect(text(r)).toContain('Apply complete! Resources: 0 added, 0 changed, 0 destroyed.');
+    expect(r.state?.resources).toEqual({ 'aws_s3_bucket.new': state.resources['aws_s3_bucket.old'] });
+    expect(text(simulate('plan', files, r.state!))).toContain('No changes.');
+    // without the moved block a rename is destroy and create
+    expect(text(simulate('plan', main(NEW), state))).toContain('Plan: 1 to add, 0 to change, 1 to destroy.');
+  });
+
+  it('a move and a change together: the change says where it moved from', () => {
+    const state = applied(main(OLD));
+    const out = text(simulate('plan', main(NEW.replace('}\n', '  tags = {\n    Team = "data"\n  }\n}\n') + MOVED('aws_s3_bucket.old', 'aws_s3_bucket.new')), state));
+    expect(out).toContain('  # aws_s3_bucket.new will be updated in-place\n  # (moved from aws_s3_bucket.old)\n  ~ resource "aws_s3_bucket" "new" {');
+    expect(out).toContain('Plan: 0 to add, 1 to change, 0 to destroy.');
+  });
+
+  const COUNT = 'variable "names" {\n  default = ["a", "b"]\n}\n\nresource "aws_s3_bucket" "b" {\n  count  = length(var.names)\n  bucket = "acme-${var.names[count.index]}"\n}\n';
+  const EACH = 'resource "aws_s3_bucket" "b" {\n  for_each = toset(["a", "b"])\n  bucket   = "acme-${each.key}"\n}\n';
+
+  it('count to for_each: moved keeps each object under its new key', () => {
+    const state = applied(main(COUNT));
+    const files = main(EACH + MOVED('aws_s3_bucket.b[0]', 'aws_s3_bucket.b["a"]') + MOVED('aws_s3_bucket.b[1]', 'aws_s3_bucket.b["b"]'));
+    const out = text(simulate('plan', files, state));
+    expect(out).toContain('  # aws_s3_bucket.b[0] has moved to aws_s3_bucket.b["a"]');
+    expect(out).toContain('  # aws_s3_bucket.b[1] has moved to aws_s3_bucket.b["b"]');
+    expect(out).toContain('Plan: 0 to add, 0 to change, 0 to destroy.');
+    expect(Object.keys(applied(files, state).resources)).toEqual(['aws_s3_bucket.b["a"]', 'aws_s3_bucket.b["b"]']);
+    // without them: every object destroyed and created again
+    const bare = text(simulate('plan', main(EACH), state));
+    expect(bare).toContain('  # aws_s3_bucket.b[0] will be destroyed\n  # (because resource does not use count)');
+    expect(bare).toContain('Plan: 2 to add, 0 to change, 2 to destroy.');
+  });
+
+  it('adding count keeps the object as [0] (an implied move), and into a module with moved', () => {
+    const state = applied(main(OLD));
+    const counted = text(simulate('plan', main(OLD.replace('{\n', '{\n  count  = 1\n')), state));
+    expect(counted).toContain('  # aws_s3_bucket.old has moved to aws_s3_bucket.old[0]');
+    expect(counted).toContain('Plan: 0 to add, 0 to change, 0 to destroy.');
+    const files = { ...main('module "logs" {\n  source = "./modules/logs"\n}\n' + MOVED('aws_s3_bucket.old', 'module.logs.aws_s3_bucket.this')), 'modules/logs/main.tf': OLD.replace('"old"', '"this"') };
+    const out = text(simulate('plan', files, state));
+    expect(out).toContain('  # aws_s3_bucket.old has moved to module.logs.aws_s3_bucket.this');
+    expect(out).toContain('Plan: 0 to add, 0 to change, 0 to destroy.');
+  });
+
+  it('a move to an address nothing declares destroys the object, and says why', () => {
+    const state = applied(main(OLD));
+    const out = text(simulate('plan', main('resource "aws_s3_bucket" "other" {\n  bucket = "x"\n}\n' + MOVED('aws_s3_bucket.old', 'aws_s3_bucket.new')), state));
+    expect(out).toContain('  # aws_s3_bucket.new will be destroyed\n  # (because aws_s3_bucket.old was moved to aws_s3_bucket.new, which is not in configuration)');
+  });
+});
+
+describe('dynamic blocks', () => {
+  const SG = `variable "ports" {
+  default = [80, 443]
+}
+
+resource "aws_security_group" "web" {
+  name = "web"
+
+  dynamic "ingress" {
+    for_each = var.ports
+    iterator = port
+    content {
+      from_port   = port.value
+      to_port     = port.value
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
+  }
+}
+`;
+
+  it('expands into one block per item, shown in the plan as written blocks would be', () => {
+    const out = text(simulate('plan', main(SG), null));
+    expect(out).toContain('      + ingress {\n          + cidr_blocks = [\n              + "0.0.0.0/0",\n            ]\n          + from_port   = 80');
+    expect(out).toContain('          + from_port   = 443');
+    expect(out).not.toContain('dynamic');
+  });
+
+  it('applies, plans no changes after, and an item more changes it in place', () => {
+    const state = applied(main(SG));
+    expect(JSON.parse(state.resources['aws_security_group.web'].ingress)).toHaveLength(2);
+    expect(text(simulate('plan', main(SG), state))).toContain('No changes.');
+    const more = text(simulate('plan', main(SG.replace('[80, 443]', '[80, 443, 22]')), state));
+    expect(more).toContain('  # aws_security_group.web will be updated in-place');
+    expect(more).toContain('      + ingress {');
+    expect(more).toContain('          + from_port   = 22');
+  });
+
+  it('reads a map with the label as iterator (.key and .value), next to written blocks', () => {
+    const code = 'resource "aws_security_group" "web" {\n  name = "web"\n\n  egress {\n    from_port = 0\n    to_port   = 0\n    protocol  = "-1"\n  }\n\n  dynamic "ingress" {\n    for_each = { http = 80, https = 443 }\n    content {\n      description = ingress.key\n      from_port   = ingress.value\n      to_port     = ingress.value\n      protocol    = "tcp"\n    }\n  }\n}\n';
+    const out = text(simulate('plan', main(code), null));
+    expect(out).toContain('+ description = "http"');
+    expect(out).toContain('+ description = "https"');
+    expect(out).toContain('      + egress {');
+  });
+});
+
+describe('conditional resources', () => {
+  const EIP = (on: boolean) => `variable "public" {\n  default = ${on}\n}\n\nresource "aws_eip" "ip" {\n  count  = var.public ? 1 : 0\n  domain = "vpc"\n}\n\noutput "ip" {\n  value = one(aws_eip.ip[*].public_ip)\n}\n\noutput "ip_or_none" {\n  value = try(aws_eip.ip[0].public_ip, "none")\n}\n`;
+
+  it('count = cond ? 1 : 0 creates it or not, and one() / try() read it either way', () => {
+    const off = simulate('plan', main(EIP(false)), null);
+    expect(off.plan?.changes).toEqual([]);
+    expect(text(off)).toContain('  + ip         = null\n  + ip_or_none = "none"');
+    const on = simulate('apply', main(EIP(true)), null, auto);
+    expect(text(on)).toContain('aws_eip.ip[0]: Creation complete');
+    expect(on.state?.outputs.ip).toBe(on.state?.resources['aws_eip.ip[0]'].public_ip);
+    expect(on.state?.outputs.ip_or_none).toBe(on.state?.outputs.ip);
+    const gone = text(simulate('plan', main(EIP(false)), on.state!));
+    expect(gone).toContain('  # aws_eip.ip[0] will be destroyed\n  # (because index [0] is out of range for count)');
+  });
 });
 
 describe('what the lessons rely on', () => {
@@ -344,6 +676,23 @@ describe('the evaluator', () => {
     expect(ev('merge({ a = 1 }, { b = "x" })')).toEqual({ a: 1, b: 'x' });
     expect(ev('jsonencode({ b = 1, a = [true] })')).toBe('{"a":[true],"b":1}');
     expect(ev('format("%s-%03d", var.env, 7)')).toBe('dev-007');
+  });
+
+  it('has the functions repetition and conditionals lean on', () => {
+    expect(ev('length(toset(["a", "b", "a"]))')).toBe(2);
+    expect(ev('keys({ b = 1, a = 2 })')).toEqual(['a', 'b']);
+    expect(ev('values({ b = 1, a = 2 })')).toEqual([2, 1]);
+    expect(ev('lookup({ dev = "t3.micro" }, var.env, "t3.small")')).toBe('t3.micro');
+    expect(ev('lookup({ prod = "m5.large" }, var.env, "t3.small")')).toBe('t3.small');
+    expect(ev('upper(var.env)')).toBe('DEV');
+    expect(ev('lower("DEV")')).toBe('dev');
+    expect(ev('join("-", split(",", "a,b,c"))')).toBe('a-b-c');
+    expect(ev('element(var.azs, 3)')).toBe('b');
+    expect(ev('coalesce("", null, "x")')).toBe('x');
+    expect(ev('one([])')).toBeNull();
+    expect(ev('one(["x"])')).toBe('x');
+    expect(ev('try(var.azs[5], "none")')).toBe('none');
+    expect(ev('[for i in range(2) : cidrsubnet("10.0.0.0/16", 8, i)]')).toEqual(['10.0.0.0/24', '10.0.1.0/24']);
   });
 
   it('is unknown when it reads something only an apply knows', () => {
