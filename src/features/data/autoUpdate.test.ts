@@ -2,16 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { isQuietRoute, screenIsIdle } from './autoUpdate';
 
 describe('screens where a new version is applied without asking', () => {
-  it('the landing page, the dashboard, the tutorials list and any 404', () => {
-    for (const path of ['/', '', '/dashboard', '/dashboard/', '/tutorials', '/tutorials/', '/nope', '/editor', '/a/b/c']) {
+  it('the landing page, the dashboard, the learning map and any 404', () => {
+    for (const path of ['/', '', '/dashboard', '/dashboard/', '/learn', '/learn/', '/tutorials', '/nope', '/editor', '/a/b/c']) {
       expect(isQuietRoute(path), path).toBe(true);
     }
   });
 
-  it('not the editor, a tutorial lesson or the viewer (embedded too)', () => {
+  it('not the editor, a lesson or the viewer (embedded too)', () => {
     expect(isQuietRoute('/editor/prj_1')).toBe(false);
     expect(isQuietRoute('/editor/prj_1/')).toBe(false);
-    expect(isQuietRoute('/tutorials/first-vpc')).toBe(false);
+    expect(isQuietRoute('/learn/first-resource')).toBe(false);
     expect(isQuietRoute('/', '#view=abc')).toBe(false);
     expect(isQuietRoute('/', '#view=abc&embed=1')).toBe(false);
     // another fragment on the landing page is still the landing page

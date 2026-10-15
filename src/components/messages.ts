@@ -70,10 +70,9 @@ export const shellMessages = defineMessages(
     restoreProject: 'Restore project',
     loadOther: 'Load other version',
     keepMine: 'Keep mine',
-    // ProjectThumbnail / HclSnippet
+    // ProjectThumbnail
     emptyCanvas: 'Empty canvas',
     architecturePreview: 'Architecture preview',
-    newLine: 'new',
   },
   {
     close: 'Fechar',
@@ -138,6 +137,5 @@ export const shellMessages = defineMessages(
     keepMine: 'Manter a minha',
     emptyCanvas: 'Canvas vazio',
     architecturePreview: 'Prévia da arquitetura',
-    newLine: 'novo',
   },
 );

@@ -1,7 +1,5 @@
 import type { ReactNode } from 'react';
-import { useMessages } from '@/i18n/messages';
 import { cn } from '@/lib/utils';
-import { shellMessages } from './messages';
 
 /** Tiny static HCL highlighter (comments / strings / keywords). */
 export function hlLine(line: string, key: number): ReactNode {
@@ -45,23 +43,17 @@ export function hlLine(line: string, key: number): ReactNode {
   return <span key={key}>{parts}</span>;
 }
 
-/**
- * Read-only highlighted HCL block. `addedLines` (1-based) get a green tint —
- * used by tutorials to show what each step introduces.
- */
+/** Read-only highlighted HCL block. */
 export function HclSnippet({
   code,
-  addedLines,
   showLineNumbers = true,
   className,
 }: {
   code: string;
-  addedLines?: Set<number>;
   showLineNumbers?: boolean;
   className?: string;
 }) {
   const lines = code.replace(/\n$/, '').split('\n');
-  const m = useMessages(shellMessages);
   return (
     <pre
       className={cn(
@@ -70,47 +62,15 @@ export function HclSnippet({
       )}
     >
       {lines.map((line, i) => (
-        <div
-          key={i}
-          className={cn(
-            'flex whitespace-pre rounded-[3px] px-1',
-            addedLines?.has(i + 1) && 'bg-success/12',
-          )}
-        >
+        <div key={i} className="flex whitespace-pre rounded-[3px] px-1">
           {showLineNumbers ? (
             <span className="mr-3 w-6 shrink-0 select-none text-right text-[10.5px] leading-[1.85] text-faint">
               {i + 1}
             </span>
           ) : null}
           <span className="min-w-0 flex-1">{hlLine(line, i)}</span>
-          {addedLines?.has(i + 1) ? (
-            <span className="ml-2 select-none self-center rounded-[3px] bg-success/20 px-1 text-[8.5px] font-bold uppercase text-success">
-              {m.newLine}
-            </span>
-          ) : null}
         </div>
       ))}
     </pre>
   );
-}
-
-/** 1-based line numbers present in `current` but not in `previous` (multiset diff). */
-export function diffAddedLines(previous: string | undefined, current: string): Set<number> {
-  const added = new Set<number>();
-  if (previous === undefined) return added;
-  const budget = new Map<string, number>();
-  for (const line of previous.replace(/\n$/, '').split('\n')) {
-    const key = line.trim();
-    budget.set(key, (budget.get(key) ?? 0) + 1);
-  }
-  current
-    .replace(/\n$/, '')
-    .split('\n')
-    .forEach((line, i) => {
-      const key = line.trim();
-      const left = budget.get(key) ?? 0;
-      if (left > 0) budget.set(key, left - 1);
-      else if (key !== '') added.add(i + 1);
-    });
-  return added;
 }
