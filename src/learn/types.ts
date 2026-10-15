@@ -44,6 +44,10 @@ export interface SimState {
   serial: number;
   resources: Record<string, Record<string, string>>;
   outputs: Record<string, string>;
+  /** `terraform workspace`: the one this state belongs to (absent: `default`) */
+  workspace?: string;
+  /** the other workspaces' states, by name (absent: there are none) */
+  workspaces?: Record<string, SimState>;
 }
 
 /* ------------------------------------------------------------ goals */
