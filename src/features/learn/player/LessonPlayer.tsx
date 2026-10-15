@@ -7,6 +7,7 @@
 import { ArrowLeft, PanelLeftOpen } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { canvasApi } from '@/features/editor/canvasApi';
 import { useLocale } from '@/i18n/locale';
 import { useMessages } from '@/i18n/messages';
 import { textIn, type Lesson } from '@/learn/types';
@@ -76,6 +77,15 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
   const said = useGoalNews(lesson, met);
   const phone = useMatches(PHONE);
   const [view, setView] = useState<'lesson' | 'build'>('lesson');
+  // on a phone the canvas first lays out hidden (a zero-size view): fit the diagram the first time it shows
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (!phone || view !== 'build' || fitted.current) return;
+    fitted.current = true;
+    // once React Flow has measured the blocks it couldn't while hidden
+    const timer = setTimeout(() => canvasApi()?.fitView(), 300);
+    return () => clearTimeout(timer);
+  }, [phone, view]);
   const [panel, setPanel] = useState(readPanel);
   const uid = useId();
   const count = met.filter(Boolean).length;
