@@ -1,7 +1,7 @@
 /**
  * Nothing on screen is left in English. The app is crawled twice, in
  * Portuguese and in English, through the same screens and states — landing,
- * dashboard and its dialogs, tutorials, the editor (seed project and an
+ * dashboard and its dialogs, the learning map, the editor (seed project and an
  * Azure and a GCP template: palette, inspector tabs, multi-selection,
  * security panel and rules editor, cost, layout presets, ⌘K, context menus,
  * a drop hint, export / PDF / shortcuts dialogs), a project with module
@@ -369,12 +369,21 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
     await stop('restore dialog');
     await close();
 
-    await page.goto('/tutorials');
+    await page.goto('/learn');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await stop('tutorials');
-    await page.goto('/tutorials/first-vpc-ec2?step=3');
-    await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible();
-    await stop('lesson');
+    await stop('learning map, first visit');
+    // answered, with progress: the compact switch, the trail's states, earned badges
+    const slug = (await page.locator('[data-station] > a').first().getAttribute('href'))!.replace(/^.*\/learn\//, '');
+    await page.evaluate((s) => {
+      const done = { status: 'done', met: [], xp: 40 };
+      localStorage.setItem(
+        'cb-learn-v1',
+        JSON.stringify({ start: 'new', lessons: { [s]: done }, xp: 40, runs: { [s]: ['init'] }, badges: { 'first-init': '2026-10-15' }, last: s }),
+      );
+    }, slug);
+    await page.reload();
+    await expect(page.getByTestId('player-card')).toBeVisible();
+    await stop('learning map, under way');
 
     await page.goto('/nothing-here');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();

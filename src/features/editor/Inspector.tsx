@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Code2,
   Globe,
+  GraduationCap,
   Lock,
   PanelRightClose,
   Plus,
@@ -15,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { Link, useMatch } from 'react-router-dom';
 import { CostLine } from '@/features/cost/CostLine';
 import { AccessPaths } from '@/features/security/AccessPaths';
 import { ComplianceBadges } from '@/features/security/ComplianceBadges';
@@ -28,7 +30,10 @@ import { exprMentions, exprPreview, lit, literalString, pathTargets, ref } from 
 import type { Op } from '@/ir/ops';
 import { appendReference, instanceRef, isListValued } from '@/ir/repeat';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
+import { useLocale } from '@/i18n/locale';
 import { messagesFor, useMessages } from '@/i18n/messages';
+import { lessonsTeaching } from '@/learn/lessons';
+import { textIn } from '@/learn/types';
 import { cn, tfName } from '@/lib/utils';
 import { fieldHelp, resourceDescription, resourceName } from '@/resources/i18n';
 import { PROVIDER_LABELS, ResourceIcon } from '@/resources/icons';
@@ -939,6 +944,10 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node?.id]);
   const def = node ? getDef(node.type) : undefined;
+  // "Learn about this": the first lesson on this type (not from inside a lesson)
+  const locale = useLocale((s) => s.locale);
+  const inLesson = useMatch('/learn/*') !== null;
+  const lesson = node && !inLesson ? lessonsTeaching(node.type)[0] : undefined;
 
   if (selectedIds.length > 1) {
     return docked ? (
@@ -1015,6 +1024,18 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
                     >
                       {m.terraformDocs} <ArrowUpRight className="h-3 w-3" />
                     </a>
+                  </>
+                ) : null}
+                {lesson ? (
+                  <>
+                    {' · '}
+                    <Link
+                      to={`/learn/${lesson.slug}`}
+                      title={m.learnAboutTitle(lesson.code, textIn(lesson.title, locale))}
+                      className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
+                    >
+                      <GraduationCap className="h-3 w-3" /> {m.learnAbout}
+                    </Link>
                   </>
                 ) : null}
               </p>

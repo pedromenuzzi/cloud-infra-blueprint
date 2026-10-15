@@ -108,6 +108,20 @@ for (const theme of ['light', 'dark'] as const) {
       await expectAccessible(page, 'dashboard');
     });
 
+    test('learning map: first visit, under way, and the reset dialog', async ({ page }) => {
+      await page.goto('/learn');
+      await expect(page.getByRole('heading', { name: 'Badges', level: 2 })).toBeVisible();
+      await expectAccessible(page, 'learning map, first visit');
+
+      await page.getByText('New to AWS and Terraform').click();
+      await expect(page.getByRole('radio', { name: /New to AWS/ })).toBeChecked();
+      await expectAccessible(page, 'learning map');
+
+      await page.getByRole('button', { name: 'Reset progress' }).click();
+      await expect(page.getByRole('alertdialog', { name: 'Reset your learning progress?' })).toBeVisible();
+      await expectAccessible(page, 'reset progress dialog');
+    });
+
     test('templates modal', async ({ page }) => {
       await page.goto('/dashboard');
       await page.getByRole('button', { name: /New Project/ }).click();

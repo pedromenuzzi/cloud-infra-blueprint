@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { createBrowserRouter, Outlet, useLocation, useMatch } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useLocation, useMatch, useParams } from 'react-router-dom';
 import { AppErrorScreen } from '@/components/AppErrorScreen';
 import { ToastViewport } from '@/components/Toast';
 import { ConfirmHost } from '@/components/Confirm';
@@ -15,8 +15,6 @@ const LandingPage = lazyWithReload(() => import('./routes/LandingPage'));
 const ViewPage = lazyWithReload(() => import('./routes/ViewPage'));
 const DashboardPage = lazyWithReload(() => import('./routes/DashboardPage'));
 const EditorPage = lazyWithReload(() => import('./routes/EditorPage'));
-const TutorialsPage = lazyWithReload(() => import('./routes/TutorialsPage'));
-const TutorialPlayerPage = lazyWithReload(() => import('./routes/TutorialPlayerPage'));
 const LearnPage = lazyWithReload(() => import('./routes/LearnPage'));
 const LessonPage = lazyWithReload(() => import('./routes/LessonPage'));
 // XP, badges and finished lessons: only on the learning side
@@ -40,6 +38,19 @@ function RouteFallback() {
  */
 function IndexRoute() {
   return isViewHash(useLocation().hash) ? <ViewPage /> : <LandingPage />;
+}
+
+/** the retired tutorials, each now a lesson of the learning map (old links and bookmarks keep working) */
+const TUTORIAL_LESSONS = new Map([
+  ['first-vpc-ec2', 'your-vpc'],
+  ['static-site-cdn', 's3-bucket-tags'],
+  ['refs-become-connections', 'references'],
+  ['azure-nesting', 'azure-resource-groups'],
+]);
+
+function TutorialRedirect() {
+  const lesson = TUTORIAL_LESSONS.get(useParams().slug ?? '');
+  return <Navigate to={lesson ? `/learn/${lesson}` : '/learn'} replace />;
 }
 
 function Root() {
@@ -93,8 +104,8 @@ export const router = createBrowserRouter(
             { index: true, element: <IndexRoute /> },
             { path: 'dashboard', element: <DashboardPage /> },
             { path: 'editor/:id', element: <EditorPage /> },
-            { path: 'tutorials', element: <TutorialsPage /> },
-            { path: 'tutorials/:slug', element: <TutorialPlayerPage /> },
+            { path: 'tutorials', element: <Navigate to="/learn" replace /> },
+            { path: 'tutorials/:slug', element: <TutorialRedirect /> },
             { path: 'learn', element: <LearnPage /> },
             { path: 'learn/:slug', element: <LessonPage /> },
             { path: '*', element: <NotFoundPage /> },

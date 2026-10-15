@@ -1,18 +1,18 @@
 /**
  * When a new version can be applied without asking: on the screens where
- * nothing is ever in progress (the landing page, the dashboard, the tutorials
- * list, the 404 page), as long as no dialog or menu is open, nothing has been
- * typed into a field and no "Undo" is still on offer. The editor, a tutorial
- * lesson and the viewer keep the "Update available" prompt (./UpdatePrompt.tsx).
+ * nothing is ever in progress (the landing page, the dashboard, the learning
+ * map, the 404 page), as long as no dialog or menu is open, nothing has been
+ * typed into a field and no "Undo" is still on offer. The editor, a lesson
+ * and the viewer keep the "Update available" prompt (./UpdatePrompt.tsx).
  */
 import { isViewHash } from '@/lib/share';
 
 /** routes that hold work in progress (an open project, a lesson, a shared diagram) */
-const BUSY_ROUTES = [/^\/editor\/[^/]+$/, /^\/tutorials\/[^/]+$/];
+const BUSY_ROUTES = [/^\/editor\/[^/]+$/, /^\/learn\/[^/]+$/];
 
 /**
  * `pathname` is relative to the app's base path (React Router's location):
- * the landing page, /dashboard, /tutorials and any unknown path (404) are
+ * the landing page, /dashboard, /learn and any unknown path (404) are
  * quiet; the editor, a lesson and the viewer (`/#view=…`) are not.
  */
 export function isQuietRoute(pathname: string, hash = ''): boolean {

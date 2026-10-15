@@ -20,7 +20,7 @@ export const shellMessages = defineMessages(
     primaryNav: 'Primary',
     home: 'Cloud Blueprint home',
     projects: 'Projects',
-    tutorials: 'Tutorials',
+    learn: 'Learn',
     templates: 'Templates',
     githubRepo: 'GitHub repository',
     // AppErrorScreen
@@ -87,7 +87,7 @@ export const shellMessages = defineMessages(
     primaryNav: 'Principal',
     home: 'Página inicial do Cloud Blueprint',
     projects: 'Projetos',
-    tutorials: 'Tutoriais',
+    learn: 'Aprender',
     templates: 'Templates',
     githubRepo: 'Repositório no GitHub',
     somethingWrong: 'Algo deu errado',

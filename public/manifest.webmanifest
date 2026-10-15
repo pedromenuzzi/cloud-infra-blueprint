@@ -16,6 +16,6 @@
   ],
   "shortcuts": [
     { "name": "New project", "url": "./dashboard?new=1" },
-    { "name": "Tutorials", "url": "./tutorials" }
+    { "name": "Learn Terraform", "url": "./learn" }
   ]
 }

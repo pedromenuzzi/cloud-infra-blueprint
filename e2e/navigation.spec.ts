@@ -35,19 +35,3 @@ test('unknown routes render the 404 page', async ({ page }) => {
   await expect(page).toHaveTitle('Page not found · Cloud Blueprint');
   await expect(page.getByRole('link', { name: 'Back to projects' })).toBeVisible();
 });
-
-test('a tutorial steps forward and opens the current step in the editor', async ({ page }) => {
-  await page.goto('/tutorials');
-  await page.getByRole('button', { name: /^Start tutorial / }).first().click();
-  await expect(page).toHaveURL(/\/tutorials\/[\w-]+$/);
-
-  const counter = page.getByText(/^Step \d+ of \d+$/);
-  await expect(counter).toHaveText(/^Step 1 of/);
-  await page.getByRole('button', { name: 'Next' }).click();
-  await expect(counter).toHaveText(/^Step 2 of/);
-
-  await page.getByRole('button', { name: /Open this step in the editor/ }).click();
-  await expect(page).toHaveURL(/\/editor\//);
-  await waitForMonaco(page);
-  await expect(canvasStats(page)).toBeVisible();
-});

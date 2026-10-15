@@ -37,7 +37,8 @@ async function backUp(): Promise<string | null> {
       showToast(messagesFor(dataMessages).nothingToBackUp);
       return null;
     }
-    showToast(messagesFor(dataMessages).backupDownloaded(done.count), 'success');
+    const m = messagesFor(dataMessages);
+    showToast(m.backupDownloaded(done.count), 'success', done.learning ? { note: m.backupHasLearning } : undefined);
     return done.fileName;
   } catch {
     showToast(messagesFor(dataMessages).backupFailed, 'error');
@@ -245,9 +246,11 @@ export function DataPanel({ projects, onChanged }: { projects: Project[]; onChan
           <RestoreDialog
             file={restoreFile}
             onClose={() => useDataDialogs.setState({ restore: null })}
-            onRestored={({ added, replaced }) => {
+            onRestored={({ added, replaced, learning }) => {
               useDataDialogs.setState({ restore: null });
-              showToast(messagesFor(dataMessages).restored(added + replaced, replaced), 'success');
+              const m = messagesFor(dataMessages);
+              if (added + replaced === 0) showToast(m.learningRestored, 'success');
+              else showToast(m.restored(added + replaced, replaced), 'success', learning ? { note: m.learningRestored } : undefined);
               onChanged();
             }}
           />

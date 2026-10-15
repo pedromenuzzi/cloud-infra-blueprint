@@ -1,17 +1,26 @@
 import {
   ArrowRight,
+  Award,
   Boxes,
+  Check,
   FileDown,
   FileUp,
+  Footprints,
   Github,
+  GraduationCap,
   Keyboard,
   Lock,
   MousePointerClick,
+  PenTool,
   Play,
   RefreshCw,
+  Route,
   ShieldCheck,
   Sparkles,
+  SquareTerminal,
+  Trophy,
   WandSparkles,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -20,7 +29,7 @@ import { hlLine } from '@/components/HclSnippet';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
-import { Button, Kbd, Logo } from '@/components/ui';
+import { Button, buttonClass, Kbd, Logo } from '@/components/ui';
 import { useMessages } from '@/i18n/messages';
 import { REPO_URL } from '@/lib/links';
 import { createProject, openDemoProject, uniqueProjectName } from '@/lib/storage';
@@ -296,6 +305,160 @@ function FeatureTile({ icon: Icon, category }: { icon: LucideIcon; category: Cat
   );
 }
 
+/* --------------------------------------------------------- learning map */
+
+const LEARN_POINTS: Array<{ icon: LucideIcon; category: Category }> = [
+  { icon: Route, category: 'network' },
+  { icon: Trophy, category: 'compute' },
+  { icon: SquareTerminal, category: 'containers' },
+  { icon: Footprints, category: 'edge' },
+];
+
+/** the preview trail's stations: code, state, height on the wave */
+const PREVIEW_STATIONS: Array<[string, 'done' | 'progress', number]> = [
+  ['0.1', 'done', 1],
+  ['0.2', 'done', 2],
+  ['0.3', 'done', 1],
+  ['0.4', 'progress', 0],
+];
+
+/** what the simulated terminal prints (Terraform's own words, never translated) */
+const PREVIEW_TERMINAL: Array<[string, string]> = [
+  ['$ terraform plan', 'text-foreground'],
+  ['  + aws_vpc.main', 'text-success'],
+  ['  + aws_subnet.public', 'text-success'],
+  ['Plan: 2 to add, 0 to change, 0 to destroy.', 'text-muted'],
+  ['$ terraform apply', 'text-foreground'],
+  ['Apply complete! Resources: 2 added.', 'text-success'],
+];
+
+/** a level of the map and the simulated terminal, drawn here (the real map loads on /learn) */
+function LearnPreview() {
+  const m = useMessages(landingMessages);
+  const cols = PREVIEW_STATIONS.length + 1;
+  const at = (i: number, wave: number): [number, number] => [((i + 0.5) / cols) * 100, 34 + wave * 18];
+  const points = [...PREVIEW_STATIONS.map(([, , wave], i) => at(i, wave)), at(cols - 1, 1)];
+  return (
+    <div role="img" aria-label={m.mapLabel} className="relative mx-auto w-full max-w-lg pb-36">
+      <div aria-hidden="true" className="bp-island bp-lv-0 relative rounded-[20px] border p-5 shadow-lg">
+        <div className="flex items-center justify-between">
+          <span className="h-2.5 w-24 rounded-full bg-[color-mix(in_srgb,var(--lv)_35%,transparent)]" />
+          <span className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
+            <span className="block h-full w-3/4 rounded-full bg-[var(--lv)]" />
+          </span>
+        </div>
+        <div className="relative mt-3 h-[104px]">
+          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 104" preserveAspectRatio="none">
+            {points.slice(0, -1).map(([x, y], i) => {
+              const [x2, y2] = points[i + 1];
+              const mid = (x + x2) / 2;
+              const d = `M${x} ${y} C${mid} ${y} ${mid} ${y2} ${x2} ${y2}`;
+              return PREVIEW_STATIONS[i][1] === 'done' ? (
+                <path key={i} d={d} fill="none" stroke="var(--lv)" strokeWidth={3.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+              ) : (
+                <path
+                  key={i}
+                  d={d}
+                  fill="none"
+                  stroke="var(--border-strong)"
+                  strokeWidth={3}
+                  strokeDasharray="0.5 9"
+                  strokeLinecap="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              );
+            })}
+          </svg>
+          {PREVIEW_STATIONS.map(([code, state], i) => (
+            <span
+              key={code}
+              className={cn(
+                'absolute flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full',
+                state === 'done'
+                  ? 'bp-medal'
+                  : 'border-2 border-[color:var(--lv)] bg-surface-1 font-mono text-[11.5px] font-bold text-[color:var(--lv-text)]',
+              )}
+              style={{ left: `${points[i][0]}%`, top: points[i][1] }}
+            >
+              {state === 'done' ? <Check className="h-5 w-5" strokeWidth={2.6} /> : code}
+              {state === 'progress' ? <span className="bp-pulse-ring absolute inset-0 rounded-full border-2 border-[color:var(--lv)]" /> : null}
+            </span>
+          ))}
+          <span
+            className="bp-medal-locked absolute flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full"
+            style={{ left: `${points[cols - 1][0]}%`, top: points[cols - 1][1] }}
+          >
+            <Award className="h-5 w-5" />
+          </span>
+        </div>
+      </div>
+      <div aria-hidden="true" translate="no" className="absolute bottom-0 right-0 w-[86%] overflow-hidden rounded-[14px] border bg-surface-1 shadow-xl">
+        <div className="flex items-center gap-1.5 border-b bg-surface-2/70 px-3 py-2">
+          <span className="h-2 w-2 rounded-full bg-[#ff5f57]" />
+          <span className="h-2 w-2 rounded-full bg-[#febc2e]" />
+          <span className="h-2 w-2 rounded-full bg-[#28c840]" />
+          <span className="ml-2 font-mono text-[10.5px] text-faint">terraform</span>
+        </div>
+        <pre className="overflow-hidden px-3.5 py-3 font-mono text-[11px] leading-[1.65]">
+          {PREVIEW_TERMINAL.map(([line, color]) => (
+            <span key={line} className={cn('block whitespace-pre', color)}>
+              {line}
+            </span>
+          ))}
+        </pre>
+      </div>
+      <span
+        aria-hidden="true"
+        translate="no"
+        className="absolute left-0 top-[44%] flex -rotate-6 items-center gap-1 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#ea580c] px-3 py-1 text-[13px] font-bold text-white shadow-lg sm:-left-4"
+      >
+        <Zap className="h-3.5 w-3.5" fill="currentColor" /> +40 XP
+      </span>
+      <span
+        aria-hidden="true"
+        className="absolute -top-4 right-3 flex rotate-3 items-center gap-2 rounded-full border bg-surface-1 py-1 pl-1 pr-3 text-[12px] font-semibold shadow-lg"
+      >
+        <span className="bp-medal bp-gold flex h-6 w-6 items-center justify-center rounded-full">
+          <Award className="h-3.5 w-3.5" />
+        </span>
+        {m.badgeUnlocked}
+      </span>
+    </div>
+  );
+}
+
+function LearnSection() {
+  const m = useMessages(landingMessages);
+  return (
+    <section id="learn" className="mx-auto max-w-6xl scroll-mt-16 px-6 pb-24">
+      <div className="bp-learn-hero grid items-center gap-14 rounded-[28px] border bg-surface-1/60 px-6 py-12 md:px-12 md:py-16 lg:grid-cols-2">
+        <div>
+          <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.learnEyebrow}</p>
+          <h2 className="mt-3 text-balance text-[32px] font-bold leading-tight tracking-[-0.03em] md:text-[38px]">{m.learnTitle}</h2>
+          <p className="mt-4 max-w-xl text-pretty text-[15px] leading-relaxed text-muted">{m.learnBody}</p>
+          <ul className="mt-8 grid gap-5 sm:grid-cols-2">
+            {m.learnPoints.map((point, i) => (
+              <li key={point.title} className="flex gap-3">
+                <span className="shrink-0">
+                  <FeatureTile icon={LEARN_POINTS[i].icon} category={LEARN_POINTS[i].category} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[14px] font-semibold">{point.title}</span>
+                  <span className="mt-0.5 block text-[13px] leading-relaxed text-muted">{point.body}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Link to="/learn" className={buttonClass('primary', 'lg', 'mt-9 h-11 px-6 text-[14.5px] shadow-md')}>
+            <GraduationCap className="h-4 w-4" /> {m.openMap} <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+        <LearnPreview />
+      </div>
+    </section>
+  );
+}
+
 export default function LandingPage() {
   const navigate = useNavigate();
   const m = useMessages(landingMessages);
@@ -354,8 +517,8 @@ export default function LandingPage() {
             <a href="#templates" className="hover:text-foreground">
               {m.navTemplates}
             </a>
-            <Link to="/tutorials" className="hover:text-foreground">
-              {m.navTutorials}
+            <Link to="/learn" className="hover:text-foreground">
+              {m.navLearn}
             </Link>
             <a href={REPO_URL} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-foreground">
               <Github className="h-3.5 w-3.5" /> GitHub
@@ -391,14 +554,48 @@ export default function LandingPage() {
             <p className="bp-rise mx-auto mt-6 max-w-2xl text-pretty text-[17px] leading-relaxed text-muted [animation-delay:80ms]">
               {m.heroBody}
             </p>
-            <div className="bp-rise mt-9 flex flex-wrap items-center justify-center gap-3 [animation-delay:160ms]">
-              <Button size="lg" className="h-11 px-6 text-[14.5px] shadow-md" onClick={() => navigate('/dashboard')}>
-                {m.startFree} <ArrowRight className="h-4 w-4" />
-              </Button>
-              <Button size="lg" variant="outline" className="h-11 px-5 text-[14.5px]" onClick={openDemo}>
-                <Play className="h-4 w-4" /> {m.openDemo}
-              </Button>
-            </div>
+            <nav aria-label={m.doors} className="bp-rise mx-auto mt-9 grid max-w-2xl gap-3 text-left sm:grid-cols-2 [animation-delay:160ms]">
+              <Link
+                to="/dashboard"
+                className="group flex items-start gap-3.5 rounded-[16px] border border-transparent bg-primary p-4 text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-white/15" aria-hidden="true">
+                  <PenTool className="h-[18px] w-[18px]" />
+                </span>
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5 text-[15.5px] font-semibold">
+                    {m.doorBuild}
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                  </span>
+                  <span className="mt-0.5 block text-[12.5px] leading-snug">{m.doorBuildBody}</span>
+                </span>
+              </Link>
+              <Link
+                to="/learn"
+                className="group flex items-start gap-3.5 rounded-[16px] border bg-surface-1 p-4 shadow-md transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                <span
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#6366f1] to-[#0891b2] text-white shadow-sm"
+                  aria-hidden="true"
+                >
+                  <GraduationCap className="h-[18px] w-[18px]" />
+                </span>
+                <span className="min-w-0">
+                  <span className="flex items-center gap-1.5 text-[15.5px] font-semibold text-foreground">
+                    {m.doorLearn}
+                    <ArrowRight className="h-4 w-4 text-primary transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                  </span>
+                  <span className="mt-0.5 block text-[12.5px] leading-snug text-muted">{m.doorLearnBody}</span>
+                </span>
+              </Link>
+            </nav>
+            <button
+              type="button"
+              onClick={openDemo}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-sm text-[13px] font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              <Play className="h-3.5 w-3.5" aria-hidden="true" /> {m.orDemo}
+            </button>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[12.5px] text-faint">
               <span className="flex items-center gap-1.5">
                 <ProviderDot provider="aws" size={8} /> AWS
@@ -457,6 +654,8 @@ export default function LandingPage() {
             ))}
           </div>
         </section>
+
+        <LearnSection />
 
         <section id="how" className="scroll-mt-16 border-y bg-surface-1/70">
           <div className="mx-auto max-w-6xl px-6 py-24">
