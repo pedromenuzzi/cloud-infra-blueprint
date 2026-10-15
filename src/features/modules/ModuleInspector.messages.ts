@@ -61,6 +61,7 @@ export const moduleInspectorMessages = defineMessages(
     resourcesInside: (n: number) => `Resources inside (${n})`,
     noResources: 'No resources of its own.',
     nestedModules: (n: number) => `Module calls inside (${n})`,
+    dataInside: (n: number) => `Data sources inside (${n})`,
 
     opaqueRemote:
       'Contents not analysed: the module comes from outside the project, so the security audit and the cost estimate can’t look inside it.',
@@ -130,6 +131,7 @@ export const moduleInspectorMessages = defineMessages(
     resourcesInside: (n) => `Recursos dentro dele (${n})`,
     noResources: 'Nenhum recurso próprio.',
     nestedModules: (n) => `Chamadas de módulo dentro dele (${n})`,
+    dataInside: (n) => `Fontes de dados dentro dele (${n})`,
 
     opaqueRemote:
       'Conteúdo não analisado: o módulo vem de fora do projeto, então a auditoria de segurança e a estimativa de custo não enxergam o que há dentro dele.',

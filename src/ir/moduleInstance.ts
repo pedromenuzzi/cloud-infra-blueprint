@@ -5,7 +5,10 @@
  *
  * An input given as a literal at the call (or one the call leaves out, whose
  * default is a literal) replaces every `var.x` in the module (`var.x[0]` and
- * `var.x.key` too, when the value is a list or an object). An input given as
+ * `var.x.key` too, when the value is a list or an object), and so does a
+ * `local.x` of the module whose value is literal once the inputs are in (an
+ * input given as the caller's `var.x` or `local.x` is followed to its
+ * literal too). An input given as
  * an expression stays `var.x`, without a default: the analyses then say they
  * can't tell, and `fromInputs` says where the value comes from. Providers
  * are inherited from the caller (`providers = { aws = aws.west }` honored).
@@ -16,7 +19,7 @@
 import { exprPreview } from './expr';
 import { moduleTarget, type LocalModule } from './localModules';
 import { moduleAddress, moduleInputs } from './modules';
-import { repeatOf, type RepeatKind } from './repeat';
+import { localValues, repeatOf, type RepeatKind } from './repeat';
 import type { Expression, IR, ModuleNode, ProviderBlock, VariableDecl } from './types';
 
 export interface ModuleInstance {
@@ -49,7 +52,7 @@ export const PATH_SEP = ' › ';
 export const pathLabel = (path: string[]): string => path.map(moduleAddress).join(PATH_SEP);
 export const inModuleLabel = (path: string[], id: string): string => `${pathLabel(path)}${PATH_SEP}${id}`;
 
-const VAR_PATH = /^var\.([A-Za-z_][\w-]*)((?:\.[A-Za-z_][\w-]*|\[\d+\]|\["[^"]*"\])*)$/;
+const REF_PATH = /^(var|local)\.([A-Za-z_][\w-]*)((?:\.[A-Za-z_][\w-]*|\[\d+\]|\["[^"]*"\])*)$/;
 const STEP = /\.([A-Za-z_][\w-]*)|\[(\d+)\]|\["([^"]*)"\]/g;
 
 /** a value made of literals only (lists and objects of them included) */
@@ -73,14 +76,17 @@ function walkInto(value: Expression, steps: string): Expression | undefined {
   return cur && isLiteralish(cur) ? cur : undefined;
 }
 
-/** `e` with the known variables put in (unchanged objects are kept, so untouched blocks stay shared) */
-export function substituteVars(e: Expression, values: Map<string, Expression>): Expression {
+/** the value behind `var.x` / `local.x` (the key), when known */
+type ValueOf = (key: string) => Expression | undefined;
+
+/** `e` with the known variables and locals put in (unchanged objects are kept, so untouched blocks stay shared) */
+export function substituteVars(e: Expression, values: ValueOf): Expression {
   switch (e.kind) {
     case 'ref': {
-      const m = VAR_PATH.exec(e.path);
-      const value = m ? values.get(m[1]) : undefined;
+      const m = REF_PATH.exec(e.path);
+      const value = m ? values(`${m[1]}.${m[2]}`) : undefined;
       if (!m || !value) return e;
-      return m[2] ? (walkInto(value, m[2]) ?? e) : value;
+      return m[3] ? (walkInto(value, m[3]) ?? e) : isLiteralish(value) ? value : e;
     }
     case 'list': {
       const items = e.items.map((x) => substituteVars(x, values));
@@ -103,7 +109,7 @@ export function substituteVars(e: Expression, values: Map<string, Expression>): 
   }
 }
 
-export function substituteRecord(record: Record<string, Expression>, values: Map<string, Expression>): Record<string, Expression> {
+export function substituteRecord(record: Record<string, Expression>, values: ValueOf): Record<string, Expression> {
   let out: Record<string, Expression> | null = null;
   for (const [k, v] of Object.entries(record)) {
     const next = substituteVars(v, values);
@@ -112,15 +118,15 @@ export function substituteRecord(record: Record<string, Expression>, values: Map
   return out ?? record;
 }
 
-/** the literal value of an input as given at the call (variables of the caller followed to their defaults) */
+/** the literal value of an input as given at the call (variables of the caller followed to their defaults, locals to their values) */
 function literalAtCall(e: Expression, caller: IR, depth = 0): Expression | undefined {
   if (isLiteralish(e)) return e;
   if (depth > 4) return undefined;
   if (e.kind === 'ref') {
-    const m = VAR_PATH.exec(e.path);
-    const d = m ? caller.variables.find((v) => v.name === m[1])?.args.default : undefined;
+    const m = REF_PATH.exec(e.path);
+    const d = !m ? undefined : m[1] === 'var' ? caller.variables.find((v) => v.name === m[2])?.args.default : localValues(caller).get(m[2]);
     if (!m || !d) return undefined;
-    return m[2] ? walkInto(d, m[2]) : literalAtCall(d, caller, depth + 1);
+    return m[3] ? walkInto(d, m[3]) : literalAtCall(d, caller, depth + 1);
   }
   if (e.kind === 'list') {
     const items = e.items.map((x) => literalAtCall(x, caller, depth + 1));
@@ -176,7 +182,7 @@ export function instantiate(
     if (given !== undefined) {
       const value = literalAtCall(given, caller);
       if (value) {
-        values.set(v.name, value);
+        values.set(`var.${v.name}`, value);
         return { ...v, args: { ...v.args, default: value } };
       }
       fromInputs.set(v.name, exprPreview(given));
@@ -186,11 +192,23 @@ export function instantiate(
       return { ...v, args };
     }
     const own = v.args.default;
-    if (own && isLiteralish(own)) values.set(v.name, own);
+    if (own && isLiteralish(own)) values.set(`var.${v.name}`, own);
     return v;
   });
+  // the module's locals with the inputs (and the other locals) put in, on first use
+  const locals = localValues(child);
+  const pending = new Set<string>();
+  const valueOf: ValueOf = (key) => {
+    if (values.has(key) || !key.startsWith('local.')) return values.get(key);
+    const written = locals.get(key.slice('local.'.length));
+    if (!written || pending.has(key)) return undefined;
+    pending.add(key);
+    values.set(key, substituteVars(written, valueOf));
+    pending.delete(key);
+    return values.get(key);
+  };
   const sub = <T extends { args: Record<string, Expression> }>(b: T): T => {
-    const args = substituteRecord(b.args, values);
+    const args = substituteRecord(b.args, valueOf);
     return args === b.args ? b : { ...b, args };
   };
   return {
@@ -200,6 +218,7 @@ export function instantiate(
       resources: child.resources.map(sub),
       outputs: child.outputs.map(sub),
       modules: child.modules.map(sub),
+      data: child.data.map(sub),
       providers: child.providers.length > 0 ? child.providers : inheritedProviders(call, caller),
     },
     fromInputs,

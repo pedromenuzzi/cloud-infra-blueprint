@@ -12,6 +12,7 @@ import { create } from 'zustand';
 import {
   clampSplit,
   defaultPrefs,
+  normalizePrefs,
   readPrefs,
   withPreset,
   withSection,
@@ -73,6 +74,12 @@ interface LayoutState {
   closeDrawer(): void;
   /** is this panel currently showing (for toggle pressed-state) */
   isOpen(panel: PanelId): boolean;
+  /**
+   * A page with a layout of its own (a lesson) borrows the store: `prefs`
+   * apply over the user's, nothing changed meanwhile is written, and the
+   * function returned puts the user's layout back.
+   */
+  borrow(prefs: Partial<LayoutPrefs>): () => void;
 }
 
 function prefsOf(s: LayoutState): LayoutPrefs {
@@ -92,11 +99,13 @@ function stateOf(prefs: LayoutPrefs): Pick<LayoutState, 'panels' | 'paletteSide'
 
 /** what "canvas focus" hid, to put back (this tab only) */
 let focusRestore: { palette: boolean; code: boolean } | null = null;
+/** a page borrowed the layout: its changes aren't the user's preferences */
+let borrowed = false;
 
 export const useLayout = create<LayoutState>((set, get) => {
   const commit = (prefs: LayoutPrefs, extra: Partial<LayoutState> = {}) => {
     set({ ...stateOf(prefs), ...extra });
-    writePrefs(storage(), prefs);
+    if (!borrowed) writePrefs(storage(), prefs);
   };
 
   return {
@@ -185,6 +194,17 @@ export const useLayout = create<LayoutState>((set, get) => {
       if (panel === 'palette') return drawer === 'palette';
       if (panel === 'code') return !panels.canvas || drawer === 'code';
       return panels[panel];
+    },
+    borrow(prefs) {
+      const own = prefsOf(get());
+      borrowed = true;
+      focusRestore = null;
+      set({ ...stateOf(normalizePrefs({ ...own, ...prefs })), drawer: null });
+      return () => {
+        borrowed = false;
+        focusRestore = null;
+        set({ ...stateOf(own), drawer: null, panelDrag: null });
+      };
     },
   };
 });

@@ -12,6 +12,7 @@ import { currentLocale, type Locale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
 import { collectRefs } from '@/ir/expr';
 import { inModuleLabel, moduleInstances, type ModuleInstance } from '@/ir/moduleInstance';
+import { localValue } from '@/ir/repeat';
 import type { IR } from '@/ir/types';
 import { auditSecurity, gradeOf, scoreOf, SEVERITY_ORDER, type AuditResult, type Finding, type Severity } from './audit';
 import { moduleAuditMessages } from './modules.messages';
@@ -41,11 +42,19 @@ export interface ModuleExposure {
   ports: string[];
 }
 
-/** The variables a block of the module reads (`var.x`, in raw expressions too). */
+/** The variables a block of the module reads (`var.x`, in raw expressions too, and through the locals it reads). */
 function varsRead(ir: IR, id: string): Set<string> {
   const block = ir.resources.find((r) => r.id === id);
   const refs: Array<{ field: string; path: string }> = [];
   for (const [field, e] of Object.entries(block?.args ?? {})) collectRefs(e, field, refs);
+  const followed = new Set<string>();
+  for (let i = 0; i < refs.length; i++) {
+    const name = /^local\.([A-Za-z_][\w-]*)/.exec(refs[i].path)?.[1];
+    const value = name !== undefined && !followed.has(name) ? localValue(ir, name) : undefined;
+    if (!value) continue;
+    followed.add(name!);
+    collectRefs(value, refs[i].field, refs);
+  }
   return new Set(refs.flatMap((r) => (/^var\.([A-Za-z_][\w-]*)/.exec(r.path)?.[1] ?? []) as string[]));
 }
 

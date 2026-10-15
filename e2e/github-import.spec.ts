@@ -27,7 +27,8 @@ function dialog(page: Page) {
 
 async function openFromDashboard(page: Page) {
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'Import from GitHub…' }).click();
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'From GitHub…' }).click();
   await expect(dialog(page)).toBeVisible();
   return dialog(page);
 }

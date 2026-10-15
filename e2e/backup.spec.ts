@@ -1,6 +1,7 @@
 /**
  * Your data: back up every project as one .zip, restore it (as copies or
- * replacing), the storage meter and its 70% nudge.
+ * replacing), the learning progress riding along, the storage meter and its
+ * 70% nudge.
  */
 import { readFile } from 'node:fs/promises';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
@@ -55,6 +56,49 @@ test('backs up every project: a folder of .tf files each, and a manifest', async
     expect(strFromU8(entries[`production-web/${file}`])).toBe(seed.files[file]);
   }
   expect(entries['README.md']).toBeDefined();
+});
+
+test('learning progress goes into the backup and comes back, saying what it replaces', async ({ page }) => {
+  const slug = 'first-resource';
+  const learning = (xp: number, lessons = 1) => ({
+    start: 'aws',
+    xp,
+    lessons: lessons ? { [slug]: { status: 'done', met: [], xp } } : {},
+    last: slug,
+  });
+  const store = async (progress: object) => {
+    await page.evaluate((p) => localStorage.setItem('cb-learn-v1', JSON.stringify(p)), progress);
+    await page.reload();
+  };
+  await page.goto('/dashboard');
+  await store(learning(40));
+
+  const { bytes } = await downloadBackup(page);
+  await expect(page.getByText('Your learning progress is in it too.')).toBeVisible();
+  const entries = unzipSync(new Uint8Array(bytes));
+  expect(JSON.parse(strFromU8(entries['manifest.json'])).learning).toBe('learning.json');
+  expect(JSON.parse(strFromU8(entries['learning.json']))).toMatchObject({ start: 'aws', xp: 40, last: slug });
+
+  // this browser moved on meanwhile: restoring says what it replaces
+  await store(learning(90, 0));
+  await restoreFile(page, 'my-backup.zip', bytes);
+  const dialog = page.getByRole('dialog', { name: /Restore from backup/ });
+  await expect(dialog.getByRole('checkbox', { name: 'Restore my learning progress' })).toBeChecked();
+  await expect(dialog.getByText('The backup holds 40 XP and 1 finished lesson.')).toBeVisible();
+  await expect(dialog.getByText('It replaces the progress in this browser (90 XP, 0 finished lessons).')).toBeVisible();
+  // the project is already here: only the progress is left to restore
+  await dialog.getByRole('button', { name: 'Restore learning progress' }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('Learning progress restored')).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cb-learn-v1')!))).toMatchObject({ xp: 40, start: 'aws', last: slug });
+
+  // left unchecked, the progress here stays
+  await store(learning(7));
+  await restoreFile(page, 'my-backup.zip', bytes);
+  await dialog.getByRole('checkbox', { name: 'Restore my learning progress' }).uncheck();
+  await expect(dialog.getByRole('button', { name: /^Restore/ })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cb-learn-v1')!).xp)).toBe(7);
 });
 
 test('restore: "add as copies" keeps what is here and adds the backup’s version next to it', async ({ page }) => {

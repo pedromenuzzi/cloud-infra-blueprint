@@ -9,8 +9,8 @@
  *   (`warmOfflineCache`), so the whole editor opens offline afterwards.
  * - A new deploy: the new worker installs and WAITS. The open tab keeps the
  *   version it started with (every chunk it may still ask for stays cached).
- *   On a screen where nothing is in progress (landing, dashboard, tutorials
- *   list, 404: see autoUpdate.ts) it's applied right away, reloading once
+ *   On a screen where nothing is in progress (landing, dashboard, learning
+ *   map, 404: see autoUpdate.ts) it's applied right away, reloading once
  *   (`autoApplyUpdate`, under chunkReload.ts's loop guard); elsewhere (the
  *   editor, a lesson, the viewer) a small "Update available, Reload" prompt
  *   appears. Reload = the waiting worker skips waiting, then the page reloads

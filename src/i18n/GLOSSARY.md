@@ -7,7 +7,9 @@ One word per idea across the whole app. Tone: natural Brazilian Portuguese,
 (`cidr_block`, `db_subnet_group_name`), resource type addresses
 (`aws_instance.web`), provider and product names (AWS, Azure, GCP, EC2, S3,
 RDS, Lambda, VPC, Cloud Run, Monaco), file names, keyboard shortcuts, CIS /
-FSBP control IDs, port and protocol names (SSH, HTTPS, TCP). Key names keep
+FSBP control IDs, port and protocol names (SSH, HTTPS, TCP), Terraform CLI
+commands (`init`, `validate`, `plan`, `apply`, `destroy`, also as the
+lesson terminal's buttons). "Terminal" is the same word in both. Key names keep
 their keyboard spelling (Enter, Esc, Del, Ctrl, ⌘); the gestures around them
 are words ("Clique duplo", "Botão direito", "Espaço", "Arrastar").
 
@@ -65,7 +67,11 @@ tokens above — add a word here before adding it to the sweep's allowlist.
 | offline | offline |
 | update available: reload | atualização disponível: recarregar |
 | dismiss | dispensar |
-| tutorial / lesson / step | tutorial / lição / passo |
+| learning map / level / lesson / challenge / step | mapa de aprendizado / nível / lição / desafio / passo |
+| station (on the map) / trail | estação / trilha |
+| XP / rank / badge / streak (days in a row) | XP / patente / conquista / sequência |
+| Start here / You are here / Continue where you left off | Comece aqui / Você está aqui / Continue de onde parou |
+| reset progress | zerar o progresso |
 | warning / error | aviso / erro |
 | required / optional | obrigatório / opcional |
 | deprecated | obsoleto |

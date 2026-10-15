@@ -18,7 +18,7 @@ import { connectionOp, findConnectionRule } from '@/resources/connect';
 import { getDef, isContainerType } from '@/resources/registry';
 import type { ResourceDef } from '@/resources/types';
 import { dropMessages } from './drop.messages';
-import { fixLabel, fixOps } from './dropFixes';
+import { fixLabel, fixOps, securityGroupLabel, securityGroupOps, type FixResult } from './dropFixes';
 import { draggedPaletteType, useDropHint, type DropHint } from './dropHint';
 import { dropVerdict, nounOf, verdictOver, type DropFix, type DropVerdict } from './dropRules';
 import { placeNewNode } from './newNode';
@@ -105,18 +105,37 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
 
   const runFix = useCallback(
     (nodeId: string, fix: DropFix) => {
-      const m = messagesFor(dropMessages);
-      const state = useEditor.getState();
-      const result = fixOps(state.ir, nodeId, fix);
-      if (!result) {
-        showToast(m.fixGone, 'info');
-        return;
-      }
-      const before = state.filesRevision;
-      animate();
-      state.applyCanvasOps(result.ops, nodeId);
-      if (useEditor.getState().filesRevision === before) return;
-      showToast(result.message, result.hint ? 'warning' : 'success', { hint: result.hint ?? m.undoHint(shortcut('mod', 'Z')), note: result.note });
+      /** a fix (or its security group step) on the editor state now: one undo step, and a toast saying what it did */
+      const run = (compute: (ir: IR) => FixResult | null) => {
+        const m = messagesFor(dropMessages);
+        const state = useEditor.getState();
+        const result = compute(state.ir);
+        if (!result) {
+          showToast(m.fixGone, 'info');
+          return;
+        }
+        const before = state.filesRevision;
+        animate();
+        state.applyCanvasOps(result.ops, nodeId);
+        if (useEditor.getState().filesRevision === before) return;
+        // the database's security group: the next step, offered with the result
+        const next = result.securityGroup;
+        const vpc = next && useEditor.getState().ir.resources.find((r) => r.id === next.vpcId);
+        showToast(result.message, result.hint ? 'warning' : 'success', {
+          hint: result.hint ?? m.undoHint(shortcut('mod', 'Z')),
+          note: result.note,
+          ...(next && vpc
+            ? {
+                action: {
+                  label: securityGroupLabel(next.fix, vpc.name),
+                  onClick: () => run((ir) => securityGroupOps(ir, nodeId, next.vpcId, next.fix)),
+                },
+                duration: 12000,
+              }
+            : {}),
+        });
+      };
+      run((ir) => fixOps(ir, nodeId, fix));
     },
     [animate],
   );

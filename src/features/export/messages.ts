@@ -31,7 +31,7 @@ export const exportMessages = defineMessages(
     notesHint: 'Optional: the goal of this design, open questions, who to talk to.',
     notesPlaceholder: 'Proposed architecture for…',
     unsupported: (chars: string, more: boolean) =>
-      `The PDF's fonts can't show ${chars}${more ? ' …' : ''}, so they will print as “?”. Western European text (accents included) is fine.`,
+      `The PDF's fonts can't show ${chars}${more ? ' …' : ''}, so each one prints as a small box. Western European text (accents included) is fine, and common emoji print as words.`,
     include: 'Include',
     alwaysIncluded: 'The diagram and an overview are always included.',
     paper: 'Paper size',
@@ -70,7 +70,7 @@ export const exportMessages = defineMessages(
     notesHint: 'Opcional: o objetivo desta arquitetura, dúvidas em aberto, com quem falar.',
     notesPlaceholder: 'Arquitetura proposta para…',
     unsupported: (chars: string, more: boolean) =>
-      `As fontes do PDF não conseguem mostrar ${chars}${more ? ' …' : ''}, então eles sairão como “?”. Textos em idiomas da Europa Ocidental (com acentos) funcionam.`,
+      `As fontes do PDF não conseguem mostrar ${chars}${more ? ' …' : ''}, então cada um sai como um quadradinho. Textos em idiomas da Europa Ocidental (com acentos) funcionam, e emoji comuns saem como palavras.`,
     include: 'Incluir',
     alwaysIncluded: 'O diagrama e uma visão geral sempre são incluídos.',
     paper: 'Tamanho do papel',

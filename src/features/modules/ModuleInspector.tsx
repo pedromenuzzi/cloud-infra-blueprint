@@ -353,6 +353,11 @@ function LocalContents({ child, node }: { child: LocalModule; node: ModuleNode }
             {m.nestedModules(child.ir.modules.length)}: <code className="font-mono text-[11px]">{child.ir.modules.map((x) => x.name).join(', ')}</code>
           </p>
         ) : null}
+        {child.ir.data.length > 0 ? (
+          <p className="text-[11.5px] text-muted">
+            {m.dataInside(child.ir.data.length)}: <code className="font-mono text-[11px]">{child.ir.data.map((d) => `${d.type}.${d.name}`).join(', ')}</code>
+          </p>
+        ) : null}
         <Button size="sm" variant="outline" className="w-full" onClick={() => openModuleView(child.dir, node.name)}>
           <FolderOpen className="h-3.5 w-3.5" /> {m.openModule}
         </Button>

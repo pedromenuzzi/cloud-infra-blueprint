@@ -122,3 +122,23 @@ export const importMessages = defineMessages(
     alreadyImported: (name: string) => `Você já importou exatamente esta versão como “${name}”.`,
   },
 );
+
+/** The dashboard's "Import" menu: every way in, in one place. */
+export const importMenuMessages = defineMessages(
+  {
+    import: 'Import',
+    files: 'Terraform files…',
+    filesHint: '.tf files or a .zip, copied into the browser',
+    filesLabel: 'Import Terraform files',
+    github: 'From GitHub…',
+    folderHint: 'Stays in sync with the .tf files on your disk',
+  },
+  {
+    import: 'Importar',
+    files: 'Arquivos Terraform…',
+    filesHint: 'Arquivos .tf ou um .zip, copiados para o navegador',
+    filesLabel: 'Importar arquivos Terraform',
+    github: 'Do GitHub…',
+    folderHint: 'Fica em sincronia com os arquivos .tf do seu disco',
+  },
+);

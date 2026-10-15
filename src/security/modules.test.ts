@@ -77,6 +77,35 @@ module "private" {
     expect(rule.inputs[0].note).toContain('var.port vem de uma entrada');
   });
 
+  it('reads the module’s locals as the call makes them', () => {
+    const module = `locals {
+  open = [var.cidr]
+}
+
+resource "aws_security_group" "ssh" {
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = local.open
+  }
+}
+
+variable "cidr" {}
+`;
+    const files = {
+      'main.tf': `module "open" {\n  source = "./modules/sg"\n  cidr   = "0.0.0.0/0"\n}\n\nmodule "unknown" {\n  source = "./modules/sg"\n  cidr   = local.office\n}\n`,
+      'modules/sg/main.tf': module,
+    };
+    const { findings } = auditModules(parseProject(files).ir, files, 'en');
+    const open = findings.find((f) => f.module.id === 'module.open' && f.finding.resource === 'aws_security_group.ssh')!;
+    expect(open.finding.severity).toBe('critical');
+    expect(open.finding.unverified).toBeFalsy();
+    // the local reads an input given as an expression: the finding says so
+    const unknown = findings.find((f) => f.module.id === 'module.unknown' && f.finding.resource === 'aws_security_group.ssh')!;
+    expect(unknown.inputs.map((i) => [i.name, i.value])).toEqual([['cidr', 'local.office']]);
+  });
+
   it('leaves the plain audit alone without local modules', () => {
     const { files, ir, own } = project(`module "vpc" {\n  source = "terraform-aws-modules/vpc/aws"\n}\n`);
     expect(projectAudit(own, ir, files)).toEqual({ own, modules: [], exposed: [], counts: own.counts, score: own.score, grade: own.grade });

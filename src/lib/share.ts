@@ -9,11 +9,13 @@
 import { deflateSync, Inflate, strFromU8, strToU8 } from 'fflate';
 import { messagesFor } from '@/i18n/messages';
 import { libMessages } from './messages';
-import { isProjectFilePath } from './projectPath';
+import { isProjectFilePath, safeRootPath } from './projectPath';
 
 export interface SharePayload {
   name: string;
   files: Record<string, string>;
+  /** where the root module was imported from (`envs/prod`), so the copy's zip puts it back there */
+  rootPath?: string;
 }
 
 const VERSION = 1;
@@ -72,9 +74,13 @@ function inflateCapped(data: Uint8Array, cap: number): Uint8Array {
   return out;
 }
 
+/** The packed JSON; `r` only when there's a root path, so links without one stay as they were. */
+function payloadJson(payload: SharePayload): string {
+  return JSON.stringify({ v: VERSION, n: payload.name, f: payload.files, ...(payload.rootPath ? { r: payload.rootPath } : {}) });
+}
+
 export function encodeShare(payload: SharePayload): string {
-  const json = JSON.stringify({ v: VERSION, n: payload.name, f: payload.files });
-  return toBase64Url(deflateSync(strToU8(json), { level: 9 }));
+  return toBase64Url(deflateSync(strToU8(payloadJson(payload)), { level: 9 }));
 }
 
 export function decodeShareResult(encoded: string): ShareDecodeResult {
@@ -88,7 +94,7 @@ export function decodeShareResult(encoded: string): ShareDecodeResult {
     return { ok: false, error: err instanceof TooLarge ? 'too-large' : 'invalid' };
   }
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return { ok: false, error: 'invalid' };
-  const { v, n, f } = data as Record<string, unknown>;
+  const { v, n, f, r } = data as Record<string, unknown>;
   if (typeof v === 'number' && v > VERSION) return { ok: false, error: 'version' };
   if (v !== VERSION || typeof n !== 'string') return { ok: false, error: 'invalid' };
   if (typeof f !== 'object' || f === null || Array.isArray(f)) return { ok: false, error: 'invalid' };
@@ -101,7 +107,10 @@ export function decodeShareResult(encoded: string): ShareDecodeResult {
     // a file name, or a child module's file in its folder (`modules/net/main.tf`) — never `..`
     if (isProjectFilePath(name)) files[name] = text as string;
   }
-  return { ok: true, payload: { name: n.trim().slice(0, 80) || messagesFor(libMessages).sharedProject, files } };
+  // an unsafe root path is dropped, not the link: the project opens the same, only its zip lays out flat
+  const rootPath = safeRootPath(r);
+  const name = n.trim().slice(0, 80) || messagesFor(libMessages).sharedProject;
+  return { ok: true, payload: rootPath ? { name, files, rootPath } : { name, files } };
 }
 
 /** Decoded payload, or null for anything invalid (see decodeShareResult for why). */
@@ -148,7 +157,7 @@ export function viewLinkInfo(payload: SharePayload, options: { embed?: boolean }
 
 function linkInfo(url: string, payload: SharePayload): ShareLinkInfo {
   const bytes = url.length;
-  const tooLarge = strToU8(JSON.stringify({ v: VERSION, n: payload.name, f: payload.files })).length > MAX_SHARE_BYTES;
+  const tooLarge = strToU8(payloadJson(payload)).length > MAX_SHARE_BYTES;
   const long = bytes > SHARE_URL_SOFT_LIMIT;
   const m = messagesFor(libMessages);
   const warning = tooLarge ? m.shareTooLarge : long ? m.shareLong(Math.round(bytes / 1024)) : null;
@@ -156,8 +165,8 @@ function linkInfo(url: string, payload: SharePayload): ShareLinkInfo {
 }
 
 /**
- * Stable content hash of a payload (cyrb53 over name + sorted files), used to
- * spot a link that was already imported.
+ * Stable content hash of a payload (cyrb53 over name + sorted files, + the
+ * root path when there is one), used to spot a link that was already imported.
  */
 export function shareHash(payload: SharePayload): string {
   const text = JSON.stringify([
@@ -165,6 +174,7 @@ export function shareHash(payload: SharePayload): string {
     Object.keys(payload.files)
       .sort()
       .map((k) => [k, payload.files[k]]),
+    ...(payload.rootPath ? [payload.rootPath] : []),
   ]);
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;

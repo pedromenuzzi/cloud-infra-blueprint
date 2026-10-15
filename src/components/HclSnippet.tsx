@@ -47,7 +47,7 @@ export function hlLine(line: string, key: number): ReactNode {
 
 /**
  * Read-only highlighted HCL block. `addedLines` (1-based) get a green tint —
- * used by tutorials to show what each step introduces.
+ * used by the lesson solution to show what the learner still has to add.
  */
 export function HclSnippet({
   code,

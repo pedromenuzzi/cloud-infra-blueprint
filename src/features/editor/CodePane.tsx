@@ -37,8 +37,11 @@ function applyMinimalEdit(model: monaco.editor.ITextModel, newText: string) {
   ]);
 }
 
-/** `controls`: layout buttons for the header (grip, expand, hide) — the editor passes them, the viewer doesn't. */
-export function CodePane({ controls }: { controls?: ReactNode } = {}) {
+/**
+ * `controls`: layout buttons for the header (grip, expand, hide) — the editor passes them, the viewer doesn't.
+ * `wrap`: long lines wrap instead of scrolling sideways (a lesson's narrow code column).
+ */
+export function CodePane({ controls, wrap = false }: { controls?: ReactNode; wrap?: boolean } = {}) {
   const m = useMessages(codeMessages);
   const locale = useLocale((s) => s.locale);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -177,6 +180,10 @@ export function CodePane({ controls }: { controls?: ReactNode } = {}) {
       editorRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    editorRef.current?.updateOptions({ wordWrap: wrap ? 'on' : 'off' });
+  }, [wrap]);
 
   // a read-only view: the code can be read, selected and copied — not typed into
   useEffect(() => {

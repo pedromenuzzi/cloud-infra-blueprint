@@ -1,7 +1,7 @@
 /**
  * Nothing on screen is left in English. The app is crawled twice, in
  * Portuguese and in English, through the same screens and states — landing,
- * dashboard and its dialogs, tutorials, the editor (seed project and an
+ * dashboard and its dialogs, the learning map, the editor (seed project and an
  * Azure and a GCP template: palette, inspector tabs, multi-selection,
  * security panel and rules editor, cost, layout presets, ⌘K, context menus,
  * a drop hint, export / PDF / shortcuts dialogs), a project with module
@@ -62,6 +62,8 @@ const ALLOWED = new Set([
   'Ctrl', 'Esc', 'esc', 'Del', 'Enter', 'Shift', 'Alt', 'Tab',
   // where a module comes from: the Terraform Registry and git (product names), a local folder ("módulo local")
   'Registry', 'Git', 'Local',
+  // the lesson terminal: Terraform's own commands (its buttons), and a word Portuguese shares
+  'init', 'validate', 'plan', 'apply', 'destroy', 'Terminal',
 ]);
 
 /** a token that is never translated: acronyms, identifiers, numbers, addresses, CIDRs, control IDs, file names */
@@ -358,7 +360,10 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
     await expect(page.getByRole('dialog')).toBeVisible();
     await stop('template picker');
     await close();
-    await page.getByRole('button', { name: L('Import from GitHub…', 'Importar do GitHub…') }).click();
+    await page.getByRole('button', { name: L('Import', 'Importar'), exact: true }).click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await stop('import menu');
+    await page.getByRole('menuitem', { name: L('From GitHub…', 'Do GitHub…') }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await stop('GitHub import');
     await close();
@@ -367,12 +372,21 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
     await stop('restore dialog');
     await close();
 
-    await page.goto('/tutorials');
+    await page.goto('/learn');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    await stop('tutorials');
-    await page.goto('/tutorials/first-vpc-ec2?step=3');
-    await expect(page.getByRole('heading', { level: 2 }).first()).toBeVisible();
-    await stop('lesson');
+    await stop('learning map, first visit');
+    // answered, with progress: the compact switch, the trail's states, earned badges
+    const slug = (await page.locator('[data-station] > a').first().getAttribute('href'))!.replace(/^.*\/learn\//, '');
+    await page.evaluate((s) => {
+      const done = { status: 'done', met: [], xp: 40 };
+      localStorage.setItem(
+        'cb-learn-v1',
+        JSON.stringify({ start: 'new', lessons: { [s]: done }, xp: 40, runs: { [s]: ['init'] }, badges: { 'first-init': '2026-10-15' }, last: s }),
+      );
+    }, slug);
+    await page.reload();
+    await expect(page.getByTestId('player-card')).toBeVisible();
+    await stop('learning map, under way');
 
     await page.goto('/nothing-here');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -670,6 +684,94 @@ test('no English is left on screen in Portuguese, and no dash as punctuation in 
   expect([...pt.keys()]).toEqual([...en.keys()]);
   expect.soft([...new Set(leaks)], 'strings that read the same in English and Portuguese').toEqual([]);
   expect.soft(dashLines, 'a dash used as punctuation (use a comma, colon, period or parentheses)').toEqual([]);
+});
+
+/** the lesson player (/learn/:slug) in one language: a canvas, a mixed and a code lesson, its tabs, dialogs and terminal */
+async function crawlLessons(browser: Browser, lang: Lang): Promise<Map<string, string[]>> {
+  const context = await browser.newContext({ locale: lang === 'en' ? 'en-US' : 'pt-BR', viewport: { width: 1440, height: 900 } });
+  await context.addInitScript((l) => {
+    localStorage.setItem('cb-locale', l);
+    localStorage.setItem('cb-tips-dismissed', '1');
+  }, lang);
+  const page = await context.newPage();
+  const L = (en: string, pt: string) => (lang === 'en' ? en : pt);
+  const stops = new Map<string, string[]>();
+  const stop = async (name: string) => {
+    await page.waitForTimeout(350); // goals settle, entry animations end
+    stops.set(name, await collect(page));
+  };
+  const close = async () => {
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+  };
+  try {
+    await page.goto('/learn/first-resource');
+    await expect(page.locator('[data-testid="monaco"] .monaco-editor')).toBeVisible({ timeout: 20_000 });
+    await page.locator('[data-goal="label"]').getByRole('button').click();
+    await stop('lesson: canvas mode, a hint');
+    await page.getByRole('button', { name: new RegExp(`^${L('Add S3 Bucket', 'Adicionar Bucket S3')} \\(`) }).click();
+    await expect(page.getByTestId('docked-inspector')).toBeVisible();
+    await stop('lesson: a bucket, the inspector beside the canvas');
+    await page.getByRole('tab', { name: L('Docs', 'Documentação') }).click();
+    await stop('lesson: docs tab');
+    const terminal = page.getByTestId('terminal-panel');
+    await terminal.getByRole('button', { name: L('Run terraform init', 'Rodar terraform init') }).click();
+    await terminal.getByRole('button', { name: L('Run terraform plan', 'Rodar terraform plan') }).click();
+    await expect(page.locator('[data-plan-mark]').first()).toBeVisible();
+    await stop('lesson: terminal and a plan on the canvas');
+    await page.getByRole('button', { name: L('Show solution', 'Ver solução') }).first().click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await stop('lesson: show solution?');
+    await page.getByRole('alertdialog').getByRole('button', { name: L('Show solution', 'Ver solução') }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await stop('lesson: the solution');
+    await page.getByRole('dialog').getByRole('button', { name: L('Use the solution', 'Usar a solução') }).click();
+    await stop('lesson: solution applied');
+    await page.getByRole('button', { name: L('Reset', 'Recomeçar'), exact: true }).click();
+    await expect(page.getByRole('alertdialog')).toBeVisible();
+    await stop('lesson: reset?');
+    await close();
+    await page.locator('[data-collapse-lesson]').click();
+    await stop('lesson: collapsed panel');
+    await page.locator('[data-expand-lesson]').click();
+
+    await page.goto('/learn/variables');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await stop('lesson: mixed mode');
+    await page.goto('/learn/security-groups');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await stop('lesson: code mode');
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/learn/first-resource');
+    await expect(page.getByRole('tablist', { name: L('Lesson and editor', 'Lição e editor') })).toBeVisible();
+    await stop('lesson: phone, lesson tab');
+    await page.getByRole('tab', { name: L('Build', 'Montar') }).click();
+    await stop('lesson: phone, build tab');
+  } finally {
+    await context.close();
+  }
+  return stops;
+}
+
+test('the lesson player: no English left in Portuguese besides code, and no dash as punctuation', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const pt = await crawlLessons(browser, 'pt-BR');
+  const en = await crawlLessons(browser, 'en');
+  const data = projectData();
+  // the lessons' own code: block names, values, file names
+  for (const name of ['photos', 'photos-ana-2026', 'bucket', 'site', 'acme-site-dev', 'acme-site-assets', 'web', 'main', 'public', 'main.tf', 'variables.tf', 'network.tf']) data.add(name);
+  phrases = [...data, ...ALLOWED].filter((p) => p.includes(' ')).sort((a, b) => b.length - a.length);
+  dashedData = [...data].filter((d) => d.length > 1 && /[—–-]/.test(d)).sort((a, b) => b.length - a.length);
+  const leaks: string[] = [];
+  for (const [name, strings] of pt) {
+    const english = new Set(en.get(name) ?? []);
+    for (const s of strings) if (english.has(s) && !untranslated(s, data)) leaks.push(`${name}: ${JSON.stringify(s)}`);
+  }
+  const dashes = [...pt, ...en].flatMap(([name, strings]) => strings.filter((s) => dashIn(s)).map((s) => `${name}: ${s}`));
+  expect([...pt.keys()]).toEqual([...en.keys()]);
+  expect.soft([...new Set(leaks)], 'strings that read the same in English and Portuguese').toEqual([]);
+  expect.soft([...new Set(dashes)], 'a dash used as punctuation').toEqual([]);
 });
 
 test('the sweep would catch a leak', () => {
