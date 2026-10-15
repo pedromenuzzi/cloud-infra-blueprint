@@ -14,7 +14,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('clicking a palette item adds a node and writes its HCL block', async ({ page }) => {
-  await page.getByRole('complementary', { name: 'Resource palette' }).getByText('S3 Bucket').click();
+  await page.getByRole('complementary', { name: 'Resource palette' }).getByText('S3 Bucket', { exact: true }).click();
 
   await expect(canvasStats(page)).toHaveText(/^12 resources/);
   await expect

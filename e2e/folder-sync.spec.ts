@@ -129,7 +129,7 @@ test.describe('folder sync', () => {
     await expect(chip).toContainText('Synced to repo/infra');
 
     // a canvas edit is saved, then written through to main.tf
-    await page.getByRole('complementary', { name: 'Resource palette' }).getByText('S3 Bucket').click();
+    await page.getByRole('complementary', { name: 'Resource palette' }).getByText('S3 Bucket', { exact: true }).click();
     await expect(canvasStats(page)).toHaveText(/^2 resources/);
     await expect.poll(() => readFile(page, 'repo/infra/main.tf')).toContain('resource "aws_s3_bucket"');
     // only the project's files: nothing else in the folder was touched
@@ -162,7 +162,7 @@ test.describe('folder sync', () => {
 
     // now both sides change before a sync sees the other
     await putFiles(page, { 'infra/main.tf': `${MAIN}\n# edited on disk\n` });
-    await page.getByRole('complementary', { name: 'Resource palette' }).getByText('S3 Bucket').click();
+    await page.getByRole('complementary', { name: 'Resource palette' }).getByText('S3 Bucket', { exact: true }).click();
     const dialog = page.getByRole('alertdialog', { name: /“infra” and the editor both changed/ });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText('main.tf')).toBeVisible();
