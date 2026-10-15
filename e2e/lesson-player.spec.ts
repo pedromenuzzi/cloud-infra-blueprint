@@ -1,11 +1,13 @@
 /**
  * The lesson player (/learn/:slug): the editor on the lesson's draft (never
- * a project), goals checked live from the canvas and the code, the solution
- * and reset flows, "Open in editor", the phone tabs, and axe in both themes.
+ * a project), goals checked live from the canvas, the code and the
+ * terminal, each mode's layout (canvas, mixed, code), the solution and
+ * reset flows, "Open in editor", the phone tabs, and axe in both themes.
  */
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { expect, test, type Page } from '@playwright/test';
+import { aws } from '../src/learn/content/shared';
 import { focusEndOfCode, insertCode, storedProjects, waitForMonaco } from './helpers';
 
 const LESSON = '/learn/first-resource';
@@ -14,32 +16,29 @@ const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.mi
 
 interface Seed {
   start?: 'new' | 'aws';
-  /** terminal commands already run in the lesson (the simulated terminal is another screen's) */
-  runs?: string[];
   theme?: 'light' | 'dark';
 }
 
 /** a fresh lesson; `seed` is written once, so a reload keeps what the page stored */
-async function openLesson(page: Page, seed: Seed = {}) {
+async function openLesson(page: Page, seed: Seed = {}, path = LESSON, title = 'Your first resource') {
   await page.addInitScript(
     ({ key, seed }) => {
       localStorage.setItem('cb-tips-dismissed', '1');
       if (seed.theme) localStorage.setItem('cb-theme', seed.theme);
       if (localStorage.getItem(key) !== null) return;
-      const progress = { start: seed.start ?? null, runs: seed.runs ? { 'first-resource': seed.runs } : {} };
-      localStorage.setItem(key, JSON.stringify(progress));
+      localStorage.setItem(key, JSON.stringify({ start: seed.start ?? null }));
     },
     { key: LEARN_KEY, seed },
   );
-  await page.goto(LESSON);
-  await expect(page.getByRole('heading', { name: 'Your first resource', level: 1 })).toBeVisible();
+  await page.goto(path);
+  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible();
 }
 
 const goal = (page: Page, id: string) => page.locator(`[data-goal="${id}"]`);
 const goalsCount = (page: Page) => page.getByRole('progressbar', { name: 'Goals' });
 
 const dragBucket = (page: Page) =>
-  page.getByRole('button', { name: /^Add S3 Bucket/ }).dragTo(page.getByTestId('canvas'), { targetPosition: { x: 160, y: 140 } });
+  page.getByRole('button', { name: /^Add S3 Bucket \(/ }).dragTo(page.getByTestId('canvas'), { targetPosition: { x: 160, y: 140 } });
 
 async function dropBucket(page: Page) {
   await dragBucket(page);
@@ -50,35 +49,86 @@ async function dropBucket(page: Page) {
 async function typeNamedBucket(page: Page) {
   await waitForMonaco(page);
   await focusEndOfCode(page);
-  await insertCode(page, 'resource "aws_s3_bucket" "logs" { bucket = "my-logs-123" }');
+  await insertCode(page, 'resource "aws_s3_bucket" "photos" { bucket = "photos-ana-2026" }');
 }
 
+/** a file's whole text, replaced by a paste (typed, Monaco would auto-close and re-indent the braces) */
+async function typeFile(page: Page, file: string, text: string) {
+  await waitForMonaco(page);
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.evaluate((t) => navigator.clipboard.writeText(t), text);
+  await page.getByRole('tab', { name: file, exact: true }).click();
+  await page.locator('[data-testid="monaco"] .view-lines').click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Control+v');
+}
+
+/** what a learner types in the mixed and code lessons (their solutions) */
+const VARIABLES = {
+  'variables.tf': 'variable "environment" {\n  type    = string\n  default = "dev"\n}\n',
+  'main.tf': aws(`resource "aws_s3_bucket" "site" {
+  bucket = "acme-site-\${var.environment}"
+
+  tags = {
+    Project     = "acme"
+    Environment = var.environment
+  }
+}
+`)['main.tf'],
+};
+const SECURITY_GROUP = aws(`resource "aws_security_group" "web" {
+  name        = "web"
+  description = "HTTPS in, everything out"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+`)['main.tf'];
+
 const progress = (page: Page) => page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? '{}'), LEARN_KEY);
+const box = async (page: Page, selector: string) => (await page.locator(selector).first().boundingBox())!;
 
 test.describe('lesson player', () => {
   test('goals turn green from the canvas and the code; the draft is kept, never a project', async ({ page }) => {
     await openLesson(page);
     await expect(page).toHaveTitle(/Your first resource/);
-    await expect(goalsCount(page)).toHaveAttribute('aria-valuenow', '1');
-    await expect(goal(page, 'valid')).toHaveAttribute('data-met', 'true');
-    await expect(goal(page, 'bucket')).not.toHaveAttribute('data-met', 'true');
+    await expect(goalsCount(page)).toHaveAttribute('aria-valuenow', '0');
 
     await dropBucket(page);
     await expect(page.getByTestId('goal-news')).toHaveText('Goal met: An S3 bucket on the canvas');
-    await expect(goal(page, 'name')).not.toHaveAttribute('data-met', 'true');
+    await expect(goal(page, 'label')).not.toHaveAttribute('data-met', 'true');
+
+    // the canvas leads: the inspector opens beside the canvas, never over it
+    const canvas = await box(page, '#bp-canvas');
+    expect(canvas.width / (await box(page, '#bp-workspace')).width).toBeGreaterThan(0.45);
+    const inspector = await box(page, '[data-testid="docked-inspector"]');
+    expect(inspector.x).toBeGreaterThanOrEqual(canvas.x + canvas.width - 1);
 
     await typeNamedBucket(page);
+    await expect(goal(page, 'label')).toHaveAttribute('data-met', 'true');
     await expect(goal(page, 'name')).toHaveAttribute('data-met', 'true');
     await expect(goalsCount(page)).toHaveAttribute('aria-valuenow', '3');
 
     // a hint on demand
-    await goal(page, 'plan').getByRole('button', { name: 'Hint' }).click();
-    await expect(goal(page, 'plan')).toContainText('run init first');
+    await goal(page, 'apply').getByRole('button', { name: 'Hint' }).click();
+    await expect(goal(page, 'apply')).toContainText('then terraform plan and terraform apply');
 
     // saved as the lesson's draft, not as a project
-    await expect.poll(async () => (await progress(page)).drafts?.['first-resource']?.['main.tf'] ?? '').toContain('my-logs-123');
+    await expect.poll(async () => (await progress(page)).drafts?.['first-resource']?.['main.tf'] ?? '').toContain('photos-ana-2026');
     expect(await storedProjects(page)).not.toContainEqual(expect.objectContaining({ origin: 'lesson:first-resource' }));
-    expect((await progress(page)).lessons?.['first-resource']?.met).toEqual(expect.arrayContaining(['bucket', 'name', 'valid']));
+    expect((await progress(page)).lessons?.['first-resource']?.met).toEqual(expect.arrayContaining(['bucket', 'label', 'name']));
 
     // the lesson's layout never becomes the editor's
     await page.getByRole('button', { name: /^Resources/ }).click();
@@ -89,18 +139,23 @@ test.describe('lesson player', () => {
     await expect(goalsCount(page)).toHaveAttribute('aria-valuenow', '3');
   });
 
-  test('every goal met completes the lesson once, with its XP and the way on', async ({ page }) => {
-    await openLesson(page, { runs: ['init', 'plan'] });
+  test('the terminal finishes the lesson: plan and apply, then the XP and the way on', async ({ page }) => {
+    await openLesson(page);
     await dropBucket(page);
     await typeNamedBucket(page);
+    const terminal = page.getByTestId('terminal-panel');
+    await terminal.getByRole('button', { name: 'Run terraform init' }).click();
+    await terminal.getByRole('button', { name: 'Run terraform plan' }).click();
+    await expect(page.locator('.react-flow__node [data-plan-mark="create"]').first()).toBeVisible();
+    await terminal.getByRole('button', { name: 'Run terraform apply' }).click();
+    await terminal.getByRole('button', { name: 'Approve' }).click();
+
     const finish = page.getByTestId('lesson-finish');
     await expect(finish).toBeVisible();
     await expect(finish).toContainText('+40 XP');
-    await expect(finish.getByRole('link', { name: 'Back to the learning map' })).toBeVisible();
+    await expect(finish.getByRole('link', { name: /^Next: / })).toHaveAttribute('href', /\/learn\/arguments-and-types$/);
     await expect(page.getByText('Completed', { exact: true })).toBeVisible();
-    const done = (await progress(page)).lessons['first-resource'];
-    expect(done).toMatchObject({ status: 'done', xp: 40 });
-    expect((await progress(page)).xp).toBe(40);
+    expect((await progress(page)).lessons['first-resource']).toMatchObject({ status: 'done', xp: 40 });
   });
 
   test('show solution: asks first, shows what is missing, and applies it as one undo step', async ({ page }) => {
@@ -112,10 +167,10 @@ test.describe('lesson player', () => {
 
     const dialog = page.getByRole('dialog', { name: /Solution/ });
     await expect(dialog).toContainText('lines your code does not have yet');
-    await expect(dialog.locator('pre')).toContainText('resource "aws_s3_bucket" "assets"');
+    await expect(dialog.locator('pre')).toContainText('resource "aws_s3_bucket" "photos"');
     await dialog.getByRole('button', { name: 'Use the solution' }).click();
     await expect(dialog).toBeHidden();
-    await expect(goal(page, 'name')).toHaveAttribute('data-met', 'true');
+    await expect(goal(page, 'label')).toHaveAttribute('data-met', 'true');
     await expect(page.getByText('20 XP (half, solution shown)')).toBeVisible();
     expect((await progress(page)).lessons['first-resource'].usedSolution).toBe(true);
 
@@ -167,10 +222,10 @@ test.describe('lesson player', () => {
 
   test('asides about AWS start collapsed for people who know AWS', async ({ page }) => {
     await openLesson(page, { start: 'aws' });
-    const aside = page.getByRole('button', { name: 'What is S3?' });
+    const aside = page.getByRole('button', { name: 'Choosing a bucket name' });
     await expect(aside).toHaveAttribute('aria-expanded', 'false');
     await aside.click();
-    await expect(page.getByText('S3 is AWS storage')).toBeVisible();
+    await expect(page.getByText('Bucket names are global')).toBeVisible();
   });
 
   test('an unknown lesson goes back to the map', async ({ page }) => {
@@ -187,12 +242,54 @@ test.describe('lesson player', () => {
 
     await tabs.getByRole('tab', { name: 'Build' }).click();
     await expect(page.getByTestId('canvas')).toBeVisible();
+    await expect(page.getByTestId('terminal-panel')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Your first resource' })).toBeHidden();
     await page.getByRole('button', { name: /^Resources/ }).click();
-    await page.getByRole('button', { name: /^Add S3 Bucket/ }).click();
-    await expect(tabs.getByRole('tab', { name: /Lesson/ })).toContainText('2/4');
-    const box = await page.evaluate(() => document.documentElement.scrollWidth);
-    expect(box).toBeLessThanOrEqual(390);
+    await page.getByRole('button', { name: /^Add S3 Bucket \(/ }).click();
+    await expect(tabs.getByRole('tab', { name: /Lesson/ })).toContainText('1/4');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  });
+});
+
+test.describe('lesson modes', () => {
+  test('mixed: resources and code side by side; typed variables turn the goals green', async ({ page }) => {
+    await openLesson(page, {}, '/learn/variables', 'Variables');
+    await expect(page.getByRole('complementary', { name: 'Resource palette' })).toBeVisible();
+    const canvas = await box(page, '#bp-canvas');
+    const code = await box(page, '#bp-code');
+    expect(canvas.width).toBeGreaterThan(code.width);
+
+    await typeFile(page, 'variables.tf', VARIABLES['variables.tf']);
+    await expect(goal(page, 'declare')).toHaveAttribute('data-met', 'true');
+    await typeFile(page, 'main.tf', VARIABLES['main.tf']);
+    await expect(goal(page, 'tag')).toHaveAttribute('data-met', 'true');
+    await expect(goal(page, 'name')).toHaveAttribute('data-met', 'true');
+
+    // Ctrl+Enter plans, even from inside the code
+    await page.getByTestId('terminal-panel').getByRole('button', { name: 'Run terraform init' }).click();
+    await page.locator('[data-testid="monaco"] .view-lines').click();
+    await page.keyboard.press('Control+Enter');
+    await expect(page.getByTestId('lesson-finish')).toBeVisible();
+  });
+
+  test('code: the code leads, the canvas draws what is typed, the caret never opens the inspector over it', async ({ page }) => {
+    await openLesson(page, {}, '/learn/security-groups', 'Security groups');
+    await expect(page.getByRole('complementary', { name: 'Resource palette' })).toBeHidden();
+    await expect(page.locator('[data-strip="palette"]')).toBeVisible();
+    const canvas = await box(page, '#bp-canvas');
+    const code = await box(page, '#bp-code');
+    expect(code.width).toBeGreaterThan(canvas.width);
+    expect(canvas.width / (await box(page, '#bp-workspace')).width).toBeGreaterThan(0.4);
+
+    await typeFile(page, 'main.tf', SECURITY_GROUP);
+    await expect(page.locator('.react-flow__node[data-id^="aws_security_group."]')).toBeVisible();
+    for (const id of ['sg', 'description', 'https', 'egress', 'valid']) {
+      await expect(goal(page, id)).toHaveAttribute('data-met', 'true');
+    }
+    await expect(page.getByTestId('lesson-finish')).toBeVisible();
+    // the caret picks the block it is in as it moves, but the code keeps its whole column
+    await page.locator('[data-testid="monaco"] .view-lines').click();
+    await expect(page.getByTestId('docked-inspector')).toHaveCount(0);
   });
 });
 
