@@ -90,6 +90,17 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     description: 'Identidade com permissões que podem ser assumidas',
     fields: { assume_role_policy: JSON_POLICY },
   },
+  aws_iam_role_policy_attachment: {
+    name: 'Anexo de política do IAM',
+    shortName: 'Anexo de política',
+    description: 'Anexa uma política gerenciada a um perfil',
+    fields: { policy_arn: { doc: 'ARN de uma política gerenciada pela AWS ou pelo cliente' } },
+  },
+  aws_iam_instance_profile: {
+    name: 'Perfil de instância do IAM',
+    shortName: 'Perfil de instância',
+    description: 'Entrega um perfil do IAM às instâncias EC2',
+  },
   aws_lb: {
     name: 'Application Load Balancer',
     shortName: 'ALB',
@@ -259,6 +270,11 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     name: 'Tabela de rotas',
     shortName: 'Tabela de rotas',
     description: 'Rotas das sub-redes: uma rota 0.0.0.0/0 para um internet gateway as torna públicas',
+  },
+  aws_route: {
+    name: 'Rota',
+    shortName: 'Rota',
+    description: 'Uma rota de uma tabela de rotas, escrita como bloco próprio',
   },
   aws_route_table_association: {
     name: 'Associação de tabela de rotas',

@@ -596,7 +596,7 @@ resource "aws_instance" "web" {
         test: applied('aws_iam_instance_profile'),
       },
     ],
-    teaches: ['aws_iam_role'],
+    teaches: ['aws_iam_role', 'aws_iam_role_policy_attachment', 'aws_iam_instance_profile'],
   },
 
   /* ------------------------------------------------------------ C3 */

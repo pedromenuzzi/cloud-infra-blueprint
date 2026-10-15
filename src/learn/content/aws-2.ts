@@ -333,7 +333,7 @@ resource "aws_subnet" "b" {
         test: subnetIs('public'),
       },
     ],
-    teaches: ['aws_internet_gateway', 'aws_route_table', 'aws_route_table_association'],
+    teaches: ['aws_internet_gateway', 'aws_route_table', 'aws_route_table_association', 'aws_route'],
   },
 
   /* ------------------------------------------------------------ 2.4 */

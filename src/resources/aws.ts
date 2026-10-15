@@ -102,6 +102,7 @@ export const AWS_RESOURCES = [
         label: 'Security groups',
       },
       { name: 'key_name', type: 'string' },
+      { name: 'iam_instance_profile', type: 'string', refTo: ['aws_iam_instance_profile'], refAttr: 'name' },
       { name: 'tags', type: 'tags' },
     ],
     defaults: {
@@ -111,6 +112,7 @@ export const AWS_RESOURCES = [
     connections: [
       { targetTypes: ['aws_subnet'], arg: 'subnet_id', attr: 'id', mode: 'set' },
       { targetTypes: ['aws_security_group'], arg: 'vpc_security_group_ids', attr: 'id', mode: 'append' },
+      { targetTypes: ['aws_iam_instance_profile'], arg: 'iam_instance_profile', attr: 'name', mode: 'set' },
     ],
     subtitle: (args) => litStr(args.instance_type),
   }),
@@ -807,6 +809,46 @@ export const AWS_RESOURCES = [
   }),
 
   defineResource({
+    type: 'aws_iam_role_policy_attachment',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'IAM Policy Attachment',
+    shortName: 'Policy Attachment',
+    description: 'Attaches a managed policy to a role',
+    fields: [
+      { name: 'role', type: 'string', required: true, refTo: ['aws_iam_role'], refAttr: 'name' },
+      {
+        name: 'policy_arn',
+        type: 'string',
+        required: true,
+        placeholder: 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore',
+        doc: 'ARN of an AWS managed or customer managed policy',
+      },
+    ],
+    defaults: {
+      policy_arn: lit('arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore'),
+    },
+    connections: [{ targetTypes: ['aws_iam_role'], arg: 'role', attr: 'name', mode: 'set' }],
+    subtitle: (args, locale) => litStr(args.policy_arn)?.split('/').at(-1) ?? t(locale).managedPolicy,
+  }),
+
+  defineResource({
+    type: 'aws_iam_instance_profile',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'IAM Instance Profile',
+    shortName: 'Instance Profile',
+    description: 'Hands a role to EC2 instances',
+    naming: { maxLength: 128 },
+    fields: [
+      { name: 'name', type: 'string' },
+      { name: 'role', type: 'string', refTo: ['aws_iam_role'], refAttr: 'name' },
+    ],
+    connections: [{ targetTypes: ['aws_iam_role'], arg: 'role', attr: 'name', mode: 'set' }],
+    subtitle: (_, locale) => t(locale).roleForEc2,
+  }),
+
+  defineResource({
     type: 'aws_sqs_queue',
     provider: 'aws',
     category: 'integration',
@@ -1126,6 +1168,30 @@ export const AWS_RESOURCES = [
       const routes = blocksOf(args.route);
       return routes.length ? t(locale).routeCount(routes.length) : t(locale).localOnly;
     },
+  }),
+
+  defineResource({
+    type: 'aws_route',
+    provider: 'aws',
+    category: 'network',
+    displayName: 'Route',
+    shortName: 'Route',
+    description: 'One route of a route table, written as its own block',
+    fields: [
+      { name: 'route_table_id', type: 'string', required: true, refTo: ['aws_route_table'] },
+      { name: 'destination_cidr_block', type: 'string', placeholder: '0.0.0.0/0' },
+      { name: 'gateway_id', type: 'string', refTo: ['aws_internet_gateway'] },
+      { name: 'nat_gateway_id', type: 'string', refTo: ['aws_nat_gateway'] },
+    ],
+    defaults: {
+      destination_cidr_block: lit('0.0.0.0/0'),
+    },
+    connections: [
+      { targetTypes: ['aws_route_table'], arg: 'route_table_id', attr: 'id', mode: 'set' },
+      { targetTypes: ['aws_internet_gateway'], arg: 'gateway_id', attr: 'id', mode: 'set' },
+      { targetTypes: ['aws_nat_gateway'], arg: 'nat_gateway_id', attr: 'id', mode: 'set' },
+    ],
+    subtitle: (args) => litStr(args.destination_cidr_block),
   }),
 
   defineResource({
