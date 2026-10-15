@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { sentenceDash } from '@/i18n/dashes';
 import { readLocalModule } from '@/ir/localModules';
 import { dirOfPath } from '@/ir/modules';
+import { typeDef } from '@/features/data-sources/catalog';
 import { getDef } from '@/resources/registry';
 import { checkGoals, lessonContext } from './goals';
 import { ALL_LESSONS, ALL_LEVELS, TRACKS, startLesson } from './lessons';
@@ -81,7 +82,9 @@ describe.each(ALL_LESSONS.map((l) => [l.slug, l] as const))('lesson %s', (_slug,
     expect(lesson.minutes).toBeGreaterThan(0);
     expect(lesson.xp).toBeGreaterThan(0);
     expect(lesson.body.length).toBeGreaterThan(0);
-    for (const type of lesson.teaches ?? []) expect(getDef(type), type).toBeDefined();
+    for (const type of lesson.teaches ?? []) {
+      expect(type.startsWith('data.') ? typeDef(type.slice(5)) : getDef(type), type).toBeDefined();
+    }
   });
 
   it('starts with code that parses and does not pass yet', () => {

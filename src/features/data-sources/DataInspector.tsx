@@ -6,8 +6,9 @@
  * could feed (`ami = data.aws_ami.ubuntu.id`, one click) and the attributes
  * it exposes. Every change is one canvas op, so one undo step.
  */
-import { AlertTriangle, ArrowUpRight, Check, Code2, Copy, Link2, PanelRightClose, Plus, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowUpRight, Check, Code2, Copy, GraduationCap, Link2, PanelRightClose, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Link, useMatch } from 'react-router-dom';
 import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
@@ -19,6 +20,8 @@ import { repeatLabel } from '@/features/editor/repeatLabel';
 import { useEditor } from '@/features/editor/store';
 import { commitLiteral, editableText, INPUT_NAME, parseInputText, placeholderFor } from '@/features/modules/inputValue';
 import { useLocale } from '@/i18n/locale';
+import { lessonsTeaching } from '@/learn/lessons';
+import { textIn } from '@/learn/types';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import { findData, isDataId } from '@/ir/dataSources';
 import { exprMentions, exprPreview, ref } from '@/ir/expr';
@@ -316,6 +319,9 @@ export function DataInspector({ docked = false, onMinimize }: { docked?: boolean
   const node = selection && isDataId(selection) ? findData(ir, selection) : undefined;
   const type = node?.type ?? '';
   const { block, status } = useDataSourceSchema(type);
+  // "Learn about this": the first lesson on this data source (not from inside a lesson)
+  const inLesson = useMatch('/learn/*') !== null;
+  const lesson = type && !inLesson ? lessonsTeaching(`data.${type}`)[0] : undefined;
   useEffect(() => {
     if (type) requestDataSchemasFor([type]);
   }, [type]);
@@ -399,6 +405,15 @@ export function DataInspector({ docked = false, onMinimize }: { docked?: boolean
             {lm.codeButton}
           </button>
         </div>
+        {lesson ? (
+          <Link
+            to={`/learn/${lesson.slug}`}
+            title={im.learnAboutTitle(lesson.code, textIn(lesson.title, locale))}
+            className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-medium text-primary hover:underline"
+          >
+            <GraduationCap className="h-3 w-3" /> {im.learnAbout}
+          </Link>
+        ) : null}
       </div>
 
       {readOnly ? (

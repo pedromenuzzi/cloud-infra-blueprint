@@ -1257,6 +1257,18 @@ describe('internet-facing = public address AND a route to an internet gateway (f
     expect(analyzeSecurity(load(withIp).ir).exposure.get('aws_instance.web')?.level).toBe('internet');
   });
 
+  it('a route table associated through for_each over the subnets makes them public', () => {
+    const src =
+      VPC.replace(
+        '  subnet_id      = aws_subnet.public.id\n',
+        '  for_each       = aws_subnet.public\n  subnet_id      = each.value.id\n',
+      ) +
+      sg +
+      instance('web', 'web');
+    expect(src).toContain('each.value.id');
+    expect(analyzeSecurity(load(src).ir).exposure.get('aws_instance.web')?.level).toBe('internet');
+  });
+
   it('associate_public_ip_address in a NAT-only subnet is not internet-facing', () => {
     const src = `${VPC}
 resource "aws_subnet" "private" {
