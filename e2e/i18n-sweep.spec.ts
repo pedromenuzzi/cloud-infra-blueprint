@@ -32,7 +32,6 @@ import { FRAMEWORKS } from '../src/security/compliance';
 import { CATEGORY_ORDER } from '../src/resources/types';
 import { encodeShare } from '../src/lib/share';
 import { slugify } from '../src/lib/utils';
-import { ALL_LESSONS } from '../src/learn/lessons';
 import { TEMPLATES } from '../src/templates';
 import { templateName } from '../src/templates/i18n';
 import { SEED_PROJECT } from './helpers';
@@ -250,8 +249,6 @@ function projectData(): Set<string> {
   for (const f of FRAMEWORKS) for (const v of Object.values(f)) if (typeof v === 'string') out.add(v);
   for (const c of CATEGORY_ORDER) if (categoryLabel(c, 'en') === categoryLabel(c, 'pt-BR')) out.add(categoryLabel(c, 'en'));
   for (const t of TEMPLATES) if (templateName(t, 'en') === templateName(t, 'pt-BR')) out.add(templateName(t, 'en'));
-  // a lesson named after the Terraform block it teaches ("Locals") reads the same in both
-  for (const l of ALL_LESSONS) for (const t of [l.title, l.summary]) if (t.en === t.pt) out.add(t.en);
   return out;
 }
 
@@ -374,15 +371,14 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await stop('learning map, first visit');
     // answered, with progress: the compact switch, the trail's states, earned badges
-    await page.getByRole('radio').first().check();
-    await page.evaluate((slug) => {
+    const slug = (await page.locator('[data-station] > a').first().getAttribute('href'))!.replace(/^.*\/learn\//, '');
+    await page.evaluate((s) => {
       const done = { status: 'done', met: [], xp: 40 };
-      const stored = JSON.parse(localStorage.getItem('cb-learn-v1') ?? '{}');
       localStorage.setItem(
         'cb-learn-v1',
-        JSON.stringify({ ...stored, lessons: { [slug]: done }, xp: 40, runs: { [slug]: ['init'] }, badges: { 'first-init': '2026-10-15' }, last: slug }),
+        JSON.stringify({ start: 'new', lessons: { [s]: done }, xp: 40, runs: { [s]: ['init'] }, badges: { 'first-init': '2026-10-15' }, last: s }),
       );
-    }, ALL_LESSONS[0].slug);
+    }, slug);
     await page.reload();
     await expect(page.getByTestId('player-card')).toBeVisible();
     await stop('learning map, under way');

@@ -6,7 +6,6 @@
 import { readFile } from 'node:fs/promises';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { expect, test, type Page } from '@playwright/test';
-import { ALL_LESSONS } from '../src/learn/lessons';
 import { SEED_PROJECT, storedProject, storedProjects } from './helpers';
 
 async function downloadBackup(page: Page, button = page.getByRole('button', { name: 'Back up all projects' })) {
@@ -60,7 +59,7 @@ test('backs up every project: a folder of .tf files each, and a manifest', async
 });
 
 test('learning progress goes into the backup and comes back, saying what it replaces', async ({ page }) => {
-  const slug = ALL_LESSONS[0].slug;
+  const slug = 'first-resource';
   const learning = (xp: number, lessons = 1) => ({
     start: 'aws',
     xp,
