@@ -365,7 +365,7 @@ function withActiveEdges(list: AnyFlowEdge[], primary: string | null): AnyFlowEd
   });
 }
 
-function CanvasInner() {
+function CanvasInner({ templates }: { templates: boolean }) {
   const ir = useEditor((s) => s.ir);
   const irEdges = useEditor((s) => s.edges);
   const warnings = useEditor((s) => s.warnings);
@@ -1134,7 +1134,7 @@ function CanvasInner() {
           ) : null}
           {!overview && !readOnly ? <EditorTips /> : null}
         </Panel>
-        {ir.resources.length === 0 && ir.modules.length === 0 && ir.data.length === 0 && !locked ? <EmptyCanvas /> : null}
+        {ir.resources.length === 0 && ir.modules.length === 0 && ir.data.length === 0 && !locked ? <EmptyCanvas templates={templates} /> : null}
       </ReactFlow>
 
       {menu ? (
@@ -1289,7 +1289,7 @@ function OverviewPopover({ onClose }: { onClose(): void }) {
 }
 
 /** Blank project: say what to do instead of showing an empty grid. */
-function EmptyCanvas() {
+function EmptyCanvas({ templates }: { templates: boolean }) {
   const m = useMessages(canvasMessages);
   const navigate = useNavigate();
   return (
@@ -1304,9 +1304,11 @@ function EmptyCanvas() {
           <Button size="sm" onClick={() => usePalette.getState().setOpen(true)}>
             <Plus className="h-3.5 w-3.5" /> {m.addResource}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate('/dashboard?new=1')}>
-            <LayoutTemplate className="h-3.5 w-3.5" /> {m.useTemplate}
-          </Button>
+          {templates ? (
+            <Button size="sm" variant="outline" onClick={() => navigate('/dashboard?new=1')}>
+              <LayoutTemplate className="h-3.5 w-3.5" /> {m.useTemplate}
+            </Button>
+          ) : null}
         </div>
       </div>
     </Panel>
@@ -1364,10 +1366,11 @@ function QuickAddPopover({
   );
 }
 
-export function CanvasPane() {
+/** `templates: false`: the blank canvas doesn't offer to start from a template (a lesson starts from its own code) */
+export function CanvasPane({ templates = true }: { templates?: boolean } = {}) {
   return (
     <ReactFlowProvider>
-      <CanvasInner />
+      <CanvasInner templates={templates} />
     </ReactFlowProvider>
   );
 }

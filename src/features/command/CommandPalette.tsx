@@ -147,7 +147,8 @@ export function CommandPalette() {
   const { theme, setTheme } = useTheme();
   const togglePanel = useLayout((s) => s.toggle);
 
-  const inEditor = location.pathname.startsWith('/editor/');
+  // a lesson (/learn/<slug>) is the editor on the lesson's code
+  const inEditor = location.pathname.startsWith('/editor/') || /^\/learn\/[^/]+/.test(location.pathname);
   const projectId = useEditor((s) => s.projectId);
   const resources = useEditor((s) => s.ir.resources);
   const files = useEditor((s) => s.files);

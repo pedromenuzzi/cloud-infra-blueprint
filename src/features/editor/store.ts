@@ -158,8 +158,10 @@ interface EditorState {
   /**
    * `keepView` keeps the open file + selection when they still exist (reload from another tab).
    * `readOnly` opens a project that isn't stored (a view link): edits are refused, nothing persists.
+   * `sink` opens files that aren't one of the projects (a lesson's draft): edits are saved by
+   * handing the files to it, never to the projects store, and other tabs' writes don't concern it.
    */
-  load(project: Project, options?: { keepView?: boolean; readOnly?: boolean }): void;
+  load(project: Project, options?: { keepView?: boolean; readOnly?: boolean; sink?: FilesSink }): void;
   /**
    * Settle a conflict: 'reload' takes the other tab's version, 'overwrite'
    * keeps this tab's, 'restore' puts a deleted project back, 'fork' saves this
@@ -181,6 +183,8 @@ interface EditorState {
   revealInCode(nodeId: string): void;
   /** delete resources + their nested children + references to them, as one undo step */
   deleteResources(ids: string[]): number;
+  /** every file at once (a lesson's "Use the solution"), as one undo step */
+  replaceFiles(files: Record<string, string>): void;
   undo(): void;
   redo(): void;
 }
@@ -203,6 +207,9 @@ const viewState = (view: Derived, selection: string | null) => ({
 /** what a read-only view says to an edit (a toast, Monaco's read-only tooltip), in the language in effect */
 export const readOnlyHint = () => messagesFor(storeMessages).readOnlyHint;
 
+/** where a draft that isn't a project goes (see `load`'s `sink`) */
+export type FilesSink = (files: Record<string, string>) => void;
+
 /* persistence bookkeeping for the open project */
 /** the stored project as this tab last loaded or wrote it — its `rev` guards against stale writes */
 let stored: Project | null = null;
@@ -210,6 +217,8 @@ let stored: Project | null = null;
 let dirty = false;
 /** writes pending edits now; true when nothing is left unsaved (set up by the store) */
 let saveNow: () => boolean = () => true;
+/** the open files' own store (a lesson draft) instead of the projects; null for a project */
+let sink: FilesSink | null = null;
 
 export const useEditor = create<EditorState>((set, get) => {
   const save = (): boolean => {
@@ -217,6 +226,13 @@ export const useEditor = create<EditorState>((set, get) => {
     persistTimer = undefined;
     const { projectId: id, files, projectName, conflict, readOnly } = get();
     if (readOnly) return true; // a view link is never written anywhere
+    if (sink) {
+      // a lesson draft: no revisions, no conflicts, the files go to their own store
+      if (dirty) sink(files);
+      dirty = false;
+      if (get().saveState !== 'saved') set({ saveState: 'saved', saveError: null });
+      return true;
+    }
     if (!id || !dirty) return !dirty;
     if (conflict) return false; // waiting for the user's choice — never overwrite silently
     const result = updateProject(id, { files, name: projectName }, { expectedRev: stored?.rev ?? 0 });
@@ -352,7 +368,9 @@ export const useEditor = create<EditorState>((set, get) => {
       parseTimer = undefined;
       codeBurstBase = null;
       const readOnly = options.readOnly === true;
-      stored = readOnly ? null : project;
+      // the previous files were saved above, to their own place: from here on edits go to the new one's
+      sink = options.sink ?? null;
+      stored = readOnly || sink ? null : project;
       dirty = false;
       const { ir, diagnostics } = parseProject(project.files);
       const errored = diagnostics.some((d) => d.severity === 'error');
@@ -618,6 +636,16 @@ export const useEditor = create<EditorState>((set, get) => {
       return run({ ir, edges });
     },
 
+    replaceFiles(next) {
+      if (get().readOnly) return;
+      clearTimeout(parseTimer);
+      parseTimer = undefined;
+      codeBurstBase = null;
+      pushHistory();
+      set(restore({ ...next }));
+      persist();
+    },
+
     revealInCode(nodeId) {
       const node = findNode(get().ir, nodeId);
       if (!node) return;
@@ -713,8 +741,8 @@ export function flushPendingSave(): boolean {
 function onStorageChanged(e: StorageEvent) {
   if (e.key !== PROJECTS_KEY && e.key !== null) return;
   const state = useEditor.getState();
-  // a view link isn't one of the stored projects: other tabs' writes never concern it
-  if (!state.projectId || state.conflict || state.readOnly) return;
+  // a view link or a lesson draft isn't one of the stored projects: other tabs' writes never concern it
+  if (!state.projectId || state.conflict || state.readOnly || sink) return;
   const current = getProject(state.projectId);
   if (!current) {
     clearTimeout(persistTimer);
