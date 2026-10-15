@@ -7,17 +7,15 @@ import { autoLayout } from './layout';
 import { withModuleNodes } from './modules';
 import type { IR } from './types';
 
-/** autoLayout, module calls and data sources included: those without a position get one. */
-export function layoutWithModules(ir: IR, isContainerType: (type: string) => boolean): void {
-  if (ir.modules.length === 0 && ir.data.length === 0) {
-    autoLayout(ir, isContainerType);
-    return;
-  }
+/** autoLayout, module calls and data sources included: those without a position get one. Returns what autoLayout does. */
+export function layoutWithModules(ir: IR, isContainerType: (type: string) => boolean): Set<string> {
+  if (ir.modules.length === 0 && ir.data.length === 0) return autoLayout(ir, isContainerType);
   const laid = withModuleNodes(ir);
-  autoLayout(laid, isContainerType);
+  const moved = autoLayout(laid, isContainerType);
   const placed = new Map(laid.resources.map((r) => [r.id, r.position] as const));
   for (const m of ir.modules) if (!m.position) m.position = placed.get(m.id);
   for (const d of ir.data) if (!d.position) d.position = placed.get(d.id);
+  return moved;
 }
 
 /** Keep the previous canvas position of module calls and data sources the text doesn't place (typing in the code). */
