@@ -30,7 +30,7 @@ test.describe('two tabs on one project', () => {
     const b = await context.newPage();
     await openSecondTab(b, a.url());
 
-    await palette(a).getByText('S3 Bucket').click();
+    await palette(a).getByText('S3 Bucket', { exact: true }).click();
     await expect(canvasStats(a)).toHaveText(/^12 resources/);
     await expect(canvasStats(b)).toHaveText(/^12 resources/);
   });
@@ -103,7 +103,7 @@ test.describe('full storage', () => {
     await page.evaluate(() => {
       (window as unknown as { __storageFull?: boolean }).__storageFull = true;
     });
-    await palette(page).getByText('S3 Bucket').click();
+    await palette(page).getByText('S3 Bucket', { exact: true }).click();
     await expect(page.getByRole('alert').filter({ hasText: 'Storage is full' })).toBeVisible();
     await page.waitForTimeout(700);
     await expect(page.locator('header [role="status"]')).not.toHaveText(/Saved/);
@@ -136,7 +136,7 @@ test('blocked storage (site data disabled) keeps the editor working in memory', 
   await page.getByRole('button', { name: `Open project ${SEED_PROJECT}` }).click();
   await waitForMonaco(page);
   await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
-  await palette(page).getByText('S3 Bucket').click();
+  await palette(page).getByText('S3 Bucket', { exact: true }).click();
   await expect(canvasStats(page)).toHaveText(/^12 resources/);
 });
 

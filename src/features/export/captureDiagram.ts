@@ -171,7 +171,8 @@ export async function captureDiagram(
       h,
       title: kind === 'internet' ? 'Internet' : (data.title ?? node.id),
       subtitle: data.subtitle,
-      typeLabel: data.typeLabel,
+      // the canvas's soft hyphen (features/editor/typeLabel.ts) would print as a hyphen
+      typeLabel: data.typeLabel?.replace(/\u00ad/g, ''),
       category: (data.category ?? (kind === 'container' ? 'network' : 'compute')) as Category,
       provider: (data.provider ?? 'other') as Provider,
       glyph: glyphKey || undefined,

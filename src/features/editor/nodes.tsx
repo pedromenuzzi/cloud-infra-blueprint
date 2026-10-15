@@ -21,6 +21,7 @@ import type { Op } from '@/ir/ops';
 import type { Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS, ProviderChip, ResourceIcon } from '@/resources/icons';
+import { getDef } from '@/resources/registry';
 import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
 import type { ModuleFlowNode } from '@/features/modules/ModuleNode';
@@ -190,6 +191,9 @@ function ResourceCard({ id, data, selected }: NodeProps<ResourceFlowNode>) {
           {data.provider !== 'other' ? <ProviderChip provider={data.provider} className="float-right -mb-0.5 ml-1" /> : null}
           <span
             data-type-label=""
+            title={data.resourceType}
+            // a type outside the catalog is named by its Terraform type: code, in either language
+            translate={getDef(data.resourceType) ? undefined : 'no'}
             className="block break-words pt-0.5 text-[9.5px] font-bold uppercase leading-[12px] tracking-[0.07em] text-(--cat-text)"
           >
             {data.typeLabel}

@@ -740,16 +740,32 @@ test.describe('Aurora cluster on the canvas', () => {
       await expect(
         toast.getByText(
           en
-            ? "Tip: connect aws_rds_cluster.cluster to a security group. Without one it gets the VPC's default group"
-            : 'Dica: conecte aws_rds_cluster.cluster a um grupo de segurança. Sem um, ele fica com o grupo padrão da VPC',
+            ? 'aws_rds_cluster.cluster has no security group of its own, so it gets the default group of main'
+            : 'aws_rds_cluster.cluster não tem grupo de segurança próprio, então fica com o grupo padrão de main',
         ),
       ).toBeVisible();
       await expect.poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf']).toMatch(
         /resource "aws_rds_cluster" "cluster" \{[^}]*db_subnet_group_name\s*=\s*aws_db_subnet_group\.cluster\.name/,
       );
-      // no security group was added for it
+      // the security group is offered, not added with the fix
       expect((await storedProject(page, SEED_PROJECT))!.files['main.tf'].match(/resource "aws_security_group"/g)).toHaveLength(1);
       expect(await seriousAxeViolations(page, '[data-bp-live]')).toEqual([]);
+
+      await toast.getByRole('button', { name: en ? 'Create a security group in main' : 'Criar um grupo de segurança em main' }).click();
+      await expect(
+        toast.getByText(en ? 'Created aws_security_group.cluster in main for aws_rds_cluster.cluster' : 'aws_security_group.cluster criado em main para aws_rds_cluster.cluster'),
+      ).toBeVisible();
+      await expect(
+        toast.getByText(
+          en
+            ? 'It lets nothing in yet: add an inbound rule for what connects to the database'
+            : 'Ele ainda não deixa nada entrar: adicione uma regra de entrada para o que se conecta ao banco',
+        ),
+      ).toBeVisible();
+      await expect(page.locator('.react-flow__node[data-id="aws_security_group.cluster"]')).toBeVisible();
+      await expect.poll(async () => (await storedProject(page, SEED_PROJECT))?.files['main.tf']).toMatch(
+        /resource "aws_rds_cluster" "cluster" \{[^}]*vpc_security_group_ids\s*=\s*\[aws_security_group\.cluster\.id\]/,
+      );
     });
   }
 });

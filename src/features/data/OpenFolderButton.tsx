@@ -1,9 +1,7 @@
-import { FolderOpen } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { showToast } from '@/components/Toast';
-import { Button } from '@/components/ui';
-import { messagesFor, useMessages } from '@/i18n/messages';
+import { messagesFor } from '@/i18n/messages';
 import {
   createLink,
   findLinkByFolder,
@@ -28,8 +26,9 @@ async function linkedProject(dir: DirHandleLike): Promise<string | null> {
 }
 
 /**
- * "Open folder…": imports the Terraform root module of a folder as a project
- * linked to it (saves go straight to the .tf files on disk), then opens it.
+ * "Open folder…" (the dashboard's Import menu, "Your data"): imports the
+ * Terraform root module of a folder as a project linked to it (saves go
+ * straight to the .tf files on disk), then opens it.
  */
 export function useOpenFolder() {
   const navigate = useNavigate();
@@ -102,26 +101,4 @@ export function useOpenFolder() {
   };
 
   return { open: () => void open(), busy, supported: isFolderSyncSupported() };
-}
-
-/**
- * "Open folder…" next to "Import .tf" (Chromium only — hidden elsewhere, and
- * on phones, which have no folder access). Icon-only until there's room.
- */
-export function OpenFolderButton() {
-  const { open, busy, supported } = useOpenFolder();
-  const m = useMessages(dataMessages);
-  if (!supported) return null;
-  return (
-    <Button
-      variant="outline"
-      onClick={open}
-      disabled={busy}
-      aria-label={m.openFolder}
-      title={m.openFolderTitle}
-      className="max-sm:hidden max-2xl:w-8.5 max-2xl:px-0"
-    >
-      <FolderOpen className="h-4 w-4" /> <span className="hidden 2xl:inline">{m.openFolder}</span>
-    </Button>
-  );
 }

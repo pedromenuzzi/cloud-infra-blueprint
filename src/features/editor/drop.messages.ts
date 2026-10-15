@@ -26,9 +26,16 @@ export const dropMessages = defineMessages(
     createdGroup: (id: string, subnets: string[], member: string) =>
       `Created ${id} with ${formatList(subnets, 'conjunction', 'en')}. ${member} is drawn inside it`,
     oneZone: 'AWS needs subnets in two availability zones: add a subnet in another zone to this group',
-    /** a database in its new subnet group, with no security group of its own */
-    attachSecurityGroup: (id: string) =>
-      `Tip: connect ${id} to a security group. Without one it gets the VPC's default group`,
+    // a database now in a VPC's subnets, and its security groups
+    noSecurityGroup: (id: string, vpc: string) => `${id} has no security group of its own, so it gets the default group of ${vpc}`,
+    securityGroupElsewhere: (ids: string[], vpc: string) =>
+      `${formatList(ids, 'conjunction', 'en')} ${ids.length > 1 ? 'are' : 'is'} in another VPC, and AWS only takes security groups of ${vpc}, the database's VPC`,
+    useSecurityGroup: (name: string) => `Use security group ${name}`,
+    createSecurityGroup: (vpc: string) => `Create a security group in ${vpc}`,
+    usedSecurityGroup: (id: string, group: string) => `${id} now uses ${group}`,
+    createdSecurityGroup: (group: string, vpc: string, id: string) => `Created ${group} in ${vpc} for ${id}`,
+    securityGroupsDropped: (ids: string[]) => `It no longer lists ${formatList(ids, 'conjunction', 'en')} (another VPC)`,
+    noInboundYet: 'It lets nothing in yet: add an inbound rule for what connects to the database',
     movedInto: (name: string, group: string) => `${name} is now in ${group}`,
     connected: (name: string, target: string) => `Connected ${name} to ${target}`,
     undoHint: (undo: string) => `${undo} to undo`,
@@ -52,8 +59,15 @@ export const dropMessages = defineMessages(
     createdGroup: (id: string, subnets: string[], member: string) =>
       `${id} criado com ${formatList(subnets, 'conjunction', 'pt-BR')}. ${member} aparece dentro dele`,
     oneZone: 'A AWS exige sub-redes em duas zonas de disponibilidade: adicione ao grupo uma sub-rede de outra zona',
-    attachSecurityGroup: (id: string) =>
-      `Dica: conecte ${id} a um grupo de segurança. Sem um, ele fica com o grupo padrão da VPC`,
+    noSecurityGroup: (id: string, vpc: string) => `${id} não tem grupo de segurança próprio, então fica com o grupo padrão de ${vpc}`,
+    securityGroupElsewhere: (ids: string[], vpc: string) =>
+      `${formatList(ids, 'conjunction', 'pt-BR')} ${ids.length > 1 ? 'estão' : 'está'} em outra VPC, e a AWS só aceita grupos de segurança de ${vpc}, a VPC do banco`,
+    useSecurityGroup: (name: string) => `Usar o grupo de segurança ${name}`,
+    createSecurityGroup: (vpc: string) => `Criar um grupo de segurança em ${vpc}`,
+    usedSecurityGroup: (id: string, group: string) => `${id} agora usa ${group}`,
+    createdSecurityGroup: (group: string, vpc: string, id: string) => `${group} criado em ${vpc} para ${id}`,
+    securityGroupsDropped: (ids: string[]) => `Ele não lista mais ${formatList(ids, 'conjunction', 'pt-BR')} (outra VPC)`,
+    noInboundYet: 'Ele ainda não deixa nada entrar: adicione uma regra de entrada para o que se conecta ao banco',
     movedInto: (name: string, group: string) => `${name} agora está em ${group}`,
     connected: (name: string, target: string) => `${name} conectado a ${target}`,
     undoHint: (undo: string) => `${undo} para desfazer`,

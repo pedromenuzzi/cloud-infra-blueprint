@@ -389,7 +389,8 @@ test('the GitHub dialog counts the child modules’ files it will download', asy
   });
   await page.addInitScript(() => localStorage.setItem('cb-tips-dismissed', '1'));
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'Import from GitHub…' }).click();
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'From GitHub…' }).click();
   const d = page.getByRole('dialog', { name: /Import from GitHub/ });
   await d.getByLabel('GitHub link or owner/repo').fill('acme/shop');
   await d.getByRole('button', { name: 'Find Terraform' }).click();

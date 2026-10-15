@@ -4,9 +4,11 @@
  *   there are) and put the database in it — drawn in the VPC, spanning them;
  * - put it in the VPC's existing group;
  * - connect to the container instead of going inside it.
+ * A database now in a VPC's subnets also needs a security group of that VPC
+ * (AWS refuses one of another VPC): the step after the fix offers it.
  * Computed from the editor state at the time the fix is used.
  */
-import { list } from '@/ir/expr';
+import { exprMentions, list } from '@/ir/expr';
 import { ARRANGE, CONTAINER_MIN_H, CONTAINER_MIN_W } from '@/ir/layout';
 import type { Op } from '@/ir/ops';
 import { appendReference, instanceRef } from '@/ir/repeat';
@@ -14,20 +16,27 @@ import type { Expression, IR, ResourceNode } from '@/ir/types';
 import type { Locale } from '@/i18n/locale';
 import { messagesFor } from '@/i18n/messages';
 import { connectionOp, findConnectionRule } from '@/resources/connect';
+import { SUBNET_GROUP_OF } from '@/resources/dropReasons';
 import { getDef } from '@/resources/registry';
+import { extractRules, fromInternet } from '@/security/model';
 import { dropMessages } from './drop.messages';
 import { nounOf, type DropFix } from './dropRules';
 import { buildNewNode } from './newNode';
-import { makeRoomOps, settleOps, slotIn } from './placement';
+import { makeRoomOps, settleOps, sizeFor, slotIn } from './placement';
 import { subnetTier, subnetZone } from './tidy';
 
 export interface FixResult {
   ops: Op[];
   message: string;
   hint?: string;
-  /** one more line: what's still worth doing (it isn't done for the user) */
+  /** one more line: what's still worth doing, or why the next step is offered */
   note?: string;
+  /** the next step, offered with the result: the database's security group */
+  securityGroup?: { vpcId: string; fix: SecurityGroupFix };
 }
+
+/** the security group a database in a VPC gets: the one the VPC's other databases use, or a new one */
+export type SecurityGroupFix = { kind: 'use'; group: ResourceNode } | { kind: 'create' };
 
 /** the label of the fix's button */
 export function fixLabel(fix: DropFix, locale?: Locale): string {
@@ -42,12 +51,112 @@ export function fixLabel(fix: DropFix, locale?: Locale): string {
   }
 }
 
-/** A database that takes security groups but has none: the VPC's default group applies. */
-function withoutSecurityGroup(node: ResourceNode): boolean {
-  const rule = getDef(node.type)?.connections?.find((c) => c.targetTypes.includes('aws_security_group'));
-  if (!rule) return false;
-  const value = node.args[rule.arg];
-  return value === undefined || (value.kind === 'list' && value.items.length === 0);
+/** the argument holding a database's security groups (`vpc_security_group_ids`, `security_group_ids`) */
+function securityGroupArg(type: string): string | undefined {
+  return getDef(type)?.connections?.find((c) => c.targetTypes.includes('aws_security_group'))?.arg;
+}
+
+const groupsIn = (ir: IR, value: Expression | undefined) =>
+  value ? ir.resources.filter((r) => r.type === 'aws_security_group' && exprMentions(value, r.id)) : [];
+
+/**
+ * What `node`'s security groups need once it runs in `vpc`'s subnets, and
+ * the line that says why. Nothing when it has groups of that VPC, or ones
+ * the canvas can't see (`var.db_security_groups`). With none it gets the
+ * VPC's default group; a group of another VPC (or of the default one: no
+ * `vpc_id`) AWS refuses. The fix: the group another database of this VPC
+ * uses, else a new one.
+ */
+export function securityGroupNeed(
+  ir: IR,
+  node: ResourceNode,
+  vpc: ResourceNode,
+  locale?: Locale,
+): { fix: SecurityGroupFix; note: string } | undefined {
+  const m = messagesFor(dropMessages, locale);
+  const arg = securityGroupArg(node.type);
+  if (!arg) return undefined;
+  const value = node.args[arg];
+  const empty = value === undefined || (value.kind === 'list' && value.items.length === 0);
+  const groups = groupsIn(ir, value);
+  const elsewhere = groups.filter((g) => g.parentId !== vpc.id);
+  if (!empty && elsewhere.length === 0) return undefined;
+  const usedByAnother = (group: ResourceNode) =>
+    ir.resources.some((r) => {
+      const other = r.id !== node.id && SUBNET_GROUP_OF[r.type] ? securityGroupArg(r.type) : undefined;
+      const held = other ? r.args[other] : undefined;
+      return held !== undefined && exprMentions(held, group.id);
+    });
+  // never one open to the internet (the web tier's, which a database sometimes borrows)
+  const rules = extractRules(ir);
+  const open = (group: ResourceNode) =>
+    (rules.get(group.id) ?? []).some((r) => r.direction === 'inbound' && r.action === 'allow' && fromInternet(r));
+  const shared = ir.resources.find(
+    (g) => g.type === 'aws_security_group' && g.parentId === vpc.id && usedByAnother(g) && !open(g),
+  );
+  return {
+    fix: shared ? { kind: 'use', group: shared } : { kind: 'create' },
+    note: empty ? m.noSecurityGroup(node.id, vpc.name) : m.securityGroupElsewhere(elsewhere.map((g) => g.id), vpc.name),
+  };
+}
+
+/** the label of the security group step's button */
+export function securityGroupLabel(fix: SecurityGroupFix, vpc: string, locale?: Locale): string {
+  const m = messagesFor(dropMessages, locale);
+  return fix.kind === 'use' ? m.useSecurityGroup(fix.group.name) : m.createSecurityGroup(vpc);
+}
+
+/**
+ * The security group step, from the editor state when it's used (one undo
+ * step): the database keeps its groups of the VPC, drops those of another,
+ * and gets the shared group or a new one drawn in the VPC. A new group has
+ * no inbound rule: nothing reaches the database until the user says what may.
+ */
+export function securityGroupOps(ir: IR, nodeId: string, vpcId: string, fix: SecurityGroupFix, locale?: Locale): FixResult | null {
+  const m = messagesFor(dropMessages, locale);
+  const node = ir.resources.find((r) => r.id === nodeId);
+  const vpc = ir.resources.find((r) => r.id === vpcId);
+  const arg = node && securityGroupArg(node.type);
+  const sgDef = getDef('aws_security_group');
+  if (!node || !vpc || !arg || !sgDef) return null;
+  const ops: Op[] = [];
+  let group = fix.kind === 'use' ? ir.resources.find((r) => r.id === fix.group.id && r.parentId === vpc.id) : undefined;
+  if (fix.kind === 'use' && !group) return null;
+  if (!group) {
+    // named after the database it guards: aws_security_group.main for aws_db_instance.main
+    const taken = new Set(ir.resources.map((r) => r.id));
+    let name = node.name;
+    for (let i = 2; taken.has(`aws_security_group.${name}`); i++) name = `${node.name}_${i}`;
+    const size = sizeFor(sgDef.type);
+    const spot = slotIn(ir, vpc, size);
+    const built = buildNewNode(ir, sgDef, spot, vpc, { name });
+    group = built.node;
+    ops.push(...built.ops, ...makeRoomOps(ir, vpc.id, { ...spot, ...size }));
+  }
+  const current = node.args[arg];
+  const away = groupsIn(ir, current).filter((g) => g.parentId !== vpc.id);
+  const kept =
+    current?.kind === 'list'
+      ? current.items.filter((item) => !away.some((g) => exprMentions(item, g.id)))
+      : current && away.length === 0
+        ? [current]
+        : [];
+  const value = appendReference(list(kept), instanceRef(group, 'id', { ir }));
+  if (value) ops.push({ kind: 'set_arg', nodeId, field: arg, value });
+  return {
+    ops,
+    message: fix.kind === 'use' ? m.usedSecurityGroup(node.id, group.id) : m.createdSecurityGroup(group.id, vpc.name, node.id),
+    note:
+      [away.length > 0 ? m.securityGroupsDropped(away.map((g) => g.id)) : '', fix.kind === 'create' ? m.noInboundYet : '']
+        .filter(Boolean)
+        .join('. ') || undefined,
+  };
+}
+
+/** the note and the next step for the security groups of a database moved into `vpc` */
+function securityGroupStep(ir: IR, node: ResourceNode, vpc: ResourceNode, locale?: Locale): Pick<FixResult, 'note' | 'securityGroup'> {
+  const need = securityGroupNeed(ir, node, vpc, locale);
+  return need ? { note: need.note, securityGroup: { vpcId: vpc.id, fix: need.fix } } : {};
 }
 
 const isPublic = (s: ResourceNode) => {
@@ -112,8 +221,7 @@ export function fixOps(ir: IR, nodeId: string, fix: DropFix, locale?: Locale): F
       ],
       message: m.createdGroup(group.id, subnets.map((s) => s.name), node.id),
       hint: subnets.length < 2 || (known && zones.size < 2) ? m.oneZone : undefined,
-      // a nudge, not a change: no security group is created for the user
-      note: withoutSecurityGroup(node) ? m.attachSecurityGroup(node.id) : undefined,
+      ...securityGroupStep(ir, node, vpc, locale),
     };
   }
 
@@ -121,8 +229,10 @@ export function fixOps(ir: IR, nodeId: string, fix: DropFix, locale?: Locale): F
   const rule = target && (fix.kind === 'connect' ? fix.rule : findConnectionRule(def, target.type));
   const op = target && rule ? connectionOp(node, target, rule, ir) : null;
   if (!target || !op) return null;
+  const vpc = fix.kind === 'use-group' && target.parentId ? byId.get(target.parentId) : undefined;
   return {
     ops: settleOps(ir, [op], nodeId),
     message: fix.kind === 'use-group' ? m.movedInto(node.id, target.id) : m.connected(node.id, target.id),
+    ...(vpc?.type === 'aws_vpc' ? securityGroupStep(ir, node, vpc, locale) : {}),
   };
 }

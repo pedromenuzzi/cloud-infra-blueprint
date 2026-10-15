@@ -213,7 +213,6 @@ export const dataMessages = defineMessages(
     syncedWith: (label: string) => `Synced with the folder “${label}” on this computer.`,
     linkNotSaved: 'Imported, but the folder link couldn’t be saved in this browser',
     openedFolder: (label: string) => `Opened “${label}”: saves go straight to its .tf files`,
-    openFolderTitle: 'Open a Terraform folder on your disk and keep it in sync',
   },
   {
     nothingToBackUp: 'Ainda não há projetos para fazer backup',
@@ -422,6 +421,5 @@ export const dataMessages = defineMessages(
     syncedWith: (label: string) => `Sincronizado com a pasta “${label}” deste computador.`,
     linkNotSaved: 'Importado, mas não foi possível salvar o vínculo com a pasta neste navegador',
     openedFolder: (label: string) => `“${label}” aberta: as alterações salvas vão direto para os arquivos .tf dela`,
-    openFolderTitle: 'Abrir uma pasta Terraform do seu disco e mantê-la em sincronia',
   },
 );

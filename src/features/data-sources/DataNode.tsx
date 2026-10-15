@@ -11,6 +11,7 @@ import type { CSSProperties } from 'react';
 import { canvasMessages } from '@/features/editor/CanvasPane.messages';
 import { RepeatBadge } from '@/features/editor/RepeatBadge';
 import { repeatLabel, type RepeatLabel } from '@/features/editor/repeatLabel';
+import { CHIP, fitTypeLabel } from '@/features/editor/typeLabel';
 import type { Locale } from '@/i18n/locale';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import { dataReferrers } from '@/ir/dataSources';
@@ -19,6 +20,8 @@ import { repeatOf } from '@/ir/repeat';
 import type { IR, Provider } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { DataSourceIcon } from './DataSourceIcon';
+import { getDef } from '@/resources/registry';
+import { typeDef } from './catalog';
 import { DATA_TILE } from './tile';
 import { dataSourceMessages } from './dataSources.messages';
 import { dataSourceShortName } from './i18n';
@@ -71,6 +74,9 @@ export function DataNodeView({ data, selected }: NodeProps<DataFlowNode>) {
           </code>
           <span
             data-type-label=""
+            title={data.type}
+            // a type outside both catalogs is named by its Terraform type: code, in either language
+            translate={typeDef(data.type) || getDef(data.type) ? undefined : 'no'}
             className="block break-words pt-0.5 text-[9.5px] font-bold uppercase leading-[12px] tracking-[0.07em] text-(--data-text)"
           >
             {data.typeLabel}
@@ -136,7 +142,7 @@ export function dataFlowNodes(
         lens,
         risky: risky.has(d.id),
         repeat,
-        typeLabel,
+        typeLabel: fitTypeLabel(typeLabel, CHIP.data),
         subtitle: d.type,
         resourceType: 'data',
         lookup: true,

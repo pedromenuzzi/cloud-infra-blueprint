@@ -2,9 +2,7 @@ import {
   ArrowRight,
   Copy,
   FileDown,
-  FileUp,
   FolderSync,
-  Github,
   GraduationCap,
   LayoutTemplate,
   Pencil,
@@ -13,7 +11,7 @@ import {
   Trash2,
   UploadCloud,
 } from 'lucide-react';
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AppRail } from '@/components/AppRail';
 import { confirmAction } from '@/components/Confirm';
@@ -25,9 +23,8 @@ import { usePalette } from '@/features/command/paletteStore';
 import { backupAmong, openRestore } from '@/features/data/dataDialogs';
 import { DataPanel, StorageNudge } from '@/features/data/DataPanel';
 import { forgetFolderLink, useFolderLinks } from '@/features/data/folderLinks';
+import { ImportMenu } from '@/features/import/ImportMenu';
 import { continueLesson } from '@/features/learn/trail';
-import { OpenFolderButton } from '@/features/data/OpenFolderButton';
-import { openGithubImport } from '@/features/import/githubImportStore';
 import { TemplateModal } from '@/features/templates/TemplateModal';
 import { useLocale, type Locale } from '@/i18n/locale';
 import { messagesFor, useMessages } from '@/i18n/messages';
@@ -341,7 +338,6 @@ export default function DashboardPage() {
   const [sort, setSort] = useState<Sort>(readSort);
   const [templatesOpen, setTemplatesOpen] = useState(params.get('new') === '1');
   const [dragging, setDragging] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
   const openPalette = usePalette((s) => s.setOpen);
   const featured = useMemo(
     () =>
@@ -488,29 +484,10 @@ export default function DashboardPage() {
               >
                 <Search className="h-3.5 w-3.5" /> {m.quickActions} <Kbd>{shortcut('mod', 'K')}</Kbd>
               </button>
-              <Button variant="outline" onClick={() => fileInput.current?.click()}>
-                <FileUp className="h-4 w-4" /> {m.importTf}
-              </Button>
-              <Button variant="outline" aria-label={m.importGithub} title={m.importGithub} onClick={() => openGithubImport()}>
-                <Github className="h-4 w-4" /> <span className="max-sm:hidden">GitHub</span>
-              </Button>
-              <OpenFolderButton />
+              <ImportMenu onFiles={(files) => void importOrRestore(files)} />
               <Button onClick={() => setTemplatesOpen(true)}>
                 {m.newProject} <Plus className="h-4 w-4" />
               </Button>
-              <input
-                ref={fileInput}
-                type="file"
-                multiple
-                accept=".tf,.zip"
-                className="hidden"
-                aria-label={m.importFilesLabel}
-                onChange={(e) => {
-                  // copy before resetting the input: its FileList is live and empties
-                  if (e.target.files?.length) void importOrRestore([...e.target.files]);
-                  e.target.value = '';
-                }}
-              />
             </div>
           </div>
 
