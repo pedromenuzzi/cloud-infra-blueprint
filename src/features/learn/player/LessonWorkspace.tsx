@@ -45,14 +45,15 @@ const CodePane = lazy(() => import('@/features/editor/CodePane').then((m) => ({ 
 /**
  * Where each mode starts; everything else comes from the user's editor layout.
  * The live diagram is the point of a lesson, so the canvas gets the most room
- * the mode allows (the code column never goes below 300 px).
+ * the mode allows. `split` is the code column's share of the whole editor
+ * area (it never goes below 300 px).
  */
 const MODE_LAYOUT: Record<LessonMode, Partial<LayoutPrefs>> = {
   // drag from the palette: the canvas leads, the code it writes alongside
-  canvas: { palette: true, code: true, split: 30 },
-  mixed: { palette: true, code: true, split: 42 },
+  canvas: { palette: true, code: true, split: 28 },
+  mixed: { palette: true, code: true, split: 32 },
   // typing: the code leads, the canvas still draws it live; resources stay one click away
-  code: { palette: false, code: true, split: 52 },
+  code: { palette: false, code: true, split: 50 },
 };
 const LESSON_LAYOUT: Partial<LayoutPrefs> = {
   canvas: true,
@@ -174,7 +175,7 @@ function useEditorKeys() {
 export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
   const m = useMessages(playerMessages);
   const areaRef = useRef<HTMLDivElement>(null);
-  const splitRef = useRef<HTMLElement>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const panels = useLayout((s) => s.panels);
   const compact = useLayout((s) => s.compact);
@@ -184,6 +185,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
   const docked = useLayout(dockedInspector);
   const securitySlot = useLayout(securityPanelSlot);
   const selection = useEditor((s) => s.selection);
+  const selectionOrigin = useEditor((s) => s.selectionOrigin);
   const securityPanel = useSecurityUi((s) => s.panelOpen);
   const dragging = useCanvasDrag((s) => s.kind !== null);
 
@@ -257,15 +259,16 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
 
   const wide = !compact;
   const canvasShown = panels.canvas;
-  const codeColumn = canvasShown ? wide && panels.code : true;
   const codeSide = useLayout((s) => s.codeSide);
   const paletteSide = useLayout((s) => s.paletteSide);
   const minimizeInspector = () => {
     useLayout.getState().setVisible('inspector', false);
     focusSoon('[data-strip="inspector"]');
   };
+  // a block picked on the canvas opens the inspector; the caret moving through the code (which picks
+  // the block it's in) leaves the code its whole column while the learner types
   const dockedEl =
-    docked && panels.inspector && selection ? (
+    docked && panels.inspector && selection && selectionOrigin === 'canvas' ? (
       <div className="flex min-h-0 flex-[3] flex-col border-b bg-surface-1" data-testid="docked-inspector">
         <Inspector docked onMinimize={minimizeInspector} />
       </div>
@@ -291,10 +294,8 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
       data-dragging={dragging || undefined}
       className={cn(
         'group/canvas flex min-w-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
-        canvasShown ? 'relative' : 'pointer-events-none absolute inset-0 -z-10 opacity-0',
-        canvasShown && !codeColumn && 'flex-1',
+        canvasShown ? 'relative flex-1' : 'pointer-events-none absolute inset-0 -z-10 opacity-0',
       )}
-      style={canvasShown && codeColumn ? { width: `${100 - split}%` } : undefined}
     >
       <div className="relative min-w-0 flex-1">
         <CanvasPane templates={false} />
@@ -315,10 +316,14 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
     </div>
   );
 
-  const codeSlot: ReactNode[] = [];
-  if (codeColumn) {
-    if (canvasShown) {
-      codeSlot.push(
+  /**
+   * Wide, with the canvas on screen: the code (and the inspector above it) is a full-height column
+   * beside the canvas, the terminal docked under the palette and the canvas, where its plan is drawn.
+   */
+  const side: ReactNode[] = [];
+  if (wide && canvasShown) {
+    if (panels.code) {
+      side.push(
         <div
           key="separator"
           role="separator"
@@ -328,40 +333,42 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
           onPointerDown={startDrag}
           onDoubleClick={() => useLayout.getState().setSplit(SPLIT_DEFAULT)}
         />,
-      );
-    }
-    codeSlot.push(
-      <div
-        key="code"
-        className={cn('flex flex-col', canvasShown ? 'min-w-[300px] shrink-0' : 'min-w-0 flex-1')}
-        style={canvasShown ? { width: `${split}%` } : undefined}
-      >
-        {canvasShown ? dockedEl : null}
-        <div id={CODE_TARGET} tabIndex={-1} className="min-h-0 flex-[2] outline-none">
-          {codePane}
-        </div>
-      </div>,
-    );
-  } else if (wide) {
-    codeSlot.push(<CollapsedStrip key="code-strip" panel="code" edge={codeSide === 'right' ? 'left' : 'right'} />);
-    // the code is hidden: the inspector keeps a column of its own
-    if (dockedEl) {
-      codeSlot.push(
-        <div key="inspector" className="flex shrink-0 flex-col border-l" style={{ width: INSPECTOR_WIDTH }}>
+        <div key="code" className="flex min-w-[300px] shrink-0 flex-col" style={{ width: `${split}%` }}>
           {dockedEl}
+          <div id={CODE_TARGET} tabIndex={-1} className="min-h-0 flex-[2] outline-none">
+            {codePane}
+          </div>
         </div>,
       );
+    } else {
+      side.push(<CollapsedStrip key="code-strip" panel="code" edge={codeSide === 'right' ? 'left' : 'right'} />);
+      // the code is hidden: the inspector keeps a column of its own
+      if (dockedEl) {
+        side.push(
+          <div key="inspector" className="flex shrink-0 flex-col border-l" style={{ width: INSPECTOR_WIDTH }}>
+            {dockedEl}
+          </div>,
+        );
+      }
     }
-  }
-  if (codeSide === 'left') codeSlot.reverse();
-  const canvasColumn: ReactNode[] = [canvasSlot];
-  if (!canvasShown && wide) {
-    canvasColumn.push(<CollapsedStrip key="canvas-strip" panel="canvas" edge={codeSide === 'right' ? 'right' : 'left'} />);
+    if (codeSide === 'left') side.reverse();
   }
 
+  // the canvas hidden: the code takes its place
+  const stageCode =
+    wide && !canvasShown
+      ? [
+          <div key="code" id={CODE_TARGET} tabIndex={-1} className="min-w-0 flex-1 outline-none">
+            {codePane}
+          </div>,
+          <CollapsedStrip key="canvas-strip" panel="canvas" edge={codeSide === 'right' ? 'right' : 'left'} />,
+        ]
+      : [];
+  if (codeSide === 'left') stageCode.reverse();
+
   const main = (
-    <main key="main" ref={splitRef} className="relative isolate flex min-w-0 flex-1" aria-label={m.editor}>
-      {codeSide === 'left' ? [...codeSlot, ...canvasColumn] : [...canvasColumn, ...codeSlot]}
+    <main key="main" className="relative isolate flex min-w-0 flex-1" aria-label={m.editor}>
+      {codeSide === 'left' ? [...stageCode, canvasSlot] : [canvasSlot, ...stageCode]}
       {canvasShown ? null : securityEl}
       {compact && drawer === 'palette' ? (
         <div
@@ -394,15 +401,20 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
       <CollapsedStrip key="palette" panel="palette" side={paletteSide} edge={paletteSide === 'left' ? 'right' : 'left'} />
     )
   ) : null;
+  const stage = (
+    <div key="stage" className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-h-0 flex-1">{paletteSide === 'left' ? [palette, main] : [main, palette]}</div>
+      <Terminal slug={lesson.slug} />
+    </div>
+  );
 
   return (
     <div ref={areaRef} className="flex h-full min-w-0 flex-1 flex-col">
       <LessonToolbar lesson={lesson} />
-      <div id={WORKSPACE_ID} className="relative flex min-h-0 flex-1">
-        {paletteSide === 'left' ? [palette, main] : [main, palette]}
+      <div id={WORKSPACE_ID} ref={splitRef} className="relative flex min-h-0 flex-1">
+        {codeSide === 'left' ? [...side, stage] : [stage, ...side]}
         <PanelDropZones />
       </div>
-      <Terminal slug={lesson.slug} />
       <RulesEditor />
       <ExportPdfHost />
     </div>
