@@ -67,7 +67,7 @@ import { duplicateModuleCall } from '@/features/modules/duplicateModule';
 import { modulesMessages } from '@/features/modules/modules.messages';
 import { repeatOf } from '@/ir/repeat';
 import type { Op } from '@/ir/ops';
-import type { Expression, IR, ResourceNode } from '@/ir/types';
+import type { Expression, IR, Provider, ResourceNode } from '@/ir/types';
 import { copyText } from '@/lib/download';
 import { detectProviders } from '@/lib/storage';
 import { cn } from '@/lib/utils';
@@ -78,6 +78,7 @@ import { connectionOp, findConnectionRule } from '@/resources/connect';
 import { docsUrl, getDef, isContainerType } from '@/resources/registry';
 import type { ResourceDef } from '@/resources/types';
 import { registerCanvasApi } from './canvasApi';
+import { CHIP, fitTypeLabel } from './typeLabel';
 import { isCanvasDragging } from './canvasDrag';
 import { CanvasToolbar } from './CanvasToolbar';
 import { exportDiagramImage } from './exportImage';
@@ -166,9 +167,9 @@ function connectHint(a: string, b: string): string {
   return m.noAttribute;
 }
 
-/** a resource's kind as the canvas names it: the catalog's short name, else the type without its provider prefix */
-const typeLabelOf = (type: string, locale: Locale) =>
-  getDef(type) ? resourceShortName(type, locale) : type.replace(/^(aws|azurerm|google)_/, '');
+/** a resource's kind as the canvas names it: the catalog's short name, else the words of its type without the provider prefix */
+const typeLabelOf = (type: string, provider: Provider, locale: Locale) =>
+  getDef(type) ? resourceShortName(type, locale) : fitTypeLabel(type.replace(/^(aws|azurerm|google)_/, ''), CHIP[provider]);
 
 /** traffic ports as a sentence lists them: ":443" stays, "all" is worded */
 const portWords = (ports: string[], locale: Locale) => ports.map((p) => portText(p, locale)).join(', ');
@@ -227,7 +228,7 @@ export function buildFlow(
         data: {
           title: r.name,
           subtitle: resourceSubtitle(r.type, r.args, locale),
-          typeLabel: typeLabelOf(r.type, locale),
+          typeLabel: typeLabelOf(r.type, r.provider, locale),
           resourceType: r.type,
           provider: r.provider,
           category: def?.category ?? 'network',
@@ -251,7 +252,7 @@ export function buildFlow(
       data: {
         title: r.name,
         subtitle: resourceSubtitle(r.type, r.args, locale) ?? name,
-        typeLabel: typeLabelOf(r.type, locale),
+        typeLabel: typeLabelOf(r.type, r.provider, locale),
         resourceType: r.type,
         provider: r.provider,
         category: def?.category ?? 'compute',

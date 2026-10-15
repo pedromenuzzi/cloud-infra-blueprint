@@ -188,6 +188,7 @@ function ResourceCard({ data, selected }: NodeProps<ResourceFlowNode>) {
           {data.provider !== 'other' ? <ProviderChip provider={data.provider} className="float-right -mb-0.5 ml-1" /> : null}
           <span
             data-type-label=""
+            title={data.resourceType}
             className="block break-words pt-0.5 text-[9.5px] font-bold uppercase leading-[12px] tracking-[0.07em] text-(--cat-text)"
           >
             {data.typeLabel}

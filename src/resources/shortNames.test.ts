@@ -3,29 +3,14 @@
  * the small caps of features/editor/nodes.tsx: every catalog short name, in
  * both languages, must fit the node's header — two lines at most (the first
  * beside the provider chip, the second as wide as the text), no word broken
- * in the middle. Widths are estimated with Helvetica Bold's metrics
- * (src/lib/pdf/metrics.ts) scaled to Inter, plus the label's letter spacing;
+ * in the middle. Widths are estimated as features/editor/typeLabel.ts does;
  * e2e/polish-2.spec.ts measures the real thing in the browser.
  */
 import { describe, expect, it } from 'vitest';
 import type { Locale } from '@/i18n/locale';
-import { textWidth } from '@/lib/pdf/metrics';
+import { CHIP, labelWidth as width, TEXT_COLUMN } from '@/features/editor/typeLabel';
 import { resourceShortName } from './i18n';
 import { allDefs } from './registry';
-
-/** nodes.tsx: a 208 px node, 1 px border and 10 px padding each side, a 40 px icon and a 10 px gap */
-const TEXT_COLUMN = 208 - 2 - 20 - 40 - 10;
-/** the provider chip at the header's right (9 px bold caps, 4 px padding each side), plus the 4 px gap */
-const CHIP: Record<string, number> = { aws: 34, azure: 44, gcp: 32, other: 0 };
-const SIZE = 9.5;
-const TRACKING = 0.07 * SIZE;
-/**
- * Inter Bold caps measure within a few % of Helvetica Bold's in Chromium
- * (narrower on average, wider on "I" and "M"): 5% of margin
- */
-const INTER = 1.05;
-
-const width = (text: string) => textWidth(text, 'bold', SIZE) * INTER + TRACKING * [...text].length;
 
 /** greedy word wrap, as the browser does it: the first line `first` wide, the others `rest` (null when a word can't fit) */
 function wrap(text: string, first: number, rest: number): string[] | null {
