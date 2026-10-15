@@ -114,3 +114,68 @@ test.describe('Monaco in the UI language', () => {
     });
   }
 });
+
+/* ------------------------------------------------------------ Import menu */
+
+test.describe('one Import menu on the dashboard', () => {
+  test('keyboard: opens on its first item, arrows move, Esc gives focus back', async ({ page }) => {
+    await visit(page);
+    const trigger = page.getByRole('button', { name: 'Import', exact: true });
+    await expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+    // the three ways in that used to be separate buttons are its items
+    await expect(page.getByRole('button', { name: /^Import from GitHub/ })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Import .tf' })).toHaveCount(0);
+
+    await trigger.focus();
+    await page.keyboard.press('Enter');
+    const menu = page.getByRole('menu', { name: 'Import' });
+    await expect(menu.getByRole('menuitem')).toHaveText([/^Terraform files…/, /^From GitHub…/, /^Open folder…/]);
+    const files = menu.getByRole('menuitem', { name: 'Terraform files…' });
+    await expect(files).toBeFocused();
+    await expect(files).toHaveAccessibleDescription('.tf files or a .zip, copied into the browser');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    await page.keyboard.press('ArrowDown');
+    await expect(files).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(menu.getByRole('menuitem', { name: 'From GitHub…' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog', { name: /Import from GitHub/ })).toBeVisible();
+  });
+
+  test('"Terraform files…" picks .tf files and imports them as a project', async ({ page }) => {
+    await visit(page);
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
+    const chooser = page.waitForEvent('filechooser');
+    await page.getByRole('menuitem', { name: 'Terraform files…' }).click();
+    await (await chooser).setFiles([{ name: 'main.tf', mimeType: 'text/plain', buffer: Buffer.from('resource "aws_vpc" "picked" {}\n') }]);
+    await expect(page).toHaveURL(/\/editor\//);
+    await expect(page.locator('.react-flow__node[data-id="aws_vpc.picked"]')).toBeVisible();
+  });
+
+  for (const [width, theme] of [
+    [390, 'light'],
+    [768, 'dark'],
+  ] as const) {
+    test(`pt-BR at ${width} px, ${theme}: the menu fits the screen and passes axe`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await visit(page, { locale: 'pt-BR', theme });
+      const trigger = page.getByRole('button', { name: 'Importar', exact: true });
+      const create = page.getByRole('button', { name: 'Novo projeto' });
+      // side by side, on one row
+      expect(Math.abs((await trigger.boundingBox())!.y - (await create.boundingBox())!.y)).toBeLessThan(2);
+      await trigger.click();
+      const menu = page.getByRole('menu', { name: 'Importar' });
+      await expect(menu.getByRole('menuitem', { name: 'Do GitHub…' })).toHaveAccessibleDescription('Um repositório, pasta, arquivo .tf ou gist');
+      const box = (await menu.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(8);
+      expect(box.x + box.width).toBeLessThanOrEqual(width - 8);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+      expect(await seriousAxeViolations(page, '[role="menu"]')).toEqual([]);
+    });
+  }
+});

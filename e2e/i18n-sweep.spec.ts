@@ -358,7 +358,10 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
     await expect(page.getByRole('dialog')).toBeVisible();
     await stop('template picker');
     await close();
-    await page.getByRole('button', { name: L('Import from GitHub…', 'Importar do GitHub…') }).click();
+    await page.getByRole('button', { name: L('Import', 'Importar'), exact: true }).click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    await stop('import menu');
+    await page.getByRole('menuitem', { name: L('From GitHub…', 'Do GitHub…') }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await stop('GitHub import');
     await close();

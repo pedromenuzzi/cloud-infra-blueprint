@@ -151,7 +151,8 @@ test('dashboard dialogs in Portuguese: templates, restore, GitHub import', async
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('é uma exportação, não um backup');
   await page.getByRole('dialog').getByRole('button', { name: 'Fechar' }).first().click();
 
-  await page.getByRole('button', { name: 'Importar do GitHub…' }).click();
+  await page.getByRole('button', { name: 'Importar', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Do GitHub…' }).click();
   const github = page.getByRole('dialog', { name: /Importar do GitHub/ });
   await github.getByLabel('Link do GitHub ou owner/repo').fill('https://gitlab.com/acme/infra');
   await github.getByRole('button', { name: 'Buscar Terraform' }).click();
@@ -226,7 +227,8 @@ for (const theme of ['light', 'dark'] as const) {
         'GitHub import',
         async () => {
           await page.goto('/dashboard');
-          await page.getByRole('button', { name: 'Importar do GitHub…' }).click();
+          await page.getByRole('button', { name: 'Importar', exact: true }).click();
+          await page.getByRole('menuitem', { name: 'Do GitHub…' }).click();
           await expect(page.getByRole('dialog')).toBeVisible();
         },
       ],

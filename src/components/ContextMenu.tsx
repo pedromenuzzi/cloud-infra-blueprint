@@ -1,5 +1,5 @@
 import { Check, type LucideIcon } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { focusIsLost, Kbd, restoreFocus, useLayer } from './ui';
@@ -7,6 +7,8 @@ import { focusIsLost, Kbd, restoreFocus, useLayer } from './ui';
 export interface MenuItem {
   id: string;
   label: string;
+  /** a quieter second line saying what the item does (read as its description) */
+  hint?: string;
   /** a Lucide icon, or any component taking a className (e.g. a flag) */
   icon?: LucideIcon | ComponentType<{ className?: string }>;
   shortcut?: string;
@@ -36,6 +38,7 @@ export function ContextMenu({
   label: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const id = useId();
   const [pos, setPos] = useState({ left: x, top: y });
   /** the labels as one string: a language switch re-words an open menu, which may change its size */
   const words = entries.map((e) => (e === 'separator' ? '-' : e.label)).join('|');
@@ -44,7 +47,9 @@ export function ContextMenu({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
+    // its layout size: the opening animation scales it, which a bounding rect would include
+    const width = el.offsetWidth;
+    const height = el.offsetHeight;
     setPos({
       left: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
       top: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
@@ -127,6 +132,8 @@ export function ContextMenu({
               entry.checked === undefined ? 'menuitem' : entry.toggle ? 'menuitemcheckbox' : 'menuitemradio'
             }
             aria-checked={entry.checked}
+            aria-labelledby={entry.hint ? `${id}-${i}` : undefined}
+            aria-describedby={entry.hint ? `${id}-${i}-hint` : undefined}
             disabled={entry.disabled}
             onClick={() => {
               onClose();
@@ -143,7 +150,18 @@ export function ContextMenu({
             ) : (
               <span className="w-3.5" />
             )}
-            <span className="min-w-0 flex-1">{entry.label}</span>
+            {entry.hint ? (
+              <span className="min-w-0 flex-1">
+                <span id={`${id}-${i}`} className="block">
+                  {entry.label}
+                </span>
+                <span id={`${id}-${i}-hint`} className="block text-[11px] leading-snug text-muted">
+                  {entry.hint}
+                </span>
+              </span>
+            ) : (
+              <span className="min-w-0 flex-1">{entry.label}</span>
+            )}
             {entry.shortcut ? <Kbd>{entry.shortcut}</Kbd> : null}
             {entry.checked ? <Check className="h-3.5 w-3.5 text-primary" /> : null}
           </button>

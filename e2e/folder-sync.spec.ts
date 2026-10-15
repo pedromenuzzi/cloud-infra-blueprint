@@ -115,7 +115,8 @@ test.describe('folder sync', () => {
       'repo/infra/modules/net/main.tf': 'resource "aws_subnet" "a" {}\n',
     });
     await page.evaluate(() => ((window as unknown as { __pick: string }).__pick = 'repo'));
-    await page.getByRole('button', { name: 'Open folder…' }).first().click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Open folder…' }).click();
 
     await expect(page).toHaveURL(/\/editor\//);
     // a folder link syncs the root module's own files only: the child module stays on disk
