@@ -7,13 +7,15 @@
  * heredocs, `var` / `local` / resource / `data` / `module` references with
  * attributes, indexes and splats, `count.index`, `each.key` / `each.value`,
  * arithmetic, comparisons, `&&` `||` `!`, conditionals, `for` expressions
- * and the common functions. Anything else throws `Unsupported`, and the
- * caller keeps the argument as an opaque value (see `Opaque`).
+ * and the common functions; `dynamic` blocks expanded into the blocks they
+ * stand for. Anything else throws `Unsupported`, and the caller keeps the
+ * argument as an opaque value (see `Opaque`).
  *
  * ponytail: src/ir/checks/repeatValues.ts has a smaller evaluator of the
  * same subset (no unknowns, no references to other blocks' results); fold it
  * into this one if the checks ever need conditionals or functions.
  */
+import { parseFile } from '@/hcl/parser';
 import { parseCidrBlock, formatAddress, formatCidrBlock } from '@/resources/cidr';
 import { exprText } from '@/ir/repeat';
 import type { Expression } from '@/ir/types';
@@ -785,8 +787,43 @@ export function evaluate(e: Expression, scope: Scope, env: Env = new Map()): Val
 
 export function evaluateRecord(record: Record<string, Expression>, scope: Scope, env: Env = new Map()): { [key: string]: Val } {
   const out: { [key: string]: Val } = {};
-  for (const [k, v] of Object.entries(record)) out[k] = evaluate(v, scope, env);
+  const dynamics: Array<[string, string]> = [];
+  for (const [k, v] of Object.entries(record)) {
+    const label = dynamicLabel(k);
+    if (label !== undefined && v.kind === 'raw') dynamics.push([label, v.hcl]);
+    else out[k] = evaluate(v, scope, env);
+  }
+  // ponytail: dynamic blocks go after the static ones of the same name, not in source order
+  for (const [label, hcl] of dynamics) {
+    const items = dynamicBlocks(hcl, scope, env);
+    const had = out[label];
+    const before: Val[] = had === undefined ? [] : Array.isArray(had) ? had : [had];
+    out[label] = Array.isArray(items) ? [...before, ...items] : items;
+  }
   return out;
+}
+
+/** the block name a `dynamic "ingress" { … }` entry stands for (the parser keeps it verbatim, keyed `dynamic "ingress" #0`) */
+export const dynamicLabel = (key: string): string | undefined => /^dynamic "([^"]+)" #\d+$/.exec(key)?.[1];
+
+/**
+ * A `dynamic` block's expansion: one `content` body per item of `for_each`,
+ * with the iterator (the label, or `iterator = name`) as `{ key, value }`
+ * (the index for a list, the key for a map).
+ */
+function dynamicBlocks(hcl: string, scope: Scope, env: Env): Val {
+  const body = hcl.slice(hcl.indexOf('{') + 1, hcl.lastIndexOf('}'));
+  // parsed as an `output` body: a block kind the parser reads argument by argument
+  const [block] = parseFile('dynamic.tf', `output "dynamic" {\n${body}\n}\n`).blocks;
+  const args = block?.kind === 'labeled' ? block.args : {};
+  const content = args.content;
+  if (!args.for_each || content?.kind !== 'block') return new Opaque(hcl);
+  const iterator = args.iterator ? exprText(args.iterator).trim() : /^dynamic\s+"([^"]+)"/.exec(hcl)?.[1];
+  const coll = evaluate(args.for_each, scope, env);
+  if (coll === UNKNOWN) return UNKNOWN;
+  if (!iterator || coll instanceof Opaque) return new Opaque(hcl);
+  const pairs: Array<[Val, Val]> = Array.isArray(coll) ? coll.map((v, i) => [i, v]) : isObject(coll) ? Object.keys(coll).sort().map((k) => [k, coll[k]]) : [];
+  return pairs.map(([key, value]) => evaluateRecord(content.body, scope, new Map(env).set(iterator, { key, value })));
 }
 
 /** `count.index` / `each.key` / `each.value` for one instance */

@@ -197,7 +197,8 @@ function itemLines(sym: Sym, col: number, v: Val, bare: boolean): Line[] {
 
 /* ------------------------------------------------------------------ resource changes */
 
-export type ChangeAction = 'create' | 'update' | 'replace' | 'delete' | 'noop';
+/** `read`: a data source read during apply (`<=`) */
+export type ChangeAction = 'create' | 'update' | 'replace' | 'delete' | 'read' | 'noop';
 
 export interface ResourceChange {
   /** `aws_subnet.public[0]`, `module.net.aws_vpc.this` */
@@ -217,23 +218,38 @@ export interface ResourceChange {
   createFirst?: boolean;
   /** why a delete happens, when it isn't obvious */
   because?: string;
+  /** the address a `moved` block took it from */
+  movedFrom?: string;
 }
 
 /** attributes an update always shows, changed or not (what identifies the object) */
 const IDENTIFYING = new Set(['id', 'name', 'tags']);
 
+const HEADS: Record<ChangeAction, string> = {
+  create: 'will be created',
+  update: 'will be updated in-place',
+  replace: 'must be replaced',
+  delete: 'will be destroyed',
+  read: 'will be read during apply',
+  noop: '',
+};
+
 export function changeLines(c: ResourceChange): Line[] {
-  const head = c.action === 'create' ? 'will be created' : c.action === 'update' ? 'will be updated in-place' : c.action === 'replace' ? 'must be replaced' : 'will be destroyed';
-  const out: Line[] = [line(`  # ${c.address} ${head}`, 'strong')];
-  if (c.because) out.push(line(`  # (because ${c.because})`, 'strong'));
-  const open = `resource "${c.type}" "${c.name}" {`;
-  if (c.action === 'create') {
-    out.push(line(`  + ${open}`, 'add'), ...bodyLines('+', 6, c.after ?? {}, c.blocks));
+  const moveOnly = c.action === 'noop' && c.movedFrom !== undefined;
+  const out: Line[] = [line(moveOnly ? `  # ${c.movedFrom} has moved to ${c.address}` : `  # ${c.address} ${HEADS[c.action]}`, 'strong')];
+  if (c.movedFrom !== undefined && !moveOnly) out.push(line(`  # (moved from ${c.movedFrom})`, 'strong'));
+  if (c.action === 'read') out.push(line('  # (config refers to values not yet known)', 'strong'));
+  else if (c.because) out.push(line(`  # (because ${c.because})`, 'strong'));
+  const open = `${c.action === 'read' ? 'data' : 'resource'} "${c.type}" "${c.name}" {`;
+  if (c.action === 'create' || c.action === 'read') {
+    out.push(c.action === 'read' ? line(` <= ${open}`, 'change') : line(`  + ${open}`, 'add'), ...bodyLines('+', 6, c.after ?? {}, c.blocks));
   } else if (c.action === 'delete') {
     const body: Record<string, Val> = Object.fromEntries(Object.entries(c.before ?? {}).map(([k, v]) => [k, decode(v)]));
     out.push(line(`  - ${open}`, 'destroy'), ...bodyLines('-', 6, body, new Set(), true));
   } else {
-    out.push(c.action === 'update' ? line(`  ~ ${open}`, 'change') : line(`${c.createFirst ? '+/-' : '-/+'} ${open}`, 'replace'));
+    out.push(
+      c.action === 'noop' ? line(`    ${open}`) : c.action === 'update' ? line(`  ~ ${open}`, 'change') : line(`${c.createFirst ? '+/-' : '-/+'} ${open}`, 'replace'),
+    );
     const before = c.before ?? {};
     const after = c.after ?? {};
     const names = [...new Set([...Object.keys(before), ...Object.keys(after)])].sort();

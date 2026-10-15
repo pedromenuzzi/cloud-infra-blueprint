@@ -8,21 +8,25 @@
  * The plan is a real diff of the configuration against the state: create,
  * update in place, replace (when an argument that forces it changes, or
  * depends on a replaced resource's new id), destroy; `count` and `for_each`
- * expanded to instance addresses; local modules planned resource by
- * resource (`module.net.aws_vpc.this`), Registry ones left out with a note.
+ * expanded to instance addresses; `moved` blocks followed (`# a has moved
+ * to b`); data sources read during the plan, or during the apply when their
+ * arguments wait on it (`<=`); local modules planned resource by resource
+ * (`module.net.aws_vpc.this`), Registry ones left out with a note.
  * Pure: the same files and state always print the same thing.
  */
+import { movedBlocks } from '@/hcl/moved';
 import { lineColOf, parseFile, parseProject } from '@/hcl/parser';
 import { collectRefs, refTargetAddress, scanTraversals } from '@/ir/expr';
-import { moduleTarget } from '@/ir/localModules';
+import { moduleTarget, type LocalModule } from '@/ir/localModules';
+import { moduleInputs } from '@/ir/modules';
 import { instanceAddress, localValue, repeatOf } from '@/ir/repeat';
 import type { Expression, IR, ModuleNode, ResourceNode, Trivia } from '@/ir/types';
 import { validateProject } from '@/ir/validate';
 import { getDef } from '@/resources/registry';
 import { constraintAllows } from '@/schema/versions';
 import type { Files, PlanSummary, SimCommand, SimState } from '../types';
-import { computedOf, createSeconds, forcesNew, makeAttr, makeId, readData, type Fake } from './catalog';
-import { evaluate, evaluateRecord, hasUnknown, instanceEnv, isObject, Opaque, UNKNOWN, type Scope, type Val } from './eval';
+import { computedOf, createSeconds, dataAttrs, forcesNew, knowsData, makeAttr, makeId, readData, type Fake } from './catalog';
+import { dynamicLabel, evaluate, evaluateRecord, hasUnknown, instanceEnv, isObject, Opaque, UNKNOWN, type Scope, type Val } from './eval';
 import {
   changeLines,
   decode,
@@ -166,6 +170,12 @@ function diagnose(files: Files, ir: IR, parseDiagnostics: ReturnType<typeof pars
   const vars = new Set(ir.variables.map((v) => v.name));
   const data = new Set(ir.data.map((d) => d.id));
   const modules = new Set(ir.modules.map((m) => m.name));
+  /** the root's calls to modules of this project, by name: their inputs and outputs are known */
+  const children = new Map<string, LocalModule>();
+  for (const m of ir.modules) {
+    const target = moduleTarget(files, m);
+    if (target.kind === 'local' && target.module && !target.module.broken) children.set(m.name, target.module);
+  }
   const resources = new Set(ir.resources.map((r) => r.id));
   const types = new Set(ir.resources.map((r) => r.type));
   const seen = new Set<string>();
@@ -186,6 +196,8 @@ function diagnose(files: Files, ir: IR, parseDiagnostics: ReturnType<typeof pars
         problem = { summary: 'Reference to undeclared local value', detail: `A local value with the name "${second}" has not been declared.` };
       } else if (root === 'module' && !modules.has(second)) {
         problem = { summary: 'Reference to undeclared module', detail: `No module call named "${second}" is declared in the root module.` };
+      } else if (root === 'module' && third !== undefined && children.has(second) && !children.get(second)!.outputs.some((o) => o.name === third)) {
+        problem = { summary: 'Unsupported attribute', detail: `This object does not have an attribute named "${third}".` };
       } else if (root === 'data' && third !== undefined && !data.has(`data.${second}.${third}`)) {
         problem = { summary: 'Reference to undeclared resource', detail: `A data resource "${second}" "${third}" has not been declared in the root module.` };
       } else if ((RESOURCE_ROOT.test(root) || types.has(root)) && second !== undefined && !resources.has(`${root}.${second}`)) {
@@ -208,6 +220,20 @@ function diagnose(files: Files, ir: IR, parseDiagnostics: ReturnType<typeof pars
         detail: `The argument "${field.name}" is required, but no definition was found.`,
         ...at(files, r),
       });
+    }
+  }
+  // ponytail: only the root's module calls are held to their module's variables; nested calls are checked when planned
+  for (const m of ir.modules) {
+    const child = children.get(m.name);
+    if (!child) continue;
+    const given = new Set(moduleInputs(m).map(([k]) => k));
+    for (const v of child.variables) {
+      if (!v.required || given.has(v.name)) continue;
+      out.push({ severity: 'error', summary: 'Missing required argument', detail: `The argument "${v.name}" is required, but no definition was found.`, ...at(files, m) });
+    }
+    for (const k of given) {
+      if (child.variables.some((v) => v.name === k)) continue;
+      out.push({ severity: 'error', summary: 'Unsupported argument', detail: `An argument named "${k}" is not expected here.`, ...at(files, m, k) });
     }
   }
   if (warnings) {
@@ -240,6 +266,10 @@ interface Engine {
   notes: Line[];
   problems: Problem[];
   regions: Map<string, string>;
+  /** `moved` blocks: an instance's address → the one the state had it under */
+  movedFrom: Map<string, string>;
+  /** every resource reached (`module.net.aws_subnet.a`) → how it repeats; and every module instance (`module.env["prod"]`) */
+  reached: Map<string, 'count' | 'for_each' | 'none' | 'module'>;
 }
 
 interface Mod {
@@ -414,6 +444,17 @@ function gather(kind: 'count' | 'for_each' | undefined, values: Array<[string | 
 
 const nonNull = (record: Record<string, Val>) => Object.fromEntries(Object.entries(record).filter(([, v]) => v !== null));
 
+/** which of an instance's arguments are nested blocks: written as blocks, or what a `dynamic` block expanded to */
+function blocksOf(args: Record<string, Expression>, config: Record<string, Val>): Set<string> {
+  const out = new Set<string>();
+  for (const [k, e] of Object.entries(args)) {
+    const label = dynamicLabel(k);
+    if (e.kind === 'block' || e.kind === 'blocks') out.add(k);
+    else if (label !== undefined && Array.isArray(config[label])) out.add(label);
+  }
+  return out;
+}
+
 function findById(eng: Engine, id: string): Record<string, Val> | undefined {
   for (const v of eng.values.values()) if (v.id === id) return v;
   return undefined;
@@ -428,13 +469,14 @@ function regionOf(eng: Engine, r: ResourceNode, config: Record<string, Val>): st
 function visitResource(eng: Engine, mod: Mod, r: ResourceNode) {
   const expanded = expand(r, mod, eng);
   if (!expanded) return void mod.blocks.set(r.id, UNKNOWN);
+  eng.reached.set(mod.prefix + r.id, expanded.kind ?? 'none');
   const scope = scopeOf(mod, eng);
   const life = lifecycleOf(r);
   const args = Object.fromEntries(Object.entries(r.args).filter(([k]) => !META.has(k)));
-  const blocks = new Set(Object.entries(args).filter(([, e]) => e.kind === 'block' || e.kind === 'blocks').map(([k]) => k));
   const values: Array<[string | number | undefined, Val]> = [];
   for (const inst of expanded.instances) {
     const config = nonNull(evaluateRecord(args, scope, inst.env));
+    const blocks = blocksOf(args, config);
     const prev = eng.previous?.resources[inst.address];
     const computed = [...new Set(['id', ...computedOf(r.type), ...(mod.reads.get(r.id) ?? [])])].filter((k) => !(k in config));
     // arguments left out that the provider keeps (they're computed, or the ones that would force a replacement)
@@ -488,6 +530,7 @@ function visitResource(eng: Engine, mod: Mod, r: ResourceNode) {
       blocks,
       forced,
       createFirst: life.createFirst,
+      movedFrom: eng.movedFrom.get(inst.address),
     });
     values.push([inst.key, value]);
   }
@@ -500,19 +543,22 @@ function visitData(eng: Engine, mod: Mod, d: IR['data'][number]) {
   const scope = scopeOf(mod, eng);
   const args = Object.fromEntries(Object.entries(d.args).filter(([k]) => !META.has(k)));
   const values: Array<[string | number | undefined, Val]> = [];
+  const known = knowsData(d.type);
   for (const inst of expanded.instances) {
     const config = nonNull(evaluateRecord(args, scope, inst.env));
     const reads = mod.reads.get(d.id) ?? new Set<string>();
+    const read = (after: Record<string, Val>): ResourceChange => ({ address: inst.address, type: d.type, name: d.name, action: 'read', after, blocks: blocksOf(args, config) });
     let value: Record<string, Val>;
-    if (hasUnknown(config)) {
-      // it reads something an apply creates: Terraform reads it during the apply
-      value = { ...config, id: UNKNOWN, ...Object.fromEntries([...reads].filter((k) => !(k in config)).map((k) => [k, UNKNOWN])) };
+    if (!eng.apply && (hasUnknown(config) || !known)) {
+      // it reads something an apply creates (or a type the simulator can't answer for): Terraform reads it during the apply
+      value = { ...config, ...Object.fromEntries(['id', ...dataAttrs(d.type), ...reads].filter((k) => !(k in config)).map((k) => [k, UNKNOWN])) };
+      if (known) eng.changes.push(read(value));
     } else {
       const region = typeof config.region === 'string' ? config.region : (eng.regions.get('') ?? REGION);
       value = { ...config, ...readData(d.type, { type: d.type, name: d.name, seed: inst.address, config, region, byId: (id) => findById(eng, id) }, reads) };
       if (!eng.apply) {
         eng.reads.push(line(`${inst.address}: Reading...`, undefined, true), line(`${inst.address}: Read complete after 0s [id=${String(value.id)}]`));
-      }
+      } else if (!known || eng.actions?.get(inst.address) === 'read') eng.changes.push(read(value));
     }
     values.push([inst.key, value]);
   }
@@ -556,6 +602,7 @@ function visitModule(eng: Engine, mod: Mod, m: ModuleNode) {
         }
       }
     }
+    eng.reached.set(inst.address, 'module');
     const inner: Mod = { prefix: `${inst.address}.`, ir: child.ir, dir: target.dir, vars, locals: new Map(), blocks: new Map(), reads: readsOf(child.ir) };
     walk(eng, inner);
     const innerScope = scopeOf(inner, eng);
@@ -601,6 +648,66 @@ interface Planned {
   values: Map<string, Record<string, Val>>;
   reads: Line[];
   notes: Line[];
+  /** the state with the `moved` blocks followed: what the plan compares against */
+  state: SimState | null;
+}
+
+/**
+ * The state as the configuration now names it: each `moved` block (in file
+ * order, so chains work) re-keys what the state holds at `from` (a whole
+ * resource or module carries its instances along), unless `to` is taken.
+ * Then Terraform's implied moves: a resource that gained `count` keeps its
+ * object as `[0]`, one that lost it takes `[0]` back.
+ *
+ * ponytail: `moved` blocks of the root module only, and implied moves for
+ * the root's resources; read each module's own blocks with its prefix if
+ * lessons move things inside a module.
+ */
+function moveState(ir: IR, previous: SimState | null): { state: SimState | null; movedFrom: Map<string, string> } {
+  const movedFrom = new Map<string, string>();
+  if (!previous) return { state: previous, movedFrom };
+  let resources = previous.resources;
+  const move = (from: string, to: string) => {
+    const next: SimState['resources'] = {};
+    for (const [address, attrs] of Object.entries(resources)) {
+      const rest = address.startsWith(from) ? address.slice(from.length) : null;
+      const carried = rest !== null && (rest === '' || rest.startsWith('.') || (rest.startsWith('[') && !from.endsWith(']') && !to.endsWith(']')));
+      const target = carried ? to + rest : address;
+      if (carried && resources[target] === undefined) {
+        movedFrom.set(target, movedFrom.get(address) ?? address);
+        movedFrom.delete(address);
+        next[target] = attrs;
+      } else next[address] = attrs;
+    }
+    resources = next;
+  };
+  for (const m of movedBlocks(ir)) move(m.from, m.to);
+  for (const r of ir.resources) {
+    const counted = r.args.count !== undefined;
+    if (counted && resources[r.id] && !resources[`${r.id}[0]`]) move(r.id, `${r.id}[0]`);
+    if (!counted && !r.args.for_each && resources[`${r.id}[0]`] && !resources[r.id]) move(`${r.id}[0]`, r.id);
+  }
+  return { state: { ...previous, resources }, movedFrom };
+}
+
+/** why the state's `address` is destroyed: Terraform's `# (because …)` line */
+function whyGone(eng: Engine, address: string): string {
+  const m = /^((?:module\.[\w-]+(?:\[[^\]]*\])?\.)*)([\w-]+\.[\w-]+)(\[[^\]]*\])?$/.exec(address);
+  if (!m) return `${address} is not in configuration`;
+  const [, path, base, key] = m;
+  let prefix = '';
+  for (const step of path.match(/module\.[\w-]+(?:\[[^\]]*\])?\./g) ?? []) {
+    prefix += step;
+    if (!eng.reached.has(prefix.slice(0, -1))) return `${prefix.slice(0, -1)} is not in configuration`;
+  }
+  const kind = eng.reached.get(prefix + base);
+  const from = eng.movedFrom.get(address);
+  if (kind === undefined || kind === 'module') return from ? `${from} was moved to ${address}, which is not in configuration` : `${prefix + base} is not in configuration`;
+  const numeric = key !== undefined && /^\[\d+\]$/.test(key);
+  if (key === undefined) return 'resource uses count or for_each';
+  if (kind === 'count') return numeric ? `index ${key} is out of range for count` : 'resource does not use for_each';
+  if (kind === 'for_each') return numeric ? 'resource does not use count' : `key ${key} is not in for_each map`;
+  return numeric ? 'resource does not use count' : 'resource does not use for_each';
 }
 
 /** tfvars files: `terraform.tfvars` and `*.auto.tfvars` */
@@ -615,10 +722,11 @@ function tfvars(files: Files): Record<string, Val> {
   return out;
 }
 
-function run(files: Files, previous: SimState | null, actions?: Map<string, ChangeAction>): Planned {
+function run(files: Files, applied: SimState | null, actions?: Map<string, ChangeAction>): Planned {
   const parsed = parseProject(tfFiles(files));
   const { ir } = parsed;
   const problems = diagnose(files, ir, parsed.diagnostics, false).filter((p) => p.severity === 'error');
+  const { state: previous, movedFrom } = moveState(ir, applied);
   const eng: Engine = {
     files,
     previous,
@@ -631,8 +739,10 @@ function run(files: Files, previous: SimState | null, actions?: Map<string, Chan
     notes: [],
     problems,
     regions: new Map(),
+    movedFrom,
+    reached: new Map(),
   };
-  if (problems.length > 0) return { problems, changes: [], outputs: [], outputValues: new Map(), values: eng.values, reads: [], notes: [] };
+  if (problems.length > 0) return { problems, changes: [], outputs: [], outputValues: new Map(), values: eng.values, reads: [], notes: [], state: previous };
 
   const given = tfvars(files);
   const vars = new Map<string, Val>();
@@ -661,19 +771,10 @@ function run(files: Files, previous: SimState | null, actions?: Map<string, Chan
 
   // what the state holds that the configuration doesn't any more
   const planned = new Set(eng.changes.map((c) => c.address));
-  const declared = new Set(ir.resources.map((r) => r.id));
   for (const [address, before] of Object.entries(previous?.resources ?? {})) {
     if (planned.has(address)) continue;
-    const base = address.replace(/\[[^\]]*\]$/, '');
-    const key = /\[([^\]]*)\]$/.exec(address)?.[1];
-    const [type, name] = base.split('.').slice(-2);
-    const because =
-      key !== undefined && declared.has(base)
-        ? /^\d+$/.test(key)
-          ? `index [${key}] is out of range for count`
-          : `key [${key}] is not in for_each map`
-        : `${/^module\./.test(address) ? address.split('.').slice(0, 2).join('.') : base} is not in configuration`;
-    eng.changes.push({ address, type, name, action: 'delete', before, blocks: new Set(), because });
+    const [type, name] = address.replace(/\[[^\]]*\]$/, '').split('.').slice(-2);
+    eng.changes.push({ address, type, name, action: 'delete', before, blocks: new Set(), because: whyGone(eng, address) });
   }
 
   // root outputs
@@ -690,14 +791,14 @@ function run(files: Files, previous: SimState | null, actions?: Map<string, Chan
     if (!outputValues.has(name)) outputs.push({ name, before });
   }
   outputs.sort((a, b) => a.name.localeCompare(b.name));
-  return { problems, changes: eng.changes, outputs, outputValues, values: eng.values, reads: eng.reads, notes: eng.notes };
+  return { problems, changes: eng.changes, outputs, outputValues, values: eng.values, reads: eng.reads, notes: eng.notes, state: previous };
 }
 
 const byAddress = (a: { address: string }, b: { address: string }) => a.address.localeCompare(b.address, 'en', { numeric: true });
 
 /** the changes as the canvas and the lesson read them */
 function summary(changes: ResourceChange[]): PlanSummary {
-  const real = changes.filter((c) => c.action !== 'noop').sort(byAddress);
+  const real = changes.filter((c) => c.action !== 'noop' && c.action !== 'read').sort(byAddress);
   const text = (v: Val | undefined) => (v === undefined || v === null || v === UNKNOWN || v instanceof Opaque ? null : serialize(v));
   return {
     changes: real.map((c) => {
@@ -722,17 +823,19 @@ const LEGEND: Record<string, Line> = {
   delete: line('  - destroy', 'destroy'),
   replace: line('-/+ destroy and then create replacement', 'replace'),
   createFirst: line('+/- create replacement and then destroy', 'replace'),
+  read: line(' <= read (data resources)', 'change'),
 };
 
 /** the plan as Terraform prints it, from the refresh to the summary (and the output changes) */
-function planLines(p: Planned, previous: SimState | null): { lines: Line[]; empty: boolean } {
+function planLines(p: Planned): { lines: Line[]; empty: boolean } {
   const out: Line[] = [];
-  for (const [address, attrs] of Object.entries(previous?.resources ?? {})) {
+  for (const [address, attrs] of Object.entries(p.state?.resources ?? {})) {
     out.push(line(`${address}: Refreshing state... [id=${attrs.id ?? ''}]`, undefined, true));
   }
   out.push(...p.reads);
   if (out.length > 0) out.push(line());
-  const real = p.changes.filter((c) => c.action !== 'noop').sort(byAddress);
+  // a move with nothing else to do is still shown: `# a has moved to b`
+  const real = p.changes.filter((c) => c.action !== 'noop' || c.movedFrom !== undefined).sort(byAddress);
   if (real.length === 0 && p.outputs.length === 0) {
     out.push(
       line('No changes. Your infrastructure matches the configuration.', 'success'),
@@ -749,7 +852,7 @@ function planLines(p: Planned, previous: SimState | null): { lines: Line[]; empt
       line('plan. Resource actions are indicated with the following symbols:'),
     );
     const used = new Set(real.map((c) => (c.action === 'replace' && c.createFirst ? 'createFirst' : c.action)));
-    for (const k of ['create', 'update', 'delete', 'replace', 'createFirst'] as const) if (used.has(k)) out.push(LEGEND[k]);
+    for (const k of ['create', 'update', 'delete', 'replace', 'createFirst', 'read'] as const) if (used.has(k)) out.push(LEGEND[k]);
     out.push(line(), line('Terraform will perform the following actions:'), line());
     for (const c of real) out.push(...changeLines(c));
     if (p.notes.length > 0) out.push(...p.notes, line());
@@ -941,7 +1044,7 @@ function validate(files: Files): SimResult {
 function plan(files: Files, previous: SimState | null): SimResult {
   const p = run(files, previous);
   if (p.problems.length > 0) return { ok: false, lines: p.problems.flatMap(problemLines) };
-  const { lines, empty } = planLines(p, previous);
+  const { lines, empty } = planLines(p);
   if (!empty) {
     lines.push(
       line(),
@@ -957,7 +1060,7 @@ function plan(files: Files, previous: SimState | null): SimResult {
 function apply(files: Files, previous: SimState | null, autoApprove: boolean): SimResult {
   const p = run(files, previous);
   if (p.problems.length > 0) return { ok: false, lines: p.problems.flatMap(problemLines) };
-  const { lines, empty } = planLines(p, previous);
+  const { lines, empty } = planLines(p);
   let confirmAt: number | undefined;
   if (!empty && !autoApprove) {
     lines.push(...confirmLines(false));
@@ -968,7 +1071,7 @@ function apply(files: Files, previous: SimState | null, autoApprove: boolean): S
   // the apply itself: the plan's actions, with ids made as each instance is created
   const actions = new Map(p.changes.map((c) => [c.address, c.action]));
   const done = run(files, previous, actions);
-  const old = previous?.resources ?? {};
+  const old = p.state?.resources ?? {};
   const deletes = p.changes.filter((c) => c.action === 'delete');
   const replaced = p.changes.filter((c) => c.action === 'replace');
   for (const c of [...deletes].reverse()) lines.push(...destroyLines(c.address, old[c.address].id ?? '', c.type));
@@ -976,6 +1079,7 @@ function apply(files: Files, previous: SimState | null, autoApprove: boolean): S
   for (const c of done.changes) {
     const id = String(c.after?.id ?? '');
     if (c.action === 'create' || c.action === 'replace') lines.push(...createLines(c.address, id, c.type));
+    else if (c.action === 'read') lines.push(line(`${c.address}: Reading...`, undefined, true), line(`${c.address}: Read complete after 0s [id=${id}]`));
     else if (c.action === 'update') {
       lines.push(line(`${c.address}: Modifying... [id=${id}]`, undefined, true), line(`${c.address}: Modifications complete after 1s [id=${id}]`));
     }
@@ -989,7 +1093,7 @@ function apply(files: Files, previous: SimState | null, autoApprove: boolean): S
 
   const resources: SimState['resources'] = {};
   for (const c of done.changes) {
-    if (c.action === 'delete' || !c.after) continue;
+    if (c.action === 'delete' || c.action === 'read' || !c.after) continue;
     resources[c.address] = Object.fromEntries(Object.entries(c.after).map(([k, v]) => [k, serialize(v)]));
   }
   const outputs = Object.fromEntries([...done.outputValues].map(([k, { value }]) => [k, serialize(value)]));
@@ -1004,7 +1108,7 @@ function destroy(files: Files, previous: SimState | null, autoApprove: boolean):
   const parsed = parseProject(tfFiles(files));
   const problems = diagnose(files, parsed.ir, parsed.diagnostics, false).filter((p) => p.severity === 'error');
   if (problems.length > 0) return { ok: false, lines: problems.flatMap(problemLines) };
-  const entries = Object.entries(previous?.resources ?? {});
+  const entries = Object.entries(moveState(parsed.ir, previous).state?.resources ?? {});
   if (entries.length === 0) {
     return {
       ok: true,
