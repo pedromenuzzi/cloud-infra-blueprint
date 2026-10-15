@@ -60,6 +60,8 @@ import { openProjectRootPath, orderedFiles, useEditor } from '@/features/editor/
 import { securityUiMessages } from '@/features/security/messages';
 import { BrazilFlag, UsFlag } from '@/components/flags';
 import { LOCALES, useLocale } from '@/i18n/locale';
+import { ALL_LESSONS, TRACKS } from '@/learn/lessons';
+import { textIn } from '@/learn/types';
 import { copyText, exportZip } from '@/lib/download';
 import { REPO_URL } from '@/lib/links';
 import { shareLinkInfo } from '@/lib/share';
@@ -571,9 +573,26 @@ export function CommandPalette() {
                 ))}
               </Command.Group>
 
+              {/* only while searching: 20-odd lessons would bury the root list */}
+              {search.trim() ? (
+                <Command.Group heading={m.group.lessons}>
+                  {ALL_LESSONS.map((lesson) => (
+                    <Item
+                      key={lesson.slug}
+                      value={`lesson ${lesson.slug}`}
+                      icon={GraduationCap}
+                      label={`${lesson.code} ${textIn(lesson.title, locale)}`}
+                      hint={textIn(TRACKS.find((t) => t.levels.some((l) => l.lessons.includes(lesson)))?.title ?? TRACKS[0].title, locale)}
+                      keywords={[lesson.title.en, lesson.title.pt, ...m.kw.lesson]}
+                      onSelect={() => run(() => navigate(`/learn/${lesson.slug}`))}
+                    />
+                  ))}
+                </Command.Group>
+              ) : null}
+
               <Command.Group heading={m.group.goTo}>
                 <Item value="nav-dashboard" icon={LayoutDashboard} label={m.navProjects} keywords={m.kw.dashboard} onSelect={() => run(() => navigate('/dashboard'))} />
-                <Item value="nav-tutorials" icon={GraduationCap} label={m.navTutorials} keywords={m.kw.tutorials} onSelect={() => run(() => navigate('/tutorials'))} />
+                <Item value="nav-learn" icon={GraduationCap} label={m.navLearn} keywords={m.kw.learn} onSelect={() => run(() => navigate('/learn'))} />
                 <Item value="nav-landing" icon={BookOpen} label={m.navLanding} onSelect={() => run(() => navigate('/'))} />
                 <Item
                   value="nav-github"
