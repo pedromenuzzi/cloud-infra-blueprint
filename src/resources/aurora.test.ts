@@ -3,7 +3,7 @@
  * (`aws_rds_cluster_instance`) in the catalog — built from their own HCL, no
  * template: the cluster drawn inside its DB subnet group like an RDS instance,
  * the instances inside their cluster, the canvas's "create a DB subnet group"
- * fix (and its security-group tip), drop reasons, cost, name rules and their
+ * fix (and the security group step after it), drop reasons, cost, name rules and their
  * Portuguese text.
  */
 import { describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { computeAbsoluteRects } from '@/components/ProjectThumbnail';
 import { estimateProject, estimateResource } from '@/cost/estimate';
 import { PRICE_BOOK } from '@/cost/prices/prices';
 import { TEST_BOOK } from '@/cost/testing';
-import { fixOps } from '@/features/editor/dropFixes';
+import { fixOps, securityGroupLabel, securityGroupNeed, securityGroupOps } from '@/features/editor/dropFixes';
 import { dropVerdict, refusalReason } from '@/features/editor/dropRules';
 import { buildNewNode } from '@/features/editor/newNode';
 import { parseProject } from '@/hcl/parser';
@@ -20,6 +20,8 @@ import { lit } from '@/ir/expr';
 import { deriveStructure } from '@/ir/graph';
 import { autoLayout } from '@/ir/layout';
 import { applyOps, type Op } from '@/ir/ops';
+import { exprText } from '@/ir/repeat';
+import { blocksOf } from '@/security/model';
 import type { IR } from '@/ir/types';
 import { fieldHelp, resourceName, resourceShortName } from './i18n';
 import { getDef, isContainerType } from './registry';
@@ -115,18 +117,85 @@ resource "aws_rds_cluster" "orders" {
     const result = fixOps(ir, cluster.id, verdict.fix, 'en')!;
     expect(result.message).toBe('Created aws_db_subnet_group.orders with private_a and private_b. aws_rds_cluster.orders is drawn inside it');
     expect(result.hint).toBeUndefined();
-    expect(result.note).toBe("Tip: connect aws_rds_cluster.orders to a security group. Without one it gets the VPC's default group");
+    expect(result.note).toBe('aws_rds_cluster.orders has no security group of its own, so it gets the default group of main');
     expect(fixOps(ir, cluster.id, verdict.fix, 'pt-BR')!.note).toBe(
-      'Dica: conecte aws_rds_cluster.orders a um grupo de segurança. Sem um, ele fica com o grupo padrão da VPC',
+      'aws_rds_cluster.orders não tem grupo de segurança próprio, então fica com o grupo padrão de main',
     );
+    // offered as the next step, not done with the fix
+    expect(result.securityGroup).toEqual({ vpcId: 'aws_vpc.main', fix: { kind: 'create' } });
     const next = apply(ir, result.ops);
     expect(node(next, 'aws_rds_cluster.orders').parentId).toBe('aws_db_subnet_group.orders');
     expect(node(next, 'aws_db_subnet_group.orders').parentId).toBe('aws_vpc.main');
-    // no security group was made for it
     expect(next.resources.filter((r) => r.type === 'aws_security_group')).toEqual([]);
+
+    // the step: a group of its own in the VPC, with no way in yet
+    const step = securityGroupOps(next, cluster.id, 'aws_vpc.main', { kind: 'create' }, 'en')!;
+    expect(step.message).toBe('Created aws_security_group.orders in main for aws_rds_cluster.orders');
+    expect(step.note).toBe('It lets nothing in yet: add an inbound rule for what connects to the database');
+    const done = apply(next, step.ops);
+    expect(node(done, 'aws_security_group.orders').parentId).toBe('aws_vpc.main');
+    expect(exprText(node(done, 'aws_rds_cluster.orders').args.vpc_security_group_ids)).toBe('[aws_security_group.orders.id]');
+    expect(blocksOf(node(done, 'aws_security_group.orders').args.ingress)).toEqual([]);
+    expect(securityGroupNeed(done, node(done, cluster.id), node(done, 'aws_vpc.main'))).toBeUndefined();
   });
 
-  it('no tip once it has a security group (and the same for an RDS instance)', () => {
+  it('a security group of another VPC is replaced: by the group the VPC’s databases share, else a new one', () => {
+    const text = `${NETWORK}
+resource "aws_vpc" "old" {
+  cidr_block = "10.9.0.0/16"
+}
+
+resource "aws_security_group" "old_db" {
+  vpc_id = aws_vpc.old.id
+}
+
+resource "aws_security_group" "web" {
+  vpc_id = aws_vpc.main.id
+}
+
+resource "aws_rds_cluster" "orders" {
+  engine                 = "aurora-mysql"
+  vpc_security_group_ids = [aws_security_group.old_db.id, aws_security_group.web.id]
+}
+`;
+    const ir = project(text);
+    const vpc = node(ir, 'aws_vpc.main');
+    const fix = { kind: 'create-group' as const, groupType: 'aws_db_subnet_group', vpc };
+    const result = fixOps(ir, 'aws_rds_cluster.orders', fix, 'en')!;
+    expect(result.note).toBe("aws_security_group.old_db is in another VPC, and AWS only takes security groups of main, the database's VPC");
+    // the web group isn't a database's: not offered
+    expect(result.securityGroup?.fix).toEqual({ kind: 'create' });
+    const step = securityGroupOps(apply(ir, result.ops), 'aws_rds_cluster.orders', vpc.id, { kind: 'create' }, 'pt-BR')!;
+    expect(step.note).toBe(
+      'Ele não lista mais aws_security_group.old_db (outra VPC). Ele ainda não deixa nada entrar: adicione uma regra de entrada para o que se conecta ao banco',
+    );
+    const done = apply(apply(ir, result.ops), step.ops);
+    expect(exprText(node(done, 'aws_rds_cluster.orders').args.vpc_security_group_ids)).toBe(
+      '[aws_security_group.web.id, aws_security_group.orders.id]',
+    );
+
+    // with a database group in the VPC already (another database uses it), that one is offered
+    const shared = project(`${text}
+resource "aws_security_group" "db" {
+  vpc_id = aws_vpc.main.id
+}
+
+resource "aws_db_instance" "legacy" {
+  instance_class         = "db.t3.micro"
+  vpc_security_group_ids = [aws_security_group.db.id]
+}
+`);
+    const offered = fixOps(shared, 'aws_rds_cluster.orders', { ...fix, vpc: node(shared, 'aws_vpc.main') }, 'en')!.securityGroup!;
+    expect(offered.fix).toMatchObject({ kind: 'use', group: { id: 'aws_security_group.db' } });
+    expect(securityGroupLabel(offered.fix, 'main', 'en')).toBe('Use security group db');
+    const used = securityGroupOps(shared, 'aws_rds_cluster.orders', 'aws_vpc.main', offered.fix, 'en')!;
+    expect(used.message).toBe('aws_rds_cluster.orders now uses aws_security_group.db');
+    expect(exprText(node(apply(shared, used.ops), 'aws_rds_cluster.orders').args.vpc_security_group_ids)).toBe(
+      '[aws_security_group.web.id, aws_security_group.db.id]',
+    );
+  });
+
+  it('nothing to offer once it has a security group of the VPC (and the same for an RDS instance)', () => {
     const withSg = project(`${NETWORK}
 resource "aws_security_group" "db" {
   vpc_id = aws_vpc.main.id
@@ -142,8 +211,48 @@ resource "aws_db_instance" "legacy" {
 }
 `);
     const fix = { kind: 'create-group' as const, groupType: 'aws_db_subnet_group', vpc: node(withSg, 'aws_vpc.main') };
-    expect(fixOps(withSg, 'aws_rds_cluster.orders', fix, 'en')!.note).toBeUndefined();
-    expect(fixOps(withSg, 'aws_db_instance.legacy', fix, 'en')!.note).toMatch(/^Tip: connect aws_db_instance\.legacy to a security group/);
+    const cluster = fixOps(withSg, 'aws_rds_cluster.orders', fix, 'en')!;
+    expect(cluster.note).toBeUndefined();
+    expect(cluster.securityGroup).toBeUndefined();
+    // the instance has none: the cluster's group is the VPC's database group, offered to it
+    const legacy = fixOps(withSg, 'aws_db_instance.legacy', fix, 'en')!;
+    expect(legacy.note).toBe('aws_db_instance.legacy has no security group of its own, so it gets the default group of main');
+    expect(legacy.securityGroup?.fix).toMatchObject({ kind: 'use', group: { id: 'aws_security_group.db' } });
+  });
+
+  it('never offers a group open to the internet, even one another database uses', () => {
+    const ir = project(`${NETWORK}
+resource "aws_security_group" "web" {
+  vpc_id = aws_vpc.main.id
+
+  ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_db_instance" "legacy" {
+  instance_class         = "db.t3.micro"
+  vpc_security_group_ids = [aws_security_group.web.id]
+}
+
+resource "aws_rds_cluster" "orders" {
+  engine = "aurora-mysql"
+}
+`);
+    expect(securityGroupNeed(ir, node(ir, 'aws_rds_cluster.orders'), node(ir, 'aws_vpc.main'))?.fix).toEqual({ kind: 'create' });
+  });
+
+  it('leaves alone security groups the canvas cannot see', () => {
+    const ir = project(`${NETWORK}
+resource "aws_rds_cluster" "orders" {
+  engine                 = "aurora-mysql"
+  vpc_security_group_ids = var.db_security_groups
+}
+`);
+    expect(securityGroupNeed(ir, node(ir, 'aws_rds_cluster.orders'), node(ir, 'aws_vpc.main'))).toBeUndefined();
   });
 
   it('is priced by use: storage and I/O (Standard), or storage with I/O included (I/O-Optimized)', () => {
