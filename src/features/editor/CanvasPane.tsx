@@ -65,6 +65,7 @@ import { ModuleNodeView, moduleFlowNodes } from '@/features/modules/ModuleNode';
 import { ModulesHost, ModuleViewBar } from '@/features/modules/ModulesHost';
 import { duplicateModuleCall } from '@/features/modules/duplicateModule';
 import { modulesMessages } from '@/features/modules/modules.messages';
+import { PlanGone } from '@/features/learn/terminal/PlanMarks';
 import { repeatOf } from '@/ir/repeat';
 import type { Op } from '@/ir/ops';
 import type { Expression, IR, Provider, ResourceNode } from '@/ir/types';
@@ -366,7 +367,7 @@ function withActiveEdges(list: AnyFlowEdge[], primary: string | null): AnyFlowEd
   });
 }
 
-function CanvasInner() {
+function CanvasInner({ templates }: { templates: boolean }) {
   const ir = useEditor((s) => s.ir);
   const irEdges = useEditor((s) => s.edges);
   const warnings = useEditor((s) => s.warnings);
@@ -1123,6 +1124,8 @@ function CanvasInner() {
           </span>
           {/* an opened module: its way back, below the stats (clear of the canvas's top-left controls) */}
           <ModuleViewBar />
+          {/* a lesson's plan: what it destroys that has no node any more */}
+          <PlanGone />
           {overview ? <OverviewPopover onClose={() => setOverview(false)} /> : null}
           {codeErrored ? (
             <span
@@ -1135,7 +1138,7 @@ function CanvasInner() {
           ) : null}
           {!overview && !readOnly ? <EditorTips /> : null}
         </Panel>
-        {ir.resources.length === 0 && ir.modules.length === 0 && ir.data.length === 0 && !locked ? <EmptyCanvas /> : null}
+        {ir.resources.length === 0 && ir.modules.length === 0 && ir.data.length === 0 && !locked ? <EmptyCanvas templates={templates} /> : null}
       </ReactFlow>
 
       {menu ? (
@@ -1290,7 +1293,7 @@ function OverviewPopover({ onClose }: { onClose(): void }) {
 }
 
 /** Blank project: say what to do instead of showing an empty grid. */
-function EmptyCanvas() {
+function EmptyCanvas({ templates }: { templates: boolean }) {
   const m = useMessages(canvasMessages);
   const navigate = useNavigate();
   return (
@@ -1305,9 +1308,11 @@ function EmptyCanvas() {
           <Button size="sm" onClick={() => usePalette.getState().setOpen(true)}>
             <Plus className="h-3.5 w-3.5" /> {m.addResource}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => navigate('/dashboard?new=1')}>
-            <LayoutTemplate className="h-3.5 w-3.5" /> {m.useTemplate}
-          </Button>
+          {templates ? (
+            <Button size="sm" variant="outline" onClick={() => navigate('/dashboard?new=1')}>
+              <LayoutTemplate className="h-3.5 w-3.5" /> {m.useTemplate}
+            </Button>
+          ) : null}
         </div>
       </div>
     </Panel>
@@ -1365,10 +1370,11 @@ function QuickAddPopover({
   );
 }
 
-export function CanvasPane() {
+/** `templates: false`: the blank canvas doesn't offer to start from a template (a lesson starts from its own code) */
+export function CanvasPane({ templates = true }: { templates?: boolean } = {}) {
   return (
     <ReactFlowProvider>
-      <CanvasInner />
+      <CanvasInner templates={templates} />
     </ReactFlowProvider>
   );
 }

@@ -65,7 +65,11 @@ tokens above — add a word here before adding it to the sweep's allowlist.
 | offline | offline |
 | update available: reload | atualização disponível: recarregar |
 | dismiss | dispensar |
-| tutorial / lesson / step | tutorial / lição / passo |
+| learning map / level / lesson / challenge / step | mapa de aprendizado / nível / lição / desafio / passo |
+| station (on the map) / trail | estação / trilha |
+| XP / rank / badge / streak (days in a row) | XP / patente / conquista / sequência |
+| Start here / You are here / Continue where you left off | Comece aqui / Você está aqui / Continue de onde parou |
+| reset progress | zerar o progresso |
 | warning / error | aviso / erro |
 | required / optional | obrigatório / opcional |
 | deprecated | obsoleto |

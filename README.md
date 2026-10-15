@@ -41,9 +41,9 @@ between them.
 - 🧭 **Security explained**: a clickable per-port "Why is this reachable?" path (IGW → route → subnet → rules), CIS / AWS FSBP control IDs on findings, and a toast when an edit lowers the grade.
 - 📄 **PDF export**: a shareable architecture document (the diagram plus a readable summary
   of resources, connections, security findings and the code), generated in the browser.
-- 🎓 **Built-in tutorials**: step-by-step lessons that grow a real project, showing the
-  diagram and the code side by side with the new lines highlighted. Any step opens in
-  the editor.
+- 🎓 **A learning map** (`/learn`): Terraform on AWS from zero, level by level, while the
+  canvas draws the code live and a simulated terminal runs `init`, `plan` and `apply`.
+  Gamified on purpose (XP, ranks, badges, a streak of days); none of it on the build side.
 - 📚 **The real provider schemas**: every argument of every AWS / AzureRM / Google resource: searchable in the inspector; completed, documented and validated ("did you mean…?") in the code; loaded per provider, only when used.
 - 🔎 **Data sources**: `data` blocks are nodes of their own, drawn as dashed lookups with edges
   to what reads them. Add the common ones (Ubuntu / Amazon Linux AMIs, availability zones,
@@ -55,13 +55,14 @@ between them.
 ### Your data, anywhere
 
 - 🗄️ **Backup & restore**: download every project as one `.zip` (a folder of `.tf` files per
-  project + a `manifest.json`); restoring shows what's new, already there or different, and
-  lets you add copies or replace. Nothing is overwritten without asking.
+  project + a `manifest.json`, and your learning progress); restoring shows what's new,
+  already there or different, and lets you add copies or replace. Nothing is overwritten
+  without asking.
 - 📊 **Storage meter** on the dashboard: how much of the browser's storage your projects use,
   a "Back up and free space" nudge from 70%, and a one-click request for persistent storage.
 - ✈️ **Works offline & installable** (PWA): after one visit the dashboard and the editor
   (Monaco, auto-layout, fonts) open without a connection; a new version is applied on its
-  own on the landing page, the dashboard and the tutorials list when nothing is in progress,
+  own on the landing page, the dashboard and the learning map when nothing is in progress,
   and the editor shows an "Update available" prompt with a Reload button instead of
   breaking the open tab.
 - 📁 **Folder sync** (Chrome / Edge): *Open folder…* imports a Terraform root module linked to
@@ -179,7 +180,7 @@ The app is a fully static SPA. Any free static host works:
 
 > **Deep links on GitHub Pages return HTTP 404.** Pages has no rewrite rules, so the
 > workflow copies `index.html` to `404.html`: a deep link such as `/editor/…` or
-> `/tutorials/…` renders correctly and survives a refresh, but the response status is 404
+> `/learn/…` renders correctly and survives a refresh, but the response status is 404
 > (crawlers and link checkers will report it). This can't be fixed on Pages. Vercel and
 > Netlify serve those routes with **200** thanks to the included `vercel.json` and
 > `public/_redirects`.
@@ -207,10 +208,10 @@ src/
 ├── hcl/         # parser, emitter, minimal-patch engine (+ round-trip tests)
 ├── resources/   # declarative multi-cloud catalog (92 resources: 43 AWS / 24 Azure / 25 GCP)
 ├── templates/   # 11 patterns: AWS web/static/ECS/serverless/secure 3-tier, Azure web/static, GCP web/run/static, multi-cloud DR
-├── tutorials/   # step-by-step lessons (diagram + code, diff-highlighted)
+├── learn/       # the learning map: tracks, levels, lessons, live goals, progress and game rules
 ├── security/    # security model, topology analysis, audit findings + fixes, rule editing
 ├── features/    # editor (canvas, code, palette, inspector, topbar), security panel, PDF export, templates modal
-├── routes/      # landing, dashboard, editor, read-only viewer, tutorials, 404
+├── routes/      # landing, dashboard, editor, read-only viewer, learning map and lessons, 404
 ├── components/  # design-system UI kit, thumbnails, theme toggle, toasts, app shell (errors, share links, storage notices)
 ├── features/data/ # backup & restore, storage meter, offline app (service worker), folder sync UI
 └── lib/         # localStorage projects, backup format, folder sync, Terraform + GitHub import, zip export, share/view links, PDF writer, utils

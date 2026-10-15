@@ -3,6 +3,7 @@ import {
   Copy,
   FileDown,
   FolderSync,
+  GraduationCap,
   LayoutTemplate,
   Pencil,
   Plus,
@@ -11,22 +12,26 @@ import {
   UploadCloud,
 } from 'lucide-react';
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AppRail } from '@/components/AppRail';
 import { confirmAction } from '@/components/Confirm';
 import { ProjectThumbnail } from '@/components/ProjectThumbnail';
 import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
-import { Button, Input, Kbd, LogoMark, Select } from '@/components/ui';
+import { Button, buttonClass, Input, Kbd, LogoMark, Select } from '@/components/ui';
 import { usePalette } from '@/features/command/paletteStore';
 import { backupAmong, openRestore } from '@/features/data/dataDialogs';
 import { DataPanel, StorageNudge } from '@/features/data/DataPanel';
 import { forgetFolderLink, useFolderLinks } from '@/features/data/folderLinks';
 import { ImportMenu } from '@/features/import/ImportMenu';
+import { continueLesson } from '@/features/learn/trail';
 import { TemplateModal } from '@/features/templates/TemplateModal';
 import { useLocale, type Locale } from '@/i18n/locale';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
+import { ALL_LESSONS } from '@/learn/lessons';
+import { useLearn } from '@/learn/progress';
+import { textIn } from '@/learn/types';
 import { exportZip } from '@/lib/download';
 import { libMessages } from '@/lib/messages';
 import { importNote, readDroppedTerraform, readTerraformFiles, type ImportedProject } from '@/lib/importTf';
@@ -289,6 +294,37 @@ const ProjectCard = memo(function ProjectCard({
   );
 });
 
+/** Back to the learning map's lesson in progress: only once a trail is under way, and kept small (this is the build side). */
+function ContinueTrail() {
+  const m = useMessages(dashboardMessages);
+  const locale = useLocale((s) => s.locale);
+  const progress = useLearn();
+  const lesson = progress.last ? continueLesson(progress) : undefined;
+  if (!lesson) return null;
+  const done = ALL_LESSONS.filter((l) => progress.lessons[l.slug]?.status === 'done').length;
+  const title = textIn(lesson.title, locale);
+  return (
+    <section
+      aria-label={m.continueTrail}
+      className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[12px] border bg-surface-1 px-3.5 py-2.5 shadow-xs"
+    >
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-primary-soft text-primary" aria-hidden="true">
+        <GraduationCap className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-[13px] font-semibold">{m.continueTrail}</h2>
+        <p className="truncate text-[12px] text-muted">
+          <span className="font-mono text-[11.5px] font-semibold text-primary">{lesson.code}</span> {title}
+          <span className="text-faint"> · {m.trailLessons(done, ALL_LESSONS.length)}</span>
+        </p>
+      </div>
+      <Link to={`/learn/${lesson.slug}`} aria-label={m.continueLesson(lesson.code, title)} className={buttonClass('secondary', 'sm', 'shrink-0')}>
+        {m.continue} <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const m = useMessages(dashboardMessages);
   useDocumentTitle(m.title);
@@ -454,6 +490,8 @@ export default function DashboardPage() {
               </Button>
             </div>
           </div>
+
+          <ContinueTrail />
 
           <StorageNudge projects={projects} />
 

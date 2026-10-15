@@ -4,7 +4,6 @@ import { validateProject } from '@/ir/validate';
 import { buildCatalogIR, CATALOG_PROVIDERS } from '@/resources/catalogProject';
 import { getDef } from '@/resources/registry';
 import { TEMPLATES } from '@/templates';
-import { TUTORIALS } from '@/tutorials';
 import { runChecks } from './index';
 
 const AWS = 'provider "aws" {\n  region = "us-east-1"\n}\n';
@@ -377,14 +376,6 @@ describe('no false positives', () => {
       expect(runChecks(buildCatalogIR(provider), getDef, () => ({}))).toEqual([]);
     });
   }
-
-  it('every tutorial step', () => {
-    for (const tutorial of TUTORIALS) {
-      for (const step of tutorial.steps) {
-        expect(runChecks(parseProject(step.files).ir, getDef, () => ({})), `${tutorial.slug}: ${step.title}`).toEqual([]);
-      }
-    }
-  });
 
   it('a module-style network written with expressions and loops', () => {
     const hcl = `

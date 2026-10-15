@@ -4,7 +4,8 @@
  * colon, a period or parentheses instead. Checked here, in both languages:
  * every message module of the security, cost, validation, parser, schema,
  * catalog, import / backup / share and PDF code, the catalog, the templates
- * (and the Terraform they write), the tutorials and the PDF document itself.
+ * (and the Terraform they write), the code the lessons hand out and the PDF
+ * document itself.
  * The rendered screens are checked by e2e/i18n-sweep.spec.ts.
  *
  * Fine, and not flagged: hyphens inside words (sub-rede, read-only), numeric
@@ -48,8 +49,7 @@ import { moduleAuditMessages } from '@/security/modules.messages';
 import { analyzeSecurity } from '@/security/topology';
 import { scratchProject, TEMPLATES } from '@/templates';
 import { templateDescription, templateName, templateTagLabel } from '@/templates/i18n';
-import { TUTORIALS } from '@/tutorials';
-import { tutorialText } from '@/tutorials/i18n';
+import { ALL_LESSONS } from '@/learn/lessons';
 import { pdfText } from './pdf/testing';
 import { defaultTitle, pageTitle } from './useDocumentTitle';
 
@@ -174,7 +174,7 @@ describe('sentence dashes: messages', () => {
   it('covers every message module in these folders', () => {
     const sources = import.meta.glob<string>(
       [
-        '/src/{security,cost,ir,hcl,resources,schema,lib,templates,tutorials}/**/*.ts',
+        '/src/{security,cost,ir,hcl,resources,schema,lib,templates,learn}/**/*.ts',
         '/src/features/export/**/*.ts',
         '!**/*.test.ts',
         '!/src/cost/refresh/**',
@@ -241,7 +241,7 @@ describe('sentence dashes: page titles', () => {
   });
 });
 
-describe('sentence dashes: catalog, templates and tutorials', () => {
+describe('sentence dashes: catalog, templates and lessons', () => {
   it('resource names, descriptions and field help', () => {
     const found: Found[] = [];
     for (const locale of LOCALES) {
@@ -272,27 +272,13 @@ describe('sentence dashes: catalog, templates and tutorials', () => {
     expect(offenders(found)).toEqual([]);
   });
 
-  it('tutorial lessons', () => {
-    const found: Found[] = [];
-    for (const locale of LOCALES)
-      for (const t of TUTORIALS) {
-        const text = tutorialText(t, locale);
-        found.push({ path: `${locale} ${t.slug} title`, text: text.title }, { path: `${locale} ${t.slug} description`, text: text.description });
-        text.steps.forEach((s, i) => {
-          found.push({ path: `${locale} ${t.slug} step ${i + 1}`, text: s.title });
-          s.body.forEach((p, j) => found.push({ path: `${locale} ${t.slug} step ${i + 1} ¶${j + 1}`, text: p }));
-        });
-      }
-    expect(found.length).toBeGreaterThan(80);
-    expect(offenders(found)).toEqual([]);
-  });
-
   it('the comments and descriptions the app writes into Terraform', () => {
     const projects: Array<[string, Record<string, string>]> = [
       ...TEMPLATES.map((t) => [`template ${t.slug}`, t.build('demo')] as [string, Record<string, string>]),
       ...CATALOG_PROVIDERS.map((p) => [`catalog ${p}`, catalogProject(p)] as [string, Record<string, string>]),
       ...CATALOG_PROVIDERS.map((p) => [`blank ${p}`, scratchProject(p, 'demo')] as [string, Record<string, string>]),
-      ...TUTORIALS.flatMap((t) => t.steps.map((s, i) => [`tutorial ${t.slug} step ${i + 1}`, s.files] as [string, Record<string, string>])),
+      // lesson prose has its own check (src/learn/lessons.test.ts); this is the code they hand out
+      ...ALL_LESSONS.flatMap((l) => [[`lesson ${l.slug} start`, l.start], [`lesson ${l.slug} solution`, l.solution]] as Array<[string, Record<string, string>]>),
     ];
     const found: Found[] = [];
     for (const [project, files] of projects)

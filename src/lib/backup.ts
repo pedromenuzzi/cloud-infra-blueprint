@@ -4,6 +4,9 @@
  *   manifest.json            format version, and per project its id, name,
  *                            template, timestamps, content hash and files
  *   README.md                what the file is and how to restore it
+ *   learning.json            the learning map's progress, when there is any
+ *                            (the manifest's `learning` names it; backups
+ *                            without it still restore, and older apps skip it)
  *   production-web/main.tf   one folder per project, its .tf files as-is
  *
  * Restoring never overwrites silently: `planRestore` sorts each project of the
@@ -23,6 +26,7 @@ export const BACKUP_FORMAT = 'cloud-blueprint-backup';
 /** Bump when the manifest changes shape; older apps refuse newer backups. */
 export const BACKUP_VERSION = 1;
 const MANIFEST = 'manifest.json';
+const LEARNING = 'learning.json';
 
 /** One .tf file (the same cap as importing Terraform). */
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -61,6 +65,8 @@ export interface BackupManifest {
   app: string;
   exportedAt: string;
   projects: ManifestProject[];
+  /** where the learning progress sits in the zip (absent: the backup has none) */
+  learning?: string;
 }
 
 /** A project of a backup, files read from the zip. */
@@ -83,6 +89,8 @@ export interface ParsedBackup {
   projects: BackupProject[];
   /** entries that can't be restored, and why */
   invalid: Array<{ name: string; reason: string }>;
+  /** the learning progress as stored, unchecked (the learning side reads it with `readProgress`) */
+  learning?: unknown;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -161,7 +169,14 @@ export function validateManifest(value: unknown): ManifestCheck {
   });
   return {
     ok: true,
-    manifest: { format: BACKUP_FORMAT, version, app: String(value.app ?? ''), exportedAt, projects },
+    manifest: {
+      format: BACKUP_FORMAT,
+      version,
+      app: String(value.app ?? ''),
+      exportedAt,
+      projects,
+      ...(isSafePath(value.learning) ? { learning: value.learning } : {}),
+    },
     invalid,
   };
 }
@@ -189,12 +204,13 @@ function readme(manifest: BackupManifest): string {
   return text().readme(manifest.projects.length, manifest.exportedAt);
 }
 
-/** The backup .zip of `projects`. */
-export function buildBackup(projects: Project[], now = new Date()): Uint8Array {
+/** The backup .zip of `projects`, and of the learning progress when given. */
+export function buildBackup(projects: Project[], now = new Date(), learning?: unknown): Uint8Array {
   const PLACEHOLDER = new Uint8Array(0);
   // manifest and README first: insertion order is the order in the archive
   const entries: Record<string, Uint8Array> = { [MANIFEST]: PLACEHOLDER, 'README.md': PLACEHOLDER };
-  const folders = new Set<string>([MANIFEST, 'readme.md']);
+  const folders = new Set<string>([MANIFEST, 'readme.md', LEARNING]);
+  if (learning !== undefined) entries[LEARNING] = strToU8(`${JSON.stringify(learning)}\n`);
   const manifest: BackupManifest = {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -222,6 +238,7 @@ export function buildBackup(projects: Project[], now = new Date()): Uint8Array {
         files,
       };
     }),
+    ...(learning !== undefined ? { learning: LEARNING } : {}),
   };
   entries[MANIFEST] = strToU8(`${JSON.stringify(manifest, null, 2)}\n`);
   entries['README.md'] = strToU8(readme(manifest));
@@ -316,7 +333,9 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
   if (!check.ok) return check;
 
   // pass 2: inflate only the files the manifest lists, within the caps
+  const learningPath = check.manifest.learning === undefined ? undefined : prefix + check.manifest.learning;
   const wanted = new Set(check.manifest.projects.flatMap((p) => p.files.map((f) => prefix + f.path)));
+  if (learningPath) wanted.add(learningPath);
   const oversized = new Set<string>();
   let total = 0;
   let contents: Record<string, Uint8Array>;
@@ -362,9 +381,22 @@ export function parseBackup(bytes: Uint8Array): ParseResult {
       hash: filesHash(files),
     });
   }
+  // damaged progress is left out: the projects still restore
+  let learning: unknown;
+  try {
+    if (learningPath && contents[learningPath]) learning = JSON.parse(strFromU8(contents[learningPath]));
+  } catch {
+    learning = undefined;
+  }
   return {
     ok: true,
-    backup: { version: check.manifest.version, exportedAt: check.manifest.exportedAt, projects, invalid },
+    backup: {
+      version: check.manifest.version,
+      exportedAt: check.manifest.exportedAt,
+      projects,
+      invalid,
+      ...(learning !== undefined ? { learning } : {}),
+    },
   };
 }
 

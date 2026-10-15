@@ -6,18 +6,22 @@
  */
 import { describe, expect, it } from 'vitest';
 import { sentenceDash } from '@/i18n/dashes';
-import { parseProject } from '@/hcl/parser';
 import { getDef } from '@/resources/registry';
 import { checkGoals, lessonContext } from './goals';
 import { ALL_LESSONS, ALL_LEVELS, TRACKS, startLesson } from './lessons';
+import { simulate } from './sim/simulate';
 import type { SimCommand, SimState, T } from './types';
 
 const EVERY_COMMAND: SimCommand[] = ['init', 'validate', 'plan', 'apply', 'destroy'];
 
-/** a state holding every resource of the code, as if it had been applied */
+/** what the simulated terminal leaves after `terraform init` and `terraform apply` on the code */
 function appliedState(files: Record<string, string>): SimState {
-  const { ir } = parseProject(files);
-  return { serial: 1, resources: Object.fromEntries(ir.resources.map((r) => [r.id, {}])), outputs: {} };
+  const out = (r: { lines: Array<{ text: string }> }) => r.lines.map((l) => l.text).join('\n');
+  const init = simulate('init', files, null, { initialized: false });
+  expect(init.ok, out(init)).toBe(true);
+  const apply = simulate('apply', files, null, { initialized: true, autoApprove: true });
+  expect(apply.ok, out(apply)).toBe(true);
+  return apply.state!;
 }
 
 /** every bilingual text inside a value */

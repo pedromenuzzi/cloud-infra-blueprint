@@ -117,7 +117,9 @@ test('the landing page switches from its header picker', async ({ page }) => {
   await pickLanguage(page, 'Português (Brasil)');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Desenhe sua nuvem. Gere o Terraform na hora.');
   await expect(page.getByRole('button', { name: 'Abrir o app' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Comece a criar, é grátis/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Criar minha infraestrutura/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /Aprender Terraform/ })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Aprenda Terraform construindo' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Bidirecional de verdade' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Três passos. Sem enrolação.' })).toBeVisible();
   // template cards in the UI language
@@ -160,27 +162,20 @@ test('dashboard dialogs in Portuguese: templates, restore, GitHub import', async
   await expect(github.getByText('60 requisições por hora')).toBeVisible();
 });
 
-test('tutorials, a lesson, the viewer and the 404 in Portuguese', async ({ page }) => {
+test('the learning map, the viewer and the 404 in Portuguese', async ({ page }) => {
   await inPortuguese(page);
-  await page.goto('/tutorials');
-  await expect(page.getByRole('heading', { name: 'Tutoriais', level: 1 })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Começar o tutorial Sua primeira VPC + EC2' })).toBeVisible();
-  await expect(page.getByText('Iniciante').first()).toBeVisible();
-
-  await page.getByRole('button', { name: 'Começar o tutorial Sua primeira VPC + EC2' }).click();
-  await expect(page.getByText(/^Passo 1 de 5$/)).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Providers e versões', level: 2 })).toBeVisible();
-  // the prose is translated, the code in it is not
-  await expect(page.getByRole('complementary', { name: 'Lição' }).locator('code').first()).toHaveText('provider "aws"');
-  await page.getByRole('button', { name: 'Próximo' }).click();
-  await expect(page.getByText(/^Passo 2 de 5$/)).toBeVisible();
-  await expect(page).toHaveTitle('Sua primeira VPC + EC2 · Tutoriais · Cloud Blueprint');
-  // switching language keeps the step
+  await page.goto('/learn');
+  await expect(page.getByRole('heading', { name: 'Aprenda Terraform, uma estação de cada vez', level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Por onde você começa?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Terraform na AWS', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fundamentos', level: 3 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Conquistas', level: 2 })).toBeVisible();
+  await expect(page).toHaveTitle('Mapa de aprendizado · Cloud Blueprint');
+  // switching language redraws the map
   await pickLanguage(page, 'English');
-  await expect(page.getByText(/^Step 2 of 5$/)).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'The VPC', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fundamentals', level: 3 })).toBeVisible();
   await pickLanguage(page, 'Português (Brasil)');
-  await expect(page.getByRole('heading', { name: 'A VPC', level: 2 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fundamentos', level: 3 })).toBeVisible();
 
   await page.goto(`/#view=${encodeShare({ name: 'rede', files: { 'main.tf': MAIN } })}`);
   await expect(page.getByRole('heading', { name: /Visualizando rede/ })).toBeVisible({ timeout: 15_000 });
@@ -232,8 +227,13 @@ for (const theme of ['light', 'dark'] as const) {
           await expect(page.getByRole('dialog')).toBeVisible();
         },
       ],
-      ['tutorials', () => page.goto('/tutorials').then(() => undefined)],
-      ['lesson', () => page.goto('/tutorials/first-vpc-ec2?step=3').then(() => undefined)],
+      [
+        'learning map',
+        async () => {
+          await page.goto('/learn');
+          await expect(page.getByRole('heading', { name: 'Conquistas', level: 2 })).toBeVisible();
+        },
+      ],
       ['404', () => page.goto('/nada').then(() => undefined)],
     ];
     for (const [name, open] of screens) {
@@ -248,7 +248,7 @@ test.describe('on a phone (390px), in Portuguese', () => {
 
   test('nothing scrolls sideways', async ({ page }) => {
     await inPortuguese(page);
-    for (const path of ['/', '/dashboard', '/dashboard?new=1', '/tutorials', '/tutorials/first-vpc-ec2?step=5', '/nada']) {
+    for (const path of ['/', '/dashboard', '/dashboard?new=1', '/learn', '/nada']) {
       await page.goto(path);
       await page.waitForTimeout(300);
       expect(await sidewaysScroll(page), path).toBeLessThanOrEqual(0);

@@ -1,4 +1,4 @@
-/** The 404, tutorials list, lesson player and read-only viewer. (Landing and dashboard have their own.) */
+/** The 404 and the read-only viewer. (Landing, dashboard and learning map have their own.) */
 import { defineMessages } from '@/i18n/messages';
 
 export const routeMessages = defineMessages(
@@ -7,33 +7,6 @@ export const routeMessages = defineMessages(
     notFound: 'Page not found',
     notFoundBody: "This blueprint doesn't exist. Head back and keep designing.",
     backToProjects: 'Back to projects',
-
-    // tutorials
-    tutorials: 'Tutorials',
-    tutorialsIntro:
-      'Learn Terraform by watching the diagram and the code move together: every step is a real project you can open in the editor.',
-    startTutorial: (title: string) => `Start tutorial ${title}`,
-    beginner: 'Beginner',
-    intermediate: 'Intermediate',
-    steps: (n: number) => `${n} steps`,
-    start: 'Start',
-    tutorialsFooter: 'Every step opens in the real editor. Finish a lesson and keep building from where it ends.',
-    tutorialTitle: (title: string) => `${title} · Tutorials`,
-    home: 'Home',
-    stepOf: (i: number, n: number) => `Step ${i} of ${n}`,
-    openStep: 'Open this step in the editor',
-    openInEditor: 'Open in editor',
-    lesson: 'Lesson',
-    stepsNav: 'Steps',
-    previous: 'Previous',
-    next: 'Next',
-    keepBuilding: 'Keep building',
-    diagram: 'Diagram',
-    blueprintUpdates: 'Blueprint (updates with each step)',
-    code: 'Code',
-    linesAdded: 'lines added in this step',
-    stepProjectName: (title: string, step: number) => `${title} (step ${step})`,
-    fromTutorial: (title: string) => `From the "${title}" tutorial.`,
 
     // ViewPage
     viewInvalid: 'This view link is damaged or incomplete. Ask for a new one.',
@@ -80,33 +53,6 @@ export const routeMessages = defineMessages(
     notFound: 'Página não encontrada',
     notFoundBody: 'Este blueprint não existe. Volte e continue projetando.',
     backToProjects: 'Voltar aos projetos',
-
-    tutorials: 'Tutoriais',
-    tutorialsIntro:
-      'Aprenda Terraform vendo o diagrama e o código andarem juntos: cada passo é um projeto real que você pode abrir no editor.',
-    startTutorial: (title: string) => `Começar o tutorial ${title}`,
-    beginner: 'Iniciante',
-    intermediate: 'Intermediário',
-    steps: (n: number) => `${n} passos`,
-    start: 'Começar',
-    tutorialsFooter:
-      'Cada passo abre no editor de verdade. Termine uma lição e continue criando de onde ela parou.',
-    tutorialTitle: (title: string) => `${title} · Tutoriais`,
-    home: 'Início',
-    stepOf: (i: number, n: number) => `Passo ${i} de ${n}`,
-    openStep: 'Abrir este passo no editor',
-    openInEditor: 'Abrir no editor',
-    lesson: 'Lição',
-    stepsNav: 'Passos',
-    previous: 'Anterior',
-    next: 'Próximo',
-    keepBuilding: 'Continuar',
-    diagram: 'Diagrama',
-    blueprintUpdates: 'Blueprint (muda a cada passo)',
-    code: 'Código',
-    linesAdded: 'linhas adicionadas neste passo',
-    stepProjectName: (title: string, step: number) => `${title} (passo ${step})`,
-    fromTutorial: (title: string) => `Do tutorial "${title}".`,
 
     viewInvalid: 'Este link de visualização está danificado ou incompleto. Peça um novo.',
     viewTooLarge: 'Este link de visualização é grande demais para abrir com segurança.',

@@ -284,6 +284,9 @@ const FREE: Record<string, ((m: ServiceMessages) => string) | undefined> = {
   aws_network_acl: undefined,
   aws_route_table: undefined,
   aws_route_table_association: undefined,
+  aws_route: undefined,
+  aws_iam_instance_profile: undefined,
+  aws_iam_role_policy_attachment: undefined,
   aws_internet_gateway: (m) => m.aws.free.igw,
   aws_db_subnet_group: undefined,
   aws_elasticache_subnet_group: undefined,
@@ -298,6 +301,7 @@ const FREE: Record<string, ((m: ServiceMessages) => string) | undefined> = {
   aws_lambda_permission: undefined,
   aws_sns_topic_subscription: (m) => m.aws.free.subscription,
   aws_s3_bucket_public_access_block: undefined,
+  aws_s3_bucket_versioning: undefined,
   aws_launch_template: (m) => m.aws.free.launchTemplate,
 };
 

@@ -25,6 +25,8 @@ import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
 import type { ModuleFlowNode } from '@/features/modules/ModuleNode';
 import type { DataFlowNode } from '@/features/data-sources/DataNode';
+// a lesson's last `terraform plan` (nothing outside lessons)
+import { PlanMark } from '@/features/learn/terminal/PlanMarks';
 import { canvasMessages } from './CanvasPane.messages';
 import { useDropTone } from './dropHint';
 import { RepeatBadge, RepeatStack } from './RepeatBadge';
@@ -167,7 +169,7 @@ export function ResourceNodeView(props: NodeProps<ResourceFlowNode>) {
   );
 }
 
-function ResourceCard({ data, selected }: NodeProps<ResourceFlowNode>) {
+function ResourceCard({ id, data, selected }: NodeProps<ResourceFlowNode>) {
   return (
     <div
       style={catVars(data.category)}
@@ -202,6 +204,7 @@ function ResourceCard({ data, selected }: NodeProps<ResourceFlowNode>) {
       {data.warn ? <WarnBadge /> : null}
       {data.repeat ? <RepeatBadge repeat={data.repeat} /> : null}
       {data.security ? <SecurityChip security={data.security} /> : null}
+      <PlanMark id={id} />
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -310,6 +313,7 @@ function ContainerCard({ id, data, selected }: NodeProps<ContainerFlowNode>) {
         {data.warn ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" /> : null}
         {data.provider !== 'other' ? <ProviderChip provider={data.provider} /> : null}
       </div>
+      <PlanMark id={id} round={16} />
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
     </div>
