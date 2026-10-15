@@ -18,7 +18,7 @@ import {
   Trophy,
   Workflow,
 } from 'lucide-react';
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { confirmAction } from '@/components/Confirm';
 import { shellMessages } from '@/components/messages';
@@ -31,6 +31,7 @@ import { lessonXp } from '@/learn/gamification';
 import { levelOfLesson, nextLesson } from '@/learn/lessons';
 import { useLearn } from '@/learn/progress';
 import { textIn, type Aside, type Goal, type Lesson, type LessonMode } from '@/learn/types';
+import { scrollBehavior } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { DocsPanel } from './DocsPanel';
 import { resetLessonCode } from './lessonDraft';
@@ -64,7 +65,12 @@ export function LessonPanel({
   const uid = useId();
   const level = levelOfLesson(lesson.slug);
   const done = progress?.status === 'done';
+  const allMet = met.every(Boolean);
+  // finished before this visit: the finish waits at the end instead of scrolling into view
+  const finishedBefore = useRef(done && allMet);
   const ModeIcon = MODE_ICON[lesson.mode];
+  // what it gave, or what it will give
+  const xp = progress?.xp ?? lessonXp(lesson, progress?.usedSolution === true);
 
   const showSolution = async () => {
     const current = useLearn.getState().lessons[lesson.slug];
@@ -142,13 +148,7 @@ export function LessonPanel({
         <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11.5px] font-medium">
           <Chip icon={<Clock className="h-3 w-3" />}>{m.minutes(lesson.minutes)}</Chip>
           <Chip icon={<Sparkles className="h-3 w-3" />} className="text-primary">
-            {done && progress?.xp !== undefined
-              ? progress.usedSolution
-                ? m.halfXp(progress.xp)
-                : m.xp(progress.xp)
-              : progress?.usedSolution
-                ? m.halfXp(lessonXp(lesson, true))
-                : m.xp(lesson.xp)}
+            {progress?.usedSolution ? m.halfXp(xp) : m.xp(xp)}
           </Chip>
           <Chip icon={<ModeIcon className="h-3 w-3" />}>{m.modes[lesson.mode]}</Chip>
           {lesson.awsBasics ? <Chip>{m.awsBasics}</Chip> : null}
@@ -205,7 +205,7 @@ export function LessonPanel({
               </div>
             ) : null}
             <Goals lesson={lesson} met={met} />
-            {done && met.every(Boolean) ? <Finish lesson={lesson} /> : null}
+            {done && allMet ? <Finish lesson={lesson} reveal={!finishedBefore.current} /> : null}
           </div>
         ) : (
           <DocsPanel lesson={lesson} />
@@ -353,14 +353,24 @@ function GoalItem({ goal, met }: { goal: Goal; met: boolean }) {
 }
 
 /** every goal met: the XP it gave and where to go next (the celebration itself is CelebrationHost's) */
-function Finish({ lesson }: { lesson: Lesson }) {
+function Finish({ lesson, reveal }: { lesson: Lesson; reveal: boolean }) {
   const m = useMessages(playerMessages);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!reveal) return;
+    // a frame later: on a phone the lesson tab is being shown in the same moment
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => ref.current?.scrollIntoView({ behavior: scrollBehavior(), block: 'nearest' }));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [reveal]);
   const locale = useLocale((s) => s.locale);
   const progress = useLearn((s) => s.lessons[lesson.slug]);
   const next = nextLesson(lesson.slug);
   const xp = progress?.xp ?? lessonXp(lesson, progress?.usedSolution === true);
   return (
     <section
+      ref={ref}
       aria-labelledby="lesson-finish"
       className="bp-pop-in overflow-hidden rounded-[14px] border border-success/40 bg-gradient-to-br from-success/[0.14] via-surface-1 to-primary/[0.08] p-4"
       data-testid="lesson-finish"

@@ -273,7 +273,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
           key="separator"
           role="separator"
           aria-orientation="vertical"
-          aria-label={m.code}
+          aria-label={m.resizeCode}
           className="w-1 shrink-0 cursor-col-resize bg-border transition-colors hover:bg-primary/60 active:bg-primary"
           onPointerDown={startDrag}
           onDoubleClick={() => useLayout.getState().setSplit(SPLIT_DEFAULT)}

@@ -89,11 +89,14 @@ export function LessonPlayer({ lesson }: { lesson: Lesson }) {
     }
   }, [panel]);
 
-  // on a phone the finish (XP, next lesson) is on the lesson tab: show it when the last goal turns green
+  // the finish (XP, next lesson) is in the lesson panel: bring it on screen when the last goal turns green
   const allMet = met.every(Boolean);
   const wasAllMet = useRef(allMet);
   useEffect(() => {
-    if (allMet && !wasAllMet.current) setView('lesson');
+    if (allMet && !wasAllMet.current) {
+      setView('lesson');
+      setPanel((p) => (p.collapsed ? { ...p, collapsed: false } : p));
+    }
     wasAllMet.current = allMet;
   }, [allMet]);
 

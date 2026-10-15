@@ -63,6 +63,7 @@ export const playerMessages = defineMessages(
     redoLabel: (keys: string) => `Redo (${keys})`,
     resources: 'Resources',
     code: 'Code',
+    resizeCode: 'Resize the code panel',
     security: 'Security',
     securityLabel: (grade: string | null, urgent: number) =>
       `Security: ${grade ? `grade ${grade}` : 'nothing to grade yet'}${urgent > 0 ? `, ${urgent} urgent` : ''}`,
@@ -142,6 +143,7 @@ export const playerMessages = defineMessages(
     redoLabel: (keys: string) => `Refazer (${keys})`,
     resources: 'Recursos',
     code: 'Código',
+    resizeCode: 'Redimensionar o painel de código',
     security: 'Segurança',
     securityLabel: (grade: string | null, urgent: number) =>
       `Segurança: ${grade ? `nota ${grade}` : 'nada para avaliar ainda'}${urgent > 0 ? `, ${urgent} urgente${urgent === 1 ? '' : 's'}` : ''}`,
