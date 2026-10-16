@@ -96,7 +96,7 @@ export const landingMessages = defineMessages(
       'Short lessons on AWS, from zero. You write the code, the canvas draws it live and a simulated terminal runs it: no account, no bill.',
     learnPoints: [
       { title: 'Four levels', body: 'Fundamentals, first resources, networking, then compute and security, each with a challenge.' },
-      { title: 'XP, ranks and badges', body: 'Every lesson earns XP. Keep a daily streak and climb from Newcomer to Cloud Engineer.' },
+      { title: 'XP, ranks and badges', body: 'Every lesson earns XP. Keep a daily streak and climb from Newcomer to Terraform Master.' },
       { title: 'A terminal you can’t break', body: 'Run init, plan, apply and destroy against a simulator. Nothing touches a real cloud.' },
       { title: 'Start where you are', body: 'New to AWS? We explain it. Know it already? Go straight to Terraform.' },
     ] as Array<{ title: string; body: string }>,
@@ -199,7 +199,7 @@ export const landingMessages = defineMessages(
       'Lições curtas na AWS, do zero. Você escreve o código, o canvas desenha ao vivo e um terminal simulado o executa: sem cadastro e sem fatura.',
     learnPoints: [
       { title: 'Quatro níveis', body: 'Fundamentos, primeiros recursos, rede, depois computação e segurança, cada um com um desafio.' },
-      { title: 'XP, patentes e conquistas', body: 'Cada lição dá XP. Mantenha a sequência diária e suba de Iniciante a Engenheiro de nuvem.' },
+      { title: 'XP, patentes e conquistas', body: 'Cada lição dá XP. Mantenha a sequência diária e suba de Iniciante a Mestre do Terraform.' },
       { title: 'Um terminal que não quebra', body: 'Rode init, plan, apply e destroy em um simulador. Nada toca uma nuvem de verdade.' },
       { title: 'Comece de onde você está', body: 'Novo na AWS? A gente explica. Já conhece? Vá direto ao Terraform.' },
     ],

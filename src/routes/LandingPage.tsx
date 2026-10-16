@@ -415,7 +415,7 @@ function LearnPreview() {
       <span
         aria-hidden="true"
         translate="no"
-        className="absolute left-0 top-[44%] flex -rotate-6 items-center gap-1 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#ea580c] px-3 py-1 text-[13px] font-bold text-white shadow-lg sm:-left-4"
+        className="absolute -left-1 top-[9%] flex -rotate-6 items-center gap-1 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#ea580c] px-3 py-1 text-[13px] font-bold text-white shadow-lg sm:-left-4 sm:top-[44%]"
       >
         <Zap className="h-3.5 w-3.5" fill="currentColor" /> +40 XP
       </span>
