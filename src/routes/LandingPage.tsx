@@ -42,7 +42,7 @@ import { allDefs, getDef } from '@/resources/registry';
 import type { Category } from '@/resources/types';
 import { getTemplate, TEMPLATES } from '@/templates';
 import { templateDescription, templateName } from '@/templates/i18n';
-import { scrollBehavior } from '@/lib/motion';
+import { prefersReducedMotion, scrollBehavior } from '@/lib/motion';
 import { prefetchWhenIdle, warmOn } from '@/lib/routeChunks';
 import { landingMessages } from './LandingPage.messages';
 
@@ -122,15 +122,17 @@ function useFitScale(baseWidth: number) {
 function HeroDemo() {
   const m = useMessages(landingMessages);
   const [active, setActive] = useState(1);
+  // the dots travelling the edges are SVG animations: CSS's reduced-motion rule doesn't reach them
+  const [still] = useState(prefersReducedMotion);
   const { ref, scale } = useFitScale(CANVAS_W);
   const codeRef = useRef<HTMLDivElement>(null);
 
   // walk through the resources to show the diagram ↔ code sync
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (still) return;
     const t = setInterval(() => setActive((i) => (i + 1) % HERO_NODES.length), 2600);
     return () => clearInterval(t);
-  }, []);
+  }, [still]);
 
   const activeId = HERO_NODES[active].id;
   const [from, to] = blockRange(activeId);
@@ -189,7 +191,7 @@ function HeroDemo() {
                   return (
                     <g key={`${s}-${t}`}>
                       <path d={d} fill="none" stroke={color} strokeWidth={hot ? 2.2 : 1.6} strokeOpacity={hot ? 1 : 0.5} strokeDasharray={kind === 'security' ? '6 5' : undefined} />
-                      {hot ? (
+                      {hot && !still ? (
                         <circle r={3.5} fill={color} className="bp-edge-dot">
                           <animateMotion dur="1.6s" repeatCount="indefinite" path={d} />
                         </circle>

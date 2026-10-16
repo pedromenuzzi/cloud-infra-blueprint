@@ -616,6 +616,8 @@
   opacity: 0.7;
 }
 .bp-hero-glow {
+  /* rasterized once, in a layer of its own (a 70 px blur is costly to repaint) */
+  will-change: transform;
   position: absolute;
   inset: 8% 6% -4% 6%;
   border-radius: 40px;
