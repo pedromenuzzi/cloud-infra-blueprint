@@ -17,6 +17,7 @@ import {
   FileText,
   FileUp,
   FolderOpen,
+  FolderPlus,
   Github,
   GraduationCap,
   ImageDown,
@@ -52,6 +53,9 @@ import { arrangeMessages } from '@/features/editor/arrange.messages';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { LayoutCommands } from '@/features/editor/layoutCommands';
+import { DeployCommands } from '@/features/deploy/commands';
+import { openFromState } from '@/features/deploy/fromStateStore';
+import { deployMessages } from '@/features/deploy/messages';
 import { useLayout } from '@/features/editor/layoutStore';
 import { openGithubImport } from '@/features/import/githubImportStore';
 import { fixAllFindings, getAudit, useSecurityUi } from '@/features/security/securityStore';
@@ -165,6 +169,7 @@ export function CommandPalette() {
   const am = useMessages(arrangeMessages);
   const m = useMessages(commandMessages);
   const sm = useMessages(securityUiMessages);
+  const dpm = useMessages(deployMessages);
   const addm = useMessages(addModuleMessages);
   const modm = useMessages(modulesMessages);
   const dsm = useMessages(dataSourceMessages);
@@ -349,6 +354,13 @@ export function CommandPalette() {
                       />
                     ) : null}
                   </Command.Group>
+
+                  {/* the lessons' terminal is the plan there: only the editor opens real ones */}
+                  {location.pathname.startsWith('/editor/') ? (
+                    <Command.Group heading={dpm.commands}>
+                      <DeployCommands render={(c) => <Item key={c.value} value={c.value} icon={c.icon} label={c.label} keywords={c.keywords} onSelect={() => run(c.run)} />} />
+                    </Command.Group>
+                  ) : null}
 
                   {selectedIds.length > 1 ? (
                     <Command.Group heading={m.group.selection(selectedIds.length)}>
@@ -548,6 +560,13 @@ export function CommandPalette() {
                   label={m.importGithub}
                   keywords={m.kw.importGithub}
                   onSelect={() => run(() => openGithubImport())}
+                />
+                <Item
+                  value="import-from-state"
+                  icon={FolderPlus}
+                  label={dpm.fromState}
+                  keywords={dpm.keywords}
+                  onSelect={() => run(() => openFromState())}
                 />
               </Command.Group>
 

@@ -26,8 +26,9 @@ import type { Category } from '@/resources/types';
 import { portText } from '@/security/model';
 import type { ModuleFlowNode } from '@/features/modules/ModuleNode';
 import type { DataFlowNode } from '@/features/data-sources/DataNode';
-// a lesson's last `terraform plan` (nothing outside lessons)
+// a lesson's last `terraform plan`, or the plan opened in the editor; the state opened there
 import { PlanMark } from '@/features/learn/terminal/PlanMarks';
+import { StateMark } from '@/features/deploy/StateViews';
 import { canvasMessages } from './CanvasPane.messages';
 import { useDropTone } from './dropHint';
 import { RepeatBadge, RepeatStack } from './RepeatBadge';
@@ -208,6 +209,7 @@ function ResourceCard({ id, data, selected }: NodeProps<ResourceFlowNode>) {
       {data.repeat ? <RepeatBadge repeat={data.repeat} /> : null}
       {data.security ? <SecurityChip security={data.security} /> : null}
       <PlanMark id={id} />
+      <StateMark id={id} />
       <Handle type="source" position={Position.Right} />
     </div>
   );
@@ -317,6 +319,7 @@ function ContainerCard({ id, data, selected }: NodeProps<ContainerFlowNode>) {
         {data.provider !== 'other' ? <ProviderChip provider={data.provider} /> : null}
       </div>
       <PlanMark id={id} round={16} />
+      <StateMark id={id} at="-bottom-2 right-4" />
       <Handle type="target" position={Position.Left} />
       <Handle type="source" position={Position.Right} />
     </div>

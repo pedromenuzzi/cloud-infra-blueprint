@@ -1,0 +1,261 @@
+{
+  "version": 4,
+  "terraform_version": "1.9.8",
+  "serial": 12,
+  "lineage": "6b0e8a52-7f1c-4b8e-9a51-2f0c2b9d1e10",
+  "outputs": {
+    "vpc_id": { "value": "vpc-0a1b2c3d4e5f60718", "type": "string" }
+  },
+  "resources": [
+    {
+      "mode": "data",
+      "type": "aws_availability_zones",
+      "name": "available",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [{ "schema_version": 0, "attributes": { "id": "us-east-1", "names": ["us-east-1a", "us-east-1b"] }, "sensitive_attributes": [] }]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_vpc",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-0a1b2c3d4e5f60718",
+            "assign_generated_ipv6_cidr_block": false,
+            "cidr_block": "10.0.0.0/16",
+            "default_security_group_id": "sg-0default000000001",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true,
+            "id": "vpc-0a1b2c3d4e5f60718",
+            "instance_tenancy": "default",
+            "owner_id": "123456789012",
+            "tags": { "Name": "main", "env": "dev" },
+            "tags_all": { "Name": "main", "env": "dev" }
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_subnet",
+      "name": "public",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-0aaa000000000000a",
+            "availability_zone": "us-east-1a",
+            "cidr_block": "10.0.0.0/24",
+            "id": "subnet-0aaa000000000000a",
+            "map_public_ip_on_launch": false,
+            "tags": {},
+            "tags_all": {},
+            "vpc_id": "vpc-0a1b2c3d4e5f60718"
+          },
+          "sensitive_attributes": [],
+          "dependencies": ["aws_vpc.main"]
+        },
+        {
+          "index_key": 1,
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-0bbb000000000000b",
+            "availability_zone": "us-east-1a",
+            "cidr_block": "10.0.1.0/24",
+            "id": "subnet-0bbb000000000000b",
+            "map_public_ip_on_launch": false,
+            "tags": {},
+            "tags_all": {},
+            "vpc_id": "vpc-0a1b2c3d4e5f60718"
+          },
+          "sensitive_attributes": [],
+          "dependencies": ["aws_vpc.main"]
+        },
+        {
+          "index_key": 2,
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-0ccc000000000000c",
+            "availability_zone": "us-east-1a",
+            "cidr_block": "10.0.2.0/24",
+            "id": "subnet-0ccc000000000000c",
+            "map_public_ip_on_launch": false,
+            "tags": {},
+            "tags_all": {},
+            "vpc_id": "vpc-0a1b2c3d4e5f60718"
+          },
+          "sensitive_attributes": [],
+          "dependencies": ["aws_vpc.main"]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "web",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-0web00000000000001",
+            "description": "Managed by Terraform",
+            "egress": [],
+            "id": "sg-0web00000000000001",
+            "ingress": [
+              {
+                "cidr_blocks": ["0.0.0.0/0"],
+                "description": "",
+                "from_port": 443,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": false,
+                "to_port": 443
+              }
+            ],
+            "name": "web",
+            "name_prefix": "",
+            "owner_id": "123456789012",
+            "revoke_rules_on_delete": false,
+            "tags": {},
+            "tags_all": {},
+            "vpc_id": "vpc-0a1b2c3d4e5f60718"
+          },
+          "sensitive_attributes": [],
+          "dependencies": ["aws_vpc.main"]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_instance",
+      "name": "app",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": "a",
+          "schema_version": 1,
+          "attributes": {
+            "ami": "ami-0c02fb55956c7d316",
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-0123456789abcdef0",
+            "associate_public_ip_address": false,
+            "availability_zone": "us-east-1a",
+            "id": "i-0123456789abcdef0",
+            "instance_type": "t3.micro",
+            "key_name": "",
+            "private_ip": "10.0.0.12",
+            "subnet_id": "subnet-0aaa000000000000a",
+            "tags": {},
+            "tags_all": {},
+            "vpc_security_group_ids": ["sg-0web00000000000001"]
+          },
+          "sensitive_attributes": [],
+          "dependencies": ["aws_security_group.web", "aws_subnet.public"]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 2,
+          "attributes": {
+            "address": "main-db.abcdefghijkl.us-east-1.rds.amazonaws.com",
+            "allocated_storage": 20,
+            "arn": "arn:aws:rds:us-east-1:123456789012:db:main-db",
+            "endpoint": "main-db.abcdefghijkl.us-east-1.rds.amazonaws.com:5432",
+            "engine": "mysql",
+            "engine_version": "8.0.35",
+            "id": "db-ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            "identifier": "main-db",
+            "instance_class": "db.t3.micro",
+            "password": "s3cr3t-pass",
+            "skip_final_snapshot": true,
+            "tags": {},
+            "tags_all": {},
+            "username": "app"
+          },
+          "sensitive_attributes": [[{ "type": "get_attr", "value": "password" }]]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_db_instance",
+      "name": "legacy",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 2,
+          "attributes": {
+            "allocated_storage": 20,
+            "arn": "arn:aws:rds:us-east-1:123456789012:db:legacy-db",
+            "engine": "postgres",
+            "id": "db-LEGACY0000000000000000000",
+            "identifier": "legacy-db",
+            "instance_class": "db.t3.micro",
+            "password": "old-pass",
+            "skip_final_snapshot": true,
+            "tags": {},
+            "tags_all": {},
+            "username": "app"
+          },
+          "sensitive_attributes": [[{ "type": "get_attr", "value": "password" }]]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "logs",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:s3:::acme-logs",
+            "bucket": "acme-logs",
+            "force_destroy": false,
+            "id": "acme-logs",
+            "tags": {},
+            "tags_all": {}
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    },
+    {
+      "module": "module.net",
+      "mode": "managed",
+      "type": "aws_vpc",
+      "name": "this",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-0net0000000000001",
+            "cidr_block": "10.1.0.0/16",
+            "enable_dns_support": true,
+            "id": "vpc-0net0000000000001",
+            "tags": {},
+            "tags_all": {}
+          },
+          "sensitive_attributes": []
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}

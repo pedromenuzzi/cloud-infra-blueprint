@@ -99,7 +99,7 @@ const PROVIDER_VERSIONS: Record<string, { source: string; version: string }> = {
   google: { source: 'hashicorp/google', version: '~> 8.0' },
 };
 
-function versionsBlock(providers: Provider[]) {
+export function versionsBlock(providers: Provider[]) {
   const entries = providers
     .map((p) => providerSourceName(p))
     .map((name) => {
