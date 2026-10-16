@@ -10,24 +10,36 @@ import { AutoUpdate } from '@/features/data/AutoUpdate';
 import { GithubImportHost } from '@/features/import/GithubImportHost';
 import { FromStateHost } from '@/features/deploy/FromStateHost';
 import { lazyWithReload } from '@/lib/chunkReload';
+import { routeChunk } from '@/lib/routeChunks';
 import { isEmbedHash, isViewHash } from '@/lib/share';
 
-const LandingPage = lazyWithReload(() => import('./routes/LandingPage'));
+const LandingPage = lazyWithReload(routeChunk.landing);
 const ViewPage = lazyWithReload(() => import('./routes/ViewPage'));
-const DashboardPage = lazyWithReload(() => import('./routes/DashboardPage'));
-const EditorPage = lazyWithReload(() => import('./routes/EditorPage'));
-const LearnPage = lazyWithReload(() => import('./routes/LearnPage'));
-const LessonPage = lazyWithReload(() => import('./routes/LessonPage'));
+const DashboardPage = lazyWithReload(routeChunk.dashboard);
+const EditorPage = lazyWithReload(routeChunk.editor);
+const LearnPage = lazyWithReload(routeChunk.learn);
+const LessonPage = lazyWithReload(routeChunk.lesson);
 // XP, badges and finished lessons: only on the learning side
 const CelebrationHost = lazyWithReload(() => import('@/features/learn/CelebrationHost'));
 const NotFoundPage = lazyWithReload(() => import('./routes/NotFoundPage'));
 // shares the editor store's chunk — only loaded on /editor
 const ProjectConflictHost = lazyWithReload(() => import('@/components/ProjectConflictHost'));
 
+/**
+ * A page's chunk on its way (the first load; later navigations keep the
+ * current page on screen until the next one is ready). The app's pages keep
+ * the rail's place, so nothing jumps when they arrive, and the spinner only
+ * fades in when the wait is long enough to notice.
+ */
 function RouteFallback() {
+  const { pathname } = useLocation();
+  const railed = /^\/(dashboard|learn)\/?$/.test(pathname);
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
+    <div className="flex h-full" aria-busy="true">
+      {railed ? <div className="w-14 shrink-0 border-r bg-surface-1" aria-hidden="true" /> : null}
+      <div className="bp-late flex flex-1 items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-border border-t-primary" />
+      </div>
     </div>
   );
 }

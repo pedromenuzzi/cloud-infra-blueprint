@@ -53,6 +53,66 @@ function lazyAssetsManifest(): Plugin {
 }
 
 /**
+ * The page a visit starts on, fetched alongside the entry instead of after it
+ * runs: an inline script in index.html adds modulepreload links for that
+ * page's chunk and its imports (the landing, the dashboard or the map; a deep
+ * link elsewhere, or a link with a fragment, loads as before). Those pages
+ * preload the UI font's Latin subset too, so their first paint is in Inter.
+ */
+const FIRST_PAGES: Record<string, string> = {
+  '': 'src/routes/LandingPage.tsx',
+  dashboard: 'src/routes/DashboardPage.tsx',
+  learn: 'src/routes/LearnPage.tsx',
+};
+const UI_FONT = /^assets\/inter-latin-wght-normal-[\w-]+\.woff2$/;
+
+function firstPage(): Plugin {
+  let base = '/';
+  return {
+    name: 'cb-first-page',
+    apply: 'build',
+    configResolved(config) {
+      base = config.base;
+    },
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, { bundle }) {
+        if (!bundle) return;
+        const chunks = Object.values(bundle).filter((file) => file.type === 'chunk');
+        const closure = (from: string[], seen = new Set<string>()): Set<string> => {
+          for (const name of from) {
+            if (seen.has(name)) continue;
+            seen.add(name);
+            const chunk = bundle[name];
+            if (chunk?.type === 'chunk') closure(chunk.imports, seen);
+          }
+          return seen;
+        };
+        const entry = chunks.find((chunk) => chunk.isEntry);
+        const loaded = closure(entry ? [entry.fileName] : []);
+        const pages: Record<string, string[]> = {};
+        for (const [path, module] of Object.entries(FIRST_PAGES)) {
+          const page = chunks.find((chunk) => chunk.moduleIds.some((id) => id.endsWith(module)));
+          if (!page) this.error(`no chunk for ${module}: update FIRST_PAGES in vite.config.ts`);
+          pages[path] = [...closure([page.fileName])].filter((name) => !loaded.has(name));
+        }
+        const font = Object.keys(bundle).find((name) => UI_FONT.test(name));
+        if (!font) this.error('no Inter Latin font file: update UI_FONT in vite.config.ts');
+        const script = `(function(){try{var b=${JSON.stringify(base)},p=location.pathname,f=${JSON.stringify(pages)},files=p.indexOf(b.replace(/\\/$/,''))===0&&location.hash.indexOf('=')<0&&f[p.slice(b.length).replace(/\\/$/,'')];if(!files)return;[${JSON.stringify(font)}].concat(files).forEach(function(h,i){var l=document.createElement('link');if(i){l.rel='modulepreload'}else{l.rel='preload';l.as='font';l.type='font/woff2'}l.crossOrigin='';l.href=b+h;document.head.appendChild(l)})}catch(e){}})()`;
+        // ahead of the entry and its stylesheet: a classic script after a stylesheet waits for it to load
+        const entryTag = /\n(\s*)<script type="module"/;
+        if (!entryTag.test(html)) this.error('no entry <script type="module"> in index.html');
+        return html.replace(
+          entryTag,
+          (tag, indent: string) =>
+            `\n${indent}<script>${script}</script>${tag}`,
+        );
+      },
+    },
+  };
+}
+
+/**
  * Monaco's own words (find, suggestions, hovers, its context menu) in the UI
  * language. Monaco 0.52 ships no Portuguese, and its ESM `localize` returns
  * the English it is given: patched, it looks that English up first in the
@@ -90,6 +150,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     lazyAssetsManifest(),
+    firstPage(),
     monacoNls(),
     // build-time only: generates dist/sw.js (Workbox); the app registers it itself (pwa.ts)
     VitePWA({
