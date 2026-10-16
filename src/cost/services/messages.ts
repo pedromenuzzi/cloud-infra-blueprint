@@ -116,6 +116,8 @@ export const serviceMessages = defineMessages(
         viaApi: 'Billed through the API',
         subscription: 'Deliveries are billed on the topic',
         launchTemplate: 'The instances launched from it are billed',
+        publicCertificate: 'Public certificates are free',
+        viaBucket: 'Billed as storage of its bucket',
       },
     },
 
@@ -319,6 +321,8 @@ export const serviceMessages = defineMessages(
         viaApi: 'Cobrado pela API',
         subscription: 'As entregas são cobradas no tópico',
         launchTemplate: 'As instâncias iniciadas a partir dele são cobradas',
+        publicCertificate: 'Certificados públicos são gratuitos',
+        viaBucket: 'Cobrado como armazenamento do bucket',
       },
     },
 

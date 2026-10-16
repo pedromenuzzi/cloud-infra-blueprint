@@ -113,6 +113,35 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     description: 'Mantém uma frota de instâncias rodando entre sub-redes',
     fields: { vpc_zone_identifier: { label: 'Sub-redes' }, target_group_arns: { label: 'Target groups' } },
   },
+  aws_cloudwatch_log_group: {
+    name: 'Grupo de logs do CloudWatch',
+    shortName: 'Grupo de logs',
+    description: 'Onde um serviço grava os logs, e por quanto tempo eles ficam',
+    fields: { retention_in_days: { doc: 'Por quantos dias os logs são guardados (0 guarda para sempre)' } },
+  },
+  aws_acm_certificate: {
+    name: 'Certificado do ACM',
+    shortName: 'Certificado',
+    description: 'Um certificado TLS gratuito para HTTPS',
+    fields: { subject_alternative_names: { label: 'Outros nomes' } },
+  },
+  aws_acm_certificate_validation: {
+    name: 'Validação do certificado',
+    shortName: 'Validação',
+    description: 'Espera a AWS conferir os registros DNS do certificado',
+    fields: { validation_record_fqdns: { label: 'Registros DNS' } },
+  },
+  aws_cloudfront_origin_access_control: {
+    name: 'Controle de acesso à origem do CloudFront',
+    shortName: 'OAC',
+    description: 'Deixa o CloudFront ler um bucket privado, e mais ninguém',
+    fields: { origin_access_control_origin_type: { label: 'Tipo de origem' } },
+  },
+  aws_lb_target_group_attachment: {
+    name: 'Anexo ao target group',
+    shortName: 'Anexo ao TG',
+    description: 'Registra um servidor em um target group',
+  },
   aws_lb: {
     name: 'Application Load Balancer',
     shortName: 'ALB',
@@ -297,6 +326,18 @@ export const CATALOG_PT_BR: Record<CatalogType, CatalogText> = {
     name: 'Versionamento do bucket S3',
     shortName: 'Versionamento',
     description: 'Guarda todas as versões dos objetos de um bucket',
+  },
+  aws_s3_object: {
+    name: 'Objeto S3',
+    shortName: 'Objeto S3',
+    description: 'Um arquivo guardado em um bucket',
+    fields: { key: { doc: 'O caminho do arquivo dentro do bucket' }, source: { doc: 'Um arquivo local para enviar' } },
+  },
+  aws_s3_bucket_policy: {
+    name: 'Política do bucket S3',
+    shortName: 'Política do bucket',
+    description: 'Quem pode fazer o quê com um bucket',
+    fields: { policy: JSON_POLICY },
   },
   aws_s3_bucket_public_access_block: {
     name: 'Bloqueio de acesso público do S3',

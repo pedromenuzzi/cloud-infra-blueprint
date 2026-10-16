@@ -316,6 +316,12 @@ const FREE: Record<string, ((m: ServiceMessages) => string) | undefined> = {
   aws_lambda_permission: undefined,
   aws_sns_topic_subscription: (m) => m.aws.free.subscription,
   aws_s3_bucket_public_access_block: undefined,
+  aws_s3_bucket_policy: undefined,
+  aws_cloudfront_origin_access_control: undefined,
+  aws_acm_certificate_validation: undefined,
+  aws_lb_target_group_attachment: undefined,
+  aws_acm_certificate: (m) => m.aws.free.publicCertificate,
+  aws_s3_object: (m) => m.aws.free.viaBucket,
   aws_s3_bucket_versioning: undefined,
   aws_launch_template: (m) => m.aws.free.launchTemplate,
 };
