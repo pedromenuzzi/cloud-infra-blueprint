@@ -221,7 +221,7 @@ test('the landing page offers two doors, and presents the learning map', async (
 
 test('the rail and ⌘K lead to the map and to any lesson by its title', async ({ page }) => {
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'Learn', exact: true }).click();
+  await page.getByRole('link', { name: 'Learn', exact: true }).click();
   await expect(page).toHaveURL(at('/learn'));
   const first = await firstStation(page);
   // "<code> <title>. …": the title is what the palette finds it by
