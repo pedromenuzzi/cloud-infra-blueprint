@@ -479,10 +479,12 @@ function CanvasInner({ templates }: { templates: boolean }) {
   const exitTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     const built = buildFlow({ ir, edges: irEdges, warnings }, lensOn ? getAudit(ir, locale) : null, locale);
-    const { selection: primary, selectedIds: picked, projectId } = useEditor.getState();
-    // what the model dropped leaves with a short exit; not another project's nodes, nor under reduced motion
-    const exits = projectId === builtFor.current && motionMs(EXIT_MS) > 0;
-    builtFor.current = projectId;
+    const { selection: primary, selectedIds: picked, projectId, scope } = useEditor.getState();
+    // what the model dropped leaves with a short exit; not what another project or module view
+    // showed (the new one fits the view at once), nor under reduced motion
+    const shown = `${projectId}:${scope?.dir ?? ''}`;
+    const exits = shown === builtFor.current && motionMs(EXIT_MS) > 0;
+    builtFor.current = shown;
     setNodes((previous) => {
       const next = keepUnchanged(previous, built.nodes);
       return withSelection(exits ? withLeaving(previous, next) : next, picked);
