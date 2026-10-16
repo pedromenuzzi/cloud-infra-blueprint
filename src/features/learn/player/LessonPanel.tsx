@@ -186,7 +186,8 @@ export function LessonPanel({
         id={`${uid}-panel`}
         role="tabpanel"
         aria-labelledby={`${uid}-tab-${tab}`}
-        className="min-h-0 flex-1 overflow-y-auto"
+        // relative: what's laid out absolutely inside (the sr-only goal states) scrolls here, not the whole document
+        className="relative min-h-0 flex-1 overflow-y-auto"
         tabIndex={-1}
       >
         {tab === 'lesson' ? (

@@ -287,7 +287,11 @@ test.describe('on a phone (390px)', () => {
       const lessons = await island.locator('[data-station]').count();
       if (lessons === 0) continue;
       const row = island.getByRole('button', { expanded: false });
-      if ((await row.count()) > 0) await row.click();
+      if ((await row.count()) > 0) {
+        await row.click();
+        // measured once the trail has settled in
+        await island.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+      }
       // the level's badge closes the trail on screen; its state is read out in the level's header
       const items = island.locator('ol').getByRole('listitem');
       await expect(items).toHaveCount(lessons);
@@ -339,6 +343,20 @@ test.describe('on a phone (390px)', () => {
     await row(0).click();
     await expect(level(0).locator('[data-station] > a').first()).toBeVisible();
   });
+});
+
+test('the map and a lesson scroll inside their panes: the document under the rail never scrolls', async ({ page }) => {
+  const overflow = () => page.evaluate(() => document.scrollingElement!.scrollHeight - window.innerHeight);
+  await page.goto('/learn');
+  const first = await firstStation(page);
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  // under way: one marker on the map, where the learner is
+  await store(page, { start: 'new', lessons: { [first.slug]: { status: 'started', met: [] } }, last: first.slug });
+  await expect(page.getByRole('link', { name: /\. You are here\./ })).toHaveCount(1);
+  await expect(page.getByRole('link', { name: /\. Start here\./ })).toHaveCount(0);
+  await page.goto('/learn/challenge-private-bucket');
+  await expect(page.getByTestId('terminal-panel')).toBeVisible();
+  expect(await overflow()).toBeLessThanOrEqual(0);
 });
 
 test('wide screens show every level in full, with no rows to open', async ({ page }) => {

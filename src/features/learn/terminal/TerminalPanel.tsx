@@ -141,6 +141,14 @@ function LineView({ l, fresh = false }: { l: Shown; fresh?: boolean }) {
   }
   if (l.kind === 'note') return <div className="whitespace-pre-wrap text-sky-300">{l.text}</div>;
   const { tone, text } = l;
+  // the CLI's rule under a plan: cut to the terminal's width (wrapped, it breaks into a stray second line)
+  if (/^─+$/.test(text)) {
+    return (
+      <div aria-hidden className="overflow-hidden whitespace-pre">
+        {text}
+      </div>
+    );
+  }
   let body: React.ReactNode = text || ' ';
   if (tone === 'add' || tone === 'change' || tone === 'destroy' || tone === 'replace') body = <DiffLine text={text} tone={tone} />;
   else if (tone === 'error' || tone === 'warning') {

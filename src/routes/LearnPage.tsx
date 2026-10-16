@@ -671,8 +671,8 @@ function LevelIsland({
             <p className="mt-1 text-[13px] leading-relaxed text-muted">{richText(t(level.summary), 'font-mono text-[12px]')}</p>
           </div>
           {tally.total > 0 ? (
-            <div className="w-full max-md:hidden sm:mt-1 sm:w-52">
-              <div className="flex items-baseline justify-between gap-2 text-[12px]">
+            <div className="w-full max-md:hidden sm:mt-1 sm:w-64">
+              <div className="flex items-baseline justify-between gap-3 whitespace-nowrap text-[12px]">
                 <span className="font-semibold">{m.levelDone(tally.done, tally.total)}</span>
                 {tally.done > 0 ? (
                   <span className="font-semibold tabular-nums text-[color:var(--lv-text)]">{m.levelXp(tally.xp)}</span>
@@ -730,7 +730,8 @@ function TrackMap({ track, progress, since }: { track: Track; progress: LearnPro
             key={level.id}
             level={level}
             progress={progress}
-            startSlug={startSlug}
+            // under way, "You are here" is the one marker ("Start here" would point back at a lesson left behind)
+            startSlug={hereSlug ? undefined : startSlug}
             hereSlug={hereSlug}
             since={since}
             small={track.preview}
@@ -832,7 +833,8 @@ export default function LearnPage() {
   return (
     <div className="flex h-full">
       <AppRail active="learn" />
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      {/* relative: the absolutely placed bits (sr-only text, hover cards) scroll with the map, never the document under the rail */}
+      <main className="relative min-w-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-6xl px-4 py-6 sm:px-8 sm:py-8">
           <div className="bp-learn-hero grid gap-6 rounded-[26px] border bg-surface-1/60 p-5 sm:p-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-10">
             <div className="min-w-0">
