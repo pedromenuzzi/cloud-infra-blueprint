@@ -42,7 +42,8 @@ import { allDefs, getDef } from '@/resources/registry';
 import type { Category } from '@/resources/types';
 import { getTemplate, TEMPLATES } from '@/templates';
 import { templateDescription, templateName } from '@/templates/i18n';
-import { scrollBehavior } from '@/lib/motion';
+import { prefersReducedMotion, scrollBehavior } from '@/lib/motion';
+import { prefetchWhenIdle, warmOn } from '@/lib/routeChunks';
 import { landingMessages } from './LandingPage.messages';
 
 type Text = (typeof landingMessages)['en'];
@@ -121,15 +122,17 @@ function useFitScale(baseWidth: number) {
 function HeroDemo() {
   const m = useMessages(landingMessages);
   const [active, setActive] = useState(1);
+  // the dots travelling the edges are SVG animations: CSS's reduced-motion rule doesn't reach them
+  const [still] = useState(prefersReducedMotion);
   const { ref, scale } = useFitScale(CANVAS_W);
   const codeRef = useRef<HTMLDivElement>(null);
 
   // walk through the resources to show the diagram ↔ code sync
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (still) return;
     const t = setInterval(() => setActive((i) => (i + 1) % HERO_NODES.length), 2600);
     return () => clearInterval(t);
-  }, []);
+  }, [still]);
 
   const activeId = HERO_NODES[active].id;
   const [from, to] = blockRange(activeId);
@@ -137,7 +140,8 @@ function HeroDemo() {
   useEffect(() => {
     const el = codeRef.current;
     if (!el) return;
-    el.scrollTo({ top: Math.max(0, from * 18 - 36), behavior: scrollBehavior() });
+    // two lines of context above the block, landing on a line's edge (12 px: the list's top padding)
+    el.scrollTo({ top: Math.max(0, 12 + (from - 2) * 18), behavior: scrollBehavior() });
   }, [from]);
 
   const pos = new Map(HERO_NODES.map((n) => [n.id, n] as const));
@@ -165,7 +169,8 @@ function HeroDemo() {
             <Kbd>{shortcut('mod', 'K')}</Kbd>
           </span>
         </div>
-        <div className="grid md:grid-cols-[1.35fr_1fr]">
+        {/* minmax(0, …): the code's long lines must not widen the canvas column past the frame */}
+        <div className="grid grid-cols-[minmax(0,1fr)] md:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
           <div ref={ref} className="bp-dots relative border-b bg-canvas md:border-b-0 md:border-r" style={{ height: CANVAS_H * scale + 40 }}>
             <div
               className="absolute left-1/2 top-5 origin-top"
@@ -186,7 +191,7 @@ function HeroDemo() {
                   return (
                     <g key={`${s}-${t}`}>
                       <path d={d} fill="none" stroke={color} strokeWidth={hot ? 2.2 : 1.6} strokeOpacity={hot ? 1 : 0.5} strokeDasharray={kind === 'security' ? '6 5' : undefined} />
-                      {hot ? (
+                      {hot && !still ? (
                         <circle r={3.5} fill={color} className="bp-edge-dot">
                           <animateMotion dur="1.6s" repeatCount="indefinite" path={d} />
                         </circle>
@@ -410,7 +415,7 @@ function LearnPreview() {
       <span
         aria-hidden="true"
         translate="no"
-        className="absolute left-0 top-[44%] flex -rotate-6 items-center gap-1 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#ea580c] px-3 py-1 text-[13px] font-bold text-white shadow-lg sm:-left-4"
+        className="absolute -left-1 top-[9%] flex -rotate-6 items-center gap-1 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#ea580c] px-3 py-1 text-[13px] font-bold text-white shadow-lg sm:-left-4 sm:top-[44%]"
       >
         <Zap className="h-3.5 w-3.5" fill="currentColor" /> +40 XP
       </span>
@@ -430,7 +435,7 @@ function LearnPreview() {
 function LearnSection() {
   const m = useMessages(landingMessages);
   return (
-    <section id="learn" className="mx-auto max-w-6xl scroll-mt-16 px-6 pb-24">
+    <section id="learn" className="bp-offscreen mx-auto max-w-6xl scroll-mt-16 px-6 pb-24">
       <div className="bp-learn-hero grid items-center gap-14 rounded-[28px] border bg-surface-1/60 px-6 py-12 md:px-12 md:py-16 lg:grid-cols-2">
         <div>
           <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.learnEyebrow}</p>
@@ -449,7 +454,11 @@ function LearnSection() {
               </li>
             ))}
           </ul>
-          <Link to="/learn" className={buttonClass('primary', 'lg', 'mt-9 h-11 px-6 text-[14.5px] shadow-md')}>
+          <Link
+            to="/learn"
+            className={buttonClass('primary', 'lg', 'mt-9 h-auto min-h-11 px-6 py-2.5 text-[14.5px] shadow-md')}
+            {...warmOn('learn')}
+          >
             <GraduationCap className="h-4 w-4" /> {m.openMap} <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -463,6 +472,8 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const m = useMessages(landingMessages);
   useDocumentTitle(null);
+  // the two doors: their pages load while the visitor reads
+  useEffect(() => prefetchWhenIdle('dashboard', 'learn'), []);
   const resourceCount = useMemo(() => allDefs().length, []);
   const showcase = useMemo(
     () =>
@@ -517,7 +528,7 @@ export default function LandingPage() {
             <a href="#templates" className="hover:text-foreground">
               {m.navTemplates}
             </a>
-            <Link to="/learn" className="hover:text-foreground">
+            <Link to="/learn" className="hover:text-foreground" {...warmOn('learn')}>
               {m.navLearn}
             </Link>
             <a href={REPO_URL} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 hover:text-foreground">
@@ -527,7 +538,7 @@ export default function LandingPage() {
           <div className="flex items-center gap-1.5 sm:gap-2">
             <LanguageSwitcher />
             <ThemeToggle />
-            <Button className="whitespace-nowrap max-sm:px-3" onClick={() => navigate('/dashboard')}>
+            <Button className="whitespace-nowrap max-sm:px-3" onClick={() => navigate('/dashboard')} {...warmOn('dashboard')}>
               {m.openApp}
             </Button>
           </div>
@@ -557,6 +568,7 @@ export default function LandingPage() {
             <nav aria-label={m.doors} className="bp-rise mx-auto mt-9 grid max-w-2xl gap-3 text-left sm:grid-cols-2 [animation-delay:160ms]">
               <Link
                 to="/dashboard"
+                {...warmOn('dashboard')}
                 className="group flex items-start gap-3.5 rounded-[16px] border border-transparent bg-primary p-4 text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-primary-hover hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] bg-white/15" aria-hidden="true">
@@ -572,6 +584,7 @@ export default function LandingPage() {
               </Link>
               <Link
                 to="/learn"
+                {...warmOn('learn')}
                 className="group flex items-start gap-3.5 rounded-[16px] border bg-surface-1 p-4 shadow-md transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 <span
@@ -606,8 +619,10 @@ export default function LandingPage() {
               <span className="flex items-center gap-1.5">
                 <ProviderDot provider="gcp" size={8} /> Google Cloud
               </span>
-              <span>·</span>
-              <span>{m.trust}</span>
+              <span aria-hidden="true" className="max-sm:hidden">
+                ·
+              </span>
+              <span className="max-sm:basis-full">{m.trust}</span>
             </div>
 
             <HeroDemo />
@@ -631,7 +646,7 @@ export default function LandingPage() {
           </dl>
         </section>
 
-        <section id="features" className="mx-auto max-w-6xl scroll-mt-16 px-6 py-24">
+        <section id="features" className="bp-offscreen mx-auto max-w-6xl scroll-mt-16 px-6 py-24">
           <div className="mx-auto max-w-2xl text-center">
             <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.featuresEyebrow}</p>
             <h2 className="mt-3 text-balance text-[36px] font-bold leading-tight tracking-[-0.03em]">
@@ -657,7 +672,7 @@ export default function LandingPage() {
 
         <LearnSection />
 
-        <section id="how" className="scroll-mt-16 border-y bg-surface-1/70">
+        <section id="how" className="bp-offscreen scroll-mt-16 border-y bg-surface-1/70">
           <div className="mx-auto max-w-6xl px-6 py-24">
             <div className="mx-auto max-w-2xl text-center">
               <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.howEyebrow}</p>
@@ -678,7 +693,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section id="templates" className="mx-auto max-w-6xl scroll-mt-16 px-6 py-24">
+        <section id="templates" className="bp-offscreen mx-auto max-w-6xl scroll-mt-16 px-6 py-24">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.templatesEyebrow}</p>
@@ -716,7 +731,7 @@ export default function LandingPage() {
           </div>
         </section>
 
-        <section className="px-6 pb-24">
+        <section className="bp-offscreen px-6 pb-24">
           <div className="bp-cta relative mx-auto max-w-6xl overflow-hidden rounded-[24px] px-8 py-16 text-center text-white">
             <h2 className="relative text-balance text-[34px] font-bold tracking-[-0.03em] md:text-[42px]">
               {m.ctaTitle}

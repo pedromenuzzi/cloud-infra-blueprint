@@ -10,6 +10,7 @@ import { readLocalModule } from '@/ir/localModules';
 import { dirOfPath } from '@/ir/modules';
 import { typeDef } from '@/features/data-sources/catalog';
 import { getDef } from '@/resources/registry';
+import { RANKS } from './gamification';
 import { checkGoals, lessonContext } from './goals';
 import { ALL_LESSONS, ALL_LEVELS, TRACKS, startLesson } from './lessons';
 import { simulate } from './sim/simulate';
@@ -61,6 +62,13 @@ describe('learning map structure', () => {
       const codes = track.levels.flatMap((l) => l.lessons.map((x) => x.code));
       expect(new Set(codes).size, track.id).toBe(codes.length);
     }
+  });
+
+  it('keeps a rank to climb toward until the last level', () => {
+    const total = TRACKS[0].levels.flatMap((l) => l.lessons).reduce((sum, l) => sum + l.xp, 0);
+    const top = RANKS[RANKS.length - 1].xp;
+    expect(top).toBeLessThanOrEqual(total);
+    expect(top).toBeGreaterThan(total * 0.75);
   });
 
   it('points "Start here" at a lesson for both answers', () => {

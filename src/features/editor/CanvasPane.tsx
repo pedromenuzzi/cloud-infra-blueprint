@@ -86,7 +86,8 @@ import { exportDiagramImage } from './exportImage';
 import { removeReferencesOps } from './connections';
 import { repeatLabel } from './repeatLabel';
 import { ProjectOverview } from './Inspector';
-import { floatingInspectorInset, useFloatingInspectorShown } from './inspectorPlacement';
+import { floatingInspectorInset, toolPanelInset, useFloatingPanels } from './inspectorPlacement';
+import { useLayout } from './layoutStore';
 import { ALIGN_ACTIONS, alignActionBlocker } from './alignActions';
 import { duplicateNode } from './newNode';
 import { ResourcePicker } from './ResourcePicker';
@@ -353,6 +354,23 @@ export function buildFlow(
 
 type AnyFlowEdge = FlowEdgeType | SecFlowEdgeType;
 
+/**
+ * The previous object for every node or edge the rebuild left as it was (its
+ * measurements kept too): React Flow then re-renders only what an edit
+ * changed, not all of a large canvas on every keystroke.
+ */
+function keepUnchanged<T extends { id: string }>(previous: T[], next: T[]): T[] {
+  const before = new Map(previous.map((item) => [item.id, item as Record<string, unknown>] as const));
+  return next.map((item) => {
+    const old = before.get(item.id);
+    if (!old) return item;
+    for (const [key, value] of Object.entries(item)) {
+      if (value !== old[key] && JSON.stringify(value) !== JSON.stringify(old[key])) return item;
+    }
+    return old as T;
+  });
+}
+
 /** Selection flags from the store's selection, touching only the nodes that change. */
 function withSelection(list: FlowNode[], selectedIds: string[]): FlowNode[] {
   const want = new Set(selectedIds);
@@ -388,7 +406,26 @@ function CanvasInner({ templates }: { templates: boolean }) {
     null,
   );
   const [overview, setOverview] = useState(false);
-  const inspectorOpen = useFloatingInspectorShown();
+  const floats = useFloatingPanels();
+  // the diagram fits the view as it opens; a blank one has nothing to fit, and fitting its first
+  // node later would undo the pan that brings it out from under the inspector
+  const [fitOnOpen] = useState(() => {
+    const opened = useEditor.getState().ir;
+    return opened.resources.length + opened.modules.length + opened.data.length > 0;
+  });
+  const cornerControls = useLayout((s) => s.editorLayout && !s.compact && s.panels.canvas);
+  /** the pills' first row (stats, cost, warnings): the one level with the canvas's corner controls */
+  const statsRowRef = useRef<HTMLSpanElement>(null);
+  const [statsRowWidth, setStatsRowWidth] = useState(0);
+  useEffect(() => {
+    const row = statsRowRef.current;
+    if (!row) return;
+    const observer = new ResizeObserver(() => setStatsRowWidth(row.offsetWidth));
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, []);
+  const inspectorOpen = floats.inspector && floats.folded !== 'inspector';
+  const toolOpen = floats.tool && floats.folded !== 'tool';
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeType | SecFlowEdgeType>([]);
@@ -406,8 +443,8 @@ function CanvasInner({ templates }: { templates: boolean }) {
   useEffect(() => {
     const built = buildFlow({ ir, edges: irEdges, warnings }, lensOn ? getAudit(ir, locale) : null, locale);
     const { selection: primary, selectedIds: picked } = useEditor.getState();
-    setNodes(withSelection(built.nodes, picked));
-    setEdges(withActiveEdges(built.edges, primary));
+    setNodes((previous) => withSelection(keepUnchanged(previous, built.nodes), picked));
+    setEdges((previous) => keepUnchanged(previous, withActiveEdges(built.edges, primary)));
   }, [ir, irEdges, warnings, lensOn, locale, setNodes, setEdges]);
 
   useEffect(() => {
@@ -531,6 +568,12 @@ function CanvasInner({ templates }: { templates: boolean }) {
   }, []);
   useEffect(() => () => clearTimeout(layoutTimer.current), []);
 
+  // undo / redo: what moved glides back (or forward) instead of jumping
+  const travel = useEditor((s) => s.travel?.seq);
+  useEffect(() => {
+    if (travel) animateLayout();
+  }, [travel, animateLayout]);
+
   // drags and palette drops: nesting rules, hints, explanations and fixes
   const drops = useCanvasDrops({ animate: animateLayout });
   useTrackPaletteDrag();
@@ -638,7 +681,9 @@ function CanvasInner({ templates }: { templates: boolean }) {
       }
       const def = getDef(e.dataTransfer.getData(PALETTE_MIME));
       if (!def) return;
-      placeResource(def, at);
+      const placed = placeResource(def, at);
+      // the drag is still winding down (no auto-pan mid-drag): bring it out from under the inspector now
+      if (placed) requestAnimationFrame(() => focusNodeRef.current(placed));
     },
     [placeResource, rf],
   );
@@ -797,19 +842,26 @@ function CanvasInner({ templates }: { templates: boolean }) {
 
   /** pan (keeping the zoom) by the smallest amount that puts a node in the visible area */
   const focusNode = useCallback(
-    (nodeId: string) => {
+    (nodeId: string, tries = 0) => {
       const internal = rf.getInternalNode(nodeId);
       const rect = wrapper.current?.getBoundingClientRect();
-      if (!internal || !rect) return;
+      if (!rect) return;
+      // a node just added (a drop, a paste) reaches React Flow a frame or two after the selection
+      if (!internal) {
+        if (tries < 4) requestAnimationFrame(() => focusNodeRef.current(nodeId, tries + 1));
+        return;
+      }
       const { x, y } = internal.internals.positionAbsolute;
       const { w, h } = sizeOf(internal);
       const tl = rf.flowToScreenPosition({ x, y });
       const br = rf.flowToScreenPosition({ x: x + w, y: y + h });
       const pad = 16;
       const inset = inspectorInset();
-      const left = rect.left + pad;
-      // a phone-width canvas has no room beside the inspector: use all of it
-      const right = rect.right - (rect.width - inset >= 240 ? inset : 0) - pad;
+      const toolInset = toolPanelInset(rect.width);
+      // a phone-width canvas has no room beside the panels: use all of it
+      const room = rect.width - inset - toolInset >= 240;
+      const left = rect.left + (room ? toolInset : 0) + pad;
+      const right = rect.right - (room || rect.width - inset >= 240 ? inset : 0) - pad;
       const top = rect.top + pad;
       const bottom = rect.bottom - pad;
       // the least movement that shows it; too big to fit: centered in the room the inspector leaves
@@ -825,6 +877,28 @@ function CanvasInner({ templates }: { templates: boolean }) {
       void rf.setViewport(next, { duration: motionMs(300) });
     },
     [rf, inspectorInset],
+  );
+  const focusNodeRef = useRef(focusNode);
+  focusNodeRef.current = focusNode;
+
+  // stable: React Flow hands these to every node, and a new function re-renders all of them
+  // (on every frame of a drag, with hundreds of nodes)
+  const onNodeClick = useCallback(
+    (_e: React.MouseEvent, node: FlowNode) => {
+      if (node.id === INTERNET_NODE) return;
+      setSelection(node.id);
+      requestAnimationFrame(() => focusNode(node.id));
+    },
+    [setSelection, focusNode],
+  );
+  const onNodeContextMenu = useCallback(
+    (e: React.MouseEvent, node: FlowNode) => {
+      e.preventDefault();
+      if (node.id === INTERNET_NODE) return;
+      setSelection(node.id);
+      setMenu({ x: e.clientX, y: e.clientY, nodeId: node.id });
+    },
+    [setSelection],
   );
 
   const toggleMinimap = useCallback(() => {
@@ -970,9 +1044,17 @@ function CanvasInner({ templates }: { templates: boolean }) {
   const minimapFits = canvasWidth - (inspectorOpen ? inspectorInset() : 0) >= 176 + 320 + 48;
   // the pills stay in the canvas the floating inspector leaves free: centered in it, never wider;
   // a phone's inspector leaves no room beside it, and the pills step aside until it closes
-  const freeWidth = canvasWidth - (inspectorOpen ? inspectorInset() : 0);
+  // (and right of the tool panel where it leaves room, which would cover what they stack below the stats)
+  const rightInset = inspectorOpen ? inspectorInset() : 0;
+  const toolInset = toolOpen ? toolPanelInset(canvasWidth) : 0;
+  // …with their first row clear of the editor's corner controls (top-left, on canvases of 560 px and up)
+  const corner = cornerControls && canvasWidth >= 560 ? 76 : 0;
+  const besideTool = canvasWidth - rightInset - toolInset >= 240 ? toolInset : 0;
+  const clearsCorner = besideTool + (canvasWidth - rightInset - besideTool - statsRowWidth) / 2 >= corner;
+  const leftInset = clearsCorner ? besideTool : Math.max(besideTool, corner);
+  const freeWidth = canvasWidth - rightInset - leftInset;
   const pillsHidden = inspectorOpen && freeWidth < 240;
-  const pillsStyle = inspectorOpen && !pillsHidden ? { left: freeWidth / 2, maxWidth: freeWidth - 16 } : undefined;
+  const pillsStyle = rightInset + leftInset > 0 && !pillsHidden ? { left: leftInset + freeWidth / 2, maxWidth: freeWidth - 16 } : undefined;
 
   return (
     <div
@@ -995,17 +1077,8 @@ function CanvasInner({ templates }: { templates: boolean }) {
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
-        onNodeClick={(_e, node) => {
-          if (node.id === INTERNET_NODE) return;
-          setSelection(node.id);
-          requestAnimationFrame(() => focusNode(node.id));
-        }}
-        onNodeContextMenu={(e, node) => {
-          e.preventDefault();
-          if (node.id === INTERNET_NODE) return;
-          setSelection(node.id);
-          setMenu({ x: e.clientX, y: e.clientY, nodeId: node.id });
-        }}
+        onNodeClick={onNodeClick}
+        onNodeContextMenu={onNodeContextMenu}
         onPaneContextMenu={(e) => {
           e.preventDefault();
           setMenu({ x: e.clientX, y: e.clientY, nodeId: null });
@@ -1043,7 +1116,7 @@ function CanvasInner({ templates }: { templates: boolean }) {
         }}
         onDragLeave={drops.onPaletteDragLeave}
         deleteKeyCode={locked ? null : ['Delete', 'Backspace']}
-        fitView
+        fitView={fitOnOpen}
         fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
         minZoom={0.05}
         maxZoom={2}
@@ -1069,7 +1142,8 @@ function CanvasInner({ templates }: { templates: boolean }) {
             setMenu({ x: r.left, y: r.top - 112, nodeId: null, exportOnly: true });
           }}
         />
-        {minimap && minimapFits ? (
+        {/* an empty canvas has nothing to map: no blank box in the corner */}
+        {minimap && minimapFits && nodes.length > 0 ? (
           <MiniMap
             position="bottom-right"
             pannable
@@ -1099,7 +1173,7 @@ function CanvasInner({ templates }: { templates: boolean }) {
           style={pillsStyle}
           data-testid="canvas-pills"
         >
-          <span className="flex flex-wrap items-center justify-center gap-1">
+          <span ref={statsRowRef} className="flex flex-wrap items-center justify-center gap-1">
             <button
               type="button"
               onClick={() => setOverview((v) => !v)}
@@ -1130,13 +1204,22 @@ function CanvasInner({ templates }: { templates: boolean }) {
           {codeErrored ? (
             <span
               role="status"
-              className="flex items-center gap-1.5 rounded-full border border-warning/40 bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--surface-1))] px-3 py-1 text-center text-[11.5px] font-semibold text-warning shadow-xs"
+              className="bp-pop-in flex items-center gap-1.5 rounded-full border border-warning/40 bg-[color-mix(in_srgb,var(--color-warning)_10%,var(--surface-1))] py-1 pl-3 pr-1 text-center text-[11.5px] font-semibold text-warning shadow-xs"
             >
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
               {m.codeErrored}
+              {/* where it is: the code pane opens with the caret on it */}
+              <button
+                type="button"
+                onClick={() => useEditor.getState().revealError()}
+                className="shrink-0 rounded-full bg-surface-1 px-2 py-0.5 text-foreground ring-1 ring-warning/40 transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+              >
+                {m.showError}
+              </button>
             </span>
           ) : null}
-          {!overview && !readOnly ? <EditorTips /> : null}
+          {/* a lesson (no templates) has its own guidance: the editor's tips would cover the diagram */}
+          {!overview && !readOnly && templates ? <EditorTips /> : null}
         </Panel>
         {ir.resources.length === 0 && ir.modules.length === 0 && ir.data.length === 0 && !locked ? <EmptyCanvas templates={templates} /> : null}
       </ReactFlow>
@@ -1370,7 +1453,7 @@ function QuickAddPopover({
   );
 }
 
-/** `templates: false`: the blank canvas doesn't offer to start from a template (a lesson starts from its own code) */
+/** `templates: false` (a lesson, which starts from its own code): no template offer on the blank canvas, no editor tips */
 export function CanvasPane({ templates = true }: { templates?: boolean } = {}) {
   return (
     <ReactFlowProvider>

@@ -13,7 +13,7 @@ export const commandMessages = defineMessages(
   {
     label: 'Command palette',
     addResourceBack: 'Add resource',
-    searchResources: 'Search 80+ AWS, Azure and GCP resources…',
+    searchResources: 'Search 100+ AWS, Azure and GCP resources…',
     search: 'Search or run a command…',
     noResults: (query: string) => `No results for “${query}”.`,
     /** the list's name for assistive tech (cmdk's default) */
@@ -158,7 +158,7 @@ export const commandMessages = defineMessages(
   {
     label: 'Paleta de comandos',
     addResourceBack: 'Adicionar recurso',
-    searchResources: 'Buscar entre mais de 80 recursos de AWS, Azure e GCP…',
+    searchResources: 'Buscar entre mais de 100 recursos de AWS, Azure e GCP…',
     search: 'Buscar ou executar um comando…',
     noResults: (query: string) => `Nenhum resultado para “${query}”.`,
     results: 'Sugestões',

@@ -2,6 +2,7 @@ import { Cloud, FileDiff } from 'lucide-react';
 import { useMemo } from 'react';
 import { useMessages } from '@/i18n/messages';
 import { cn } from '@/lib/utils';
+import { bringToolPanelForward } from '@/features/editor/inspectorPlacement';
 import { isNoteworthy, planCounts } from '@/deploy/plan';
 import { PLAN_SYMBOL } from '@/features/learn/terminal/PlanMarks';
 import { deployMessages } from './messages';
@@ -20,7 +21,8 @@ export function DeployButton() {
   return (
     <button
       type="button"
-      onClick={() => setDeployPanel(!open)}
+      // open but waiting as a tab (the inspector's turn): brought to the front, not closed
+      onClick={() => (open && bringToolPanelForward()) || setDeployPanel(!open)}
       aria-pressed={open}
       aria-label={m.topbar(summary)}
       title={m.panel}

@@ -26,7 +26,7 @@ test('the canvas is read-only while the code has errors, and nothing gets corrup
   await codeLines(page).click();
   await page.keyboard.press('Control+Home');
   await page.keyboard.insertText('@@@ oops\n');
-  await expect(page.getByText('Code has errors. Fix them to edit the canvas again')).toBeVisible();
+  await expect(page.getByText('The code has an error, so the canvas is read-only for now')).toBeVisible();
   await expect.poll(() => mainTf(page)).toContain('@@@ oops');
   const broken = await mainTf(page);
 
@@ -39,7 +39,7 @@ test('the canvas is read-only while the code has errors, and nothing gets corrup
   await page.keyboard.press('Control+Home');
   await page.keyboard.press('Shift+ArrowDown');
   await page.keyboard.press('Delete');
-  await expect(page.getByText(/Code has errors/)).toBeHidden();
+  await expect(page.getByText(/The code has an error/)).toBeHidden();
   await expect.poll(() => mainTf(page)).toBe(broken.replace('@@@ oops\n', ''));
 });
 
@@ -62,7 +62,7 @@ test('Ctrl+Z in the code after a canvas edit undoes it cleanly', async ({ page }
   const text = await mainTf(page);
   expect(text).toContain('resource "aws_instance" "web"');
   expect(text).toContain('resource "aws_security_group" "web"');
-  await expect(page.getByText(/Code has errors/)).toBeHidden();
+  await expect(page.getByText(/The code has an error/)).toBeHidden();
   await expect(canvasStats(page)).toHaveText('11 resources, 7 connections');
 });
 

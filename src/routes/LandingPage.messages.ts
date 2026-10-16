@@ -52,7 +52,7 @@ export const landingMessages = defineMessages(
         body: 'Drag a resource and the HCL writes itself. Type Terraform and the diagram rebuilds. Comments and formatting survive every round-trip.',
       },
       clouds: {
-        title: '80+ services, three clouds',
+        title: '100+ services, three clouds',
         body: 'AWS, Azure and GCP in one palette (from VPCs and Lambdas to AKS, Pub/Sub and Key Vault), with real nesting and connection rules.',
       },
       keyboard: {
@@ -96,7 +96,7 @@ export const landingMessages = defineMessages(
       'Short lessons on AWS, from zero. You write the code, the canvas draws it live and a simulated terminal runs it: no account, no bill.',
     learnPoints: [
       { title: 'Four levels', body: 'Fundamentals, first resources, networking, then compute and security, each with a challenge.' },
-      { title: 'XP, ranks and badges', body: 'Every lesson earns XP. Keep a daily streak and climb from Newcomer to Cloud Engineer.' },
+      { title: 'XP, ranks and badges', body: 'Every lesson earns XP. Keep a daily streak and climb from Newcomer to Terraform Master.' },
       { title: 'A terminal you can’t break', body: 'Run init, plan, apply and destroy against a simulator. Nothing touches a real cloud.' },
       { title: 'Start where you are', body: 'New to AWS? We explain it. Know it already? Go straight to Terraform.' },
     ] as Array<{ title: string; body: string }>,
@@ -154,7 +154,7 @@ export const landingMessages = defineMessages(
         body: 'Arraste um recurso e o HCL se escreve sozinho. Digite Terraform e o diagrama se refaz. Comentários e formatação sobrevivem a cada ida e volta.',
       },
       clouds: {
-        title: '80+ serviços, três nuvens',
+        title: '100+ serviços, três nuvens',
         body: 'AWS, Azure e GCP em uma só paleta (de VPCs e Lambdas a AKS, Pub/Sub e Key Vault), com aninhamento real e regras de conexão.',
       },
       keyboard: {
@@ -199,7 +199,7 @@ export const landingMessages = defineMessages(
       'Lições curtas na AWS, do zero. Você escreve o código, o canvas desenha ao vivo e um terminal simulado o executa: sem cadastro e sem fatura.',
     learnPoints: [
       { title: 'Quatro níveis', body: 'Fundamentos, primeiros recursos, rede, depois computação e segurança, cada um com um desafio.' },
-      { title: 'XP, patentes e conquistas', body: 'Cada lição dá XP. Mantenha a sequência diária e suba de Iniciante a Engenheiro de nuvem.' },
+      { title: 'XP, patentes e conquistas', body: 'Cada lição dá XP. Mantenha a sequência diária e suba de Iniciante a Mestre do Terraform.' },
       { title: 'Um terminal que não quebra', body: 'Rode init, plan, apply e destroy em um simulador. Nada toca uma nuvem de verdade.' },
       { title: 'Comece de onde você está', body: 'Novo na AWS? A gente explica. Já conhece? Vá direto ao Terraform.' },
     ],

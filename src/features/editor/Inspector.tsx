@@ -1031,16 +1031,14 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
                   </>
                 ) : null}
                 {lesson ? (
-                  <>
-                    {' · '}
-                    <Link
-                      to={`/learn/${lesson.slug}`}
-                      title={m.learnAboutTitle(lesson.code, textIn(lesson.title, locale))}
-                      className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline"
-                    >
-                      <GraduationCap className="h-3 w-3" /> {m.learnAbout}
-                    </Link>
-                  </>
+                  // its own line: a "·" left at the start of a wrapped line reads as a stray dot
+                  <Link
+                    to={`/learn/${lesson.slug}`}
+                    title={m.learnAboutTitle(lesson.code, textIn(lesson.title, locale))}
+                    className="mt-0.5 flex w-fit items-center gap-0.5 font-medium text-primary hover:underline"
+                  >
+                    <GraduationCap className="h-3 w-3" /> {m.learnAbout}
+                  </Link>
                 ) : null}
               </p>
             ) : null}
@@ -1054,9 +1052,8 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
                     type="button"
                     onClick={() => setTab(t)}
                     className={cn(
-                      'min-w-0 truncate rounded-[5px] px-1.5 py-1 text-[11.5px] font-semibold capitalize transition-colors',
-                      // three tabs: each as wide as its word, so "Propriedades" and "Connections" fit
-                      compactCode ? 'flex-auto' : 'flex-1',
+                      // each as wide as its word plus a share of the rest, so "Propriedades" and "Connections" fit
+                      'min-w-0 flex-auto truncate rounded-[5px] px-1.5 py-1 text-[11.5px] font-semibold capitalize transition-colors',
                       tab === t ? 'bg-surface-1 text-foreground shadow-xs' : 'text-muted hover:text-foreground',
                     )}
                   >

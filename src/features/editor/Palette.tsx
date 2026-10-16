@@ -1,5 +1,5 @@
 import { ChevronDown, Plus, Search } from 'lucide-react';
-import { useId, useMemo, useRef, useState } from 'react';
+import { memo, useId, useMemo, useRef, useState } from 'react';
 import { Input, Kbd } from '@/components/ui';
 import { shortcut } from '@/lib/keys';
 import { useLocale } from '@/i18n/locale';
@@ -34,7 +34,8 @@ const headerKey = (category: Category | 'data') => `cat:${category}`;
 const DATA_HEADER = headerKey('data');
 const dataKey = (p: DataSourcePreset) => `ds:${p.key}`;
 
-function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
+// memo: the palette re-renders with the selection, its ~60 items needn't
+const PaletteItem = memo(function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
   const m = useMessages(paletteMessages);
   const applyCanvasOps = useEditor((s) => s.applyCanvasOps);
   const name = resourceName(def.type);
@@ -87,7 +88,7 @@ function PaletteItem({ def, active }: { def: ResourceDef; active: boolean }) {
       <Plus className="h-3.5 w-3.5 shrink-0 text-faint opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
     </button>
   );
-}
+});
 
 const COLLAPSED_KEY = 'cb-palette-collapsed';
 

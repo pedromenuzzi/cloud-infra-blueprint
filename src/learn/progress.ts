@@ -5,12 +5,13 @@
  * runs and state, XP, badges and the days with progress (the streak).
  *
  * Every change that earns something is announced through `onLearnEvent`
- * (XP, a new rank, a badge, a finished lesson or level), so the celebration
+ * (XP, a new rank, a badge, a finished lesson or level, a streak going on
+ * today), so the celebration
  * UI lives apart from the lesson player.
  */
 import { create } from 'zustand';
 import { safeStorage } from '@/lib/storage';
-import { localDay, lessonXp, newBadges, rankOf } from './gamification';
+import { localDay, lessonXp, newBadges, rankOf, streakOf } from './gamification';
 import type { Files, Lesson, Level, SimCommand, SimState, StartChoice } from './types';
 
 export const LEARN_KEY = 'cb-learn-v1';
@@ -68,7 +69,9 @@ export type LearnEvent =
   | { kind: 'rank'; index: number }
   | { kind: 'badge'; id: string }
   | { kind: 'lesson'; slug: string }
-  | { kind: 'level'; id: string };
+  | { kind: 'level'; id: string }
+  /** the first progress of the day carried a streak of days in a row on (2 days or more) */
+  | { kind: 'streak'; days: number };
 
 export const emptyProgress = (): LearnProgress => ({
   start: null,
@@ -150,16 +153,20 @@ export const useLearn = create<LearnProgress & LearnActions>((set, get) => {
   /** apply a change, award what it earned, persist, then announce */
   const commit = (patch: Partial<LearnProgress>, events: LearnEvent[] = []) => {
     const before = data();
+    const today = localDay();
     let next: LearnProgress = { ...before, ...patch };
     const earned = newBadges(next, catalog.levels);
     if (earned.length > 0) {
-      const today = localDay();
       next = { ...next, badges: { ...next.badges, ...Object.fromEntries(earned.map((b) => [b.id, today])) } };
       events.push(...earned.map((b) => ({ kind: 'badge', id: b.id }) as const));
     }
     const rankBefore = rankOf(before.xp).index;
     const rankAfter = rankOf(next.xp).index;
     if (rankAfter > rankBefore) events.push({ kind: 'rank', index: rankAfter });
+    if (!before.days.includes(today) && next.days.includes(today)) {
+      const days = streakOf(next.days, today);
+      if (days >= 2) events.push({ kind: 'streak', days });
+    }
     set(next);
     safeStorage.setItem(LEARN_KEY, JSON.stringify(next));
     emit(events);

@@ -156,6 +156,17 @@ test.describe('lesson player', () => {
     await expect(finish.getByRole('link', { name: /^Next: / })).toHaveAttribute('href', /\/learn\/arguments-and-types$/);
     await expect(page.getByText('Completed', { exact: true })).toBeVisible();
     expect((await progress(page)).lessons['first-resource']).toMatchObject({ status: 'done', xp: 40 });
+    // one card for the moment: the lesson with its XP, never taking the keyboard from the terminal
+    const cheer = page.getByTestId('celebrations').locator('[data-cheer="lesson"]');
+    await expect(cheer).toContainText('Lesson complete');
+    await expect(cheer).toContainText('+40 XP');
+
+    // back on the map, the stretch just walked draws itself in and the map opens on the next station
+    await finish.getByRole('link', { name: 'Back to the learning map' }).click();
+    const station = page.locator('[data-level="aws-0"] [data-station="0.2"]');
+    await expect(station).toHaveAttribute('data-state', 'done');
+    await expect(page.locator('[data-level="aws-0"] [data-trail] .bp-trail-draw')).toHaveCount(2);
+    await expect(page.locator('[data-level="aws-0"] [data-station="0.3"]')).toBeInViewport();
   });
 
   test('show solution: asks first, shows what is missing, and applies it as one undo step', async ({ page }) => {

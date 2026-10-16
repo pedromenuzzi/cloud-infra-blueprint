@@ -48,3 +48,26 @@ export function continueLesson(progress: Pick<LearnProgress, 'lessons' | 'start'
   if (!last) return startLesson(progress.start);
   return progress.lessons[last.slug]?.status === 'done' ? (nextLesson(last.slug) ?? last) : last;
 }
+
+/* ------------------------------------------------- back on the map after a lesson */
+
+type Seen = Pick<LearnProgress, 'lessons' | 'xp'>;
+
+/** what the map last showed (for as long as the page is open): coming back, what's new since animates */
+let seen: { done: Set<string>; xp: number } | null = null;
+
+const doneOf = (progress: Seen) => Object.keys(progress.lessons).filter((slug) => progress.lessons[slug]?.status === 'done');
+
+/** remember what the map shows now; `once`: only if nothing is remembered yet (a lesson opened before the map) */
+export function noteMapSeen(progress: Seen, once = false) {
+  if (once && seen) return;
+  seen = { done: new Set(doneOf(progress)), xp: progress.xp };
+}
+
+/** the lessons finished since the map last showed, and the XP it showed then (null: nothing new) */
+export function sinceMapSeen(progress: Seen): { fresh: Set<string>; xp: number } | null {
+  const before = seen;
+  if (!before) return null;
+  const fresh = new Set(doneOf(progress).filter((slug) => !before.done.has(slug)));
+  return fresh.size > 0 ? { fresh, xp: before.xp } : null;
+}

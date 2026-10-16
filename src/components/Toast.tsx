@@ -79,6 +79,13 @@ const ICONS: Record<ToastKind, typeof Check> = {
   warning: AlertTriangle,
 };
 
+const TONE: Record<ToastKind, string> = {
+  success: 'text-success',
+  error: 'text-danger',
+  info: 'text-primary',
+  warning: 'text-warning',
+};
+
 /**
  * Portaled to <body> and marked `data-bp-live`, so a modal dialog (which makes
  * the rest of the page inert) doesn't silence it.
@@ -89,7 +96,8 @@ export function ToastViewport() {
     <div
       aria-live="polite"
       data-bp-live=""
-      className="pointer-events-none fixed inset-x-3 bottom-4 z-[80] flex flex-col items-center gap-2"
+      // a page with controls along its bottom edge lifts toasts above them (--bp-toast-bottom)
+      className="pointer-events-none fixed inset-x-3 bottom-[var(--bp-toast-bottom,1rem)] z-[80] flex flex-col items-center gap-2"
     >
       {toasts.map((t) => {
         const Icon = ICONS[t.kind];
@@ -100,15 +108,10 @@ export function ToastViewport() {
             onMouseLeave={() => release(t.id)}
             onFocus={() => hold(t.id)}
             onBlur={() => release(t.id)}
-            className={cn(
-              'pointer-events-auto flex max-w-[640px] items-center gap-2 rounded-md border bg-surface-1 px-3.5 py-2 text-[13px] shadow-lg',
-              t.kind === 'success' && 'text-success',
-              t.kind === 'error' && 'text-danger',
-              t.kind === 'warning' && 'text-warning',
-              t.kind === 'info' && 'text-foreground',
-            )}
+            className="bp-toast-in pointer-events-auto flex max-w-[640px] items-center gap-2 rounded-md border bg-surface-1 px-3.5 py-2 text-[13px] text-foreground shadow-lg"
           >
-            <Icon className="h-3.5 w-3.5 shrink-0" />
+            {/* the kind in the icon's color; the words stay in the text color */}
+            <Icon className={cn('h-3.5 w-3.5 shrink-0', TONE[t.kind])} aria-hidden="true" />
             {t.hint || t.note ? (
               <span className="min-w-0">
                 <span className="block">{t.message}</span>

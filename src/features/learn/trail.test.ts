@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ALL_LESSONS, nextLesson, startLesson } from '@/learn/lessons';
 import { emptyProgress, type LessonProgress } from '@/learn/progress';
 import type { Lesson, Level } from '@/learn/types';
-import { continueLesson, levelTally, stationOf } from './trail';
+import { continueLesson, levelTally, noteMapSeen, sinceMapSeen, stationOf } from './trail';
 
 const goal = (id: string) => ({ id, text: { en: id, pt: id }, hint: { en: id, pt: id }, test: () => false });
 
@@ -70,5 +70,22 @@ describe('continue where you left off', () => {
 
   it('ignores a lesson that no longer exists', () => {
     expect(continueLesson({ ...emptyProgress(), last: 'gone' })).toBe(startLesson(null));
+  });
+});
+
+describe('back on the map', () => {
+  it('knows the lessons finished since the map last showed, once it has shown', () => {
+    const done: LessonProgress = { status: 'done', met: [], xp: 40 };
+    expect(sinceMapSeen({ ...withLessons({ a: done }), xp: 40 })).toBeNull();
+    // a lesson opened first: what's done then is the starting point (and only the first time)
+    noteMapSeen({ ...withLessons({ a: done }), xp: 40 }, true);
+    noteMapSeen({ ...withLessons({}), xp: 0 }, true);
+    expect(sinceMapSeen({ ...withLessons({ a: done }), xp: 40 })).toBeNull();
+    const since = sinceMapSeen({ ...withLessons({ a: done, b: done, c: { status: 'started', met: ['a'] } }), xp: 80 });
+    expect([...since!.fresh]).toEqual(['b']);
+    expect(since!.xp).toBe(40);
+    // the map showed it: nothing new any more
+    noteMapSeen({ ...withLessons({ a: done, b: done }), xp: 80 });
+    expect(sinceMapSeen({ ...withLessons({ a: done, b: done }), xp: 80 })).toBeNull();
   });
 });

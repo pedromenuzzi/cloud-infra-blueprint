@@ -171,6 +171,24 @@ test('a badge earned on the map is celebrated and read out, without taking focus
   await expect(page.locator('[data-badge="first-init"]')).toContainText('Earned');
 });
 
+test('what is earned in the same moment shares one card, and every part is read out', async ({ page }) => {
+  await page.goto('/learn');
+  // four commands already ran, their badges not given yet: the next change awards all four at once
+  await store(page, { runs: { 'some-lesson': ['init', 'plan', 'apply', 'destroy'] } });
+  const cheers = page.getByTestId('celebrations');
+  await expect(cheers).toBeAttached();
+  await page.getByText('I know AWS, new to Terraform').click();
+
+  const card = cheers.locator('[data-cheer]');
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText('Initialized');
+  for (const title of ['Look before you leap', 'It is live', 'Leave no trace']) await expect(card).toContainText(title);
+  for (const title of ['Initialized', 'Look before you leap', 'It is live', 'Leave no trace']) {
+    await expect(cheers.locator('[aria-live="polite"]')).toContainText(`Badge unlocked: ${title}.`);
+  }
+  await expect(page.getByRole('radio', { name: /I know AWS/ })).toBeFocused();
+});
+
 test('old tutorial links land on the lessons that replaced them', async ({ page }) => {
   for (const [from, to] of [
     ['/tutorials', '/learn'],
@@ -203,7 +221,7 @@ test('the landing page offers two doors, and presents the learning map', async (
 
 test('the rail and ⌘K lead to the map and to any lesson by its title', async ({ page }) => {
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'Learn', exact: true }).click();
+  await page.getByRole('link', { name: 'Learn', exact: true }).click();
   await expect(page).toHaveURL(at('/learn'));
   const first = await firstStation(page);
   // "<code> <title>. …": the title is what the palette finds it by

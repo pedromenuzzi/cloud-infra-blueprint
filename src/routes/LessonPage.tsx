@@ -9,6 +9,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { flushPendingSave } from '@/features/editor/store';
 import { openLessonCode } from '@/features/learn/player/lessonDraft';
 import { LessonPlayer } from '@/features/learn/player/LessonPlayer';
+import { noteMapSeen } from '@/features/learn/trail';
 import { useLocale } from '@/i18n/locale';
 import { getLesson } from '@/learn/lessons';
 import { useLearn } from '@/learn/progress';
@@ -29,6 +30,8 @@ export default function LessonPage() {
       return;
     }
     openLessonCode(lesson);
+    // straight into a lesson: the map, once it shows, animates what was finished from here on
+    noteMapSeen(useLearn.getState(), true);
     useLearn.getState().openLesson(lesson.slug);
     setOpened(lesson.slug);
   }, [lesson, navigate]);
