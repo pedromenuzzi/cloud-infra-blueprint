@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTyped } from './input';
+import { complete, parseTyped, words } from './input';
 import { clearPlan, nodeOf, showPlan, usePlanMarks } from './planMarks';
 
 describe('the prompt', () => {
@@ -18,6 +18,42 @@ describe('the prompt', () => {
     expect(parseTyped('ls')).toEqual({ kind: 'not-found', word: 'ls' });
     expect(parseTyped('terraform fmt')).toEqual({ kind: 'not-here', sub: 'fmt' });
     expect(parseTyped('terraform plna')).toEqual({ kind: 'no-such', sub: 'plna' });
+  });
+
+  it('reads the flags of plan and apply, quotes like a shell', () => {
+    expect(words(`terraform plan -var 'name=a b' -var="x=1"`)).toEqual(['terraform', 'plan', '-var', 'name=a b', '-var=x=1']);
+    expect(parseTyped(`terraform plan -var 'env=prod' -var-file=prod.tfvars -out=tfplan`)).toEqual({
+      kind: 'sim',
+      command: 'plan',
+      autoApprove: false,
+      flags: {
+        vars: [
+          { kind: 'var', text: 'env=prod' },
+          { kind: 'file', name: 'prod.tfvars' },
+        ],
+        out: 'tfplan',
+      },
+    });
+    expect(parseTyped('terraform apply tfplan')).toEqual({ kind: 'sim', command: 'apply', autoApprove: false, flags: { planFile: 'tfplan' } });
+    expect(parseTyped('tf plan -generate-config-out=generated.tf')).toMatchObject({ flags: { generateConfig: 'generated.tf' } });
+    expect(parseTyped('terraform init -migrate-state')).toMatchObject({ command: 'init', flags: { backendFlag: 'migrate-state' } });
+    expect(parseTyped('terraform plan -auto-approve')).toMatchObject({ kind: 'bad-flag', detail: 'flag provided but not defined: -auto-approve' });
+    expect(parseTyped('terraform plan -var')).toMatchObject({ kind: 'bad-flag', detail: 'flag needs an argument: -var' });
+    expect(parseTyped('terraform workspace new dev')).toEqual({ kind: 'workspace', args: ['new', 'dev'] });
+    expect(parseTyped('terraform output -raw url')).toEqual({ kind: 'output', args: ['-raw', 'url'] });
+  });
+
+  it('completes commands and flags with Tab, and lists the matches when there are several', () => {
+    const ctx = { outputs: ['url', 'vpc_id'], workspaces: ['default', 'dev'], plans: ['tfplan'], files: ['main.tf', 'prod.tfvars'] };
+    expect(complete('terraform pl', ctx)).toEqual({ text: 'terraform plan ', options: [] });
+    expect(complete('ter', ctx)).toEqual({ text: 'terraform ', options: [] });
+    expect(complete('terraform plan -o', ctx)).toEqual({ text: 'terraform plan -out=', options: [] });
+    expect(complete('terraform plan -var-file=', ctx)).toEqual({ text: 'terraform plan -var-file=prod.tfvars ', options: [] });
+    expect(complete('terraform apply -', ctx)?.options).toEqual(['-auto-approve', '-var', '-var-file=']);
+    expect(complete('terraform apply t', ctx)?.text).toBe('terraform apply tfplan ');
+    expect(complete('tf workspace select d', ctx)).toEqual({ text: 'tf workspace select de', options: ['default', 'dev'] });
+    expect(complete('terraform output v', ctx)?.text).toBe('terraform output vpc_id ');
+    expect(complete('terraform zz', ctx)).toBeNull();
   });
 });
 

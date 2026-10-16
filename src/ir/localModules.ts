@@ -7,7 +7,7 @@
  */
 import { buildIR, parseFile } from '@/hcl/parser';
 import { exprPreview, literalString } from './expr';
-import { dirOfPath, moduleSourceInfo, resolveModuleDir, type ModuleSourceInfo } from './modules';
+import { dirOfPath, isCodeFile, moduleSourceInfo, resolveModuleDir, type ModuleSourceInfo } from './modules';
 import type { Diagnostic, Expression, IR, ModuleNode } from './types';
 
 export interface ModuleVariable {
@@ -50,7 +50,7 @@ function sameTexts(a: Array<[string, string]>, b: Array<[string, string]>): bool
 export function readLocalModule(files: Record<string, string>, dir: string): LocalModule | null {
   if (dir === '') return null;
   const texts = Object.entries(files)
-    .filter(([path]) => dirOfPath(path) === dir)
+    .filter(([path]) => dirOfPath(path) === dir && isCodeFile(path))
     .sort(([a], [b]) => a.localeCompare(b));
   if (texts.length === 0) return null;
   const hit = cache.get(dir);

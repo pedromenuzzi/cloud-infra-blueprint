@@ -9,7 +9,10 @@ import { lessons as aws3 } from './content/aws-3';
 import { lessons as aws4 } from './content/aws-4';
 import { lessons as aws5 } from './content/aws-5';
 import { lessons as aws6 } from './content/aws-6';
+import { lessons as aws7 } from './content/aws-7';
+import { lessons as aws8 } from './content/aws-8';
 import { lessons as azure0 } from './content/azure-0';
+import { provideLessonCatalog } from './progress';
 import type { Lesson, Level, StartChoice, Track } from './types';
 
 export const TRACKS: Track[] = [
@@ -87,6 +90,26 @@ export const TRACKS: Track[] = [
         },
         lessons: aws6,
       },
+      {
+        id: 'aws-7',
+        index: 7,
+        title: { en: 'Guided projects', pt: 'Projetos guiados' },
+        summary: {
+          en: 'Three real architectures built in steps: a static site, a serverless API and a three-tier app.',
+          pt: 'Três arquiteturas reais construídas em etapas: um site estático, uma API serverless e uma aplicação em três camadas.',
+        },
+        lessons: aws7,
+      },
+      {
+        id: 'aws-8',
+        index: 8,
+        title: { en: 'Production', pt: 'Produção' },
+        summary: {
+          en: 'Remote state, environments, secrets, lifecycle rules, importing what exists and reviewing real plans.',
+          pt: 'State remoto, ambientes, segredos, regras de ciclo de vida, importar o que já existe e revisar plans reais.',
+        },
+        lessons: aws8,
+      },
     ],
   },
   {
@@ -136,3 +159,5 @@ export function startLesson(choice: StartChoice | null): Lesson | undefined {
 
 /** lessons that teach a resource type (the editor's "Learn about this") */
 export const lessonsTeaching = (type: string): Lesson[] => ALL_LESSONS.filter((l) => l.teaches?.includes(type));
+
+provideLessonCatalog({ levels: ALL_LEVELS, getLesson, levelOfLesson });

@@ -118,6 +118,83 @@ export const AWS_RESOURCES = [
   }),
 
   defineResource({
+    type: 'aws_launch_template',
+    provider: 'aws',
+    category: 'compute',
+    displayName: 'Launch Template',
+    shortName: 'Launch Template',
+    description: 'The recipe Auto Scaling uses to start instances',
+    fields: [
+      { name: 'name_prefix', type: 'string' },
+      { name: 'image_id', type: 'string', placeholder: 'ami-0c02fb55956c7d316' },
+      {
+        name: 'instance_type',
+        type: 'select',
+        options: ['t3.micro', 't3.small', 't3.medium', 't3.large', 'm5.large', 'c5.large'],
+      },
+      { name: 'vpc_security_group_ids', type: 'list', refTo: ['aws_security_group'], label: 'Security groups' },
+      { name: 'tags', type: 'tags' },
+    ],
+    defaults: {
+      image_id: lit('ami-0c02fb55956c7d316'),
+      instance_type: lit('t3.micro'),
+    },
+    connections: [{ targetTypes: ['aws_security_group'], arg: 'vpc_security_group_ids', attr: 'id', mode: 'append' }],
+    subtitle: (args) => litStr(args.instance_type),
+  }),
+
+  defineResource({
+    type: 'aws_autoscaling_group',
+    provider: 'aws',
+    category: 'compute',
+    displayName: 'Auto Scaling Group',
+    shortName: 'ASG',
+    description: 'Keeps a fleet of instances running across subnets',
+    fields: [
+      { name: 'name_prefix', type: 'string' },
+      { name: 'min_size', type: 'number', required: true, min: 0 },
+      { name: 'max_size', type: 'number', required: true, min: 0 },
+      { name: 'desired_capacity', type: 'number', min: 0 },
+      { name: 'vpc_zone_identifier', type: 'list', refTo: ['aws_subnet'], label: 'Subnets' },
+      { name: 'target_group_arns', type: 'list', refTo: ['aws_lb_target_group'], refAttr: 'arn', label: 'Target groups' },
+    ],
+    defaults: {
+      min_size: lit(1),
+      max_size: lit(2),
+      launch_template: block({ id: lit('lt-0123456789abcdef0'), version: lit('$Latest') }),
+    },
+    connections: [
+      { targetTypes: ['aws_subnet'], arg: 'vpc_zone_identifier', attr: 'id', mode: 'append' },
+      { targetTypes: ['aws_lb_target_group'], arg: 'target_group_arns', attr: 'arn', mode: 'append' },
+    ],
+    subtitle: (args, locale) => {
+      const min = args.min_size?.kind === 'literal' ? String(args.min_size.value) : undefined;
+      const max = args.max_size?.kind === 'literal' ? String(args.max_size.value) : undefined;
+      return min !== undefined && max !== undefined ? t(locale).instanceRange(min, max) : undefined;
+    },
+  }),
+
+  defineResource({
+    type: 'aws_cloudwatch_log_group',
+    provider: 'aws',
+    category: 'integration',
+    displayName: 'CloudWatch Log Group',
+    shortName: 'Log Group',
+    description: 'Where a service writes its logs, and for how long they stay',
+    naming: { maxLength: 512 },
+    fields: [
+      { name: 'name', type: 'string', placeholder: '/aws/lambda/my-function' },
+      { name: 'retention_in_days', type: 'number', min: 0, doc: 'How many days logs are kept (0 keeps them forever)' },
+      { name: 'tags', type: 'tags' },
+    ],
+    defaults: { retention_in_days: lit(14) },
+    subtitle: (args, locale) =>
+      args.retention_in_days?.kind === 'literal' && typeof args.retention_in_days.value === 'number'
+        ? t(locale).retentionDays(args.retention_in_days.value)
+        : undefined,
+  }),
+
+  defineResource({
     type: 'aws_db_instance',
     provider: 'aws',
     category: 'database',
@@ -809,6 +886,43 @@ export const AWS_RESOURCES = [
   }),
 
   defineResource({
+    type: 'aws_acm_certificate',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'ACM Certificate',
+    shortName: 'Certificate',
+    description: 'A free TLS certificate for HTTPS',
+    fields: [
+      { name: 'domain_name', type: 'string', placeholder: 'example.com' },
+      { name: 'validation_method', type: 'select', options: ['DNS', 'EMAIL'] },
+      { name: 'subject_alternative_names', type: 'list', label: 'Other names' },
+      { name: 'tags', type: 'tags' },
+    ],
+    defaults: {
+      domain_name: lit('example.com'),
+      validation_method: lit('DNS'),
+    },
+    subtitle: (args) => litStr(args.domain_name),
+  }),
+
+  defineResource({
+    type: 'aws_acm_certificate_validation',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'Certificate Validation',
+    shortName: 'Validation',
+    description: 'Waits until AWS has checked the certificate\'s DNS records',
+    fields: [
+      { name: 'certificate_arn', type: 'string', required: true, refTo: ['aws_acm_certificate'], refAttr: 'arn' },
+      { name: 'validation_record_fqdns', type: 'list', refTo: ['aws_route53_record'], refAttr: 'fqdn', label: 'DNS records' },
+    ],
+    connections: [
+      { targetTypes: ['aws_acm_certificate'], arg: 'certificate_arn', attr: 'arn', mode: 'set' },
+      { targetTypes: ['aws_route53_record'], arg: 'validation_record_fqdns', attr: 'fqdn', mode: 'append' },
+    ],
+  }),
+
+  defineResource({
     type: 'aws_iam_role_policy_attachment',
     provider: 'aws',
     category: 'identity',
@@ -1171,6 +1285,47 @@ export const AWS_RESOURCES = [
   }),
 
   defineResource({
+    type: 'aws_cloudfront_origin_access_control',
+    provider: 'aws',
+    category: 'edge',
+    displayName: 'CloudFront Origin Access Control',
+    shortName: 'OAC',
+    description: 'Lets CloudFront read a private bucket, and nobody else',
+    naming: { maxLength: 64 },
+    fields: [
+      { name: 'name', type: 'string', required: true },
+      { name: 'origin_access_control_origin_type', type: 'select', required: true, options: ['s3', 'mediastore', 'lambda', 'mediapackagev2'], label: 'Origin type' },
+      { name: 'signing_behavior', type: 'select', required: true, options: ['always', 'never', 'no-override'] },
+      { name: 'signing_protocol', type: 'select', required: true, options: ['sigv4'] },
+    ],
+    defaults: {
+      origin_access_control_origin_type: lit('s3'),
+      signing_behavior: lit('always'),
+      signing_protocol: lit('sigv4'),
+    },
+    subtitle: (args) => litStr(args.origin_access_control_origin_type),
+  }),
+
+  defineResource({
+    type: 'aws_lb_target_group_attachment',
+    provider: 'aws',
+    category: 'network',
+    displayName: 'Target Group Attachment',
+    shortName: 'TG Attachment',
+    description: 'Registers a server in a target group',
+    fields: [
+      { name: 'target_group_arn', type: 'string', required: true, refTo: ['aws_lb_target_group'], refAttr: 'arn' },
+      { name: 'target_id', type: 'string', required: true, refTo: ['aws_instance'] },
+      { name: 'port', type: 'number', min: 1, max: 65535 },
+    ],
+    connections: [
+      { targetTypes: ['aws_lb_target_group'], arg: 'target_group_arn', attr: 'arn', mode: 'set' },
+      { targetTypes: ['aws_instance'], arg: 'target_id', attr: 'id', mode: 'set' },
+    ],
+    subtitle: (_, locale) => t(locale).serverInGroup,
+  }),
+
+  defineResource({
     type: 'aws_route',
     provider: 'aws',
     category: 'network',
@@ -1228,6 +1383,47 @@ export const AWS_RESOURCES = [
       const config = args.versioning_configuration;
       return config?.kind === 'block' ? litStr(config.body.status) : undefined;
     },
+  }),
+
+  defineResource({
+    type: 'aws_s3_object',
+    provider: 'aws',
+    category: 'storage',
+    displayName: 'S3 Object',
+    shortName: 'S3 Object',
+    description: 'A file stored in a bucket',
+    fields: [
+      { name: 'bucket', type: 'string', required: true, refTo: ['aws_s3_bucket'] },
+      { name: 'key', type: 'string', required: true, placeholder: 'index.html', doc: 'The path of the file in the bucket' },
+      { name: 'content_type', type: 'string', placeholder: 'text/html' },
+      { name: 'source', type: 'string', placeholder: 'site/index.html', doc: 'A local file to upload' },
+    ],
+    defaults: {
+      key: lit('index.html'),
+      content_type: lit('text/html'),
+    },
+    connections: [{ targetTypes: ['aws_s3_bucket'], arg: 'bucket', attr: 'id', mode: 'set' }],
+    subtitle: (args) => litStr(args.key),
+  }),
+
+  defineResource({
+    type: 'aws_s3_bucket_policy',
+    provider: 'aws',
+    category: 'identity',
+    displayName: 'S3 Bucket Policy',
+    shortName: 'Bucket Policy',
+    description: 'Who may do what with a bucket',
+    fields: [
+      { name: 'bucket', type: 'string', required: true, refTo: ['aws_s3_bucket'] },
+      { name: 'policy', type: 'string', required: true, doc: 'JSON policy document' },
+    ],
+    defaults: {
+      policy: raw(
+        `jsonencode({\n    Version = "2012-10-17"\n    Statement = [{\n      Effect    = "Deny"\n      Principal = "*"\n      Action    = "s3:*"\n      Resource  = "*"\n      Condition = { Bool = { "aws:SecureTransport" = "false" } }\n    }]\n  })`,
+      ),
+    },
+    connections: [{ targetTypes: ['aws_s3_bucket'], arg: 'bucket', attr: 'id', mode: 'set' }],
+    subtitle: (_, locale) => t(locale).bucketPolicy,
   }),
 
   defineResource({

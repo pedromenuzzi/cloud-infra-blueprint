@@ -32,7 +32,7 @@ import { appendReference, instanceRef, isListValued } from '@/ir/repeat';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { useLocale } from '@/i18n/locale';
 import { messagesFor, useMessages } from '@/i18n/messages';
-import { lessonsTeaching } from '@/learn/lessons';
+import { useLearnCatalog } from '@/features/learn/useLearnCatalog';
 import { textIn } from '@/learn/types';
 import { cn, tfName } from '@/lib/utils';
 import { fieldHelp, resourceDescription, resourceName } from '@/resources/i18n';
@@ -51,6 +51,7 @@ import { renameOps } from './repeatOps';
 import { KeepStateToggle, RepeatSection } from './RepeatSection';
 import { useLayout } from './layoutStore';
 import { SchemaFields } from './SchemaFields';
+import { DeployedSection } from '@/features/deploy/StateViews';
 import { isModuleId } from '@/ir/modules';
 import { ModuleInspector } from '@/features/modules/ModuleInspector';
 import { isDataId } from '@/ir/dataSources';
@@ -710,6 +711,8 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
 
   return (
     <div className="space-y-3.5 p-3.5">
+      {/* the open plan's change and the open state's attributes, when there are */}
+      <DeployedSection id={node.id} />
       <ExposureCard node={node} />
       <CostLine node={node} />
       <CidrPlanner node={node} />
@@ -947,7 +950,8 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
   // "Learn about this": the first lesson on this type (not from inside a lesson)
   const locale = useLocale((s) => s.locale);
   const inLesson = useMatch('/learn/*') !== null;
-  const lesson = node && !inLesson ? lessonsTeaching(node.type)[0] : undefined;
+  const learn = useLearnCatalog(!inLesson);
+  const lesson = node && !inLesson ? learn?.lessonsTeaching(node.type)[0] : undefined;
 
   if (selectedIds.length > 1) {
     return docked ? (

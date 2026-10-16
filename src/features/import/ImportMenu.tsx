@@ -1,8 +1,10 @@
-import { ChevronDown, FileUp, FolderOpen, Github } from 'lucide-react';
+import { ChevronDown, FileUp, FolderOpen, FolderPlus, Github } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ContextMenu, type MenuEntry } from '@/components/ContextMenu';
 import { Button } from '@/components/ui';
 import { dataMessages } from '@/features/data/messages';
+import { openFromState } from '@/features/deploy/fromStateStore';
+import { deployMessages } from '@/features/deploy/messages';
 import { useOpenFolder } from '@/features/data/OpenFolderButton';
 import { useMessages } from '@/i18n/messages';
 import { openGithubImport } from './githubImportStore';
@@ -10,14 +12,15 @@ import { importMenuMessages, importMessages } from './messages';
 
 /**
  * The dashboard's one way in for existing Terraform: files (a backup .zip
- * among them opens the restore dialog), a GitHub repository, or a folder
- * kept in sync (Chromium only). A menu button: Enter, Space or ↓ opens it on
+ * among them opens the restore dialog), a GitHub repository, a state (its
+ * resources written as code), or a folder kept in sync (Chromium only). A menu button: Enter, Space or ↓ opens it on
  * its first item; Esc closes it and gives focus back.
  */
 export function ImportMenu({ onFiles }: { onFiles(files: File[]): void }) {
   const m = useMessages(importMenuMessages);
   const github = useMessages(importMessages);
   const data = useMessages(dataMessages);
+  const deploy = useMessages(deployMessages);
   const folder = useOpenFolder();
   const input = useRef<HTMLInputElement>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -30,6 +33,7 @@ export function ImportMenu({ onFiles }: { onFiles(files: File[]): void }) {
   const entries: MenuEntry[] = [
     { id: 'files', label: m.files, hint: m.filesHint, icon: FileUp, onSelect: () => input.current?.click() },
     { id: 'github', label: m.github, hint: github.subtitle, icon: Github, onSelect: () => openGithubImport() },
+    { id: 'state', label: deploy.importFromState, hint: deploy.importFromStateHint, icon: FolderPlus, onSelect: () => void openFromState() },
   ];
   if (folder.supported) {
     entries.push({ id: 'folder', label: data.openFolder, hint: m.folderHint, icon: FolderOpen, disabled: folder.busy, onSelect: folder.open });

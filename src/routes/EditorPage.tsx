@@ -21,6 +21,9 @@ import {
   WORKSPACE_ID,
 } from '@/features/editor/PanelChrome';
 import { ExportPdfHost } from '@/features/export/ExportPdfDialog';
+import { DeployHost } from '@/features/deploy/DeployHost';
+import { DeployPanel } from '@/features/deploy/DeployPanel';
+import { setDeployPanel, useDeploy } from '@/features/deploy/store';
 import { RulesEditor } from '@/features/security/RulesEditor';
 import { SecurityPanel } from '@/features/security/SecurityPanel';
 import { useSecurityDelta } from '@/features/security/securityDelta';
@@ -146,18 +149,21 @@ export default function EditorPage() {
   const securitySlot = useLayout(securityPanelSlot);
   const selection = useEditor((s) => s.selection);
   const securityPanel = useSecurityUi((s) => s.panelOpen);
+  const deployPanel = useDeploy((s) => s.panelOpen);
   const dragging = useCanvasDrag((s) => s.kind !== null);
   const onePanel = useOnePanelAtATime(canvasRef, ready);
   // one panel at a time on a narrow canvas: the security panel covers the inspector while it's
   // open (it opens with the resource a toast's "Show" is about), and a resource picked while it's
   // already open — from the panel itself — closes it for the inspector
-  const securityShown = securityPanel && securitySlot && panels.canvas;
+  // (the plan and state panel takes the same spot, and the same turns)
+  const securityShown = (securityPanel || deployPanel) && securitySlot && panels.canvas;
   const seen = useRef({ selection, securityShown });
   useEffect(() => {
     const before = seen.current;
     seen.current = { selection, securityShown };
     if (onePanel && securityShown && before.securityShown && selection !== null && selection !== before.selection) {
       useSecurityUi.getState().setPanel(false);
+      setDeployPanel(false);
     }
   }, [onePanel, selection, securityShown]);
   const inspectorYields = onePanel && securityShown;
@@ -289,14 +295,14 @@ export default function EditorPage() {
   );
 
   const securityEl =
-    securityPanel && securitySlot ? (
+    (securityPanel || deployPanel) && securitySlot ? (
       <div
         className={cn(
           'absolute bottom-[68px] left-3 top-3 z-20 flex w-[min(340px,calc(100%-24px))] transition-opacity',
           FLOAT_CHROME,
         )}
       >
-        <SecurityPanel />
+        {securityPanel ? <SecurityPanel /> : <DeployPanel />}
       </div>
     ) : null;
 
@@ -432,6 +438,7 @@ export default function EditorPage() {
       </div>
       <RulesEditor />
       <ExportPdfHost />
+      <DeployHost />
     </div>
   );
 }

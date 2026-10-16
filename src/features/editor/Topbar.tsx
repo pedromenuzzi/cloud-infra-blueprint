@@ -7,6 +7,8 @@ import {
   Download,
   Eye,
   FileArchive,
+  FileDiff,
+  FileJson,
   FileImage,
   FileText,
   FolderSync,
@@ -43,6 +45,9 @@ import { cn } from '@/lib/utils';
 import { ariaShortcut, shortcut } from '@/lib/keys';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { GRADE_COLORS, useProjectAudit, useSecurityUi } from '@/features/security/securityStore';
+import { DeployButton } from '@/features/deploy/DeployButton';
+import { deployMessages } from '@/features/deploy/messages';
+import { pickAndOpen, setDeployPanel } from '@/features/deploy/store';
 import { LOCALES, useLocale } from '@/i18n/locale';
 import { useMessages } from '@/i18n/messages';
 import { useTheme } from '@/theme/useTheme';
@@ -135,6 +140,7 @@ export function Topbar() {
   const paletteSide = useLayout((s) => s.paletteSide);
   const lm = useMessages(layoutMessages);
   const m = useMessages(topbarMessages);
+  const dm = useMessages(deployMessages);
   const locale = useLocale((s) => s.locale);
   const setLocale = useLocale((s) => s.setLocale);
   /** the Layout popover, opened from its button (or the ⋯ menu on phones) */
@@ -206,6 +212,10 @@ export function Topbar() {
     ...(small ? [{ id: 'share', label: m.copyShareLink, icon: Share2, onSelect: doShare }] : []),
     // the view-link button sits in the bar from lg up, where the ⋯ menu is gone
     { id: 'view-link', label: m.copyViewLinkReadOnly, icon: Eye, onSelect: doViewLink },
+    // the plan and state button leaves the bar below md
+    ...(narrow ? [{ id: 'deploy', label: dm.panel, icon: FileDiff, onSelect: () => setDeployPanel(true) }] : []),
+    { id: 'open-plan', label: dm.openPlan, icon: FileJson, onSelect: () => void pickAndOpen('plan') },
+    { id: 'open-state', label: dm.openState, icon: FileJson, onSelect: () => void pickAndOpen('state') },
     ...(small
       ? [
           {
@@ -340,6 +350,9 @@ export function Topbar() {
       </span>
 
       <SecurityBadge />
+      <span className="contents max-md:hidden">
+        <DeployButton />
+      </span>
 
       <div className="flex shrink-0 items-center" role="group" aria-label={m.panels}>
         {panelToggles.map((p) => (

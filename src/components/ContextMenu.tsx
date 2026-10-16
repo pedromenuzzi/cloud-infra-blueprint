@@ -47,8 +47,12 @@ export function ContextMenu({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    // its layout size: the opening animation scales it, which a bounding rect would include
+    // its layout size: the opening animation scales it, which a bounding rect would include;
+    // measured at the left edge, where nothing squeezes it (moved left, a squeezed menu would widen past the edge)
+    const left = el.style.left;
+    el.style.left = '0px';
     const width = el.offsetWidth;
+    el.style.left = left;
     const height = el.offsetHeight;
     setPos({
       left: Math.max(8, Math.min(x, window.innerWidth - width - 8)),

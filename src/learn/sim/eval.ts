@@ -752,6 +752,9 @@ const FUNCTIONS: Record<string, (a: Val[]) => Val> = {
     return formatAddress(((1n << 32n) - 1n) ^ ((1n << BigInt(32 - c.prefix)) - 1n), 'ipv4');
   },
   file: () => null, // read through the scope (fileOf)
+  // the value as it is: what's sensitive is told from the references (simulate.ts `isSensitive`)
+  sensitive: ([v]) => v,
+  nonsensitive: ([v]) => v,
 };
 
 /* ------------------------------------------------------------------ entry points */

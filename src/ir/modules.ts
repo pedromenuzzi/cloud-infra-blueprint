@@ -28,8 +28,11 @@ const RAW_ENTRY_KEY = /[\s"]/;
 
 /* ------------------------------------------------------------- files */
 
-/** A file of the root module: no folder in its project path. */
-export const isRootModuleFile = (path: string): boolean => !path.includes('/');
+/** Terraform code, as opposed to a `.tfvars` file (values, not blocks), in any folder. */
+export const isCodeFile = (path: string): boolean => !/\.tfvars(\.json)?$/.test(path);
+
+/** A file of the root module: no folder in its project path, and code. */
+export const isRootModuleFile = (path: string): boolean => !path.includes('/') && isCodeFile(path);
 
 /** The files of the root module only (what the IR is parsed from). */
 export function rootModuleFiles(files: Record<string, string>): Record<string, string> {

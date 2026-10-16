@@ -15,6 +15,8 @@ import { moduleInputs, moduleVersion, versionLabel, type ModuleSourceKind } from
 import type { IR, ModuleNode } from '@/ir/types';
 import { cn } from '@/lib/utils';
 import { canvasMessages } from '@/features/editor/CanvasPane.messages';
+import { StateMark } from '@/features/deploy/StateViews';
+import { PlanMark } from '@/features/learn/terminal/PlanMarks';
 import { ModuleIcon } from './ModuleIcon';
 import { modulesMessages } from './modules.messages';
 import { openModuleView } from './moduleViewStore';
@@ -39,7 +41,7 @@ export interface ModuleNodeData extends Record<string, unknown> {
 
 export type ModuleFlowNode = Node<ModuleNodeData, 'module'>;
 
-export function ModuleNodeView({ data, selected }: NodeProps<ModuleFlowNode>) {
+export function ModuleNodeView({ id, data, selected }: NodeProps<ModuleFlowNode>) {
   const m = useMessages(modulesMessages);
   const tail = data.source.lastIndexOf('/');
   return (
@@ -102,6 +104,8 @@ export function ModuleNodeView({ data, selected }: NodeProps<ModuleFlowNode>) {
           <AlertTriangle className="h-2.5 w-2.5" />
         </span>
       ) : null}
+      <PlanMark id={id} />
+      <StateMark id={id} at="-top-2.5 right-6" />
       <Handle type="source" position={Position.Right} isConnectable={false} />
     </div>
   );

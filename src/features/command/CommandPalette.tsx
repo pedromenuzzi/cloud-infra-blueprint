@@ -17,6 +17,7 @@ import {
   FileText,
   FileUp,
   FolderOpen,
+  FolderPlus,
   Github,
   GraduationCap,
   ImageDown,
@@ -52,6 +53,9 @@ import { arrangeMessages } from '@/features/editor/arrange.messages';
 import { canvasApi } from '@/features/editor/canvasApi';
 import { openExportPdf } from '@/features/export/ExportPdfDialog';
 import { LayoutCommands } from '@/features/editor/layoutCommands';
+import { DeployCommands } from '@/features/deploy/commands';
+import { openFromState } from '@/features/deploy/fromStateStore';
+import { deployMessages } from '@/features/deploy/messages';
 import { useLayout } from '@/features/editor/layoutStore';
 import { openGithubImport } from '@/features/import/githubImportStore';
 import { fixAllFindings, getAudit, useSecurityUi } from '@/features/security/securityStore';
@@ -60,7 +64,7 @@ import { openProjectRootPath, orderedFiles, useEditor } from '@/features/editor/
 import { securityUiMessages } from '@/features/security/messages';
 import { BrazilFlag, UsFlag } from '@/components/flags';
 import { LOCALES, useLocale } from '@/i18n/locale';
-import { ALL_LESSONS, TRACKS } from '@/learn/lessons';
+import { useLearnCatalog } from '@/features/learn/useLearnCatalog';
 import { textIn } from '@/learn/types';
 import { copyText, exportZip } from '@/lib/download';
 import { REPO_URL } from '@/lib/links';
@@ -145,6 +149,8 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState('');
+  // lessons appear only while searching: load them on the first keystroke
+  const learn = useLearnCatalog(search.trim() !== '');
   const [page, setPage] = useState<'root' | 'add' | 'data'>('root');
   const { theme, setTheme } = useTheme();
   const togglePanel = useLayout((s) => s.toggle);
@@ -163,6 +169,7 @@ export function CommandPalette() {
   const am = useMessages(arrangeMessages);
   const m = useMessages(commandMessages);
   const sm = useMessages(securityUiMessages);
+  const dpm = useMessages(deployMessages);
   const addm = useMessages(addModuleMessages);
   const modm = useMessages(modulesMessages);
   const dsm = useMessages(dataSourceMessages);
@@ -347,6 +354,13 @@ export function CommandPalette() {
                       />
                     ) : null}
                   </Command.Group>
+
+                  {/* the lessons' terminal is the plan there: only the editor opens real ones */}
+                  {location.pathname.startsWith('/editor/') ? (
+                    <Command.Group heading={dpm.commands}>
+                      <DeployCommands render={(c) => <Item key={c.value} value={c.value} icon={c.icon} label={c.label} keywords={c.keywords} onSelect={() => run(c.run)} />} />
+                    </Command.Group>
+                  ) : null}
 
                   {selectedIds.length > 1 ? (
                     <Command.Group heading={m.group.selection(selectedIds.length)}>
@@ -547,6 +561,13 @@ export function CommandPalette() {
                   keywords={m.kw.importGithub}
                   onSelect={() => run(() => openGithubImport())}
                 />
+                <Item
+                  value="import-from-state"
+                  icon={FolderPlus}
+                  label={dpm.fromState}
+                  keywords={dpm.keywords}
+                  onSelect={() => run(() => openFromState())}
+                />
               </Command.Group>
 
               <Command.Group heading={m.group.templates}>
@@ -575,15 +596,15 @@ export function CommandPalette() {
               </Command.Group>
 
               {/* only while searching: 20-odd lessons would bury the root list */}
-              {search.trim() ? (
+              {search.trim() && learn ? (
                 <Command.Group heading={m.group.lessons}>
-                  {ALL_LESSONS.map((lesson) => (
+                  {learn.ALL_LESSONS.map((lesson) => (
                     <Item
                       key={lesson.slug}
                       value={`lesson ${lesson.slug}`}
                       icon={GraduationCap}
                       label={`${lesson.code} ${textIn(lesson.title, locale)}`}
-                      hint={textIn(TRACKS.find((t) => t.levels.some((l) => l.lessons.includes(lesson)))?.title ?? TRACKS[0].title, locale)}
+                      hint={textIn(learn.TRACKS.find((t) => t.levels.some((l) => l.lessons.includes(lesson)))?.title ?? learn.TRACKS[0].title, locale)}
                       keywords={[lesson.title.en, lesson.title.pt, ...m.kw.lesson]}
                       onSelect={() => run(() => navigate(`/learn/${lesson.slug}`))}
                     />
