@@ -298,7 +298,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
       tabIndex={-1}
       data-dragging={dragging || undefined}
       className={cn(
-        'group/canvas flex min-w-0 outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
+        'group/canvas flex min-w-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
         canvasShown ? 'relative flex-1' : 'pointer-events-none absolute inset-0 -z-10 opacity-0',
       )}
     >

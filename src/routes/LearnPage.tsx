@@ -351,7 +351,7 @@ function StationItem({
         aria-label={label}
         aria-describedby={summaryId}
         className={cn(
-          'group relative flex items-start gap-3.5 rounded-[14px] outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary',
+          'group relative flex items-start gap-3.5 rounded-[14px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary',
           'md:flex-col md:items-center md:gap-2 md:px-1 md:pt-[calc(34px+var(--wave))] md:text-center',
           optional && state !== 'done' && 'opacity-80',
         )}
