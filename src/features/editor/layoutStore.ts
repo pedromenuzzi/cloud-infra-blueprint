@@ -27,6 +27,13 @@ import {
 
 export type PanelId = SectionId;
 export type DrawerId = 'palette' | 'code';
+/**
+ * Room on the canvas for the floating panels (a tool panel on the left: security, or plan and
+ * state; the inspector on the right): both, with a usable view between them; one, the other
+ * waiting as a slim tab; or one that leaves no view beside it (a phone).
+ */
+export type FloatRoom = 'both' | 'one' | 'narrow';
+export type FloatPanel = 'tool' | 'inspector';
 export type { InspectorMode, MovableId, PresetId, Side };
 
 const storage = (): Storage | null => {
@@ -53,6 +60,11 @@ interface LayoutState {
   editorLayout: boolean;
   /** a panel being dragged by its grip to the other side, and the side under the pointer */
   panelDrag: { panel: MovableId; over: Side | null } | null;
+  floatRoom: FloatRoom;
+  /** the floating panel in front when there is room for one (this tab only) */
+  floatFront: FloatPanel;
+  setFloatRoom(room: FloatRoom): void;
+  setFloatFront(front: FloatPanel): void;
   setCompact(compact: boolean): void;
   setEditorLayout(on: boolean): void;
   /** show / hide a panel — or, on compact screens, open / close its drawer */
@@ -114,6 +126,14 @@ export const useLayout = create<LayoutState>((set, get) => {
     drawer: null,
     editorLayout: false,
     panelDrag: null,
+    floatRoom: 'both',
+    floatFront: 'inspector',
+    setFloatRoom(floatRoom) {
+      if (floatRoom !== get().floatRoom) set({ floatRoom });
+    },
+    setFloatFront(floatFront) {
+      if (floatFront !== get().floatFront) set({ floatFront });
+    },
     setCompact(compact) {
       if (compact !== get().compact) set({ compact, drawer: null });
     },

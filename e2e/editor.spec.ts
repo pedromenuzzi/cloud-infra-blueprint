@@ -54,7 +54,7 @@ test('broken code keeps the last valid diagram and shows a non-overlapping warni
   // unclosed block when pasted, empty value when typed (auto-closed `{`) — an error either way
   await insertCode(page, 'resource "aws_s3_bucket" "half" { bucket = ');
 
-  const warning = page.getByRole('status').filter({ hasText: 'Code has errors' });
+  const warning = page.getByRole('status').filter({ hasText: 'The code has an error' });
   await expect(warning).toBeVisible();
   await expect(canvasStats(page)).toHaveText(/^11 resources/);
 

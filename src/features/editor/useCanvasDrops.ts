@@ -315,11 +315,11 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
     [applyCanvasOps, rectsOf, refuseNotice],
   );
 
-  /** add a catalog resource at a canvas point, following the drop rules */
+  /** add a catalog resource at a canvas point, following the drop rules; returns its id */
   const placeResource = useCallback(
     (def: ResourceDef, at: { x: number; y: number }) => {
       const { ir } = useEditor.getState();
-      placeByVerdict(def, dropVerdict(ir, rectsOf(ir), { type: def.type }, at), at);
+      return placeByVerdict(def, dropVerdict(ir, rectsOf(ir), { type: def.type }, at), at);
     },
     [placeByVerdict, rectsOf],
   );

@@ -71,19 +71,62 @@ test.describe('a real plan on the canvas', () => {
     await expect(risk).toContainText('2 resources that keep data will be destroyed or replaced');
     await expect(risk).toContainText('aws_db_instance.main');
 
-    // a change opens on its diff and selects its node
+    // a change opens on its diff and selects its node; the panel stays in front (no room for both
+    // beside the code at 1440), the inspector waits as a tab
     await panel.getByRole('button', { name: 'Attributes of aws_db_instance.main' }).click();
     const db = panel.locator('[data-change="aws_db_instance.main"]');
     await expect(db.locator('[data-diff-row="engine_version"][data-forces]')).toContainText('forces replacement');
     await expect(db.locator('[data-diff-row="engine_version"]')).toContainText('"16.3"');
     await expect(db.locator('[data-diff-row="address"]')).toContainText('(known after apply)');
-    await expect(page.getByTestId('inspector-address')).toHaveText('aws_db_instance.main');
+    await expect(node(page, 'aws_db_instance.main')).toHaveClass(/selected/);
     // a secret is never on the page
     await db.getByRole('button', { name: /unchanged attribute/ }).click();
     await expect(db.locator('[data-diff-row="password"]')).toContainText('(sensitive)');
     expect(await page.content()).not.toContain(SECRET);
-    // the inspector says what the plan does to it
+    // the inspector, from its tab, says what the plan does to it
+    await page.getByRole('button', { name: 'Show inspector' }).click();
+    await expect(page.getByTestId('inspector-address')).toHaveText('aws_db_instance.main');
     await expect(page.getByTestId('deployed-section')).toContainText('replace');
+  });
+
+  test('1440 with the code open: the plan and the inspector take turns, the canvas keeps a usable view', async ({ page }) => {
+    await openSeed(page);
+    await page.getByTestId('deploy-button').click();
+    await openFile(page, 'Open a plan…', 'plan.json', PLAN);
+    const panel = page.getByTestId('deploy-panel');
+    const inspector = page.getByRole('complementary', { name: 'Inspector' });
+    /** canvas width no floating panel covers */
+    const uncovered = async () => {
+      const canvas = (await page.getByTestId('canvas').boundingBox())!;
+      let covered = 0;
+      for (const el of [panel, inspector]) {
+        if (!(await el.isVisible())) continue;
+        const box = (await el.boundingBox())!;
+        covered += Math.max(0, Math.min(box.x + box.width, canvas.x + canvas.width) - Math.max(box.x, canvas.x));
+      }
+      return canvas.width - covered;
+    };
+    await expect(panel).toBeVisible();
+
+    // picked on the canvas: the inspector comes forward, the plan waits as a tab
+    await node(page, 'aws_iam_role.web').click();
+    await expect(page.getByTestId('inspector-address')).toHaveText('aws_iam_role.web');
+    await expect(panel).toBeHidden();
+    await expect.poll(uncovered).toBeGreaterThanOrEqual(300);
+
+    // its tab brings the plan back, the inspector waits in turn, and the panel kept what was open
+    await page.getByRole('button', { name: 'Show the plan and state panel' }).click();
+    await expect(panel).toBeVisible();
+    await expect(inspector).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Show inspector' })).toBeVisible();
+    await expect.poll(uncovered).toBeGreaterThanOrEqual(300);
+
+    // picked in the panel: the panel stays in front, and the node shows beside it
+    await panel.getByRole('button', { name: 'Attributes of aws_instance.web' }).click();
+    await expect(node(page, 'aws_instance.web')).toHaveClass(/selected/);
+    await expect(panel).toBeVisible();
+    const edge = (await panel.boundingBox())!;
+    await expect.poll(async () => (await node(page, 'aws_instance.web').boundingBox())!.x).toBeGreaterThanOrEqual(edge.x + edge.width);
   });
 
   test('the code changing since the plan is said, not silently dropped; clearing takes the marks away', async ({ page }) => {
@@ -242,7 +285,9 @@ test.describe('the panel, accessible and on a phone', () => {
     // one panel at a time: picking a change gives the canvas to its node and the inspector
     await panel.getByRole('button', { name: 'Attributes of aws_instance.web' }).click();
     await expect(page.getByTestId('inspector-address')).toHaveText('aws_instance.web');
-    await expect(panel).toHaveCount(0);
+    // the panel waits as a tab, still holding what was open
+    await expect(panel).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Show the plan and state panel' })).toBeVisible();
     await expect(page.getByTestId('deployed-section')).toContainText('update');
     await page.getByTestId('deployed-section').getByRole('button', { name: /In the plan/ }).click();
     await expect(page.getByTestId('deploy-panel').locator('[data-change="aws_instance.web"] [data-diff-row="instance_type"]')).toBeVisible();

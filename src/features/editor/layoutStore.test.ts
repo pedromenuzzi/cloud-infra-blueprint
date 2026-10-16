@@ -207,6 +207,29 @@ describe('layout store', () => {
     expect(saved()).toMatchObject({ ...DEFAULT_PREFS, v: 2 });
   });
 
+  it('floating panels take turns where the canvas would not keep a usable view between them', async () => {
+    const { floatRoomFor, floatingPanels } = await import('./inspectorPlacement');
+    // 1440 px with resources and code: a 768 px canvas
+    expect(floatRoomFor(1100)).toBe('both');
+    expect(floatRoomFor(768)).toBe('one');
+    expect(floatRoomFor(390)).toBe('narrow');
+    const s = () => useLayout.getState();
+    expect(floatingPanels(s(), true, true)).toEqual({ tool: true, inspector: true, folded: null });
+    s().setFloatRoom('one');
+    s().setFloatFront('tool');
+    expect(floatingPanels(s(), true, true).folded).toBe('inspector');
+    s().setFloatFront('inspector');
+    expect(floatingPanels(s(), true, true).folded).toBe('tool');
+    // alone, a panel never waits as a tab
+    expect(floatingPanels(s(), false, true)).toEqual({ tool: true, inspector: false, folded: null });
+    // the docked inspector has a column of its own
+    s().setInspectorMode('docked');
+    s().setEditorLayout(true);
+    expect(floatingPanels(s(), true, true).folded).toBeNull();
+    s().setEditorLayout(false);
+    s().setFloatRoom('both');
+  });
+
   it('does not write the split while it is being dragged', () => {
     const s = () => useLayout.getState();
     s().setSplit(44, false);

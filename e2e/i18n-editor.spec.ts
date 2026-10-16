@@ -97,12 +97,13 @@ test('a switch mid-edit re-words the editor in place: history, code, selection, 
   await page.getByRole('button', { name: /^Language: / }).click();
   await page.getByRole('menuitemradio', { name: 'Português (Brasil)' }).click();
 
-  // the words changed…
+  // the words changed… (the security panel is in front, the inspector waits as a tab beside the code)
+  await expect(page.getByRole('complementary', { name: 'Segurança' })).toBeVisible();
+  await page.getByRole('button', { name: 'Mostrar inspetor' }).click();
   await expect(inspector(page)).toBeVisible();
   await expect(inspector(page).getByRole('heading', { name: 'Grupo de segurança' })).toBeVisible();
   await expect(inspector(page).getByRole('tab', { name: 'Regras' })).toHaveAttribute('aria-selected', 'true');
   await expect(inspector(page).getByText('Origem: Internet (IPv4)').first()).toBeVisible();
-  await expect(page.getByRole('complementary', { name: 'Segurança' })).toBeVisible();
   await expect(node(page, 'aws_security_group.web')).toContainText('3 de entrada · 1 de saída');
   await expect(node(page, 'aws_security_group.web')).toContainText('Grupo de segurança');
   await expect(node(page, 'aws_instance.web')).toHaveAttribute('aria-label', 'Instância EC2 web, em Sub-rede public_a');
@@ -176,7 +177,7 @@ test('the inspector, the canvas and ⌘K in Portuguese', async ({ page }) => {
   await expect(page.getByText('Novo projeto a partir de template')).toBeVisible();
   await expect(page.getByRole('option', { name: /App web na AWS/ })).toBeVisible();
   await page.getByRole('option', { name: /^Adicionar recurso…/ }).click();
-  await expect(page.getByPlaceholder('Buscar entre mais de 80 recursos de AWS, Azure e GCP…')).toBeVisible();
+  await expect(page.getByPlaceholder('Buscar entre mais de 100 recursos de AWS, Azure e GCP…')).toBeVisible();
   await page.keyboard.type('fila');
   await expect(page.getByRole('option', { name: /Fila SQS/ })).toBeVisible();
 });

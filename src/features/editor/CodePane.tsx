@@ -37,6 +37,9 @@ function applyMinimalEdit(model: monaco.editor.ITextModel, newText: string) {
   ]);
 }
 
+/** the last "Show the error" a code pane took up (across mounts) */
+let answeredErrorSeq = 0;
+
 /**
  * `controls`: layout buttons for the header (grip, expand, hide) — the editor passes them, the viewer doesn't.
  * `wrap`: long lines wrap instead of scrolling sideways (a lesson's narrow code column).
@@ -227,8 +230,36 @@ export function CodePane({ controls, wrap = false }: { controls?: ReactNode; wra
       suppressRef.current = false;
     }
     flushReveal();
+    flushError();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, activeFile, filesRevision]);
+
+  /**
+   * "Show the error": the caret on the first error (this file's, else the first file with one),
+   * once the pane and its markers are there
+   */
+  const pendingErrorRef = useRef(false);
+  const flushError = () => {
+    const editor = editorRef.current;
+    if (!editor || !pendingErrorRef.current || !projectId) return;
+    const errors = monaco.editor.getModelMarkers({ owner: 'blueprint' }).filter((mk) => mk.severity === monaco.MarkerSeverity.Error);
+    const current = editor.getModel()?.uri.toString();
+    const first = errors.find((mk) => mk.resource.toString() === current) ?? errors[0];
+    if (!first) {
+      pendingErrorRef.current = false;
+      return;
+    }
+    const file = fileList.find((f) => modelsRef.current.get(`${projectId}:${f}`)?.uri.toString() === first.resource.toString());
+    if (file && file !== activeFile) {
+      useEditor.getState().setActiveFile(file); // the model-switch effect calls flushError again
+      return;
+    }
+    pendingErrorRef.current = false;
+    const position = { lineNumber: first.startLineNumber, column: first.startColumn };
+    editor.setPosition(position);
+    editor.revealPositionInCenterIfOutsideViewport(position);
+    editor.focus();
+  };
 
   /** canvas → code: scroll the pending resource's block into view and flash it */
   const flushReveal = () => {
@@ -344,6 +375,16 @@ export function CodePane({ controls, wrap = false }: { controls?: ReactNode; wra
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parseDiagnostics, warnings, filesRevision, projectId]);
+
+  // after the markers: a request made while this pane was closed (it opens for it) is answered too
+  const errorSeq = useEditor((s) => s.errorSeq);
+  useEffect(() => {
+    if (errorSeq === answeredErrorSeq) return;
+    answeredErrorSeq = errorSeq;
+    pendingErrorRef.current = true;
+    flushError();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorSeq]);
 
   const tabsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {

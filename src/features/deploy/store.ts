@@ -6,6 +6,7 @@
  */
 import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
+import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
 import { useSecurityUi } from '@/features/security/securityStore';
 import { messagesFor } from '@/i18n/messages';
@@ -55,7 +56,11 @@ useSecurityUi.subscribe((s, prev) => {
 });
 
 export function setDeployPanel(open: boolean, tab?: DeployTab) {
-  if (open) useSecurityUi.getState().setPanel(false);
+  if (open) {
+    useSecurityUi.getState().setPanel(false);
+    // waiting as a tab beside the inspector: its turn now
+    useLayout.getState().setFloatFront('tool');
+  }
   useDeploy.setState({ panelOpen: open, ...(tab ? { tab } : {}) });
 }
 

@@ -1,3 +1,4 @@
+import { FileDiff, ShieldCheck } from 'lucide-react';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { hasOpenLayer } from '@/components/ui';
@@ -5,7 +6,7 @@ import { canvasApi } from '@/features/editor/canvasApi';
 import { codeMessages } from '@/features/editor/CodePane.messages';
 import { useCanvasDrag, useCanvasDragTracking } from '@/features/editor/canvasDrag';
 import { CanvasPane, focusRenameInput } from '@/features/editor/CanvasPane';
-import { dockedInspector, floatingInspectorSlot, INSPECTOR_WIDTH, securityPanelSlot } from '@/features/editor/inspectorPlacement';
+import { dockedInspector, floatRoomFor, INSPECTOR_WIDTH, TOOL_PANEL_WIDTH, useFloatingPanels } from '@/features/editor/inspectorPlacement';
 import { useKeepSelectionVisible, useRevealOpensCode } from '@/features/editor/layoutEffects';
 import { layoutMessages } from '@/features/editor/layout.messages';
 import { SPLIT_DEFAULT } from '@/features/editor/layoutPrefs';
@@ -15,6 +16,7 @@ import {
   CodePaneControls,
   CollapsedStrip,
   FLOAT_CHROME,
+  FloatTab,
   focusSoon,
   InspectorTab,
   PanelDropZones,
@@ -23,7 +25,6 @@ import {
 import { ExportPdfHost } from '@/features/export/ExportPdfDialog';
 import { DeployHost } from '@/features/deploy/DeployHost';
 import { DeployPanel } from '@/features/deploy/DeployPanel';
-import { setDeployPanel, useDeploy } from '@/features/deploy/store';
 import { RulesEditor } from '@/features/security/RulesEditor';
 import { SecurityPanel } from '@/features/security/SecurityPanel';
 import { useSecurityDelta } from '@/features/security/securityDelta';
@@ -31,7 +32,7 @@ import { useSecurityUi } from '@/features/security/securityStore';
 import { Inspector } from '@/features/editor/Inspector';
 import { Palette } from '@/features/editor/Palette';
 import { Topbar } from '@/features/editor/Topbar';
-import { loadProjectIntoEditor, useEditor } from '@/features/editor/store';
+import { loadProjectIntoEditor, orderedFiles, useEditor } from '@/features/editor/store';
 import { useMessages } from '@/i18n/messages';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn } from '@/lib/utils';
@@ -42,16 +43,44 @@ const CodePane = lazy(() =>
   import('@/features/editor/CodePane').then((m) => ({ default: m.CodePane })),
 );
 
+/**
+ * While Monaco loads: the pane as it will look, its files' tabs and the open
+ * file's text, plain. Monaco then takes over in place (the colors arrive)
+ * instead of a spinner giving way to a different layout.
+ */
 function CodePaneFallback() {
   const m = useMessages(codeMessages);
+  const files = useEditor((s) => s.files);
+  const active = useEditor((s) => s.activeFile);
+  // a screenful is enough: the rest arrives with Monaco
+  const lines = (files[active] ?? '').split('\n').slice(0, 80);
   return (
-    <section
-      className="flex h-full flex-col items-center justify-center gap-3 bg-surface-1 text-[12px] text-faint"
-      aria-label={m.terraformCode}
-      aria-busy="true"
-    >
-      <div className="h-5 w-5 animate-spin rounded-full border-2 border-border border-t-primary" />
-      {m.loading}
+    <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label={m.terraformCode} aria-busy="true">
+      <span className="sr-only" role="status">
+        {m.loading}
+      </span>
+      <div className="flex h-[37px] shrink-0 items-end gap-0.5 overflow-hidden border-b px-1.5" aria-hidden>
+        {orderedFiles(files).map((f) => (
+          <span
+            key={f}
+            className={cn(
+              'shrink-0 rounded-t-[6px] border border-b-0 px-3 py-1.5 font-mono text-[11.5px]',
+              f === active ? '-mb-px border-border bg-surface-1 font-semibold text-foreground' : 'border-transparent text-muted',
+            )}
+          >
+            {f}
+          </span>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden py-2.5 font-mono text-[12.5px] leading-[21px]" aria-hidden>
+        {lines.map((line, i) => (
+          <div key={i} className="flex whitespace-pre">
+            <span className="w-[52px] shrink-0 pr-[18px] text-right text-faint/70">{i + 1}</span>
+            <span className="pl-2 text-muted">{line}</span>
+          </div>
+        ))}
+      </div>
+      <div className="h-[23px] shrink-0 border-t" aria-hidden />
     </section>
   );
 }
@@ -103,22 +132,23 @@ function SkipLinks() {
   );
 }
 
-/** the security panel (340 px) and the floating inspector side by side, with their margins */
-const BOTH_PANELS = 340 + INSPECTOR_WIDTH + 3 * 12;
-
-/** Is the canvas too narrow for the security panel and the inspector at once (a phone)? */
-function useOnePanelAtATime(canvas: RefObject<HTMLElement | null>, ready: boolean): boolean {
-  const [narrow, setNarrow] = useState(false);
+/**
+ * How many floating panels the canvas holds with a usable view between them
+ * (inspectorPlacement's float room), kept up to date as it resizes.
+ */
+function useFloatRoom(canvas: RefObject<HTMLElement | null>, ready: boolean) {
   useEffect(() => {
     const el = canvas.current;
     if (!el) return;
-    const check = () => setNarrow(el.clientWidth < BOTH_PANELS);
+    const check = () => useLayout.getState().setFloatRoom(floatRoomFor(el.clientWidth));
     check();
     const observer = new ResizeObserver(check);
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      useLayout.getState().setFloatRoom('both');
+    };
   }, [canvas, ready]);
-  return narrow;
 }
 
 /** The docked inspector's column when nothing is selected. */
@@ -135,6 +165,7 @@ export default function EditorPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const m = useMessages(editorPageMessages);
+  const lm = useMessages(layoutMessages);
   const [ready, setReady] = useState(false);
   const splitRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -144,39 +175,42 @@ export default function EditorPage() {
   const paletteSide = useLayout((s) => s.paletteSide);
   const codeSide = useLayout((s) => s.codeSide);
   const split = useLayout((s) => s.split);
-  const floatingSlot = useLayout(floatingInspectorSlot);
   const docked = useLayout(dockedInspector);
-  const securitySlot = useLayout(securityPanelSlot);
+  const room = useLayout((s) => s.floatRoom);
   const selection = useEditor((s) => s.selection);
   const securityPanel = useSecurityUi((s) => s.panelOpen);
-  const deployPanel = useDeploy((s) => s.panelOpen);
+  const floats = useFloatingPanels();
   const dragging = useCanvasDrag((s) => s.kind !== null);
-  const onePanel = useOnePanelAtATime(canvasRef, ready);
-  // one panel at a time on a narrow canvas: the security panel covers the inspector while it's
-  // open (it opens with the resource a toast's "Show" is about), and a resource picked while it's
-  // already open — from the panel itself — closes it for the inspector
-  // (the plan and state panel takes the same spot, and the same turns)
-  const securityShown = (securityPanel || deployPanel) && securitySlot && panels.canvas;
-  const seen = useRef({ selection, securityShown });
+  useFloatRoom(canvasRef, ready);
+  // too little room for the tool panel (security, or plan and state) and the inspector: they take
+  // turns, the other waiting as a tab. A panel opening comes to the front; so does the inspector for
+  // a new selection, unless it was picked in the tool panel and the canvas beside it shows it
+  const seen = useRef({ selection, tool: floats.tool });
   useEffect(() => {
     const before = seen.current;
-    seen.current = { selection, securityShown };
-    if (onePanel && securityShown && before.securityShown && selection !== null && selection !== before.selection) {
-      useSecurityUi.getState().setPanel(false);
-      setDeployPanel(false);
+    seen.current = { selection, tool: floats.tool };
+    const layout = useLayout.getState();
+    if (floats.tool && !before.tool) layout.setFloatFront('tool');
+    else if (selection !== null && selection !== before.selection) {
+      const fromTool = room === 'one' && document.activeElement?.closest('[data-float="tool"]');
+      if (!fromTool) layout.setFloatFront('inspector');
     }
-  }, [onePanel, selection, securityShown]);
-  const inspectorYields = onePanel && securityShown;
+  }, [selection, floats.tool, room]);
   useDocumentTitle(useEditor((s) => s.projectName));
   useSecurityDelta();
   useCanvasDragTracking(canvasRef, ready);
   useRevealOpensCode(() => useLayout.getState().show('code'));
   useKeepSelectionVisible();
 
-  // the configurable layout (docking, hidden canvas) applies while this page is up
+  // the configurable layout (docking, hidden canvas) applies while this page is up;
+  // toasts rise above the canvas toolbar instead of covering it
   useEffect(() => {
     useLayout.getState().setEditorLayout(true);
-    return () => useLayout.getState().setEditorLayout(false);
+    document.documentElement.style.setProperty('--bp-toast-bottom', '4.5rem');
+    return () => {
+      useLayout.getState().setEditorLayout(false);
+      document.documentElement.style.removeProperty('--bp-toast-bottom');
+    };
   }, []);
 
   // compact layout below 1100px: canvas full-width, palette/code as drawers
@@ -294,17 +328,35 @@ export default function EditorPage() {
     </Suspense>
   );
 
-  const securityEl =
-    (securityPanel || deployPanel) && securitySlot ? (
+  const toolFolded = floats.folded === 'tool';
+  const toolKind = securityPanel ? 'security' : 'deploy';
+  const securityEl = floats.tool ? (
+    <>
       <div
+        data-float="tool"
         className={cn(
-          'absolute bottom-[68px] left-3 top-3 z-20 flex w-[min(340px,calc(100%-24px))] transition-opacity',
+          'absolute bottom-[68px] left-3 top-3 z-20 flex transition-[opacity,transform,visibility] duration-200 ease-out',
           FLOAT_CHROME,
+          // waiting as a tab: slid out of the way, still mounted (it keeps its place and what's open)
+          toolFolded && 'invisible -translate-x-8 opacity-0',
         )}
+        // a phone: room for the inspector's tab on the right edge when it waits there
+        style={{ width: `min(${TOOL_PANEL_WIDTH}px, calc(100% - ${floats.folded === 'inspector' ? 52 : 24}px))` }}
       >
         {securityPanel ? <SecurityPanel /> : <DeployPanel />}
       </div>
-    ) : null;
+      {toolFolded ? (
+        <FloatTab
+          side="left"
+          icon={securityPanel ? ShieldCheck : FileDiff}
+          label={lm.toolTab[toolKind]}
+          name={lm.showTool[toolKind]}
+          strip="tool"
+          onClick={() => useLayout.getState().setFloatFront('tool')}
+        />
+      ) : null}
+    </>
+  ) : null;
 
   const canvasSlot = (
     <div
@@ -323,7 +375,7 @@ export default function EditorPage() {
       <div className="relative min-w-0 flex-1">
         <CanvasPane />
         {wide && canvasShown ? <CanvasLayoutControls /> : null}
-        {floatingSlot && selection && !inspectorYields ? (
+        {floats.inspector && floats.folded !== 'inspector' ? (
           <div
             className={cn('absolute bottom-3 right-3 top-3 z-20 flex transition-opacity', FLOAT_CHROME)}
             style={{ width: `min(${INSPECTOR_WIDTH}px, calc(100% - 24px))` }}
@@ -333,7 +385,7 @@ export default function EditorPage() {
             </div>
           </div>
         ) : null}
-        {!panels.inspector && selection && canvasShown && !docked ? <InspectorTab /> : null}
+        {(!panels.inspector && selection && canvasShown && !docked) || floats.folded === 'inspector' ? <InspectorTab /> : null}
         {canvasShown ? securityEl : null}
       </div>
       {docked ? (
