@@ -46,10 +46,11 @@ test('the map draws every level, its lessons and badges, and asks where to start
   await page.goto('/learn');
   await expect(page).toHaveTitle('Learning map · Cloud Blueprint');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Learn Terraform, one station at a time');
-  // first visit: the question is up front, and the map is right there with it
+  // first visit: the question is the one first step, with a way straight in, and the map is right there with it
   await expect(page.getByRole('radiogroup', { name: 'Where do you start?' }).getByRole('radio')).toHaveCount(2);
   const first = await firstStation(page);
-  await expect(page.getByRole('link', { name: /^Start here/ })).toHaveAttribute('href', at(`/learn/${first.slug}`));
+  await expect(page.getByRole('link', { name: /^Start here/ })).toHaveCount(0);
+  await expect(page.getByTestId('start-question').getByRole('link')).toHaveAttribute('href', at(`/learn/${first.slug}`));
 
   await expect(page.getByRole('heading', { name: 'Terraform on AWS', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Azure (preview)', level: 2 })).toBeVisible();
@@ -84,6 +85,14 @@ test('the start choice moves "Start here" and makes AWS basics optional; nothing
   await page.getByText('I know AWS, new to Terraform').click();
   await expect(page.getByRole('radio', { name: /I know AWS/ })).toBeChecked();
   await expect(page.getByRole('link', { name: /\. Start here\./ })).toHaveCount(1);
+  // answered: the question folds into a switch and "Start here" comes in, pointing where the answer says
+  await expect(page.getByTestId('start-question')).toHaveCount(0);
+  const cta = page.getByRole('link', { name: /^Start here/ });
+  await expect(cta).toHaveAttribute('href', (await page.getByRole('link', { name: /\. Start here\./ }).getAttribute('href'))!);
+  await page.reload();
+  // a returning visit keeps the compact layout
+  await expect(cta).toBeVisible();
+  await expect(page.getByTestId('start-question')).toHaveCount(0);
   // "Start here" is on the first lesson that isn't AWS basics (marked optional now)
   let all = await names();
   expect(all.find((n) => !n.includes('. Optional.'))).toContain('. Start here.');
@@ -151,6 +160,20 @@ test('reset progress asks first, then forgets everything', async ({ page }) => {
   await expect(page.getByRole('radiogroup', { name: 'Where do you start?' }).getByRole('radio', { checked: true })).toHaveCount(0);
   await expect(first.link).toHaveAccessibleName(/\. Not started\./);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cb-learn-v1')!))).toMatchObject({ xp: 0, start: null, lessons: {}, badges: {} });
+});
+
+test('after a reload, the map still animates what was finished since it last showed, once', async ({ page }) => {
+  await page.goto('/learn');
+  const first = await firstStation(page);
+  // the map showed nothing done; a lesson finished meanwhile (another tab, a reload in between)
+  await store(page, { start: 'new', xp: 40, lessons: { [first.slug]: { status: 'done', met: [], xp: 40 } }, last: first.slug });
+  const level = page.locator('[data-level]').filter({ has: page.locator(`[data-station="${first.code}"]`) });
+  await expect(level.locator('[data-trail] .bp-trail-draw')).toHaveCount(2);
+  await expect(page.locator(`[data-station="${first.code}"] .bp-medal-pop`)).toHaveCount(1);
+  // shown once: the next visit opens still
+  await page.reload();
+  await expect(page.locator(`[data-track] [data-station="${first.code}"]`)).toHaveAttribute('data-state', 'done');
+  await expect(level.locator('[data-trail] .bp-trail-draw')).toHaveCount(0);
 });
 
 test('a badge earned on the map is celebrated and read out, without taking focus', async ({ page }) => {
@@ -263,6 +286,12 @@ test.describe('on a phone (390px)', () => {
     for (const island of await page.locator('[data-level]').all()) {
       const lessons = await island.locator('[data-station]').count();
       if (lessons === 0) continue;
+      const row = island.getByRole('button', { expanded: false });
+      if ((await row.count()) > 0) {
+        await row.click();
+        // measured once the trail has settled in
+        await island.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
+      }
       // the level's badge closes the trail on screen; its state is read out in the level's header
       const items = island.locator('ol').getByRole('listitem');
       await expect(items).toHaveCount(lessons);
@@ -280,4 +309,60 @@ test.describe('on a phone (390px)', () => {
     });
     expect(sideways).toBeLessThanOrEqual(0);
   });
+
+  test('levels done and levels far ahead fold into rows that open on a tap; the level you are on stays open', async ({ page }) => {
+    await page.goto('/learn');
+    const islands = page.locator('[data-track="aws"] [data-level]');
+    await expect(islands.first()).toBeVisible();
+    const ids = await islands.evaluateAll((els) => els.map((el) => el.getAttribute('data-level')!));
+    // the whole first level done, the learner on the second one
+    const firstLevel = islands.first().locator('[data-station] > a');
+    const slugs = (await firstLevel.evaluateAll((links) => links.map((a) => a.getAttribute('href')!))).map((h) => h.replace(/^.*\/learn\//, ''));
+    // (seen on the map already: a level finished just now stays open to show it)
+    await page.evaluate((done) => localStorage.setItem('cb-learn-seen-v1', JSON.stringify({ done, xp: 0 })), slugs);
+    await store(page, {
+      start: 'new',
+      lessons: Object.fromEntries(slugs.map((slug) => [slug, { status: 'done', met: [], xp: 40 }])),
+      last: slugs.at(-1),
+    });
+    const level = (i: number) => page.locator(`[data-level="${ids[i]}"]`);
+    const row = (i: number) => level(i).getByRole('heading', { level: 3 }).getByRole('button');
+    await expect(row(0)).toHaveAttribute('aria-expanded', 'false');
+    await expect(row(0)).toContainText(`${slugs.length} of ${slugs.length} done`);
+    await expect(level(0).locator('[data-station]').first()).toBeHidden();
+    await expect(row(1)).toHaveAttribute('aria-expanded', 'true');
+    await expect(level(1).locator('[data-station]').first()).toBeVisible();
+    await expect(row(2)).toHaveAttribute('aria-expanded', 'true');
+    for (let i = 3; i < ids.length; i++) await expect(row(i)).toHaveAttribute('aria-expanded', 'false');
+    // a row is a button that controls its trail
+    await row(4).click();
+    await expect(row(4)).toHaveAttribute('aria-expanded', 'true');
+    await expect(level(4).locator('[data-station] > a').first()).toBeVisible();
+    await row(4).press('Enter');
+    await expect(level(4).locator('[data-station]').first()).toBeHidden();
+    await row(0).click();
+    await expect(level(0).locator('[data-station] > a').first()).toBeVisible();
+  });
+});
+
+test('the map and a lesson scroll inside their panes: the document under the rail never scrolls', async ({ page }) => {
+  const overflow = () => page.evaluate(() => document.scrollingElement!.scrollHeight - window.innerHeight);
+  await page.goto('/learn');
+  const first = await firstStation(page);
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  // under way: one marker on the map, where the learner is
+  await store(page, { start: 'new', lessons: { [first.slug]: { status: 'started', met: [] } }, last: first.slug });
+  await expect(page.getByRole('link', { name: /\. You are here\./ })).toHaveCount(1);
+  await expect(page.getByRole('link', { name: /\. Start here\./ })).toHaveCount(0);
+  await page.goto('/learn/challenge-private-bucket');
+  await expect(page.getByTestId('terminal-panel')).toBeVisible();
+  expect(await overflow()).toBeLessThanOrEqual(0);
+});
+
+test('wide screens show every level in full, with no rows to open', async ({ page }) => {
+  await page.goto('/learn');
+  for (const island of await page.locator('[data-track="aws"] [data-level]').all()) {
+    await expect(island.getByRole('button', { expanded: false })).toHaveCount(0);
+    await expect(island.locator('[data-station] > a').first()).toBeVisible();
+  }
 });

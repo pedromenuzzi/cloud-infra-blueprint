@@ -5,6 +5,7 @@
 import { getLesson, nextLesson, startLesson } from '@/learn/lessons';
 import type { LearnProgress } from '@/learn/progress';
 import type { Lesson, Level } from '@/learn/types';
+import { safeStorage } from '@/lib/storage';
 
 /** not started (opened with nothing met counts as not started), some goals met, or done */
 export type StationState = 'todo' | 'progress' | 'done';
@@ -53,20 +54,31 @@ export function continueLesson(progress: Pick<LearnProgress, 'lessons' | 'start'
 
 type Seen = Pick<LearnProgress, 'lessons' | 'xp'>;
 
-/** what the map last showed (for as long as the page is open): coming back, what's new since animates */
-let seen: { done: Set<string>; xp: number } | null = null;
+/** what the map last showed, kept in this browser: coming back (after a reload too), what's new since animates once */
+const SEEN_KEY = 'cb-learn-seen-v1';
+
+function readSeen(): { done: Set<string>; xp: number } | null {
+  try {
+    const v = JSON.parse(safeStorage.getItem(SEEN_KEY) ?? 'null') as { done?: unknown; xp?: unknown } | null;
+    if (!v || !Array.isArray(v.done) || typeof v.xp !== 'number') return null;
+    return { done: new Set(v.done.filter((s): s is string => typeof s === 'string')), xp: v.xp };
+  } catch {
+    return null;
+  }
+}
 
 const doneOf = (progress: Seen) => Object.keys(progress.lessons).filter((slug) => progress.lessons[slug]?.status === 'done');
 
 /** remember what the map shows now; `once`: only if nothing is remembered yet (a lesson opened before the map) */
 export function noteMapSeen(progress: Seen, once = false) {
-  if (once && seen) return;
-  seen = { done: new Set(doneOf(progress)), xp: progress.xp };
+  if (once && readSeen()) return;
+  const next = JSON.stringify({ done: doneOf(progress), xp: progress.xp });
+  if (safeStorage.getItem(SEEN_KEY) !== next) safeStorage.setItem(SEEN_KEY, next);
 }
 
 /** the lessons finished since the map last showed, and the XP it showed then (null: nothing new) */
 export function sinceMapSeen(progress: Seen): { fresh: Set<string>; xp: number } | null {
-  const before = seen;
+  const before = readSeen();
   if (!before) return null;
   const fresh = new Set(doneOf(progress).filter((slug) => !before.done.has(slug)));
   return fresh.size > 0 ? { fresh, xp: before.xp } : null;

@@ -48,6 +48,34 @@ test('runs init, plans on the canvas, applies after the approval and keeps the s
   await expect(log.getByText('No changes. Your infrastructure matches the configuration.')).toBeVisible();
 });
 
+test('starts compact, grows on the first command, and keeps a height the learner chose', async ({ page }) => {
+  const panel = page.getByTestId('terminal-panel');
+  const canvas = page.getByTestId('canvas');
+  const height = async () => (await panel.boundingBox())!.height;
+  // before any command: the prompt, the buttons and a one-line hint, nothing to resize yet
+  await expect(panel).toHaveAttribute('data-compact', 'true');
+  await expect(panel.getByText('Run terraform init to start.', { exact: false })).toBeVisible();
+  await expect(panel.getByRole('separator')).toHaveCount(0);
+  expect(await height()).toBeLessThan(160);
+  const canvasBefore = (await canvas.boundingBox())!.height;
+
+  await panel.getByRole('button', { name: 'Run terraform init' }).click();
+  await expect(panel).not.toHaveAttribute('data-compact');
+  await expect.poll(height).toBeGreaterThan(200);
+  // the canvas made the room (it shrank along, it didn't jump past)
+  expect((await canvas.boundingBox())!.height).toBeLessThan(canvasBefore);
+
+  // a height chosen with the keyboard is kept for the next lesson
+  const separator = panel.getByRole('separator');
+  await separator.focus();
+  for (let i = 0; i < 3; i++) await separator.press('ArrowUp');
+  const chosen = Number(await separator.getAttribute('aria-valuenow'));
+  await page.goto('/learn/variables');
+  await expect(panel).toHaveAttribute('data-compact', 'true');
+  await panel.getByRole('button', { name: 'Run terraform validate' }).click();
+  await expect.poll(height).toBeCloseTo(chosen, -1);
+});
+
 test('answers help, history and a mistyped command', async ({ page }) => {
   const panel = page.getByTestId('terminal-panel');
   const log = panel.getByRole('log');
