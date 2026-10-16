@@ -8,6 +8,7 @@ import { StorageNotices } from '@/components/StorageNotices';
 import { CommandHost } from '@/features/command/CommandHost';
 import { AutoUpdate } from '@/features/data/AutoUpdate';
 import { GithubImportHost } from '@/features/import/GithubImportHost';
+import { FromStateHost } from '@/features/deploy/FromStateHost';
 import { lazyWithReload } from '@/lib/chunkReload';
 import { isEmbedHash, isViewHash } from '@/lib/share';
 
@@ -69,6 +70,7 @@ function Root() {
           <StorageNotices />
           <CommandHost />
           <GithubImportHost />
+          <FromStateHost />
         </>
       )}
       <ConfirmHost />

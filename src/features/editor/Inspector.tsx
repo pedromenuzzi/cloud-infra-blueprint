@@ -51,6 +51,7 @@ import { renameOps } from './repeatOps';
 import { KeepStateToggle, RepeatSection } from './RepeatSection';
 import { useLayout } from './layoutStore';
 import { SchemaFields } from './SchemaFields';
+import { DeployedSection } from '@/features/deploy/StateViews';
 import { isModuleId } from '@/ir/modules';
 import { ModuleInspector } from '@/features/modules/ModuleInspector';
 import { isDataId } from '@/ir/dataSources';
@@ -710,6 +711,8 @@ function PropertiesTab({ node }: { node: ResourceNode }) {
 
   return (
     <div className="space-y-3.5 p-3.5">
+      {/* the open plan's change and the open state's attributes, when there are */}
+      <DeployedSection id={node.id} />
       <ExposureCard node={node} />
       <CostLine node={node} />
       <CidrPlanner node={node} />
