@@ -92,7 +92,7 @@ export function LessonPanel({
     const ok = await confirmAction({ title: m.resetAsk, body: m.resetBody, confirmLabel: m.resetConfirm, danger: true });
     if (!ok) return;
     resetLessonCode(lesson);
-    showToast(m.resetDone, 'info');
+    showToast(m.resetDone, 'info', { page: true });
   };
 
   const tabs: Tab[] = ['lesson', 'docs'];

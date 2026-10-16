@@ -10,6 +10,7 @@ import { dockedInspector, floatRoomFor, INSPECTOR_WIDTH, TOOL_PANEL_WIDTH, useFl
 import { useKeepSelectionVisible, useRevealOpensCode } from '@/features/editor/layoutEffects';
 import { layoutMessages } from '@/features/editor/layout.messages';
 import { SPLIT_DEFAULT } from '@/features/editor/layoutPrefs';
+import { useToastLane } from '@/features/editor/toastLane';
 import { useLayout } from '@/features/editor/layoutStore';
 import {
   CanvasLayoutControls,
@@ -169,6 +170,8 @@ export default function EditorPage() {
   const [ready, setReady] = useState(false);
   const splitRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  /** the canvas itself, without the docked inspector's column */
+  const laneRef = useRef<HTMLDivElement>(null);
   const panels = useLayout((s) => s.panels);
   const compact = useLayout((s) => s.compact);
   const drawer = useLayout((s) => s.drawer);
@@ -201,16 +204,12 @@ export default function EditorPage() {
   useCanvasDragTracking(canvasRef, ready);
   useRevealOpensCode(() => useLayout.getState().show('code'));
   useKeepSelectionVisible();
+  useToastLane(laneRef, ready && panels.canvas, [floats.tool, floats.inspector, floats.folded, drawer, compact, docked, codeSide, paletteSide].join());
 
-  // the configurable layout (docking, hidden canvas) applies while this page is up;
-  // toasts rise above the canvas toolbar instead of covering it
+  // the configurable layout (docking, hidden canvas) applies while this page is up
   useEffect(() => {
     useLayout.getState().setEditorLayout(true);
-    document.documentElement.style.setProperty('--bp-toast-bottom', '4.5rem');
-    return () => {
-      useLayout.getState().setEditorLayout(false);
-      document.documentElement.style.removeProperty('--bp-toast-bottom');
-    };
+    return () => useLayout.getState().setEditorLayout(false);
   }, []);
 
   // compact layout below 1100px: canvas full-width, palette/code as drawers
@@ -372,7 +371,7 @@ export default function EditorPage() {
       )}
       style={canvasShown && codeColumn ? { width: `${100 - split}%` } : undefined}
     >
-      <div className="relative min-w-0 flex-1">
+      <div ref={laneRef} className="relative min-w-0 flex-1">
         <CanvasPane />
         {wide && canvasShown ? <CanvasLayoutControls /> : null}
         {floats.inspector && floats.folded !== 'inspector' ? (
@@ -449,6 +448,7 @@ export default function EditorPage() {
       {canvasShown ? null : securityEl}
       {compact && drawer === 'palette' ? (
         <div
+          data-drawer={paletteSide}
           className={cn(
             'absolute bottom-0 top-0 z-30 flex shadow-lg',
             paletteSide === 'left' ? 'bp-drawer-left left-0' : 'bp-drawer-right right-0',
@@ -461,6 +461,7 @@ export default function EditorPage() {
         <div
           id={CODE_TARGET}
           tabIndex={-1}
+          data-drawer={codeSide}
           className={cn(
             'absolute bottom-0 top-0 z-30 w-[min(560px,94%)] shadow-lg outline-none',
             codeSide === 'right' ? 'bp-drawer-right right-0 border-l' : 'bp-drawer-left left-0 border-r',

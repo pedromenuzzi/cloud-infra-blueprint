@@ -511,6 +511,12 @@ export default function LandingPage() {
     }
   };
 
+  // the one page that scrolls as a document (global.css keeps the app shell from it)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-page-scrolls', '');
+    return () => document.documentElement.removeAttribute('data-page-scrolls');
+  }, []);
+
   return (
     <div className="min-h-full overflow-x-hidden bg-background">
       <header className="sticky top-0 z-40 border-b bg-background/75 backdrop-blur-md">

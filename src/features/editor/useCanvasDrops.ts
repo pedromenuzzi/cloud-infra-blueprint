@@ -77,6 +77,7 @@ function explain(title: string, reason: string, fix?: { label: string; run(): vo
     hint: reason,
     ...(fix ? { action: { label: fix.label, onClick: fix.run } } : {}),
     duration: fix ? 12000 : 7000,
+    page: true,
   });
 }
 
@@ -124,6 +125,7 @@ export function useCanvasDrops({ animate }: { animate(): void }) {
         showToast(result.message, result.hint ? 'warning' : 'success', {
           hint: result.hint ?? m.undoHint(shortcut('mod', 'Z')),
           note: result.note,
+          page: true,
           ...(next && vpc
             ? {
                 action: {

@@ -28,6 +28,7 @@ import { CanvasLayoutControls, CodePaneControls, CollapsedStrip, FLOAT_CHROME, f
 import { useEditor } from '@/features/editor/store';
 import { ExportPdfHost } from '@/features/export/ExportPdfDialog';
 import { TerminalPanel } from '@/features/learn/terminal/TerminalPanel';
+import { useToastLane } from '@/features/editor/toastLane';
 import { RulesEditor } from '@/features/security/RulesEditor';
 import { SecurityPanel } from '@/features/security/SecurityPanel';
 import { GRADE_COLORS, useProjectAudit, useSecurityUi } from '@/features/security/securityStore';
@@ -177,6 +178,8 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
   const areaRef = useRef<HTMLDivElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  /** the canvas itself, for the toasts' lane */
+  const laneRef = useRef<HTMLDivElement>(null);
   const panels = useLayout((s) => s.panels);
   const compact = useLayout((s) => s.compact);
   const drawer = useLayout((s) => s.drawer);
@@ -266,6 +269,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
   const canvasShown = panels.canvas;
   const codeSide = useLayout((s) => s.codeSide);
   const paletteSide = useLayout((s) => s.paletteSide);
+  useToastLane(laneRef, canvasShown, [selection !== null, floatingSlot, securityShown, inspectorYields, drawer, compact, docked, codeSide, paletteSide].join());
   const minimizeInspector = () => {
     useLayout.getState().setVisible('inspector', false);
     focusSoon('[data-strip="inspector"]');
@@ -302,7 +306,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
         canvasShown ? 'relative flex-1' : 'pointer-events-none absolute inset-0 -z-10 opacity-0',
       )}
     >
-      <div className="relative min-w-0 flex-1">
+      <div ref={laneRef} className="relative min-w-0 flex-1">
         <CanvasPane templates={false} />
         {wide && canvasShown ? <CanvasLayoutControls /> : null}
         {floatingSlot && selection && !inspectorYields ? (
@@ -377,6 +381,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
       {canvasShown ? null : securityEl}
       {compact && drawer === 'palette' ? (
         <div
+          data-drawer={paletteSide}
           className={cn(
             'absolute bottom-0 top-0 z-30 flex shadow-lg',
             paletteSide === 'left' ? 'bp-drawer-left left-0' : 'bp-drawer-right right-0',
@@ -389,6 +394,7 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
         <div
           id={CODE_TARGET}
           tabIndex={-1}
+          data-drawer={codeSide}
           className={cn(
             'absolute bottom-0 top-0 z-30 w-[min(560px,94%)] shadow-lg outline-none',
             codeSide === 'right' ? 'bp-drawer-right right-0 border-l' : 'bp-drawer-left left-0 border-r',
