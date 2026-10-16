@@ -141,6 +141,14 @@ function LineView({ l, fresh = false }: { l: Shown; fresh?: boolean }) {
   }
   if (l.kind === 'note') return <div className="whitespace-pre-wrap text-sky-300">{l.text}</div>;
   const { tone, text } = l;
+  // the CLI's rule under a plan: cut to the terminal's width (wrapped, it breaks into a stray second line)
+  if (/^─+$/.test(text)) {
+    return (
+      <div aria-hidden className="overflow-hidden whitespace-pre">
+        {text}
+      </div>
+    );
+  }
   let body: React.ReactNode = text || ' ';
   if (tone === 'add' || tone === 'change' || tone === 'destroy' || tone === 'replace') body = <DiffLine text={text} tone={tone} />;
   else if (tone === 'error' || tone === 'warning') {
@@ -182,6 +190,8 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
   const [prefs, setPrefs] = useState(readPrefs);
   const viewport = useSyncExternalStore(onWindowResize, () => window.innerHeight);
   const height = prefs.height ?? autoHeight(viewport);
+  // before the first command the terminal is its prompt and a hint; it grows to `height` with the first output
+  const [woke, setWoke] = useState(() => (screens.get(slug)?.length ?? 0) > 0);
   const history = useRef<string[]>([]);
   const browsing = useRef(-1);
   const logRef = useRef<HTMLDivElement>(null);
@@ -202,6 +212,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
     if (screenOf !== slug) {
       setLines(screens.get(slug) ?? []);
       setAsking(null);
+      setWoke((screens.get(slug)?.length ?? 0) > 0);
     }
     setScreenOf(slug);
     setTabOf(tab);
@@ -211,6 +222,26 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
   useEffect(() => {
     screens.set(slug, lines);
   }, [slug, lines]);
+
+  if (!woke && (lines.length > 0 || tab !== 'terminal')) setWoke(true);
+  const compact = !woke && !prefs.collapsed;
+
+  // waking up, the terminal grows from its compact height (the canvas above shrinks along with it, no jump)
+  const sectionRef = useRef<HTMLElement>(null);
+  const compactHeight = useRef(0);
+  useLayoutEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    if (compact) {
+      compactHeight.current = el.offsetHeight;
+      return;
+    }
+    const from = compactHeight.current;
+    compactHeight.current = 0;
+    if (from > 0 && !prefersReducedMotion()) {
+      el.animate?.([{ height: `${from}px` }, { height: `${el.offsetHeight}px` }], { duration: 380, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+    }
+  });
 
   const savePrefs = (next: typeof prefs) => {
     setPrefs(next);
@@ -539,13 +570,16 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
 
   return (
     <section
+      ref={sectionRef}
       aria-label={m.region}
       data-testid="terminal-panel"
+      data-compact={compact || undefined}
       // a container: the header and the prompt row compact themselves in a narrow terminal (code mode, small screens)
       className={cn('@container relative flex min-h-0 flex-col overflow-hidden border-t border-slate-800 bg-[#0b1120] text-[#d5dbe5] [font-variant-ligatures:none] dark:border-slate-700/60', className)}
-      style={prefs.collapsed ? undefined : { height }}
+      style={prefs.collapsed || compact ? undefined : { height }}
     >
-      {prefs.collapsed ? null : (
+      {/* nothing to size before the first command */}
+      {prefs.collapsed || compact ? null : (
         <div
           role="separator"
           aria-orientation="horizontal"
@@ -631,8 +665,8 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
             role="tabpanel"
             id={`${ids}-panel-${tab}`}
             aria-labelledby={`${ids}-tab-${tab}`}
-            // the views fill it and scroll inside (a percentage height of a flex item's child doesn't hold)
-            className="relative min-h-0 flex-1 [&>*]:absolute [&>*]:inset-0"
+            // the views fill it and scroll inside (a percentage height of a flex item's child doesn't hold); compact, the hint sets the height
+            className={cn('relative min-h-0 flex-1', !compact && '[&>*]:absolute [&>*]:inset-0')}
           >
             {tab === 'terminal' ? (
               <div
@@ -651,7 +685,7 @@ export function TerminalPanel({ slug, files, className }: TerminalPanelProps) {
                 }}
                 className="h-full overflow-y-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55] focus-visible:outline-none [scrollbar-color:#334155_transparent]"
               >
-                {lines.length === 0 ? <div className="font-sans text-[13px] text-slate-400">{m.welcome}</div> : null}
+                {lines.length === 0 ? <div className={cn('font-sans text-[13px]', compact ? 'text-slate-300' : 'text-slate-400')}>{m.welcome}</div> : null}
                 {lines.map((l) => (
                   <LineView key={l.key} l={l} fresh={l.key > freshFrom} />
                 ))}
