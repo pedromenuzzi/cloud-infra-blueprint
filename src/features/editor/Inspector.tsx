@@ -1054,9 +1054,8 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
                     type="button"
                     onClick={() => setTab(t)}
                     className={cn(
-                      'min-w-0 truncate rounded-[5px] px-1.5 py-1 text-[11.5px] font-semibold capitalize transition-colors',
-                      // three tabs: each as wide as its word, so "Propriedades" and "Connections" fit
-                      compactCode ? 'flex-auto' : 'flex-1',
+                      // each as wide as its word plus a share of the rest, so "Propriedades" and "Connections" fit
+                      'min-w-0 flex-auto truncate rounded-[5px] px-1.5 py-1 text-[11.5px] font-semibold capitalize transition-colors',
                       tab === t ? 'bg-surface-1 text-foreground shadow-xs' : 'text-muted hover:text-foreground',
                     )}
                   >

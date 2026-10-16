@@ -92,7 +92,8 @@ export const canvasMessages = defineMessages(
     overviewToggle: (stats: string) => `${stats}, project overview`,
     showWarnings: 'Show warnings',
     projectOverview: 'Project overview',
-    codeErrored: 'Code has errors. Fix them to edit the canvas again',
+    codeErrored: 'The code has an error, so the canvas is read-only for now',
+    showError: 'Show the error',
     quickAdd: 'Quick add resource',
 
     /* first-run tips */
@@ -201,7 +202,8 @@ export const canvasMessages = defineMessages(
     overviewToggle: (stats: string) => `${stats}, visão geral do projeto`,
     showWarnings: 'Mostrar avisos',
     projectOverview: 'Visão geral do projeto',
-    codeErrored: 'O código tem erros. Corrija-os para editar o canvas de novo',
+    codeErrored: 'O código tem um erro, então o canvas fica só para leitura',
+    showError: 'Ver o erro',
     quickAdd: 'Adicionar recurso rapidamente',
 
     tipsLabel: 'Dicas do editor',

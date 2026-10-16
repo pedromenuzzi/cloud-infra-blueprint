@@ -11,9 +11,10 @@ import { useLayout } from './layoutStore';
 import { useEditor } from './store';
 
 /**
- * Whenever a resource is revealed in code (the inspector's Code button,
- * "Show in code", the command palette), make sure the code pane is on
- * screen — it then scrolls to the block and highlights it.
+ * Whenever a resource or an error is revealed in code (the inspector's Code
+ * button, "Show in code", the command palette, the canvas's "Show the
+ * error"), make sure the code pane is on screen: it then scrolls to the
+ * block and highlights it, or puts the caret on the error.
  */
 export function useRevealOpensCode(open: () => void) {
   const openRef = useRef(open);
@@ -21,7 +22,7 @@ export function useRevealOpensCode(open: () => void) {
   useEffect(
     () =>
       useEditor.subscribe((state, prev) => {
-        if (state.revealSeq !== prev.revealSeq) openRef.current();
+        if (state.revealSeq !== prev.revealSeq || state.errorSeq !== prev.errorSeq) openRef.current();
       }),
     [],
   );

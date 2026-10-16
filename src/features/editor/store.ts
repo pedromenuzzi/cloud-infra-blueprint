@@ -162,6 +162,8 @@ interface EditorState {
   selectionOrigin: 'canvas' | 'code';
   /** bumped by revealInCode so the code pane scrolls + flashes the block */
   revealSeq: number;
+  /** bumped by revealError: the code pane opens with the caret on the first error */
+  errorSeq: number;
   activeFile: string;
   /** 'error': the last save failed (see saveError) — edits stay in memory until it's resolved */
   saveState: 'saved' | 'saving' | 'error';
@@ -171,6 +173,8 @@ interface EditorState {
   conflict: 'changed' | 'deleted' | null;
   past: Array<Record<string, string>>;
   future: Array<Record<string, string>>;
+  /** the last undo or redo, for its on-screen confirmation (`seq` tells repeats apart) */
+  travel: { dir: 'undo' | 'redo'; seq: number } | null;
 
   /**
    * `keepView` keeps the open file + selection when they still exist (reload from another tab).
@@ -198,6 +202,7 @@ interface EditorState {
   setSelectedIds(ids: string[], primary?: string | null): void;
   renameProject(name: string): void;
   revealInCode(nodeId: string): void;
+  revealError(): void;
   /** delete resources + their nested children + references to them, as one undo step */
   deleteResources(ids: string[]): number;
   /** every file at once (a lesson's "Use the solution"), as one undo step */
@@ -360,12 +365,14 @@ export const useEditor = create<EditorState>((set, get) => {
     selectedIds: [],
     selectionOrigin: 'canvas',
     revealSeq: 0,
+    errorSeq: 0,
     activeFile: 'main.tf',
     saveState: 'saved',
     saveError: null,
     conflict: null,
     past: [],
     future: [],
+    travel: null,
 
     load(input, options = {}) {
       const keep = options.keepView === true && get().projectId === input.id;
@@ -425,6 +432,7 @@ export const useEditor = create<EditorState>((set, get) => {
         conflict: null,
         past: [],
         future: [],
+        travel: null,
       });
     },
 
@@ -676,13 +684,22 @@ export const useEditor = create<EditorState>((set, get) => {
       });
     },
 
+    revealError() {
+      set({ errorSeq: get().errorSeq + 1 });
+    },
+
     undo() {
       const { past, files, readOnly } = get();
       if (past.length === 0 || readOnly) return;
       clearTimeout(parseTimer);
       parseTimer = undefined;
       codeBurstBase = null;
-      set({ ...restore(past[past.length - 1]), past: past.slice(0, -1), future: [{ ...files }, ...get().future] });
+      set({
+        ...restore(past[past.length - 1]),
+        past: past.slice(0, -1),
+        future: [{ ...files }, ...get().future],
+        travel: { dir: 'undo', seq: (get().travel?.seq ?? 0) + 1 },
+      });
       persist();
     },
 
@@ -692,7 +709,12 @@ export const useEditor = create<EditorState>((set, get) => {
       clearTimeout(parseTimer);
       parseTimer = undefined;
       codeBurstBase = null;
-      set({ ...restore(future[0]), future: future.slice(1), past: [...get().past, { ...files }] });
+      set({
+        ...restore(future[0]),
+        future: future.slice(1),
+        past: [...get().past, { ...files }],
+        travel: { dir: 'redo', seq: (get().travel?.seq ?? 0) + 1 },
+      });
       persist();
     },
   };

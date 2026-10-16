@@ -89,7 +89,8 @@ export function ToastViewport() {
     <div
       aria-live="polite"
       data-bp-live=""
-      className="pointer-events-none fixed inset-x-3 bottom-4 z-[80] flex flex-col items-center gap-2"
+      // a page with controls along its bottom edge lifts toasts above them (--bp-toast-bottom)
+      className="pointer-events-none fixed inset-x-3 bottom-[var(--bp-toast-bottom,1rem)] z-[80] flex flex-col items-center gap-2"
     >
       {toasts.map((t) => {
         const Icon = ICONS[t.kind];

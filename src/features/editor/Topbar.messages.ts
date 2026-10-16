@@ -21,6 +21,7 @@ export const topbarMessages = defineMessages(
     } satisfies Record<SaveError, string>,
     search: 'Search or run a command',
     searchPlaceholder: 'Search or run a command…',
+    searchShort: 'Search…',
     searchShortcut: (keys: string) => `Search or run a command (${keys})`,
     /* security badge */
     security: 'Security',
@@ -80,6 +81,7 @@ export const topbarMessages = defineMessages(
     },
     search: 'Buscar ou executar um comando',
     searchPlaceholder: 'Buscar ou executar um comando…',
+    searchShort: 'Buscar…',
     searchShortcut: (keys: string) => `Buscar ou executar um comando (${keys})`,
     security: 'Segurança',
     securityAudit: 'Auditoria de segurança',

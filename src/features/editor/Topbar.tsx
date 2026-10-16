@@ -52,6 +52,7 @@ import { LOCALES, useLocale } from '@/i18n/locale';
 import { useMessages } from '@/i18n/messages';
 import { useTheme } from '@/theme/useTheme';
 import { canvasApi } from './canvasApi';
+import { bringToolPanelForward } from './inspectorPlacement';
 import { layoutMessages } from './layout.messages';
 import { LayoutMenu } from './LayoutMenu';
 import { useLayout, type PanelId } from './layoutStore';
@@ -94,6 +95,13 @@ function IconToggle({
   );
 }
 
+/** A soft glow on the undo or redo button as it happens (from the keyboard too): it took. */
+function TravelFlash({ dir }: { dir: 'undo' | 'redo' }) {
+  const travel = useEditor((s) => (s.travel?.dir === dir ? s.travel.seq : null));
+  if (travel === null) return null;
+  return <span key={travel} aria-hidden className="pointer-events-none absolute inset-0 animate-[bp-flash_700ms_ease-out_both] rounded-[inherit]" />;
+}
+
 function SecurityBadge() {
   const m = useMessages(topbarMessages);
   const open = useSecurityUi((s) => s.panelOpen);
@@ -105,7 +113,8 @@ function SecurityBadge() {
   return (
     <button
       type="button"
-      onClick={() => setPanel(!open)}
+      // open but waiting as a tab (the inspector's turn): brought to the front, not closed
+      onClick={() => (open && bringToolPanelForward()) || setPanel(!open)}
       aria-pressed={open}
       aria-label={m.securityLabel(audit.grade ?? null, urgent)}
       title={m.securityAudit}
@@ -334,12 +343,16 @@ export function Topbar() {
         <button
           type="button"
           onClick={() => openPalette(true)}
-          className="hidden h-8 w-full max-w-[340px] items-center gap-2 whitespace-nowrap rounded-md border bg-surface-2/70 px-2.5 text-[12.5px] text-faint transition-colors hover:border-border-strong hover:text-muted xl:flex"
+          className="@container hidden h-8 w-full max-w-[340px] items-center gap-2 whitespace-nowrap rounded-md border bg-surface-2/70 px-2.5 text-[12.5px] text-faint transition-colors hover:border-border-strong hover:text-muted xl:flex"
           aria-label={m.search}
           aria-keyshortcuts={ariaShortcut('mod', 'K')}
         >
           <Search className="h-3.5 w-3.5" />
-          <span className="flex-1 truncate text-left">{m.searchPlaceholder}</span>
+          {/* whole words only: the full prompt where it fits, a short one, or none (never "Se…") */}
+          <span className="min-w-0 flex-1 text-left">
+            <span className="hidden @min-[300px]:inline">{m.searchPlaceholder}</span>
+            <span className="hidden @min-[140px]:inline @min-[300px]:hidden">{m.searchShort}</span>
+          </span>
           <Kbd>{shortcut('mod', 'K')}</Kbd>
         </button>
       </div>
@@ -380,11 +393,13 @@ export function Topbar() {
 
       <span className="hidden lg:contents">
         <span className="mx-1 h-5 w-px shrink-0 bg-border" />
-        <Button variant="ghost" size="icon" aria-label={m.undo} title={m.undoShortcut(shortcut('mod', 'Z'))} disabled={!canUndo} onClick={undo} className="shrink-0">
+        <Button variant="ghost" size="icon" aria-label={m.undo} title={m.undoShortcut(shortcut('mod', 'Z'))} disabled={!canUndo} onClick={undo} className="relative shrink-0">
           <Undo2 className="h-4 w-4" />
+          <TravelFlash dir="undo" />
         </Button>
-        <Button variant="ghost" size="icon" aria-label={m.redo} title={m.redoShortcut(shortcut('mod', 'shift', 'Z'))} disabled={!canRedo} onClick={redo} className="shrink-0">
+        <Button variant="ghost" size="icon" aria-label={m.redo} title={m.redoShortcut(shortcut('mod', 'shift', 'Z'))} disabled={!canRedo} onClick={redo} className="relative shrink-0">
           <Redo2 className="h-4 w-4" />
+          <TravelFlash dir="redo" />
         </Button>
         <span className="mx-1 h-5 w-px shrink-0 bg-border" />
       </span>
