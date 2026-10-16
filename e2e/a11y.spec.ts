@@ -124,7 +124,7 @@ for (const theme of ['light', 'dark'] as const) {
 
     test('templates modal', async ({ page }) => {
       await page.goto('/dashboard');
-      await page.getByRole('button', { name: /New Project/ }).click();
+      await page.getByRole('button', { name: /New project/ }).click();
       await expect(page.getByRole('dialog', { name: 'Start from a template' })).toBeVisible();
       await expectAccessible(page, 'templates modal');
     });

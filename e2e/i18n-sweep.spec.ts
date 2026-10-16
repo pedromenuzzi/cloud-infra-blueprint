@@ -356,7 +356,7 @@ async function crawl(browser: Browser, lang: Lang): Promise<Map<string, string[]
     await page.goto('/dashboard');
     await expect(page.getByRole('button', { name: L(`Open project ${SEED_PROJECT}`, `Abrir projeto ${SEED_PROJECT}`) })).toBeVisible();
     await stop('dashboard + data panel');
-    await page.getByRole('button', { name: L('New Project', 'Novo projeto') }).click();
+    await page.getByRole('button', { name: L('New project', 'Novo projeto') }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await stop('template picker');
     await close();

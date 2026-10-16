@@ -112,7 +112,7 @@ test('on the dashboard with a dialog open or a search typed, it waits, then appl
   await controlled(page);
   const search = page.getByRole('searchbox', { name: 'Search projects' });
   await search.fill('prod');
-  await page.getByRole('button', { name: /^New Project/ }).first().click();
+  await page.getByRole('button', { name: /^New project/ }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Start from a template' });
   await expect(dialog).toBeVisible();
   const loads = countLoads(page);

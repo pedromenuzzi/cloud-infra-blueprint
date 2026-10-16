@@ -13,7 +13,7 @@ test('landing page leads to the dashboard with the seeded demo project', async (
 
 test('a template creates a new project and opens it in the editor', async ({ page }) => {
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'New Project' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('e2e-static');
 
   const card = page.locator('div', { hasText: 'Static Site CDN' }).filter({

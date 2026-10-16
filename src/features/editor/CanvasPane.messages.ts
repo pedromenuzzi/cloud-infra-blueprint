@@ -42,12 +42,12 @@ export const canvasMessages = defineMessages(
         `Moved selected node ${direction}. New position, x: ${x}, y: ${y}`,
       'edge.a11yDescription.default':
         'Press enter or space to select an edge. You can then press delete to remove it or escape to cancel.',
-      'controls.ariaLabel': 'Control Panel',
-      'controls.zoomIn.ariaLabel': 'Zoom In',
-      'controls.zoomOut.ariaLabel': 'Zoom Out',
-      'controls.fitView.ariaLabel': 'Fit View',
-      'controls.interactive.ariaLabel': 'Toggle Interactivity',
-      'minimap.ariaLabel': 'Mini Map',
+      'controls.ariaLabel': 'Control panel',
+      'controls.zoomIn.ariaLabel': 'Zoom in',
+      'controls.zoomOut.ariaLabel': 'Zoom out',
+      'controls.fitView.ariaLabel': 'Fit view',
+      'controls.interactive.ariaLabel': 'Toggle interactivity',
+      'minimap.ariaLabel': 'Minimap',
       'handle.ariaLabel': 'Handle',
     },
 
