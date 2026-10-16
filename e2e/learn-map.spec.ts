@@ -286,6 +286,8 @@ test.describe('on a phone (390px)', () => {
     for (const island of await page.locator('[data-level]').all()) {
       const lessons = await island.locator('[data-station]').count();
       if (lessons === 0) continue;
+      const row = island.getByRole('button', { expanded: false });
+      if ((await row.count()) > 0) await row.click();
       // the level's badge closes the trail on screen; its state is read out in the level's header
       const items = island.locator('ol').getByRole('listitem');
       await expect(items).toHaveCount(lessons);
@@ -303,4 +305,46 @@ test.describe('on a phone (390px)', () => {
     });
     expect(sideways).toBeLessThanOrEqual(0);
   });
+
+  test('levels done and levels far ahead fold into rows that open on a tap; the level you are on stays open', async ({ page }) => {
+    await page.goto('/learn');
+    const islands = page.locator('[data-track="aws"] [data-level]');
+    await expect(islands.first()).toBeVisible();
+    const ids = await islands.evaluateAll((els) => els.map((el) => el.getAttribute('data-level')!));
+    // the whole first level done, the learner on the second one
+    const firstLevel = islands.first().locator('[data-station] > a');
+    const slugs = (await firstLevel.evaluateAll((links) => links.map((a) => a.getAttribute('href')!))).map((h) => h.replace(/^.*\/learn\//, ''));
+    // (seen on the map already: a level finished just now stays open to show it)
+    await page.evaluate((done) => localStorage.setItem('cb-learn-seen-v1', JSON.stringify({ done, xp: 0 })), slugs);
+    await store(page, {
+      start: 'new',
+      lessons: Object.fromEntries(slugs.map((slug) => [slug, { status: 'done', met: [], xp: 40 }])),
+      last: slugs.at(-1),
+    });
+    const level = (i: number) => page.locator(`[data-level="${ids[i]}"]`);
+    const row = (i: number) => level(i).getByRole('heading', { level: 3 }).getByRole('button');
+    await expect(row(0)).toHaveAttribute('aria-expanded', 'false');
+    await expect(row(0)).toContainText(`${slugs.length} of ${slugs.length} done`);
+    await expect(level(0).locator('[data-station]').first()).toBeHidden();
+    await expect(row(1)).toHaveAttribute('aria-expanded', 'true');
+    await expect(level(1).locator('[data-station]').first()).toBeVisible();
+    await expect(row(2)).toHaveAttribute('aria-expanded', 'true');
+    for (let i = 3; i < ids.length; i++) await expect(row(i)).toHaveAttribute('aria-expanded', 'false');
+    // a row is a button that controls its trail
+    await row(4).click();
+    await expect(row(4)).toHaveAttribute('aria-expanded', 'true');
+    await expect(level(4).locator('[data-station] > a').first()).toBeVisible();
+    await row(4).press('Enter');
+    await expect(level(4).locator('[data-station]').first()).toBeHidden();
+    await row(0).click();
+    await expect(level(0).locator('[data-station] > a').first()).toBeVisible();
+  });
+});
+
+test('wide screens show every level in full, with no rows to open', async ({ page }) => {
+  await page.goto('/learn');
+  for (const island of await page.locator('[data-track="aws"] [data-level]').all()) {
+    await expect(island.getByRole('button', { expanded: false })).toHaveCount(0);
+    await expect(island.locator('[data-station] > a').first()).toBeVisible();
+  }
 });

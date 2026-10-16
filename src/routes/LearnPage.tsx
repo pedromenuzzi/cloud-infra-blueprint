@@ -5,7 +5,7 @@
  * the level's badge; underneath it is an ordered list, which is also what
  * phones and screen readers get.
  */
-import { ArrowRight, Award, Check, Cloud, Flame, Play, RotateCcw, Sprout, Swords, Trophy } from 'lucide-react';
+import { ArrowRight, Award, Check, ChevronDown, Cloud, Flame, Play, RotateCcw, Sprout, Swords, Trophy } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { AppRail } from '@/components/AppRail';
@@ -598,6 +598,7 @@ function LevelIsland({
   hereSlug,
   since,
   small,
+  folded,
 }: {
   level: Level;
   progress: LearnProgress;
@@ -605,14 +606,20 @@ function LevelIsland({
   hereSlug?: string;
   since: Since;
   small?: boolean;
+  /** on a phone, starts as a summary row (a level done, or one still far ahead) */
+  folded: boolean;
 }) {
   const m = useMessages(learnMessages);
   const t = useText();
   const headingId = useId();
+  const bodyId = useId();
   const tally = levelTally(level, progress);
   const badgeTitle = t(level.title);
   const earned = !!progress.badges[levelBadge(level).id];
   const freshHere = since ? level.lessons.filter((l) => since.fresh.has(l.slug)).length : 0;
+  // just finished here: it stays open to show it
+  const [open, setOpen] = useState(!folded || freshHere > 0);
+  const [tapped, setTapped] = useState(false);
   // the bar grows from where it was when the map last showed
   const ratio = tally.total ? tally.done / tally.total : 0;
   const grown = useGrown(ratio, freshHere > 0 ? (tally.done - freshHere) / tally.total : undefined);
@@ -622,49 +629,81 @@ function LevelIsland({
     <section
       aria-labelledby={headingId}
       data-level={level.id}
-      className={cn('bp-island rounded-[22px] border shadow-xs', levelHue(level), small ? 'p-4 sm:p-5' : 'p-5 sm:p-7')}
+      data-open={open}
+      className={cn('bp-island rounded-[22px] border shadow-xs', levelHue(level), small ? 'p-4 sm:p-5' : 'p-5 sm:p-7', !open && 'max-md:py-3.5')}
     >
-      <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
-        <div className="min-w-0 max-w-2xl">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--lv-text)]">{m.level(level.index)}</p>
-          <h3 id={headingId} className={cn('mt-0.5 font-bold tracking-[-0.02em]', small ? 'text-[16px]' : 'text-[21px]')}>
-            {t(level.title)}
-          </h3>
-          <p className="mt-1 text-[13px] leading-relaxed text-muted">{richText(t(level.summary), 'font-mono text-[12px]')}</p>
-        </div>
-        {tally.total > 0 ? (
-          <div className="w-full sm:mt-1 sm:w-52">
-            <div className="flex items-baseline justify-between gap-2 text-[12px]">
-              <span className="font-semibold">{m.levelDone(tally.done, tally.total)}</span>
-              {tally.done > 0 ? (
-                <span className="font-semibold tabular-nums text-[color:var(--lv-text)]">{m.levelXp(tally.xp)}</span>
-              ) : (
-                <span className="tabular-nums text-muted">{m.levelXpToEarn(available)}</span>
-              )}
-            </div>
-            <div aria-hidden="true" className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
-              <div
-                className="h-full rounded-full bg-[var(--lv)] transition-[width] duration-700 ease-out"
-                style={{ width: `${grown * 100}%`, transitionDelay: freshHere > 0 ? '450ms' : undefined }}
-              />
-            </div>
-            <p className="sr-only">{earned ? m.badgeEarned(badgeTitle) : m.badgeLocked(badgeTitle)}</p>
+      {/* a phone's summary row: the level, its progress and badge; a tap opens the trail (wide screens show it all) */}
+      <h3 className="md:hidden">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          onClick={() => {
+            setOpen(!open);
+            setTapped(true);
+          }}
+          className="-m-1.5 flex w-[calc(100%+12px)] items-center gap-3 rounded-[16px] p-1.5 text-left focus-visible:outline-2 focus-visible:outline-primary"
+        >
+          <BadgeMedal badge={levelBadge(level)} hue={levelHue(level)} earned={earned} size={36} />
+          <span className="min-w-0 flex-1">
+            <span className="block text-[10.5px] font-bold uppercase tracking-[0.12em] text-[color:var(--lv-text)]">{m.level(level.index)}</span>
+            <span className={cn('block truncate font-bold leading-snug tracking-[-0.02em]', small ? 'text-[15px]' : 'text-[16px]')}>{t(level.title)}</span>
+            {tally.total > 0 ? (
+              <span className="mt-1 flex items-center gap-2">
+                <span aria-hidden="true" className="h-1 flex-1 overflow-hidden rounded-full bg-surface-2">
+                  <span className="block h-full rounded-full bg-[var(--lv)]" style={{ width: `${grown * 100}%` }} />
+                </span>
+                <span className="shrink-0 text-[11.5px] font-semibold tabular-nums text-muted">{m.levelDone(tally.done, tally.total)}</span>
+              </span>
+            ) : null}
+          </span>
+          <span className="sr-only">{earned ? m.badgeEarned(badgeTitle) : m.badgeLocked(badgeTitle)}</span>
+          <ChevronDown aria-hidden="true" className={cn('h-4 w-4 shrink-0 text-muted transition-transform duration-200', open && 'rotate-180')} />
+        </button>
+      </h3>
+      <div id={bodyId} className={cn(!open && 'max-md:hidden', tapped && open && 'bp-rise')}>
+        <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+          <div className="min-w-0 max-w-2xl max-md:mt-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--lv-text)] max-md:hidden">{m.level(level.index)}</p>
+            <h3 id={headingId} className={cn('mt-0.5 font-bold tracking-[-0.02em] max-md:hidden', small ? 'text-[16px]' : 'text-[21px]')}>
+              {t(level.title)}
+            </h3>
+            <p className="mt-1 text-[13px] leading-relaxed text-muted">{richText(t(level.summary), 'font-mono text-[12px]')}</p>
           </div>
-        ) : null}
+          {tally.total > 0 ? (
+            <div className="w-full max-md:hidden sm:mt-1 sm:w-52">
+              <div className="flex items-baseline justify-between gap-2 text-[12px]">
+                <span className="font-semibold">{m.levelDone(tally.done, tally.total)}</span>
+                {tally.done > 0 ? (
+                  <span className="font-semibold tabular-nums text-[color:var(--lv-text)]">{m.levelXp(tally.xp)}</span>
+                ) : (
+                  <span className="tabular-nums text-muted">{m.levelXpToEarn(available)}</span>
+                )}
+              </div>
+              <div aria-hidden="true" className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className="h-full rounded-full bg-[var(--lv)] transition-[width] duration-700 ease-out"
+                  style={{ width: `${grown * 100}%`, transitionDelay: freshHere > 0 ? '450ms' : undefined }}
+                />
+              </div>
+              <p className="sr-only">{earned ? m.badgeEarned(badgeTitle) : m.badgeLocked(badgeTitle)}</p>
+            </div>
+          ) : null}
+        </div>
+        {level.lessons.length === 0 ? (
+          <p className="mt-5 rounded-[14px] border border-dashed bg-surface-1/60 px-4 py-5 text-center text-[13px] text-muted">{m.comingSoon}</p>
+        ) : (
+          <Trail
+            level={level}
+            stations={level.lessons.map((lesson) => stationOf(lesson, progress))}
+            earned={earned}
+            startSlug={startSlug}
+            hereSlug={hereSlug}
+            fresh={freshHere > 0 ? since?.fresh : undefined}
+            small={small}
+          />
+        )}
       </div>
-      {level.lessons.length === 0 ? (
-        <p className="mt-5 rounded-[14px] border border-dashed bg-surface-1/60 px-4 py-5 text-center text-[13px] text-muted">{m.comingSoon}</p>
-      ) : (
-        <Trail
-          level={level}
-          stations={level.lessons.map((lesson) => stationOf(lesson, progress))}
-          earned={earned}
-          startSlug={startSlug}
-          hereSlug={hereSlug}
-          fresh={freshHere > 0 ? since?.fresh : undefined}
-          small={small}
-        />
-      )}
     </section>
   );
 }
@@ -674,14 +713,29 @@ function TrackMap({ track, progress, since }: { track: Track; progress: LearnPro
   const headingId = useId();
   const startSlug = startLesson(progress.start)?.slug;
   const hereSlug = progress.last ? continueLesson(progress)?.slug : undefined;
+  // a phone keeps the level you're on and the next one open; the ones done and the ones far ahead fold into a row
+  const current = track.levels.findIndex((level) => level.lessons.some((l) => l.slug === (hereSlug ?? startSlug)));
+  const folded = (level: Level, i: number) => {
+    const tally = levelTally(level, progress);
+    return i !== current && ((tally.total > 0 && tally.done === tally.total) || current === -1 || i > current + 1);
+  };
   return (
     <section aria-labelledby={headingId} className={track.preview ? 'mt-12' : 'mt-10'} data-track={track.id}>
       <h2 id={headingId} className={cn('font-bold tracking-[-0.02em]', track.preview ? 'text-[16px] text-muted' : 'text-[20px]')}>
         {t(track.title)}
       </h2>
       <div className={cn('mt-4', track.preview ? 'space-y-3 lg:max-w-3xl' : 'space-y-5')}>
-        {track.levels.map((level) => (
-          <LevelIsland key={level.id} level={level} progress={progress} startSlug={startSlug} hereSlug={hereSlug} since={since} small={track.preview} />
+        {track.levels.map((level, i) => (
+          <LevelIsland
+            key={level.id}
+            level={level}
+            progress={progress}
+            startSlug={startSlug}
+            hereSlug={hereSlug}
+            since={since}
+            small={track.preview}
+            folded={folded(level, i)}
+          />
         ))}
       </div>
     </section>
