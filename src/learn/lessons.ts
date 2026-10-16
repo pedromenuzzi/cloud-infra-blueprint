@@ -12,6 +12,7 @@ import { lessons as aws6 } from './content/aws-6';
 import { lessons as aws7 } from './content/aws-7';
 import { lessons as aws8 } from './content/aws-8';
 import { lessons as azure0 } from './content/azure-0';
+import { provideLessonCatalog } from './progress';
 import type { Lesson, Level, StartChoice, Track } from './types';
 
 export const TRACKS: Track[] = [
@@ -158,3 +159,5 @@ export function startLesson(choice: StartChoice | null): Lesson | undefined {
 
 /** lessons that teach a resource type (the editor's "Learn about this") */
 export const lessonsTeaching = (type: string): Lesson[] => ALL_LESSONS.filter((l) => l.teaches?.includes(type));
+
+provideLessonCatalog({ levels: ALL_LEVELS, getLesson, levelOfLesson });

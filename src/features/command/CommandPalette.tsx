@@ -60,7 +60,7 @@ import { openProjectRootPath, orderedFiles, useEditor } from '@/features/editor/
 import { securityUiMessages } from '@/features/security/messages';
 import { BrazilFlag, UsFlag } from '@/components/flags';
 import { LOCALES, useLocale } from '@/i18n/locale';
-import { ALL_LESSONS, TRACKS } from '@/learn/lessons';
+import { useLearnCatalog } from '@/features/learn/useLearnCatalog';
 import { textIn } from '@/learn/types';
 import { copyText, exportZip } from '@/lib/download';
 import { REPO_URL } from '@/lib/links';
@@ -145,6 +145,8 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const location = useLocation();
   const [search, setSearch] = useState('');
+  // lessons appear only while searching: load them on the first keystroke
+  const learn = useLearnCatalog(search.trim() !== '');
   const [page, setPage] = useState<'root' | 'add' | 'data'>('root');
   const { theme, setTheme } = useTheme();
   const togglePanel = useLayout((s) => s.toggle);
@@ -575,15 +577,15 @@ export function CommandPalette() {
               </Command.Group>
 
               {/* only while searching: 20-odd lessons would bury the root list */}
-              {search.trim() ? (
+              {search.trim() && learn ? (
                 <Command.Group heading={m.group.lessons}>
-                  {ALL_LESSONS.map((lesson) => (
+                  {learn.ALL_LESSONS.map((lesson) => (
                     <Item
                       key={lesson.slug}
                       value={`lesson ${lesson.slug}`}
                       icon={GraduationCap}
                       label={`${lesson.code} ${textIn(lesson.title, locale)}`}
-                      hint={textIn(TRACKS.find((t) => t.levels.some((l) => l.lessons.includes(lesson)))?.title ?? TRACKS[0].title, locale)}
+                      hint={textIn(learn.TRACKS.find((t) => t.levels.some((l) => l.lessons.includes(lesson)))?.title ?? learn.TRACKS[0].title, locale)}
                       keywords={[lesson.title.en, lesson.title.pt, ...m.kw.lesson]}
                       onSelect={() => run(() => navigate(`/learn/${lesson.slug}`))}
                     />

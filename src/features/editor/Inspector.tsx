@@ -32,7 +32,7 @@ import { appendReference, instanceRef, isListValued } from '@/ir/repeat';
 import type { Expression, IR, ResourceNode } from '@/ir/types';
 import { useLocale } from '@/i18n/locale';
 import { messagesFor, useMessages } from '@/i18n/messages';
-import { lessonsTeaching } from '@/learn/lessons';
+import { useLearnCatalog } from '@/features/learn/useLearnCatalog';
 import { textIn } from '@/learn/types';
 import { cn, tfName } from '@/lib/utils';
 import { fieldHelp, resourceDescription, resourceName } from '@/resources/i18n';
@@ -947,7 +947,8 @@ export function Inspector({ docked = false, onMinimize }: { docked?: boolean; on
   // "Learn about this": the first lesson on this type (not from inside a lesson)
   const locale = useLocale((s) => s.locale);
   const inLesson = useMatch('/learn/*') !== null;
-  const lesson = node && !inLesson ? lessonsTeaching(node.type)[0] : undefined;
+  const learn = useLearnCatalog(!inLesson);
+  const lesson = node && !inLesson ? learn?.lessonsTeaching(node.type)[0] : undefined;
 
   if (selectedIds.length > 1) {
     return docked ? (

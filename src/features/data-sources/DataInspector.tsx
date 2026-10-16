@@ -20,7 +20,7 @@ import { repeatLabel } from '@/features/editor/repeatLabel';
 import { useEditor } from '@/features/editor/store';
 import { commitLiteral, editableText, INPUT_NAME, parseInputText, placeholderFor } from '@/features/modules/inputValue';
 import { useLocale } from '@/i18n/locale';
-import { lessonsTeaching } from '@/learn/lessons';
+import { useLearnCatalog } from '@/features/learn/useLearnCatalog';
 import { textIn } from '@/learn/types';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import { findData, isDataId } from '@/ir/dataSources';
@@ -321,7 +321,8 @@ export function DataInspector({ docked = false, onMinimize }: { docked?: boolean
   const { block, status } = useDataSourceSchema(type);
   // "Learn about this": the first lesson on this data source (not from inside a lesson)
   const inLesson = useMatch('/learn/*') !== null;
-  const lesson = type && !inLesson ? lessonsTeaching(`data.${type}`)[0] : undefined;
+  const learn = useLearnCatalog(!inLesson);
+  const lesson = type && !inLesson ? learn?.lessonsTeaching(`data.${type}`)[0] : undefined;
   useEffect(() => {
     if (type) requestDataSchemasFor([type]);
   }, [type]);

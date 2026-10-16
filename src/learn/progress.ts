@@ -11,8 +11,7 @@
 import { create } from 'zustand';
 import { safeStorage } from '@/lib/storage';
 import { localDay, lessonXp, newBadges, rankOf } from './gamification';
-import { ALL_LEVELS, getLesson, levelOfLesson } from './lessons';
-import type { Files, SimCommand, SimState, StartChoice } from './types';
+import type { Files, Lesson, Level, SimCommand, SimState, StartChoice } from './types';
 
 export const LEARN_KEY = 'cb-learn-v1';
 
@@ -45,6 +44,23 @@ export interface LearnProgress {
   days: string[];
   /** the lesson to continue from */
   last: string | null;
+}
+
+/**
+ * The lessons, handed over by ./lessons.ts when it loads: the progress store
+ * is read by pages that never load the lessons (the dashboard), and only
+ * pages that do (the map, a lesson) change it.
+ */
+interface LessonCatalog {
+  levels: Level[];
+  getLesson(slug: string): Lesson | undefined;
+  levelOfLesson(slug: string): Level | undefined;
+}
+
+let catalog: LessonCatalog = { levels: [], getLesson: () => undefined, levelOfLesson: () => undefined };
+
+export function provideLessonCatalog(lessons: LessonCatalog) {
+  catalog = lessons;
 }
 
 export type LearnEvent =
@@ -135,7 +151,7 @@ export const useLearn = create<LearnProgress & LearnActions>((set, get) => {
   const commit = (patch: Partial<LearnProgress>, events: LearnEvent[] = []) => {
     const before = data();
     let next: LearnProgress = { ...before, ...patch };
-    const earned = newBadges(next, ALL_LEVELS);
+    const earned = newBadges(next, catalog.levels);
     if (earned.length > 0) {
       const today = localDay();
       next = { ...next, badges: { ...next.badges, ...Object.fromEntries(earned.map((b) => [b.id, today])) } };
@@ -207,7 +223,7 @@ export const useLearn = create<LearnProgress & LearnActions>((set, get) => {
     },
 
     completeLesson(slug) {
-      const lesson = getLesson(slug);
+      const lesson = catalog.getLesson(slug);
       const { lessons, xp, days } = get();
       const current = lessons[slug] ?? { status: 'started', met: [] };
       if (!lesson || current.status === 'done') return;
@@ -220,7 +236,7 @@ export const useLearn = create<LearnProgress & LearnActions>((set, get) => {
         { kind: 'lesson', slug },
         { kind: 'xp', amount: gained, total: xp + gained },
       ];
-      const level = levelOfLesson(slug);
+      const level = catalog.levelOfLesson(slug);
       if (level?.lessons.every((l) => nextLessons[l.slug]?.status === 'done')) events.push({ kind: 'level', id: level.id });
       commit({ lessons: nextLessons, xp: xp + gained, days: withToday(days) }, events);
     },

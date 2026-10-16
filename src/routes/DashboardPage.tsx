@@ -24,12 +24,11 @@ import { backupAmong, openRestore } from '@/features/data/dataDialogs';
 import { DataPanel, StorageNudge } from '@/features/data/DataPanel';
 import { forgetFolderLink, useFolderLinks } from '@/features/data/folderLinks';
 import { ImportMenu } from '@/features/import/ImportMenu';
-import { continueLesson } from '@/features/learn/trail';
 import { TemplateModal } from '@/features/templates/TemplateModal';
 import { useLocale, type Locale } from '@/i18n/locale';
 import { messagesFor, useMessages } from '@/i18n/messages';
 import type { Provider } from '@/ir/types';
-import { ALL_LESSONS } from '@/learn/lessons';
+import { useLearnCatalog } from '@/features/learn/useLearnCatalog';
 import { useLearn } from '@/learn/progress';
 import { textIn } from '@/learn/types';
 import { exportZip } from '@/lib/download';
@@ -299,8 +298,10 @@ function ContinueTrail() {
   const m = useMessages(dashboardMessages);
   const locale = useLocale((s) => s.locale);
   const progress = useLearn();
-  const lesson = progress.last ? continueLesson(progress) : undefined;
-  if (!lesson) return null;
+  const learn = useLearnCatalog(progress.last !== null);
+  const lesson = progress.last && learn ? learn.continueLesson(progress) : undefined;
+  if (!learn || !lesson) return null;
+  const { ALL_LESSONS } = learn;
   const done = ALL_LESSONS.filter((l) => progress.lessons[l.slug]?.status === 'done').length;
   const title = textIn(lesson.title, locale);
   return (
