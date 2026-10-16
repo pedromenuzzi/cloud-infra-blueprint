@@ -160,17 +160,35 @@ test('corrupted storage is backed up and the dashboard still works', async ({ pa
   expect(backups).toHaveLength(1);
 });
 
+test('a chunk fetched ahead of time that has vanished never reloads the page', async ({ page }) => {
+  let documentLoads = 0;
+  page.on('load', () => {
+    documentLoads += 1;
+  });
+  await page.route(/\/assets\/EditorPage-[\w-]+\.js$/, (route) =>
+    route.fulfill({ status: 404, contentType: 'text/html', body: '<!doctype html><title>Not found</title>' }),
+  );
+  const prefetched = page.waitForRequest(/\/assets\/EditorPage-[\w-]+\.js$/);
+  await page.goto('/dashboard');
+  await prefetched;
+  // the failed prefetch settles without a recovery reload: the user keeps the dashboard
+  await page.waitForTimeout(1500);
+  expect(documentLoads).toBe(1);
+  await expect(page.getByRole('article', { name: SEED_PROJECT })).toBeVisible();
+});
+
 test('a chunk that vanished after a deploy reloads once, then shows the recovery screen', async ({ page }) => {
   let documentLoads = 0;
   page.on('load', () => {
     documentLoads += 1;
   });
-  await page.goto('/dashboard');
-  await expect(page.getByRole('article', { name: SEED_PROJECT })).toBeVisible();
-  // what GitHub Pages answers for a chunk name that no longer exists
+  // what GitHub Pages answers for a chunk name that no longer exists; set before the
+  // dashboard loads, since it fetches the editor ahead of time once the browser is idle
   await page.route(/\/assets\/EditorPage-[\w-]+\.js$/, (route) =>
     route.fulfill({ status: 404, contentType: 'text/html', body: '<!doctype html><title>Not found</title>' }),
   );
+  await page.goto('/dashboard');
+  await expect(page.getByRole('article', { name: SEED_PROJECT })).toBeVisible();
   await page.getByRole('button', { name: `Open project ${SEED_PROJECT}` }).click();
 
   await expect(page.getByRole('heading', { name: 'Cloud Blueprint was updated' })).toBeVisible();

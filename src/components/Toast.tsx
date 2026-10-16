@@ -1,5 +1,7 @@
 import { AlertTriangle, Check, Info } from 'lucide-react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { create } from 'zustand';
 import { cn } from '@/lib/utils';
 
@@ -14,6 +16,8 @@ export interface ToastOptions {
   note?: string;
   /** ms before it goes away: 3200 by default, 8000 with an action */
   duration?: number;
+  /** about the page it's shown on: leaving the page takes it away (the rest carry over, e.g. "Imported") */
+  page?: boolean;
 }
 
 interface ToastItem {
@@ -23,6 +27,8 @@ interface ToastItem {
   action?: ToastOptions['action'];
   hint?: string;
   note?: string;
+  /** the page it belongs to (ToastOptions.page) */
+  path?: string;
 }
 
 interface ToastState {
@@ -44,8 +50,12 @@ export const useToasts = create<ToastState>((set, get) => {
     push(message, kind = 'info', options = {}) {
       const id = ++seq;
       const { action, hint, note } = options;
+      const path = options.page ? globalThis.location?.pathname : undefined;
       set({
-        toasts: [...get().toasts, { id, message, kind, ...(action ? { action } : {}), ...(hint ? { hint } : {}), ...(note ? { note } : {}) }],
+        toasts: [
+          ...get().toasts,
+          { id, message, kind, ...(action ? { action } : {}), ...(hint ? { hint } : {}), ...(note ? { note } : {}), ...(path ? { path } : {}) },
+        ],
       });
       schedule(id, options.duration ?? (action ? 8000 : 3200));
     },
@@ -92,12 +102,17 @@ const TONE: Record<ToastKind, string> = {
  */
 export function ToastViewport() {
   const toasts = useToasts((s) => s.toasts);
+  const { pathname } = useLocation();
+  useEffect(() => {
+    for (const t of useToasts.getState().toasts) if (t.path && t.path !== pathname) useToasts.getState().dismiss(t.id);
+  }, [pathname]);
   return createPortal(
     <div
       aria-live="polite"
       data-bp-live=""
-      // a page with controls along its bottom edge lifts toasts above them (--bp-toast-bottom)
-      className="pointer-events-none fixed inset-x-3 bottom-[var(--bp-toast-bottom,1rem)] z-[80] flex flex-col items-center gap-2"
+      // a page with controls along its bottom edge lifts toasts above them (--bp-toast-bottom);
+      // one with panels along its sides narrows the lane they center in (--bp-toast-left / -right)
+      className="pointer-events-none fixed bottom-[var(--bp-toast-bottom,1rem)] left-[var(--bp-toast-left,0.75rem)] right-[var(--bp-toast-right,0.75rem)] z-[80] flex flex-col items-center gap-2"
     >
       {toasts.map((t) => {
         const Icon = ICONS[t.kind];

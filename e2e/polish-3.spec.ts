@@ -248,7 +248,7 @@ test.describe('template: subnets per AZ (count)', () => {
         { locale, theme },
       );
       await page.goto('/dashboard');
-      await page.getByRole('button', { name: en ? /^New Project/ : /^Novo projeto/ }).first().click();
+      await page.getByRole('button', { name: en ? /^New project/ : /^Novo projeto/ }).first().click();
       const dialog = page.getByRole('dialog', { name: en ? 'Start from a template' : 'Começar com um template' });
       await dialog.getByRole('button', { name: en ? 'Networking' : 'Redes', exact: true }).click();
       const title = en ? 'Subnets per AZ on AWS' : 'Sub-redes por AZ na AWS';

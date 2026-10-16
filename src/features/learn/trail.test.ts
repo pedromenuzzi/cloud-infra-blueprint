@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ALL_LESSONS, nextLesson, startLesson } from '@/learn/lessons';
 import { emptyProgress, type LessonProgress } from '@/learn/progress';
 import type { Lesson, Level } from '@/learn/types';
+import { safeStorage } from '@/lib/storage';
 import { continueLesson, levelTally, noteMapSeen, sinceMapSeen, stationOf } from './trail';
 
 const goal = (id: string) => ({ id, text: { en: id, pt: id }, hint: { en: id, pt: id }, test: () => false });
@@ -87,5 +88,15 @@ describe('back on the map', () => {
     // the map showed it: nothing new any more
     noteMapSeen({ ...withLessons({ a: done, b: done }), xp: 80 });
     expect(sinceMapSeen({ ...withLessons({ a: done, b: done }), xp: 80 })).toBeNull();
+  });
+
+  it('reads what the map showed from this browser, so the page after a reload still knows what is new', () => {
+    const done: LessonProgress = { status: 'done', met: [], xp: 40 };
+    // something unreadable counts as nothing shown yet
+    safeStorage.setItem('cb-learn-seen-v1', '{"done":');
+    expect(sinceMapSeen({ ...withLessons({ a: done }), xp: 40 })).toBeNull();
+    // what an earlier page left behind
+    safeStorage.setItem('cb-learn-seen-v1', JSON.stringify({ done: ['a'], xp: 40 }));
+    expect([...sinceMapSeen({ ...withLessons({ a: done, b: done }), xp: 80 })!.fresh]).toEqual(['b']);
   });
 });

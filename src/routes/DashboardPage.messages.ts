@@ -7,7 +7,7 @@ export const dashboardMessages = defineMessages(
     title: 'Projects',
     subtitle: 'Your cloud architecture designs: saved in this browser, exportable as Terraform.',
     quickActions: 'Quick actions',
-    newProject: 'New Project',
+    newProject: 'New project',
     // the learning map, when a trail is under way
     continueTrail: 'Continue your trail',
     trailLessons: (done: number, total: number) => `${done} of ${total} lessons done`,

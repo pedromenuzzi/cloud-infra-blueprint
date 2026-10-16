@@ -387,6 +387,28 @@ export function CodePane({ controls, wrap = false }: { controls?: ReactNode; wra
   }, [errorSeq]);
 
   const tabsRef = useRef<HTMLDivElement>(null);
+  // more tabs than fit: the strip scrolls (wheel too) and fades out on the side with more, instead of
+  // cutting a name off against the pane's buttons
+  const [more, setMore] = useState({ before: false, after: false });
+  useEffect(() => {
+    const strip = tabsRef.current;
+    if (!strip) return;
+    const check = () => {
+      const before = strip.scrollLeft > 1;
+      const after = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
+      setMore((was) => (was.before === before && was.after === after ? was : { before, after }));
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(strip);
+    strip.addEventListener('scroll', check, { passive: true });
+    return () => {
+      observer.disconnect();
+      strip.removeEventListener('scroll', check);
+    };
+  }, [fileList.length]);
+  const fade = (side: string) => `linear-gradient(to ${side}, #000 calc(100% - 28px), transparent)`;
+  const tabsMask = [more.before && fade('left'), more.after && fade('right')].filter(Boolean).join(', ');
   useEffect(() => {
     // scroll the strip itself: scrollIntoView would also move the page and
     // the browser's Tab starting point
@@ -395,8 +417,8 @@ export function CodePane({ controls, wrap = false }: { controls?: ReactNode; wra
     if (!strip || !tab) return;
     const s = strip.getBoundingClientRect();
     const t = tab.getBoundingClientRect();
-    if (t.left < s.left) strip.scrollLeft -= s.left - t.left + 8;
-    else if (t.right > s.right) strip.scrollLeft += t.right - s.right + 8;
+    if (t.left < s.left + 28) strip.scrollLeft -= s.left + 28 - t.left;
+    else if (t.right > s.right - 28) strip.scrollLeft += t.right - (s.right - 28);
   }, [activeFile]);
 
   const fileErrors = (file: string) =>
@@ -405,7 +427,16 @@ export function CodePane({ controls, wrap = false }: { controls?: ReactNode; wra
   return (
     <section className="flex h-full min-w-0 flex-col bg-surface-1" aria-label={m.terraformCode}>
       <div className="flex items-center border-b">
-        <div ref={tabsRef} className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 pt-1" role="tablist" aria-label={m.files}>
+        <div
+          ref={tabsRef}
+          className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto px-1.5 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={tabsMask ? { maskImage: tabsMask, maskComposite: 'intersect' } : undefined}
+          onWheel={(e) => {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY;
+          }}
+          role="tablist"
+          aria-label={m.files}
+        >
           {fileList.map((f, i) => (
             <button
               key={f}

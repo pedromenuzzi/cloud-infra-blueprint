@@ -19,7 +19,7 @@ async function expectTabTrapped(page: Page, container: Locator, times: number, k
 test.describe('modal dialogs', () => {
   test('templates: focus moves in, Tab is trapped, the page is inert, focus returns', async ({ page }) => {
     await page.goto('/dashboard');
-    const trigger = page.getByRole('button', { name: /New Project/ });
+    const trigger = page.getByRole('button', { name: /New project/ });
     await trigger.click();
     const dialog = page.getByRole('dialog', { name: 'Start from a template' });
     await expect(dialog).toBeVisible();
@@ -212,7 +212,7 @@ test.describe('small screens', () => {
 
   test('templates modal and ⌘K palette fit the screen', async ({ page }) => {
     await page.goto('/dashboard');
-    await page.getByRole('button', { name: /New Project/ }).click();
+    await page.getByRole('button', { name: /New project/ }).click();
     const dialog = page.getByRole('dialog', { name: 'Start from a template' });
     await expect(dialog).toBeVisible();
     const box = (await dialog.boundingBox())!;

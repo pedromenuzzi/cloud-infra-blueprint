@@ -70,6 +70,7 @@ export function startSecurityDelta(): () => void {
     showToast(delta.message, 'warning', {
       hint: m.undoHint(shortcut('mod', 'Z')),
       ...(delta.target ? { action: { label: m.show, onClick: () => show(delta) } } : {}),
+      page: true,
     });
 
   };
