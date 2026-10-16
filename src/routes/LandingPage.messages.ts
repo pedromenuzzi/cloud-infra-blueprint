@@ -52,7 +52,7 @@ export const landingMessages = defineMessages(
         body: 'Drag a resource and the HCL writes itself. Type Terraform and the diagram rebuilds. Comments and formatting survive every round-trip.',
       },
       clouds: {
-        title: '80+ services, three clouds',
+        title: '100+ services, three clouds',
         body: 'AWS, Azure and GCP in one palette (from VPCs and Lambdas to AKS, Pub/Sub and Key Vault), with real nesting and connection rules.',
       },
       keyboard: {
@@ -154,7 +154,7 @@ export const landingMessages = defineMessages(
         body: 'Arraste um recurso e o HCL se escreve sozinho. Digite Terraform e o diagrama se refaz. Comentários e formatação sobrevivem a cada ida e volta.',
       },
       clouds: {
-        title: '80+ serviços, três nuvens',
+        title: '100+ serviços, três nuvens',
         body: 'AWS, Azure e GCP em uma só paleta (de VPCs e Lambdas a AKS, Pub/Sub e Key Vault), com aninhamento real e regras de conexão.',
       },
       keyboard: {
