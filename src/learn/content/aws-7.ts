@@ -932,8 +932,8 @@ export const lessons: Lesson[] = [
         pt: 'Agora, a chave. Um *origin access control* faz o CloudFront assinar cada requisição que envia ao S3. A política do bucket então deixa entrar o serviço CloudFront com uma condição: `AWS:SourceArn` precisa ser o ARN da *sua* distribuição. Qualquer outra distribuição, mesmo de outra conta, não recebe nada.',
       },
       {
-        en: 'Plan it and look for `<= data "aws_iam_policy_document"`: the policy is read *during* the apply, because it needs an ARN that doesn\'t exist yet. That is level 4, inside a real architecture. Apply, and the `site_url` output prints your site\'s address. The bucket is still private, and the security panel still says A.',
-        pt: 'Rode o plan e procure `<= data "aws_iam_policy_document"`: a política é lida *durante* o apply, porque precisa de um ARN que ainda não existe. É o nível 4, dentro de uma arquitetura real. Aplique, e o output `site_url` mostra o endereço do seu site. O bucket continua privado, e o painel de segurança continua dando A.',
+        en: 'Plan it and look for `<= data "aws_iam_policy_document"`: the policy is read *during* the apply, because it needs an ARN that doesn\'t exist yet. That is level 4, inside a real architecture. Apply and be patient: a distribution takes minutes to reach every edge location, and the terminal waits as Terraform does. Then the `site_url` output prints your site\'s address. The bucket is still private, and the security panel still says A.',
+        pt: 'Rode o plan e procure `<= data "aws_iam_policy_document"`: a política é lida *durante* o apply, porque precisa de um ARN que ainda não existe. É o nível 4, dentro de uma arquitetura real. Aplique e tenha paciência: uma distribuição leva minutos para chegar a todos os pontos de presença, e o terminal espera como o Terraform espera. Depois, o output `site_url` mostra o endereço do seu site. O bucket continua privado, e o painel de segurança continua dando A.',
       },
     ],
     asides: [
@@ -1306,8 +1306,8 @@ export const lessons: Lesson[] = [
         title: { en: 'Where does the zip go?', pt: 'Para onde vai o zip?' },
         body: [
           {
-            en: 'On your machine, `archive_file` writes `build/api.zip` during the plan, and `source_code_hash` changes whenever the handler does, so Terraform knows to upload a new version. This terminal doesn\'t zip anything; it reads the data source during the apply.',
-            pt: 'Na sua máquina, o `archive_file` escreve `build/api.zip` durante o plan, e o `source_code_hash` muda sempre que o handler muda, então o Terraform sabe que precisa enviar uma versão nova. Este terminal não compacta nada; ele lê a fonte de dados durante o apply.',
+            en: 'On your machine, `archive_file` writes `build/api.zip` during the plan, and `source_code_hash` changes whenever the handler does, so Terraform knows to upload a new version.',
+            pt: 'Na sua máquina, o `archive_file` escreve `build/api.zip` durante o plan, e o `source_code_hash` muda sempre que o handler muda, então o Terraform sabe que precisa enviar uma versão nova.',
           },
         ],
       },
@@ -1611,8 +1611,8 @@ export const lessons: Lesson[] = [
         pt: 'Agora, o que deixa tudo seguro: grupos de segurança encadeados. O grupo do balanceador deixa a porta 80 entrar vinda de `0.0.0.0/0`. O grupo dos servidores deixa a porta 80 entrar vinda *do grupo do balanceador*, `security_groups = [aws_security_group.alb.id]`, e não de um intervalo de endereços. Ligue a lente de segurança: o balanceador é público na 80, os servidores são privados, e o único caminho de entrada passa pela porta da frente.',
       },
       {
-        en: 'Apply and read the terminal: the load balancer takes about three minutes, the longest wait so far. The security panel gives an A, with one low finding: the load balancer speaks plain HTTP. Keep it in mind, the challenge fixes it.',
-        pt: 'Aplique e leia o terminal: o balanceador leva uns três minutos, a espera mais longa até aqui. O painel de segurança dá A, com um achado de severidade baixa: o balanceador fala HTTP sem criptografia. Guarde isso, o desafio corrige.',
+        en: 'Apply and read the terminal: the load balancer takes about three minutes of `Still creating...`, as AWS does. The security panel gives an A, with one low finding: the load balancer speaks plain HTTP. Keep it in mind, the challenge fixes it.',
+        pt: 'Aplique e leia o terminal: o balanceador leva uns três minutos de `Still creating...`, como na AWS. O painel de segurança dá A, com um achado de severidade baixa: o balanceador fala HTTP sem criptografia. Guarde isso, o desafio corrige.',
       },
     ],
     asides: [
@@ -1737,8 +1737,8 @@ export const lessons: Lesson[] = [
         pt: 'Depois, as opções seguras que não vêm por padrão: `storage_encrypted = true`, `publicly_accessible = false`, backups guardados por 7 dias. E nenhuma senha no código, nunca: com `manage_master_user_password = true`, o RDS cria a senha e a guarda no Secrets Manager, então ela nunca passa pelos seus arquivos nem pelo seu estado.',
       },
       {
-        en: 'Apply and be patient: the database is the slowest resource of the course, four minutes of `Still creating...`. Then look at the security lens: only the load balancer faces the internet, and the database answers the app servers alone. Last, the cost estimate: the database is now the biggest line on the bill. Remember that for the challenge.',
-        pt: 'Aplique e tenha paciência: o banco é o recurso mais lento do curso, quatro minutos de `Still creating...`. Depois olhe a lente de segurança: só o balanceador fica de frente para a internet, e o banco só responde aos servidores da aplicação. Por fim, a estimativa de custo: o banco agora é a maior linha da conta. Lembre-se disso no desafio.',
+        en: 'Apply and be patient: a database takes about four minutes of `Still creating...`, as long as the CloudFront distribution of project A. Then look at the security lens: only the load balancer faces the internet, and the database answers the app servers alone. Last, the cost estimate: the database is now the biggest line on the bill. Remember that for the challenge.',
+        pt: 'Aplique e tenha paciência: um banco leva uns quatro minutos de `Still creating...`, tanto quanto a distribuição do CloudFront do projeto A. Depois olhe a lente de segurança: só o balanceador fica de frente para a internet, e o banco só responde aos servidores da aplicação. Por fim, a estimativa de custo: o banco agora é a maior linha da conta. Lembre-se disso no desafio.',
       },
     ],
     asides: [
