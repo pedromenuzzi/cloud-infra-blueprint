@@ -511,8 +511,14 @@ export default function LandingPage() {
     }
   };
 
+  // the one page that scrolls as a document (global.css keeps the app shell from it)
+  useEffect(() => {
+    document.documentElement.setAttribute('data-page-scrolls', '');
+    return () => document.documentElement.removeAttribute('data-page-scrolls');
+  }, []);
+
   return (
-    <div data-page-scrolls="" className="min-h-full overflow-x-hidden bg-background">
+    <div className="min-h-full overflow-x-hidden bg-background">
       <header className="sticky top-0 z-40 border-b bg-background/75 backdrop-blur-md">
         <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6" aria-label={m.mainNav}>
           <Link to="/" className="shrink-0 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-primary">

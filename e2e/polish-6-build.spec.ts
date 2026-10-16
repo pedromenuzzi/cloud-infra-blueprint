@@ -136,6 +136,6 @@ test('the app never scrolls as a page; the landing does', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
   expect(await scrolls()).toBe(0);
   await page.goto('/');
-  await expect(page.locator('[data-page-scrolls]')).toBeVisible();
+  await expect(page.locator('html[data-page-scrolls]')).toHaveCount(1);
   expect(await scrolls()).toBeGreaterThan(0);
 });

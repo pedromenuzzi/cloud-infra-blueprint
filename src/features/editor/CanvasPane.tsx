@@ -534,7 +534,8 @@ function CanvasInner({ templates }: { templates: boolean }) {
   const handleNodesChange = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
       // a delete goes through the model (onDelete): the rebuild takes the node away, with its exit
-      onNodesChange(changes.filter((c) => c.type !== 'remove'));
+      const kept = changes.filter((c) => c.type !== 'remove');
+      if (kept.length > 0) onNodesChange(kept);
       if (Date.now() - lastArrowKey.current > 200) return;
       for (const c of changes) {
         if (c.type === 'position' && !c.dragging && c.position) keyboardMoved.current.add(c.id);
@@ -566,7 +567,10 @@ function CanvasInner({ templates }: { templates: boolean }) {
   );
   useEffect(() => () => clearTimeout(keyboardTimer.current), []);
   const handleEdgesChange = useCallback(
-    (changes: EdgeChange<AnyFlowEdge>[]) => onEdgesChange(changes.filter((c) => c.type !== 'remove')),
+    (changes: EdgeChange<AnyFlowEdge>[]) => {
+      const kept = changes.filter((c) => c.type !== 'remove');
+      if (kept.length > 0) onEdgesChange(kept);
+    },
     [onEdgesChange],
   );
 
