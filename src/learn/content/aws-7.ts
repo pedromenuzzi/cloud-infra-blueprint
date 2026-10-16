@@ -902,7 +902,7 @@ export const lessons: Lesson[] = [
         test: all(applied('aws_s3_bucket'), applied('aws_s3_object')),
       },
     ],
-    teaches: ['aws_s3_bucket', 'aws_s3_bucket_versioning', 'aws_s3_bucket_public_access_block'],
+    teaches: ['aws_s3_bucket', 'aws_s3_bucket_versioning', 'aws_s3_bucket_public_access_block', 'aws_s3_object'],
   },
 
   /* ------------------------------------------------------------ 7.2 */
@@ -1018,7 +1018,7 @@ export const lessons: Lesson[] = [
         test: all(output(undefined, 'aws_cloudfront_distribution'), applied('aws_cloudfront_distribution'), applied('aws_s3_bucket_policy')),
       },
     ],
-    teaches: ['aws_cloudfront_distribution', 'data.aws_iam_policy_document'],
+    teaches: ['aws_cloudfront_distribution', 'aws_cloudfront_origin_access_control', 'aws_s3_bucket_policy', 'data.aws_iam_policy_document'],
   },
 
   /* ------------------------------------------------------------ 7.3 */
@@ -1144,7 +1144,7 @@ export const lessons: Lesson[] = [
         test: all(applied('aws_acm_certificate_validation'), applied('aws_route53_record')),
       },
     ],
-    teaches: ['aws_route53_zone', 'aws_route53_record'],
+    teaches: ['aws_route53_zone', 'aws_route53_record', 'aws_acm_certificate', 'aws_acm_certificate_validation'],
   },
 
   /* ------------------------------------------------------------ 7.4 */
@@ -1361,7 +1361,7 @@ export const lessons: Lesson[] = [
         test: applied('aws_lambda_function'),
       },
     ],
-    teaches: ['aws_lambda_function', 'aws_iam_role', 'aws_iam_role_policy'],
+    teaches: ['aws_lambda_function', 'aws_iam_role', 'aws_iam_role_policy', 'aws_cloudwatch_log_group'],
   },
 
   /* ------------------------------------------------------------ 7.6 */
@@ -1707,7 +1707,7 @@ export const lessons: Lesson[] = [
         test: all(output(undefined, 'aws_lb'), applied('aws_lb'), applied('aws_instance')),
       },
     ],
-    teaches: ['aws_lb', 'aws_lb_target_group', 'aws_lb_listener', 'aws_security_group', 'aws_instance', 'aws_launch_template', 'aws_autoscaling_group', 'data.aws_ami'],
+    teaches: ['aws_lb', 'aws_lb_target_group', 'aws_lb_listener', 'aws_lb_target_group_attachment', 'aws_security_group', 'aws_instance', 'aws_launch_template', 'aws_autoscaling_group', 'data.aws_ami'],
   },
 
   /* ------------------------------------------------------------ 7.9 */
