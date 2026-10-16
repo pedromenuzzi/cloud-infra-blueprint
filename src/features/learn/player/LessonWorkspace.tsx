@@ -210,6 +210,11 @@ export function LessonWorkspace({ lesson }: { lesson: Lesson }) {
     return () => observer.disconnect();
   }, []);
 
+  // a code lesson on a compact screen: the code it asks for is open from the start (a drawer over the canvas)
+  useEffect(() => {
+    if (lesson.mode === 'code' && useLayout.getState().compact) useLayout.getState().show('code');
+  }, [lesson.mode]);
+
   useEditorKeys();
   useCanvasDragTracking(canvasRef);
   useRevealOpensCode(() => useLayout.getState().show('code'));

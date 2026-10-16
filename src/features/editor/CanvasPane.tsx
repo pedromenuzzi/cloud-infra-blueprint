@@ -1136,7 +1136,8 @@ function CanvasInner({ templates }: { templates: boolean }) {
               {m.codeErrored}
             </span>
           ) : null}
-          {!overview && !readOnly ? <EditorTips /> : null}
+          {/* a lesson (no templates) has its own guidance: the editor's tips would cover the diagram */}
+          {!overview && !readOnly && templates ? <EditorTips /> : null}
         </Panel>
         {ir.resources.length === 0 && ir.modules.length === 0 && ir.data.length === 0 && !locked ? <EmptyCanvas templates={templates} /> : null}
       </ReactFlow>
@@ -1370,7 +1371,7 @@ function QuickAddPopover({
   );
 }
 
-/** `templates: false`: the blank canvas doesn't offer to start from a template (a lesson starts from its own code) */
+/** `templates: false` (a lesson, which starts from its own code): no template offer on the blank canvas, no editor tips */
 export function CanvasPane({ templates = true }: { templates?: boolean } = {}) {
   return (
     <ReactFlowProvider>
