@@ -6,7 +6,15 @@ import { canvasApi } from '@/features/editor/canvasApi';
 import { codeMessages } from '@/features/editor/CodePane.messages';
 import { useCanvasDrag, useCanvasDragTracking } from '@/features/editor/canvasDrag';
 import { CanvasPane, focusRenameInput } from '@/features/editor/CanvasPane';
-import { dockedInspector, floatRoomFor, INSPECTOR_WIDTH, TOOL_PANEL_WIDTH, useFloatingPanels } from '@/features/editor/inspectorPlacement';
+import {
+  dockedInspector,
+  floatingInspectorInset,
+  floatRoomFor,
+  INSPECTOR_WIDTH,
+  TOOL_PANEL_WIDTH,
+  toolPanelInset,
+  useFloatingPanels,
+} from '@/features/editor/inspectorPlacement';
 import { useKeepSelectionVisible, useRevealOpensCode } from '@/features/editor/layoutEffects';
 import { layoutMessages } from '@/features/editor/layout.messages';
 import { SPLIT_DEFAULT } from '@/features/editor/layoutPrefs';
@@ -151,6 +159,59 @@ function useFloatRoom(canvas: RefObject<HTMLElement | null>, ready: boolean) {
   }, [canvas, ready]);
 }
 
+/** the narrowest lane worth centering toasts in, px */
+const TOAST_LANE_MIN = 320;
+
+/**
+ * Where toasts go (Toast's --bp-toast-* variables): above the canvas toolbar,
+ * centered in the canvas the floating panels and drawers leave uncovered, so a
+ * toast never lands on the inspector, the code or an open panel. A phone has no
+ * such lane beside the inspector: they span the canvas at its bottom edge, over
+ * the panels' footers rather than their fields. `arrangement` changes as the
+ * panels come, go or move.
+ */
+function useToastLane(canvas: RefObject<HTMLElement | null>, shown: boolean, arrangement: string) {
+  useEffect(() => {
+    const el = canvas.current;
+    const root = document.documentElement.style;
+    // a custom property on the root restyles the whole page: only when it changes
+    const set = (name: string, value: string | null) => {
+      if (value === null) root.removeProperty(name);
+      else if (root.getPropertyValue(name) !== value) root.setProperty(name, value);
+    };
+    if (!el || !shown) {
+      // a hidden canvas: the code is the whole stage, toasts center on the window
+      set('--bp-toast-bottom', '4.5rem');
+      set('--bp-toast-left', null);
+      set('--bp-toast-right', null);
+      return;
+    }
+    const place = () => {
+      const rect = el.getBoundingClientRect();
+      let left = rect.left + toolPanelInset(rect.width);
+      let right = rect.right - floatingInspectorInset(rect.width);
+      for (const drawer of el.ownerDocument.querySelectorAll<HTMLElement>('[data-drawer]')) {
+        if (drawer.dataset.drawer === 'left') left = Math.max(left, rect.left + drawer.offsetWidth);
+        else right = Math.min(right, rect.right - drawer.offsetWidth);
+      }
+      const narrow = right - left < TOAST_LANE_MIN;
+      if (narrow) ({ left, right } = rect);
+      set('--bp-toast-bottom', narrow ? '1rem' : '4.5rem');
+      set('--bp-toast-left', `${Math.round(left) + 12}px`);
+      set('--bp-toast-right', `${Math.round(window.innerWidth - right) + 12}px`);
+    };
+    // measured when the observer first reports, right after the browser's own layout: measuring
+    // here, mid commit, would force an extra layout of the whole canvas
+    const observer = new ResizeObserver(place);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [canvas, shown, arrangement]);
+  useEffect(() => {
+    const root = document.documentElement.style;
+    return () => ['--bp-toast-bottom', '--bp-toast-left', '--bp-toast-right'].forEach((name) => root.removeProperty(name));
+  }, []);
+}
+
 /** The docked inspector's column when nothing is selected. */
 function DockedEmpty() {
   const m = useMessages(layoutMessages);
@@ -169,6 +230,8 @@ export default function EditorPage() {
   const [ready, setReady] = useState(false);
   const splitRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  /** the canvas itself, without the docked inspector's column */
+  const laneRef = useRef<HTMLDivElement>(null);
   const panels = useLayout((s) => s.panels);
   const compact = useLayout((s) => s.compact);
   const drawer = useLayout((s) => s.drawer);
@@ -201,16 +264,12 @@ export default function EditorPage() {
   useCanvasDragTracking(canvasRef, ready);
   useRevealOpensCode(() => useLayout.getState().show('code'));
   useKeepSelectionVisible();
+  useToastLane(laneRef, ready && panels.canvas, [floats.tool, floats.inspector, floats.folded, drawer, compact, docked, codeSide, paletteSide].join());
 
-  // the configurable layout (docking, hidden canvas) applies while this page is up;
-  // toasts rise above the canvas toolbar instead of covering it
+  // the configurable layout (docking, hidden canvas) applies while this page is up
   useEffect(() => {
     useLayout.getState().setEditorLayout(true);
-    document.documentElement.style.setProperty('--bp-toast-bottom', '4.5rem');
-    return () => {
-      useLayout.getState().setEditorLayout(false);
-      document.documentElement.style.removeProperty('--bp-toast-bottom');
-    };
+    return () => useLayout.getState().setEditorLayout(false);
   }, []);
 
   // compact layout below 1100px: canvas full-width, palette/code as drawers
@@ -372,7 +431,7 @@ export default function EditorPage() {
       )}
       style={canvasShown && codeColumn ? { width: `${100 - split}%` } : undefined}
     >
-      <div className="relative min-w-0 flex-1">
+      <div ref={laneRef} className="relative min-w-0 flex-1">
         <CanvasPane />
         {wide && canvasShown ? <CanvasLayoutControls /> : null}
         {floats.inspector && floats.folded !== 'inspector' ? (
@@ -449,6 +508,7 @@ export default function EditorPage() {
       {canvasShown ? null : securityEl}
       {compact && drawer === 'palette' ? (
         <div
+          data-drawer={paletteSide}
           className={cn(
             'absolute bottom-0 top-0 z-30 flex shadow-lg',
             paletteSide === 'left' ? 'bp-drawer-left left-0' : 'bp-drawer-right right-0',
@@ -461,6 +521,7 @@ export default function EditorPage() {
         <div
           id={CODE_TARGET}
           tabIndex={-1}
+          data-drawer={codeSide}
           className={cn(
             'absolute bottom-0 top-0 z-30 w-[min(560px,94%)] shadow-lg outline-none',
             codeSide === 'right' ? 'bp-drawer-right right-0 border-l' : 'bp-drawer-left left-0 border-r',

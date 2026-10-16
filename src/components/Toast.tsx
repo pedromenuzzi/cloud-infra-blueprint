@@ -96,8 +96,9 @@ export function ToastViewport() {
     <div
       aria-live="polite"
       data-bp-live=""
-      // a page with controls along its bottom edge lifts toasts above them (--bp-toast-bottom)
-      className="pointer-events-none fixed inset-x-3 bottom-[var(--bp-toast-bottom,1rem)] z-[80] flex flex-col items-center gap-2"
+      // a page with controls along its bottom edge lifts toasts above them (--bp-toast-bottom);
+      // one with panels along its sides narrows the lane they center in (--bp-toast-left / -right)
+      className="pointer-events-none fixed bottom-[var(--bp-toast-bottom,1rem)] left-[var(--bp-toast-left,0.75rem)] right-[var(--bp-toast-right,0.75rem)] z-[80] flex flex-col items-center gap-2"
     >
       {toasts.map((t) => {
         const Icon = ICONS[t.kind];
