@@ -28,7 +28,7 @@ export function SolutionDialog({ lesson, onClose }: { lesson: Lesson; onClose():
   const use = () => {
     useEditor.getState().replaceFiles({ ...lesson.solution });
     onClose();
-    showToast(m.solutionApplied, 'success', { action: { label: m.undo, onClick: () => useEditor.getState().undo() } });
+    showToast(m.solutionApplied, 'success', { action: { label: m.undo, onClick: () => useEditor.getState().undo() }, page: true });
   };
 
   return (
