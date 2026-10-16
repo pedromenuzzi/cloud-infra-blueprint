@@ -129,7 +129,7 @@ test.describe('one Import menu on the dashboard', () => {
     await trigger.focus();
     await page.keyboard.press('Enter');
     const menu = page.getByRole('menu', { name: 'Import' });
-    await expect(menu.getByRole('menuitem')).toHaveText([/^Terraform files…/, /^From GitHub…/, /^Open folder…/]);
+    await expect(menu.getByRole('menuitem')).toHaveText([/^Terraform files…/, /^From GitHub…/, /^From a Terraform state…/, /^Open folder…/]);
     const files = menu.getByRole('menuitem', { name: 'Terraform files…' });
     await expect(files).toBeFocused();
     await expect(files).toHaveAccessibleDescription('.tf files or a .zip, copied into the browser');
