@@ -50,6 +50,7 @@ import {
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn, slugify, timeAgo } from '@/lib/utils';
 import { shortcut } from '@/lib/keys';
+import { warmOn } from '@/lib/routeChunks';
 import { ProviderChip, ProviderDot, PROVIDER_LABELS } from '@/resources/icons';
 import { getTemplate, scratchProject } from '@/templates';
 import { templateDescription, templateName } from '@/templates/i18n';
@@ -160,13 +161,6 @@ const ProjectCard = memo(function ProjectCard({
             files={project.files}
             className="h-36 w-full text-foreground transition-transform duration-300 group-hover:scale-[1.03]"
           />
-          <div className="absolute left-3 top-3 flex gap-1">
-            {project.providers
-              .filter((p) => p !== 'other')
-              .map((p) => (
-                <ProviderChip key={p} provider={p} className="bg-surface-1/90" />
-              ))}
-          </div>
           {folder ? (
             <p
               title={`${m.syncedFolder} “${folder}”`}
@@ -179,12 +173,14 @@ const ProjectCard = memo(function ProjectCard({
           ) : null}
         </div>
         <div className="px-4 pb-4 pt-3.5">
+          {/* the clouds beside the name, as on the landing's template cards (over the diagram they hid its corner) */}
+          <div className="flex items-center gap-2">
           {renaming ? (
             <Input
               autoFocus
               aria-label={m.renameLabel}
               defaultValue={project.name}
-              className="relative z-10 -mx-1 h-7 px-1 text-[14.5px] font-semibold"
+              className="relative z-10 -mx-1 h-7 min-w-0 flex-1 px-1 text-[14.5px] font-semibold"
               onFocus={(e) => e.currentTarget.select()}
               onBlur={(e) => commitRename(e.currentTarget.value)}
               onKeyDown={(e) => {
@@ -196,10 +192,16 @@ const ProjectCard = memo(function ProjectCard({
               }}
             />
           ) : (
-            <h3 id={titleId} className="truncate text-[14.5px] font-semibold tracking-[-0.005em]">
+            <h3 id={titleId} className="min-w-0 flex-1 truncate text-[14.5px] font-semibold tracking-[-0.005em]">
               {project.name}
             </h3>
           )}
+            {project.providers
+              .filter((p) => p !== 'other')
+              .map((p) => (
+                <ProviderChip key={p} provider={p} className="shrink-0" />
+              ))}
+          </div>
           <p className="mt-0.5 truncate text-[12.5px] text-muted">
             {displayDescription(project, locale) ?? m.defaultDescription}
           </p>
@@ -300,15 +302,16 @@ function ContinueTrail() {
   const progress = useLearn();
   const learn = useLearnCatalog(progress.last !== null);
   const lesson = progress.last && learn ? learn.continueLesson(progress) : undefined;
+  // the lessons are on their way: hold the card's place so the page doesn't jump when it fills in
+  if (progress.last !== null && !learn) {
+    return <div aria-hidden="true" className="mt-6 h-[79px] rounded-[12px] border bg-surface-1/50 sm:h-[60px]" />;
+  }
   if (!learn || !lesson) return null;
   const { ALL_LESSONS } = learn;
   const done = ALL_LESSONS.filter((l) => progress.lessons[l.slug]?.status === 'done').length;
   const title = textIn(lesson.title, locale);
   return (
-    <section
-      aria-label={m.continueTrail}
-      className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[12px] border bg-surface-1 px-3.5 py-2.5 shadow-xs"
-    >
+    <section aria-label={m.continueTrail} className="bp-fade-in mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[12px] border bg-surface-1 px-3.5 py-2.5 shadow-xs sm:min-h-[60px]">
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-primary-soft text-primary" aria-hidden="true">
         <GraduationCap className="h-4 w-4" />
       </span>
@@ -319,7 +322,12 @@ function ContinueTrail() {
           <span className="text-faint"> · {m.trailLessons(done, ALL_LESSONS.length)}</span>
         </p>
       </div>
-      <Link to={`/learn/${lesson.slug}`} aria-label={m.continueLesson(lesson.code, title)} className={buttonClass('secondary', 'sm', 'shrink-0')}>
+      <Link
+        to={`/learn/${lesson.slug}`}
+        aria-label={m.continueLesson(lesson.code, title)}
+        className={buttonClass('secondary', 'sm', 'shrink-0')}
+        {...warmOn('lesson')}
+      >
         {m.continue} <ArrowRight className="h-3.5 w-3.5" />
       </Link>
     </section>
@@ -516,7 +524,8 @@ export default function DashboardPage() {
                   onClick={() => startTemplate(t.slug)}
                   className="group flex flex-col overflow-hidden rounded-[12px] border bg-surface-1 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-md"
                 >
-                  <div className="bp-dots w-full border-b bg-canvas px-3 py-2">
+                  {/* the canvas takes the row's spare height (the blank-canvas card sets it), not the caption */}
+                  <div className="bp-dots flex w-full flex-1 items-center border-b bg-canvas px-3 py-2">
                     <ProjectThumbnail files={files} className="h-16 w-full text-foreground" />
                   </div>
                   <div className="w-full px-3 py-2">
@@ -532,7 +541,7 @@ export default function DashboardPage() {
                   <div className="text-[12.5px] font-semibold">{m.blankCanvas}</div>
                   <div className="text-[11px] text-faint">{m.fromScratch}</div>
                 </div>
-                <div className="mt-3 flex flex-col gap-1.5">
+                <div className="mt-3 grid gap-1.5 sm:grid-cols-3 lg:grid-cols-1">
                   {(['aws', 'azure', 'gcp'] as const).map((p) => (
                     <button
                       key={p}

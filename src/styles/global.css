@@ -213,6 +213,11 @@
   #root {
     height: 100%;
   }
+  /* one focus ring for every control (the browser's own differs per element); components that draw their own override it */
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+  }
   ::selection {
     background: color-mix(in srgb, var(--primary) 25%, transparent);
   }
@@ -611,6 +616,8 @@
   opacity: 0.7;
 }
 .bp-hero-glow {
+  /* rasterized once, in a layer of its own (a 70 px blur is costly to repaint) */
+  will-change: transform;
   position: absolute;
   inset: 8% 6% -4% 6%;
   border-radius: 40px;
@@ -654,6 +661,12 @@
   mask-image: linear-gradient(180deg, #000, transparent 85%);
 }
 
+/* a long page's sections below the fold: laid out and painted once scrolled near */
+.bp-offscreen {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 800px;
+}
+
 /* dotted blueprint backdrop for thumbnails and hero art */
 .bp-dots {
   background-image: radial-gradient(var(--canvas-grid) 1.2px, transparent 1.2px);
@@ -691,8 +704,13 @@
 .bp-fade-in {
   animation: bp-fade-in 160ms ease-out both;
 }
-.bp-modal-in {
+.bp-modal-in,
+.bp-toast-in {
   animation: bp-modal-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+/* a loading indicator that stays out of sight for waits too short to notice */
+.bp-late {
+  animation: bp-fade-in 200ms ease-out 400ms both;
 }
 
 /* command palette dialog (cmdk + Radix) */
@@ -757,7 +775,8 @@
   z-index: 60;
   animation: bp-pop-in 120ms ease-out both;
 }
-.dark .bp-tip[data-tip]:hover::after {
+.dark .bp-tip[data-tip]:hover::after,
+.dark .bp-tip[data-tip]:focus-visible::after {
   background: #f1f5f9;
   color: #0f172a;
 }
