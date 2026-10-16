@@ -132,8 +132,11 @@ const CHOICES: Array<{ id: StartChoice; icon: typeof Sprout }> = [
   { id: 'aws', icon: Cloud },
 ];
 
-/** a pair of radios: big cards until answered, then a compact switch (never blocking the map) */
-function StartQuestion({ start }: { start: StartChoice | null }) {
+/**
+ * A pair of radios: on a first visit, big cards that are the page's one first step (with a quiet way
+ * straight into the first lesson, the map right below never blocked), then a compact switch.
+ */
+function StartQuestion({ start, first, dive }: { start: StartChoice | null; first: boolean; dive?: { slug: string; label: string } }) {
   const m = useMessages(learnMessages);
   const name = useId();
   const headingId = useId();
@@ -148,39 +151,53 @@ function StartQuestion({ start }: { start: StartChoice | null }) {
     compact.current?.querySelector<HTMLInputElement>('input:checked')?.focus();
   }, [start]);
 
-  if (start === null) {
+  if (first) {
     return (
-      <div role="radiogroup" aria-labelledby={headingId} className="mt-7 rounded-[18px] border border-primary/30 bg-primary-soft/70 p-4 sm:p-5">
-        <h2 id={headingId} className="text-[15px] font-semibold">
-          {m.whereStart}
-        </h2>
-        <p className="mt-0.5 text-[12.5px] text-muted">{m.whereStartHint}</p>
-        <div className="mt-3.5 grid gap-2.5 sm:grid-cols-2">
-          {CHOICES.map(({ id, icon: Icon }) => (
-            <label
-              key={id}
-              className="group flex cursor-pointer gap-3 rounded-[14px] border bg-surface-1 p-3.5 shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary"
-            >
-              <input
-                type="radio"
-                name={name}
-                value={id}
-                className="sr-only"
-                onChange={() => {
-                  refocus.current = true;
-                  setStart(id);
-                }}
-              />
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-primary-soft text-primary">
-                <Icon className="h-4.5 w-4.5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-[13.5px] font-semibold leading-snug">{text[id][0]}</span>
-                <span className="mt-0.5 block text-[12px] leading-snug text-muted">{text[id][1]}</span>
-              </span>
-            </label>
-          ))}
+      <div className="mt-6 rounded-[18px] border border-primary/30 bg-primary-soft/70 p-4 shadow-sm sm:p-5" data-testid="start-question">
+        <div role="radiogroup" aria-labelledby={headingId}>
+          <h2 id={headingId} className="text-[16px] font-semibold">
+            {m.whereStart}
+          </h2>
+          <p className="mt-0.5 text-[12.5px] text-muted">{m.whereStartHint}</p>
+          <div className="mt-3.5 grid gap-2.5 sm:grid-cols-2">
+            {CHOICES.map(({ id, icon: Icon }) => (
+              <label
+                key={id}
+                className="group flex cursor-pointer gap-3 rounded-[14px] border bg-surface-1 p-3.5 shadow-xs transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-primary"
+              >
+                <input
+                  type="radio"
+                  name={name}
+                  value={id}
+                  className="sr-only"
+                  onChange={() => {
+                    refocus.current = true;
+                    setStart(id);
+                  }}
+                />
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-primary-soft text-primary">
+                  <Icon className="h-4.5 w-4.5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13.5px] font-semibold leading-snug">{text[id][0]}</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug text-muted">{text[id][1]}</span>
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
+        {/* not a gate: anyone can go straight in (or pick any lesson on the map below) */}
+        {dive ? (
+          <p className="mt-3.5 text-[12.5px] text-muted">
+            {m.dive}{' '}
+            <Link
+              to={`/learn/${dive.slug}`}
+              className="font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              {dive.label}
+            </Link>
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -741,6 +758,9 @@ export default function LearnPage() {
   useDocumentTitle(m.title);
   const progress = useLearn();
   const next = continueLesson(progress);
+  // never been anywhere and nothing chosen: the start question leads the page
+  const first = progress.start === null && !progress.last;
+  const [askedFirst] = useState(first);
   // back from a lesson: what was finished there animates once, and the map opens on it
   const [since] = useState(() => sinceMapSeen(useLearn.getState()));
   useEffect(() => noteMapSeen(progress), [progress]);
@@ -765,10 +785,11 @@ export default function LearnPage() {
               <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-primary">{m.eyebrow}</p>
               <h1 className="mt-2 text-balance text-[28px] font-bold leading-[1.08] tracking-[-0.03em] sm:text-[38px]">{m.heading}</h1>
               <p className="mt-3 max-w-xl text-pretty text-[14.5px] leading-relaxed text-muted">{m.intro}</p>
-              {next ? (
+              {/* a first visit has one first step, the question; answering it brings "Start here" in */}
+              {next && !first ? (
                 <Link
                   to={`/learn/${next.slug}`}
-                  className={buttonClass('primary', 'lg', 'mt-6 h-auto max-w-full justify-start gap-3 py-2.5 pl-2.5 pr-5 text-left shadow-md')}
+                  className={buttonClass('primary', 'lg', cn('mt-6 h-auto max-w-full justify-start gap-3 py-2.5 pl-2.5 pr-5 text-left shadow-md', askedFirst && 'bp-rise'))}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20" aria-hidden="true">
                     <Play className="h-4 w-4 translate-x-px fill-current" />
@@ -780,7 +801,11 @@ export default function LearnPage() {
                   <ArrowRight className="ml-1 h-4 w-4 shrink-0" aria-hidden="true" />
                 </Link>
               ) : null}
-              <StartQuestion start={progress.start} />
+              <StartQuestion
+                start={progress.start}
+                first={first}
+                dive={next ? { slug: next.slug, label: m.lessonCode(next.code, t(next.title)) } : undefined}
+              />
             </div>
             <PlayerCard progress={progress} since={since} />
           </div>

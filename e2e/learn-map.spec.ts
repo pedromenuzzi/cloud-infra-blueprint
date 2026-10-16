@@ -46,10 +46,11 @@ test('the map draws every level, its lessons and badges, and asks where to start
   await page.goto('/learn');
   await expect(page).toHaveTitle('Learning map · Cloud Blueprint');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Learn Terraform, one station at a time');
-  // first visit: the question is up front, and the map is right there with it
+  // first visit: the question is the one first step, with a way straight in, and the map is right there with it
   await expect(page.getByRole('radiogroup', { name: 'Where do you start?' }).getByRole('radio')).toHaveCount(2);
   const first = await firstStation(page);
-  await expect(page.getByRole('link', { name: /^Start here/ })).toHaveAttribute('href', at(`/learn/${first.slug}`));
+  await expect(page.getByRole('link', { name: /^Start here/ })).toHaveCount(0);
+  await expect(page.getByTestId('start-question').getByRole('link')).toHaveAttribute('href', at(`/learn/${first.slug}`));
 
   await expect(page.getByRole('heading', { name: 'Terraform on AWS', level: 2 })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Azure (preview)', level: 2 })).toBeVisible();
@@ -84,6 +85,14 @@ test('the start choice moves "Start here" and makes AWS basics optional; nothing
   await page.getByText('I know AWS, new to Terraform').click();
   await expect(page.getByRole('radio', { name: /I know AWS/ })).toBeChecked();
   await expect(page.getByRole('link', { name: /\. Start here\./ })).toHaveCount(1);
+  // answered: the question folds into a switch and "Start here" comes in, pointing where the answer says
+  await expect(page.getByTestId('start-question')).toHaveCount(0);
+  const cta = page.getByRole('link', { name: /^Start here/ });
+  await expect(cta).toHaveAttribute('href', (await page.getByRole('link', { name: /\. Start here\./ }).getAttribute('href'))!);
+  await page.reload();
+  // a returning visit keeps the compact layout
+  await expect(cta).toBeVisible();
+  await expect(page.getByTestId('start-question')).toHaveCount(0);
   // "Start here" is on the first lesson that isn't AWS basics (marked optional now)
   let all = await names();
   expect(all.find((n) => !n.includes('. Optional.'))).toContain('. Start here.');

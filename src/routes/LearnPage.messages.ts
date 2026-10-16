@@ -22,6 +22,7 @@ export const learnMessages = defineMessages(
     startNewHint: 'Start from zero: we explain the AWS parts along the way.',
     startAws: 'I know AWS, new to Terraform',
     startAwsHint: 'AWS basics become optional and you start at the first Terraform lesson.',
+    dive: 'Rather dive right in? Start with',
 
     // player card
     yourProgress: 'Your progress',
@@ -91,6 +92,7 @@ export const learnMessages = defineMessages(
     startNewHint: 'Comece do zero: explicamos as partes da AWS pelo caminho.',
     startAws: 'Conheço AWS, sou novo em Terraform',
     startAwsHint: 'O básico de AWS fica opcional e você começa na primeira lição de Terraform.',
+    dive: 'Prefere ir direto? Comece por',
 
     yourProgress: 'Seu progresso',
     rank: 'Patente',
