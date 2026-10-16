@@ -93,3 +93,49 @@ test.describe('reduced motion', () => {
     expect(await page.evaluate(() => (window as unknown as { exits: number }).exits)).toBe(0);
   });
 });
+
+test('a lesson toast sits on its canvas above the terminal, and leaving the lesson takes it away', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('cb-tips-dismissed', '1');
+    if (localStorage.getItem('cb-learn-v1') === null) localStorage.setItem('cb-learn-v1', JSON.stringify({ start: 'aws' }));
+  });
+  await page.goto('/learn/first-resource');
+  await page.getByRole('button', { name: 'Show solution' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Show solution' }).click();
+  await page.getByRole('dialog', { name: /Solution/ }).getByRole('button', { name: 'Use the solution' }).click();
+  const solved = page.locator('[data-bp-live] > div').filter({ hasText: 'The solution replaced your code.' });
+  await expect(solved).toBeVisible();
+  const box = (await solved.boundingBox())!;
+  const canvas = (await page.getByTestId('canvas').boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(canvas.x);
+  expect(box.x + box.width).toBeLessThanOrEqual(canvas.x + canvas.width);
+  expect(box.y + box.height).toBeLessThan(canvas.y + canvas.height);
+
+  await page.getByRole('link', { name: 'Back to the learning map' }).click();
+  await expect(page).toHaveURL(/\/learn$/);
+  await expect(solved).toHaveCount(0);
+});
+
+test('the app never scrolls as a page; the landing does', async ({ page }) => {
+  const scrolls = () =>
+    page.evaluate(() => {
+      window.scrollTo(0, 10_000);
+      const y = window.scrollY;
+      window.scrollTo(0, 0);
+      return y;
+    });
+  await openSeedProject(page, { monaco: false });
+  // something placed past the bottom (as hidden screen reader text once was) can't move the shell
+  await page.evaluate(() => {
+    const stray = document.createElement('div');
+    stray.style.cssText = 'position:absolute;top:3000px;height:10px;width:10px';
+    document.getElementById('root')!.firstElementChild!.appendChild(stray);
+  });
+  expect(await scrolls()).toBe(0);
+  await page.goto('/dashboard');
+  await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible();
+  expect(await scrolls()).toBe(0);
+  await page.goto('/');
+  await expect(page.locator('[data-page-scrolls]')).toBeVisible();
+  expect(await scrolls()).toBeGreaterThan(0);
+});

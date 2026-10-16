@@ -213,6 +213,16 @@
   #root {
     height: 100%;
   }
+  /* the app is a fixed shell whose panes scroll: the document itself never does, so nothing laid out
+     past the bottom (hidden screen reader text, once) can move the whole app under the rail. The
+     landing is the one page that scrolls as a document (data-page-scrolls) */
+  html:not(:has([data-page-scrolls])) {
+    overflow: clip;
+  }
+  html:not(:has([data-page-scrolls])) #root {
+    position: relative;
+    overflow: clip;
+  }
   /* one focus ring for every control (the browser's own differs per element); components that draw their own override it */
   :focus-visible {
     outline: 2px solid var(--primary);
