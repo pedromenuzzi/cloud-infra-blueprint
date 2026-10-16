@@ -58,6 +58,14 @@ export function computeAbsoluteRects(ir: IR): Map<string, AbsRect> {
   return rects;
 }
 
+/** the least canvas area a thumbnail shows (canvas units) */
+const MIN_VIEW_W = 900;
+const MIN_VIEW_H = 300;
+
+function spanOf(rects: AbsRect[], at: 'x' | 'y', size: 'w' | 'h'): number {
+  return Math.max(...rects.map((r) => r[at] + r[size])) - Math.min(...rects.map((r) => r[at]));
+}
+
 /**
  * Mini architecture render used on project & template cards and the landing hero.
  * Memoized: a dashboard with hundreds of cards re-renders only what changed.
@@ -83,10 +91,13 @@ export const ProjectThumbnail = memo(function ProjectThumbnail({
       const rects = computeAbsoluteRects(withModuleNodes(ir));
       const all = [...rects.values()];
       if (all.length === 0) return null;
-      const minX = Math.min(...all.map((r) => r.x)) - 24;
-      const minY = Math.min(...all.map((r) => r.y)) - 24;
-      const maxX = Math.max(...all.map((r) => r.x + r.w)) + 24;
-      const maxY = Math.max(...all.map((r) => r.y + r.h)) + 24;
+      // a small diagram keeps a scale near its neighbours' instead of filling the card at giant size
+      const padX = Math.max(24, (MIN_VIEW_W - spanOf(all, 'x', 'w')) / 2);
+      const padY = Math.max(24, (MIN_VIEW_H - spanOf(all, 'y', 'h')) / 2);
+      const minX = Math.min(...all.map((r) => r.x)) - padX;
+      const minY = Math.min(...all.map((r) => r.y)) - padY;
+      const maxX = Math.max(...all.map((r) => r.x + r.w)) + padX;
+      const maxY = Math.max(...all.map((r) => r.y + r.h)) + padY;
       return {
         rects: all.sort((a, b) => a.depth - b.depth || Number(b.isContainer) - Number(a.isContainer)),
         edges,
