@@ -347,7 +347,7 @@ export function Topbar() {
           aria-label={m.search}
           aria-keyshortcuts={ariaShortcut('mod', 'K')}
         >
-          <Search className="h-3.5 w-3.5" />
+          <Search className="h-3.5 w-3.5 shrink-0" />
           {/* whole words only: the full prompt where it fits, a short one, or none (never "Se…") */}
           <span className="min-w-0 flex-1 text-left">
             <span className="hidden @min-[300px]:inline">{m.searchPlaceholder}</span>
