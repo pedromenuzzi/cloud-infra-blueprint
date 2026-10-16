@@ -363,26 +363,64 @@ export function CodePaneControls() {
 
 /* ------------------------------------------------------------- inspector */
 
-/** A minimized floating inspector: a tab on the canvas's right edge that opens it again. */
-export function InspectorTab() {
-  const m = useMessages(layoutMessages);
+/**
+ * A floating panel waiting on the canvas's edge: a minimized inspector, or a
+ * panel whose turn it isn't (too little room for both). Opens it again.
+ */
+export function FloatTab({
+  side,
+  icon: Icon,
+  label,
+  name,
+  title = name,
+  strip,
+  onClick,
+}: {
+  side: Side;
+  icon: LucideIcon;
+  /** shown, vertically */
+  label: string;
+  /** the button's accessible name (contains the label) */
+  name: string;
+  title?: string;
+  strip: string;
+  onClick(): void;
+}) {
   return (
     <button
       type="button"
-      aria-label={m.show.inspector}
-      title={withShortcut(m.show.inspector, 'inspector')}
-      data-strip="inspector"
-      onClick={() => {
-        useLayout.getState().setVisible('inspector', true);
-        focusSoon(SHOWN_FOCUS.inspector);
-      }}
+      aria-label={name}
+      title={title}
+      data-strip={strip}
+      onClick={onClick}
       className={cn(
-        'bp-drawer-right absolute right-0 top-3 z-20 flex flex-col items-center gap-2 rounded-l-[10px] border border-r-0 bg-surface-1/95 px-1.5 py-3 text-muted shadow-md backdrop-blur-md transition-[opacity,background-color,color] hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
+        'absolute z-20 flex flex-col items-center gap-2 border bg-surface-1/95 px-1.5 py-3 text-muted shadow-md backdrop-blur-md transition-[opacity,background-color,color] hover:bg-surface-2 hover:text-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
+        side === 'right' ? 'bp-drawer-right right-0 top-3 rounded-l-[10px] border-r-0' : 'bp-drawer-left left-0 top-14 rounded-r-[10px] border-l-0',
         FLOAT_CHROME,
       )}
     >
-      <SlidersHorizontal className="h-4 w-4 shrink-0" />
-      <span className="text-[11px] font-semibold tracking-wide [writing-mode:vertical-rl]">{m.section.inspector}</span>
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="text-[11px] font-semibold tracking-wide [writing-mode:vertical-rl]">{label}</span>
     </button>
+  );
+}
+
+/** The inspector waiting as a tab on the canvas's right edge (minimized, or the tool panel's turn). */
+export function InspectorTab() {
+  const m = useMessages(layoutMessages);
+  return (
+    <FloatTab
+      side="right"
+      icon={SlidersHorizontal}
+      label={m.section.inspector}
+      name={m.show.inspector}
+      title={withShortcut(m.show.inspector, 'inspector')}
+      strip="inspector"
+      onClick={() => {
+        useLayout.getState().setVisible('inspector', true);
+        useLayout.getState().setFloatFront('inspector');
+        focusSoon(SHOWN_FOCUS.inspector);
+      }}
+    />
   );
 }

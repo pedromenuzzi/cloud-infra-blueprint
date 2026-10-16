@@ -5,6 +5,7 @@
 import { create } from 'zustand';
 import { showToast } from '@/components/Toast';
 import { shortcut } from '@/lib/keys';
+import { useLayout } from '@/features/editor/layoutStore';
 import { useEditor } from '@/features/editor/store';
 import { useModuleView } from '@/features/modules/moduleViewStore';
 import { analysisIr } from '@/features/modules/viewAnalysis';
@@ -72,6 +73,8 @@ export const useSecurityUi = create<SecurityUiState>((set, get) => ({
     get().setLens(!get().lens);
   },
   setPanel(panelOpen) {
+    // waiting as a tab beside the inspector: its turn now
+    if (panelOpen) useLayout.getState().setFloatFront('tool');
     set({ panelOpen });
   },
   openRules(editing, rule) {

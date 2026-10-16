@@ -6,6 +6,7 @@ import { defineMessages } from '@/i18n/messages';
 import type { PresetId, SectionId, Side } from './layoutPrefs';
 
 type Movable = 'palette' | 'code';
+type ToolPanel = 'security' | 'deploy';
 
 export const layoutMessages = defineMessages(
   {
@@ -61,6 +62,9 @@ export const layoutMessages = defineMessages(
     moveTo: (panel: Movable, side: Side) =>
       `Move ${panel === 'palette' ? 'resource palette' : 'code editor'} to the ${side}, or drag it`,
     dropHere: (panel: Movable, side: Side) => `${panel === 'palette' ? 'Resources' : 'Code'} on the ${side}`,
+    /** a tool panel waiting as a tab while the inspector is in front */
+    toolTab: { security: 'Security', deploy: 'Plan and state' } satisfies Record<ToolPanel, string>,
+    showTool: { security: 'Show the security panel', deploy: 'Show the plan and state panel' } satisfies Record<ToolPanel, string>,
     current: 'Current place',
     focusCanvas: 'Canvas focus: hide resources and code',
     exitFocus: 'Show resources and code again',
@@ -133,6 +137,8 @@ export const layoutMessages = defineMessages(
       `Mover ${panel === 'palette' ? 'a paleta de recursos' : 'o editor de código'} para a ${side === 'left' ? 'esquerda' : 'direita'}, ou arraste`,
     dropHere: (panel: Movable, side: Side) =>
       `${panel === 'palette' ? 'Recursos' : 'Código'} à ${side === 'left' ? 'esquerda' : 'direita'}`,
+    toolTab: { security: 'Segurança', deploy: 'Plano e estado' },
+    showTool: { security: 'Mostrar o painel de segurança', deploy: 'Mostrar o painel de plano e estado' },
     current: 'Lugar atual',
     focusCanvas: 'Foco no canvas: ocultar recursos e código',
     exitFocus: 'Mostrar recursos e código de novo',
