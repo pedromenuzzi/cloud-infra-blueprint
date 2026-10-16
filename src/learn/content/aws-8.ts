@@ -1119,8 +1119,8 @@ export const lessons: Lesson[] = [
         pt: 'Depois aplique exatamente o que você revisou. `terraform plan -out=tfplan` salva o plano num arquivo, e `terraform apply tfplan` executa esse plano e nada além dele, sem perguntar de novo. Se algo mudou no meio do caminho, como o apply de outra pessoa, o Terraform recusa o plano desatualizado em vez de improvisar.',
       },
       {
-        en: 'In your real projects, the same plan can be read on a canvas. `terraform show -json tfplan > plan.json` writes it as JSON; open that file in the editor, on the Build side, and every creation, update and replacement is drawn over your architecture.',
-        pt: 'Nos seus projetos reais, o mesmo plano pode ser lido num canvas. `terraform show -json tfplan > plan.json` escreve o plano em JSON; abra esse arquivo no editor, no lado Construir, e cada criação, alteração e substituição aparece desenhada sobre a sua arquitetura.',
+        en: 'In your real projects, the same plan can be read on a canvas. `terraform show -json tfplan > plan.json` writes it as JSON; open your project in the editor, on the Build side, and drop that file on the canvas (or use the *Plan* button): every creation, update and replacement is drawn over your architecture, with the risky ones called out.',
+        pt: 'Nos seus projetos reais, o mesmo plano pode ser lido num canvas. `terraform show -json tfplan > plan.json` escreve o plano em JSON; abra o seu projeto no editor, no lado Construir, e solte esse arquivo no canvas (ou use o botão *Plano*): cada criação, alteração e substituição aparece desenhada sobre a sua arquitetura, com as arriscadas em destaque.',
       },
     ],
     asides: [
