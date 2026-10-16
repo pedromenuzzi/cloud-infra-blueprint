@@ -13,6 +13,7 @@ import {
   useUpdateNodeInternals,
   type Connection,
   type Edge,
+  type EdgeChange,
   type Node,
   type NodeChange,
   type OnSelectionChangeParams,
@@ -363,13 +364,47 @@ function keepUnchanged<T extends { id: string }>(previous: T[], next: T[]): T[] 
   const before = new Map(previous.map((item) => [item.id, item as Record<string, unknown>] as const));
   return next.map((item) => {
     const old = before.get(item.id);
-    if (!old) return item;
+    // one on its way out that comes back (an undo right after a delete) comes back whole
+    if (!old || old.className === EXIT_CLASS) return item;
     for (const [key, value] of Object.entries(item)) {
       if (value !== old[key] && JSON.stringify(value) !== JSON.stringify(old[key])) return item;
     }
     return old as T;
   });
 }
+
+/** how long a node or edge the model dropped takes to leave the canvas, ms (.bp-exit in global.css) */
+const EXIT_MS = 150;
+const EXIT_CLASS = 'bp-exit';
+
+/**
+ * `next`, plus what `previous` showed and `next` dropped, marked to leave: a
+ * deleted resource and its edges fade out instead of vanishing (the model and
+ * the code have already moved on). On its way out nothing can pick, focus or
+ * reach it; the timer in CanvasInner takes it away.
+ */
+function withLeaving<T extends FlowNode | AnyFlowEdge>(previous: T[], next: T[]): T[] {
+  const kept = new Set(next.map((item) => item.id));
+  const gone = previous.filter((item) => !kept.has(item.id));
+  if (gone.length === 0) return next;
+  const leaving = gone.map((item) =>
+    item.className === EXIT_CLASS
+      ? item
+      : {
+          ...item,
+          className: EXIT_CLASS,
+          selected: false,
+          selectable: false,
+          focusable: false,
+          deletable: false,
+          domAttributes: { ...item.domAttributes, 'aria-hidden': true },
+        },
+  );
+  return [...next, ...leaving];
+}
+
+const notLeaving = <T extends { className?: string }>(list: T[]): T[] =>
+  list.some((item) => item.className === EXIT_CLASS) ? list.filter((item) => item.className !== EXIT_CLASS) : list;
 
 /** Selection flags from the store's selection, touching only the nodes that change. */
 function withSelection(list: FlowNode[], selectedIds: string[]): FlowNode[] {
@@ -440,12 +475,31 @@ function CanvasInner({ templates }: { templates: boolean }) {
 
   // the labels are words too: a language switch rebuilds them (positions, selection and history stay)
   const locale = useLocale((s) => s.locale);
+  const builtFor = useRef<string | null>(null);
+  const exitTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     const built = buildFlow({ ir, edges: irEdges, warnings }, lensOn ? getAudit(ir, locale) : null, locale);
-    const { selection: primary, selectedIds: picked } = useEditor.getState();
-    setNodes((previous) => withSelection(keepUnchanged(previous, built.nodes), picked));
-    setEdges((previous) => keepUnchanged(previous, withActiveEdges(built.edges, primary)));
+    const { selection: primary, selectedIds: picked, projectId } = useEditor.getState();
+    // what the model dropped leaves with a short exit; not another project's nodes, nor under reduced motion
+    const exits = projectId === builtFor.current && motionMs(EXIT_MS) > 0;
+    builtFor.current = projectId;
+    setNodes((previous) => {
+      const next = keepUnchanged(previous, built.nodes);
+      return withSelection(exits ? withLeaving(previous, next) : next, picked);
+    });
+    setEdges((previous) => {
+      const next = keepUnchanged(previous, withActiveEdges(built.edges, primary));
+      return exits ? withLeaving(previous, next) : next;
+    });
+    if (!exits) return;
+    // one sweep after the last change (their fade holds them invisible till then)
+    clearTimeout(exitTimer.current);
+    exitTimer.current = setTimeout(() => {
+      setNodes(notLeaving);
+      setEdges(notLeaving);
+    }, EXIT_MS);
   }, [ir, irEdges, warnings, lensOn, locale, setNodes, setEdges]);
+  useEffect(() => () => clearTimeout(exitTimer.current), []);
 
   useEffect(() => {
     setNodes((previous) => withSelection(previous, selectedIds));
@@ -477,7 +531,8 @@ function CanvasInner({ templates }: { templates: boolean }) {
   const keyboardTimer = useRef<ReturnType<typeof setTimeout>>();
   const handleNodesChange = useCallback(
     (changes: NodeChange<FlowNode>[]) => {
-      onNodesChange(changes);
+      // a delete goes through the model (onDelete): the rebuild takes the node away, with its exit
+      onNodesChange(changes.filter((c) => c.type !== 'remove'));
       if (Date.now() - lastArrowKey.current > 200) return;
       for (const c of changes) {
         if (c.type === 'position' && !c.dragging && c.position) keyboardMoved.current.add(c.id);
@@ -508,6 +563,10 @@ function CanvasInner({ templates }: { templates: boolean }) {
     [applyCanvasOps, onNodesChange, rf],
   );
   useEffect(() => () => clearTimeout(keyboardTimer.current), []);
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange<AnyFlowEdge>[]) => onEdgesChange(changes.filter((c) => c.type !== 'remove')),
+    [onEdgesChange],
+  );
 
   // another project opened from inside the editor (⌘K): show all of it
   const projectId = useEditor((s) => s.projectId);
@@ -1089,7 +1148,7 @@ function CanvasInner({ templates }: { templates: boolean }) {
         snapToGrid
         snapGrid={[8, 8]}
         onNodesChange={handleNodesChange}
-        onEdgesChange={onEdgesChange}
+        onEdgesChange={handleEdgesChange}
         onSelectionChange={onSelectionChange}
         onSelectionStart={() => {
           boxSelecting.current = true;

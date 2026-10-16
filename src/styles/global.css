@@ -581,6 +581,27 @@
 }
 /* ------------------------------------------------------------------------- */
 
+/* a node or edge the model dropped, on its way out (EXIT_MS in CanvasPane.tsx): the node's
+   wrapper fades while its content shrinks (the wrapper's transform is its position) */
+@keyframes bp-exit-fade {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes bp-exit-shrink {
+  to {
+    transform: scale(0.92);
+  }
+}
+.react-flow .react-flow__node.bp-exit,
+.react-flow .react-flow__edge.bp-exit {
+  pointer-events: none;
+  animation: bp-exit-fade 150ms ease-in forwards;
+}
+.react-flow .react-flow__node.bp-exit > * {
+  animation: bp-exit-shrink 150ms ease-in forwards;
+}
+
 /* smooth re-layout after "Tidy up" */
 .bp-layout-anim .react-flow__node {
   transition:
