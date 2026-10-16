@@ -177,7 +177,7 @@ test('the inspector, the canvas and ⌘K in Portuguese', async ({ page }) => {
   await expect(page.getByText('Novo projeto a partir de template')).toBeVisible();
   await expect(page.getByRole('option', { name: /App web na AWS/ })).toBeVisible();
   await page.getByRole('option', { name: /^Adicionar recurso…/ }).click();
-  await expect(page.getByPlaceholder('Buscar entre mais de 80 recursos de AWS, Azure e GCP…')).toBeVisible();
+  await expect(page.getByPlaceholder('Buscar entre mais de 100 recursos de AWS, Azure e GCP…')).toBeVisible();
   await page.keyboard.type('fila');
   await expect(page.getByRole('option', { name: /Fila SQS/ })).toBeVisible();
 });

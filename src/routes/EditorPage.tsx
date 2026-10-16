@@ -335,12 +335,13 @@ export default function EditorPage() {
       <div
         data-float="tool"
         className={cn(
-          'absolute bottom-[68px] left-3 top-3 z-20 flex transition-[opacity,transform,visibility] duration-200 ease-out motion-reduce:transition-none',
+          'absolute bottom-[68px] left-3 top-3 z-20 flex transition-[opacity,transform,visibility] duration-200 ease-out',
           FLOAT_CHROME,
           // waiting as a tab: slid out of the way, still mounted (it keeps its place and what's open)
           toolFolded && 'invisible -translate-x-8 opacity-0',
         )}
-        style={{ width: `min(${TOOL_PANEL_WIDTH}px, calc(100% - 24px))` }}
+        // a phone: room for the inspector's tab on the right edge when it waits there
+        style={{ width: `min(${TOOL_PANEL_WIDTH}px, calc(100% - ${floats.folded === 'inspector' ? 52 : 24}px))` }}
       >
         {securityPanel ? <SecurityPanel /> : <DeployPanel />}
       </div>
