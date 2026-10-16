@@ -25,6 +25,10 @@ export const RANKS: Rank[] = [
   { xp: 600, title: { en: 'Builder', pt: 'Construtor' } },
   { xp: 1000, title: { en: 'Architect', pt: 'Arquiteto' } },
   { xp: 1600, title: { en: 'Cloud Engineer', pt: 'Engenheiro de nuvem' } },
+  // the curriculum gives over 5000 XP: the climb goes on through the last levels
+  { xp: 2400, title: { en: 'Platform Engineer', pt: 'Engenheiro de plataforma' } },
+  { xp: 3400, title: { en: 'Principal Engineer', pt: 'Engenheiro principal' } },
+  { xp: 4600, title: { en: 'Terraform Master', pt: 'Mestre do Terraform' } },
 ];
 
 /** the rank for an XP total, and how far along the way to the next one (0–1; 1 at the top rank) */

@@ -38,6 +38,7 @@ import { resetLessonCode } from './lessonDraft';
 import { playerMessages } from './player.messages';
 import { rich } from './rich';
 import { SolutionDialog } from './SolutionDialog';
+import '../learn.css';
 
 const MODE_ICON: Record<LessonMode, typeof Workflow> = { canvas: Workflow, mixed: Workflow, code: Code2 };
 
@@ -308,6 +309,13 @@ function GoalItem({ goal, met }: { goal: Goal; met: boolean }) {
   const locale = useLocale((s) => s.locale);
   const [hint, setHint] = useState(false);
   const id = useId();
+  // met just now (not on opening): the check pops and the row glows once
+  const [pop, setPop] = useState(false);
+  const wasMet = useRef(met);
+  useEffect(() => {
+    if (met && !wasMet.current) setPop(true);
+    wasMet.current = met;
+  }, [met]);
   return (
     <li
       data-goal={goal.id}
@@ -315,7 +323,11 @@ function GoalItem({ goal, met }: { goal: Goal; met: boolean }) {
       className={cn(
         'rounded-[12px] border px-3 py-2.5 transition-colors duration-300',
         met ? 'border-success/35 bg-success/[0.07]' : 'bg-surface-1',
+        pop && 'bp-goal-glow',
       )}
+      onAnimationEnd={(e) => {
+        if (e.target === e.currentTarget) setPop(false);
+      }}
     >
       <div className="flex items-start gap-2.5">
         <span
@@ -323,6 +335,7 @@ function GoalItem({ goal, met }: { goal: Goal; met: boolean }) {
           className={cn(
             'mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors duration-300',
             met ? 'border-success bg-success' : 'border-border-strong',
+            pop && 'bp-goal-pop',
           )}
         >
           <Check
@@ -380,18 +393,21 @@ function Finish({ lesson, reveal }: { lesson: Lesson; reveal: boolean }) {
           <Trophy className="h-5 w-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <h2 id="lesson-finish" className="text-[15px] font-semibold">
-            {m.completeTitle}
-          </h2>
+          {/* the XP beside the title, so the line under it has the card's whole width */}
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 id="lesson-finish" className="text-[15px] font-semibold">
+              {m.completeTitle}
+            </h2>
+            <span className="shrink-0 text-[17px] font-bold tabular-nums text-success">{m.earned(xp)}</span>
+          </div>
           <p className="text-[12.5px] text-muted">{m.completeBody}</p>
         </div>
-        <span className="shrink-0 text-[17px] font-bold tabular-nums text-success">{m.earned(xp)}</span>
       </div>
       {progress?.usedSolution ? <p className="mt-2 text-[12px] text-muted">{m.earnedHalf}</p> : null}
       <div className="mt-4 flex flex-col gap-2">
         {next ? (
           <Link to={`/learn/${next.slug}`} className={buttonClass('primary', 'md', 'w-full')}>
-            <span className="truncate">{m.next(textIn(next.title, locale))}</span>
+            <span className="truncate">{m.next(next.code, textIn(next.title, locale))}</span>
             <ArrowRight className="h-4 w-4 shrink-0" />
           </Link>
         ) : (

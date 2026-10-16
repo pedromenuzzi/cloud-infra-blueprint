@@ -1,13 +1,16 @@
 /**
- * Celebrations for the learning side (XP, rank, badge, lesson and level
- * done), driven by `onLearnEvent`. A finished lesson, a badge or a new rank
- * is a small card at the top that never takes focus or a click, so typing in
- * a lesson goes on; the lesson's card carries the XP it gave. A finished
- * level gets a dialog (Esc closes it) that also shows the rank and badges
- * earned with it. A polite live region reads each one out. Confetti is
- * skipped for reduced motion.
+ * Celebrations for the learning side (XP, rank, badge, streak, lesson and
+ * level done), driven by `onLearnEvent`. A finished lesson, a badge, a new
+ * rank or a streak going on is a small card at the top that never takes
+ * focus or a click, so typing in a lesson goes on; what's earned in the
+ * same moment shares one card (the lesson's carries its XP, and a rank or
+ * badge earned with it rides along underneath), and two cards at most are
+ * on screen. A finished level gets a dialog (Esc closes it), a beat after
+ * the lesson card, that also shows the rank and badges earned with it. A
+ * polite live region reads each one out. Confetti is skipped for reduced
+ * motion.
  */
-import { ArrowRight, Check, Trophy, Zap } from 'lucide-react';
+import { ArrowRight, Check, Flame, Trophy, Zap } from 'lucide-react';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMatch, useNavigate } from 'react-router-dom';
@@ -22,20 +25,36 @@ import { prefersReducedMotion } from '@/lib/motion';
 import { celebrationMessages } from './celebration.messages';
 import { BadgeMedal, badgeHue, Confetti, levelHue, RankMedal } from './medals';
 
-/** a card on screen; a lesson's card carries the XP announced right after it */
-type Cheer = Exclude<LearnEvent, { kind: 'level' }> & { key: number; xp?: number };
+/** a streak, rank or badge that rides on another card, earned in the same moment */
+type Extra = Extract<LearnEvent, { kind: 'streak' | 'rank' | 'badge' }>;
+
+/** which of a moment's news leads its card */
+const CARD_ORDER: Array<LearnEvent['kind']> = ['lesson', 'streak', 'rank', 'badge'];
+
+/** a card on screen: what it's for, the XP a lesson gave, and what was earned along with it */
+type Cheer = Exclude<LearnEvent, { kind: 'level' }> & { key: number; xp?: number; extras: Extra[] };
 
 /** a finished level waiting for (or in) its dialog, with what was earned along with it */
 interface LevelCheer {
+  key: number;
   id: string;
   rank?: number;
   badges: string[];
+  /** the beat after the last goal has passed: the dialog shows */
+  ready: boolean;
 }
 
-/** how long each card stays (ms) */
-const STAYS: Record<Cheer['kind'], number> = { xp: 2200, lesson: 4000, rank: 5000, badge: 5000 };
+/** how long each card stays (ms), and a little longer for each thing riding on it */
+const STAYS: Record<Cheer['kind'], number> = { xp: 2200, lesson: 4000, rank: 5000, badge: 5000, streak: 4000 };
+const PER_EXTRA = 900;
+const MAX_STAY = 7000;
+/** cards on screen at once: a new one sends the oldest away */
+const MAX_CARDS = 2;
+/** the last goal turns green and the lesson card shows a moment before the level's dialog takes over */
+const LEVEL_BEAT = 1100;
 
 const badgeById = (id: string) => allBadges(ALL_LEVELS).find((b) => b.id === id);
+const rankTitle = (index: number) => (RANKS[index] ?? RANKS[0]).title;
 
 let seq = 0;
 
@@ -46,6 +65,41 @@ function XpChip({ amount, className }: { amount: number; className?: string }) {
       className={`flex shrink-0 items-center gap-1 rounded-full bg-gradient-to-r from-[#f59e0b] to-[#ea580c] px-2.5 py-0.5 text-[12.5px] font-bold tabular-nums text-white shadow-md ${className ?? ''}`}
     >
       <Zap className="h-3.5 w-3.5" fill="currentColor" /> {m.xp(amount)}
+    </span>
+  );
+}
+
+/** a streak, rank or badge earned along with a card's news: a small chip under it */
+function ExtraChip({ extra, delay }: { extra: Extra; delay: number }) {
+  const m = useMessages(celebrationMessages);
+  const locale = useLocale((s) => s.locale);
+  const badge = extra.kind === 'badge' ? badgeById(extra.id) : undefined;
+  if (extra.kind === 'badge' && !badge) return null;
+  return (
+    <span
+      className="bp-cheer-in flex min-w-0 max-w-full items-center gap-1.5 rounded-full border bg-surface-1 py-0.5 pl-0.5 pr-2.5 text-[11.5px] shadow-xs"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      {extra.kind === 'streak' ? (
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#fbbf24] to-[#ea580c] text-white">
+          <Flame className="h-3 w-3" fill="currentColor" />
+        </span>
+      ) : extra.kind === 'rank' ? (
+        <RankMedal index={extra.index} size={18} />
+      ) : badge ? (
+        <BadgeMedal badge={badge} hue={badgeHue(badge, ALL_LEVELS)} earned size={20} />
+      ) : null}
+      <span className="truncate">
+        <span className="font-semibold">{extra.kind === 'streak' ? m.streak : extra.kind === 'rank' ? m.newRank : m.badgeUnlocked}</span>
+        {': '}
+        {extra.kind === 'streak'
+          ? m.streakDays(extra.days)
+          : extra.kind === 'rank'
+            ? textIn(rankTitle(extra.index), locale)
+            : badge
+              ? textIn(badge.title, locale)
+              : null}
+      </span>
     </span>
   );
 }
@@ -71,8 +125,16 @@ function CheerCard({ cheer, confetti }: { cheer: Cheer; confetti: boolean }) {
     );
   } else if (cheer.kind === 'rank') {
     eyebrow = m.newRank;
-    title = textIn((RANKS[cheer.index] ?? RANKS[0]).title, locale);
+    title = textIn(rankTitle(cheer.index), locale);
     medal = <RankMedal index={cheer.index} size={36} className="bp-medal-pop" />;
+  } else if (cheer.kind === 'streak') {
+    eyebrow = m.streak;
+    title = m.streakDays(cheer.days);
+    medal = (
+      <span className="bp-medal-pop flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#fbbf24] to-[#ea580c] text-white shadow-sm">
+        <Flame className="h-[18px] w-[18px]" fill="currentColor" />
+      </span>
+    );
   } else {
     const badge = badgeById(cheer.id);
     if (!badge) return null;
@@ -81,14 +143,23 @@ function CheerCard({ cheer, confetti }: { cheer: Cheer; confetti: boolean }) {
     medal = <BadgeMedal badge={badge} hue={badgeHue(badge, ALL_LEVELS)} earned size={36} className="bp-medal-pop" />;
   }
   return (
-    <span className="bp-cheer-in relative flex max-w-[min(440px,calc(100vw-24px))] items-center gap-3 rounded-[14px] border bg-surface-1/95 py-2 pl-2.5 pr-3 shadow-lg backdrop-blur">
+    <span className="bp-cheer-in relative flex max-w-[min(440px,calc(100vw-24px))] flex-col gap-1.5 rounded-[14px] border bg-surface-1/95 py-2 pl-2.5 pr-3 shadow-lg backdrop-blur">
       {confetti && cheer.kind === 'lesson' ? <Confetti pieces={24} spread={0.8} /> : null}
-      {medal}
-      <span className="min-w-0 flex-1 pr-1">
-        <span className="block text-[10.5px] font-bold uppercase tracking-[0.1em] text-faint">{eyebrow}</span>
-        <span className="block truncate text-[13.5px] font-semibold">{title}</span>
+      <span className="flex items-center gap-3">
+        {medal}
+        <span className="min-w-0 flex-1 pr-1">
+          <span className="block text-[10.5px] font-bold uppercase tracking-[0.1em] text-faint">{eyebrow}</span>
+          <span className="block truncate text-[13.5px] font-semibold">{title}</span>
+        </span>
+        {cheer.kind === 'lesson' && cheer.xp ? <XpChip amount={cheer.xp} className="bp-medal-pop [animation-delay:180ms]" /> : null}
       </span>
-      {cheer.kind === 'lesson' && cheer.xp ? <XpChip amount={cheer.xp} className="bp-medal-pop [animation-delay:180ms]" /> : null}
+      {cheer.extras.length > 0 ? (
+        <span className="flex flex-wrap gap-1.5 pl-12">
+          {cheer.extras.map((extra, i) => (
+            <ExtraChip key={extra.kind === 'badge' ? extra.id : extra.kind} extra={extra} delay={350 + i * 120} />
+          ))}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -133,7 +204,7 @@ function LevelDialog({ cheer, onClose }: { cheer: LevelCheer; onClose(): void })
                 <RankMedal index={cheer.rank} size={26} />
                 <span className="text-[12px] leading-tight">
                   <span className="block text-[9.5px] font-bold uppercase tracking-[0.1em] text-faint">{m.newRank}</span>
-                  <span className="font-semibold">{textIn((RANKS[cheer.rank] ?? RANKS[0]).title, locale)}</span>
+                  <span className="font-semibold">{textIn(rankTitle(cheer.rank), locale)}</span>
                 </span>
               </li>
             ) : null}
@@ -176,8 +247,6 @@ export default function CelebrationHost() {
   const [said, setSaid] = useState<Array<{ key: number; text: string }>>([]);
   // read inside the event handler, which runs before React re-renders
   const levelsOpen = useRef(0);
-  /** the card of a lesson whose XP event is still to come */
-  const lessonCard = useRef<number | null>(null);
   const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
   useEffect(() => {
@@ -189,9 +258,47 @@ export default function CelebrationHost() {
       timers.current.add(timer);
     };
     const show = (cheer: Cheer) => {
-      setCheers((c) => [...c, cheer]);
-      later(STAYS[cheer.kind], () => setCheers((c) => c.filter((x) => x.key !== cheer.key)));
+      setCheers((c) => [...c, cheer].slice(-MAX_CARDS));
+      const stay = Math.min(MAX_STAY, STAYS[cheer.kind] + PER_EXTRA * cheer.extras.length);
+      later(stay, () => setCheers((c) => c.filter((x) => x.key !== cheer.key)));
     };
+
+    /** the events of one change (a progress commit announces them together): one card, or the level's dialog */
+    const celebrate = (events: LearnEvent[]) => {
+      const rest: Array<Exclude<LearnEvent, { kind: 'level' }>> = [];
+      for (const event of events) {
+        if (event.kind === 'level') {
+          const key = ++seq;
+          levelsOpen.current++;
+          setLevels((l) => [...l, { key, id: event.id, badges: [], ready: false }]);
+          later(LEVEL_BEAT, () => {
+            setLevels((l) => l.map((x) => (x.key === key ? { ...x, ready: true } : x)));
+            // the dialog says it all: the cards it would hide go
+            setCheers([]);
+          });
+        } else rest.push(event);
+      }
+      // earned along with a level: its dialog shows it
+      const toDialog = (e: LearnEvent): e is Extract<LearnEvent, { kind: 'rank' | 'badge' }> =>
+        levelsOpen.current > 0 && (e.kind === 'rank' || e.kind === 'badge');
+      for (const event of rest.filter(toDialog)) {
+        setLevels((l) => {
+          const last = l[l.length - 1];
+          const next = event.kind === 'rank' ? { ...last, rank: event.index } : { ...last, badges: [...last.badges, event.id] };
+          return [...l.slice(0, -1), next];
+        });
+      }
+      const xp = rest.find((e) => e.kind === 'xp')?.amount;
+      // one card: the lesson (with its XP) or else the streak, rank or badge, and the rest riding on it
+      const [main, ...extras] = rest
+        .filter((e) => e.kind !== 'xp' && !toDialog(e))
+        .sort((a, b) => CARD_ORDER.indexOf(a.kind) - CARD_ORDER.indexOf(b.kind));
+      if (main) show({ ...main, key: ++seq, xp: main.kind === 'lesson' ? xp : undefined, extras: extras as Extra[] });
+      // XP on its own (no lesson to carry it): a floating chip
+      else if (xp !== undefined) show({ kind: 'xp', amount: xp, total: 0, key: ++seq, extras: [] });
+    };
+
+    let batch: LearnEvent[] = [];
     const off = onLearnEvent((event) => {
       const key = ++seq;
       const text = spoken(event);
@@ -199,25 +306,15 @@ export default function CelebrationHost() {
         setSaid((s) => [...s, { key, text }]);
         later(8000, () => setSaid((s) => s.filter((x) => x.key !== key)));
       }
-      if (event.kind === 'level') {
-        levelsOpen.current++;
-        setLevels((l) => [...l, { id: event.id, badges: [] }]);
-      } else if (levelsOpen.current > 0 && (event.kind === 'rank' || event.kind === 'badge')) {
-        // earned along with a level: its dialog shows it
-        setLevels((l) => {
-          const last = l[l.length - 1];
-          const next = event.kind === 'rank' ? { ...last, rank: event.index } : { ...last, badges: [...last.badges, event.id] };
-          return [...l.slice(0, -1), next];
+      // a change's events arrive one after another in the same task
+      if (batch.length === 0) {
+        queueMicrotask(() => {
+          const events = batch;
+          batch = [];
+          celebrate(events);
         });
-      } else if (event.kind === 'xp' && lessonCard.current !== null) {
-        // the XP of the lesson just finished rides on its card
-        const card = lessonCard.current;
-        lessonCard.current = null;
-        setCheers((c) => c.map((x) => (x.key === card ? { ...x, xp: event.amount } : x)));
-      } else {
-        lessonCard.current = event.kind === 'lesson' ? key : null;
-        show({ ...event, key });
       }
+      batch.push(event);
     });
     const pending = timers.current;
     return () => {
@@ -228,6 +325,7 @@ export default function CelebrationHost() {
   }, []);
 
   const confetti = !prefersReducedMotion();
+  const dialog = levels[0]?.ready ? levels[0] : null;
   return (
     <>
       {createPortal(
@@ -239,19 +337,20 @@ export default function CelebrationHost() {
             ))}
           </div>
           {/* a level's dialog celebrates on its own */}
-          {levels.length === 0
-            ? cheers.map((cheer) => (
+          {dialog
+            ? null
+            : cheers.map((cheer) => (
                 <div key={cheer.key} aria-hidden="true" data-cheer={cheer.kind}>
                   <CheerCard cheer={cheer} confetti={confetti} />
                 </div>
-              ))
-            : null}
+              ))}
         </div>,
         document.body,
       )}
-      {levels[0] ? (
+      {dialog ? (
         <LevelDialog
-          cheer={levels[0]}
+          key={dialog.key}
+          cheer={dialog}
           onClose={() => {
             levelsOpen.current--;
             setLevels((l) => l.slice(1));
@@ -279,6 +378,8 @@ function spoken(event: LearnEvent): string | null {
       const badge = badgeById(event.id);
       return badge ? m.sayBadge(textIn(badge.title, locale)) : null;
     }
+    case 'streak':
+      return m.sayStreak(event.days);
     case 'level': {
       const level = ALL_LEVELS.find((l) => l.id === event.id);
       return level ? m.sayLevel(textIn(level.title, locale)) : null;

@@ -2,7 +2,7 @@
  * The learning side's medals, shared by the map and the celebrations: a
  * badge's round medal (a level's in that level's hue, the others gold),
  * a rank's hexagon, and a burst of confetti. The hues are CSS classes
- * (`bp-lv-*`, `bp-rank-*` in global.css) so each theme gets its own text color.
+ * (`bp-lv-*`, `bp-rank-*` in global.css and ./learn.css) so each theme gets its own text color.
  * A medal's size is the `--m` custom property: a `size` prop, or without one
  * whatever `--m` its parent sets (`[--m:40px] md:[--m:60px]` for a size per
  * breakpoint).
@@ -12,15 +12,18 @@ import {
   BookOpen,
   CalendarCheck,
   Cloud,
+  Crown,
   DraftingCompass,
   EyeOff,
   Flame,
   Hammer,
   ListChecks,
+  Layers,
   Lock,
   Power,
   Rocket,
   Sprout,
+  Star,
   Trash2,
   Wrench,
   type LucideIcon,
@@ -29,10 +32,14 @@ import type { CSSProperties } from 'react';
 import type { Badge } from '@/learn/gamification';
 import type { Level } from '@/learn/types';
 import { cn } from '@/lib/utils';
+import './learn.css';
+
+/** hues for the AWS levels, one each (they repeat past the last) */
+const LEVEL_HUES = 9;
 
 /** a level's hue class: the AWS levels in order, Azure in its own blue */
 export const levelHue = (level: Pick<Level, 'id' | 'index'>): string =>
-  level.id.startsWith('azure') ? 'bp-lv-azure' : `bp-lv-${level.index % 4}`;
+  level.id.startsWith('azure') ? 'bp-lv-azure' : `bp-lv-${level.index % LEVEL_HUES}`;
 
 /** badge icons by the name `Badge.icon` gives (lucide names) */
 const BADGE_ICONS: Record<string, LucideIcon> = { Award, CalendarCheck, EyeOff, Flame, ListChecks, Power, Rocket, Trash2 };
@@ -80,8 +87,8 @@ export function BadgeMedal({
   );
 }
 
-/** one icon per rank, Newcomer to Cloud Engineer */
-const RANK_ICONS: LucideIcon[] = [Sprout, BookOpen, Wrench, Hammer, DraftingCompass, Cloud];
+/** one icon per rank, Newcomer to Terraform Master */
+const RANK_ICONS: LucideIcon[] = [Sprout, BookOpen, Wrench, Hammer, DraftingCompass, Cloud, Layers, Star, Crown];
 
 export function RankMedal({ index, size = 56, className }: { index: number; size?: number; className?: string }) {
   const tier = Math.min(Math.max(index, 0), RANK_ICONS.length - 1);
