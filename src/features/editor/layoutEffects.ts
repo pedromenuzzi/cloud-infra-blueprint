@@ -6,7 +6,7 @@
 import { useEffect, useRef } from 'react';
 import { canvasApi } from './canvasApi';
 import { isCanvasDragging } from './canvasDrag';
-import { useFloatingInspectorShown } from './inspectorPlacement';
+import { useFloatingPanels } from './inspectorPlacement';
 import { useLayout } from './layoutStore';
 import { useEditor } from './store';
 
@@ -29,22 +29,24 @@ export function useRevealOpensCode(open: () => void) {
 }
 
 /**
- * When the floating inspector opens, the selection changes or the panels
- * around the canvas move, pan (smoothly, just enough) so the selected
- * resource isn't under the inspector. Never mid-drag: the pointer owns the
+ * When the floating inspector or the tool panel opens, the selection changes
+ * or the panels around the canvas move, pan (smoothly, just enough) so the
+ * selected resource isn't under them. Never mid-drag: the pointer owns the
  * canvas then.
  */
 export function useKeepSelectionVisible() {
-  const floating = useFloatingInspectorShown();
+  const floats = useFloatingPanels();
+  const inspector = floats.inspector && floats.folded !== 'inspector';
+  const tool = floats.tool && floats.folded !== 'tool';
   const selection = useEditor((s) => s.selection);
   const single = useEditor((s) => s.selectedIds.length <= 1);
   const arrangement = useLayout(
     (s) => `${s.compact}:${s.panels.palette}${s.panels.code}:${s.paletteSide}${s.codeSide}`,
   );
   useEffect(() => {
-    if (!floating || !selection || !single || isCanvasDragging()) return;
+    if (!(inspector || tool) || !selection || !single || isCanvasDragging()) return;
     // after the inspector (and any resized canvas) is on screen
     const frame = requestAnimationFrame(() => canvasApi()?.focusNode(selection));
     return () => cancelAnimationFrame(frame);
-  }, [floating, selection, single, arrangement]);
+  }, [inspector, tool, selection, single, arrangement]);
 }

@@ -157,10 +157,12 @@ test('delta toast: adding SSH from anywhere says what got worse, Show jumps to i
   await expect(toasts(page).getByText('Ctrl+Z to undo')).toBeVisible();
   await expect(toasts(page).getByText(/^Security grade/)).toHaveCount(1);
 
-  // Show: out of the dialog, onto the resource, the panel open on the finding
+  // Show: out of the dialog, onto the resource, the panel open on the finding (in front: beside the
+  // code at 1440 there is room for one floating panel, the inspector waits as a tab)
   await toasts(page).getByRole('button', { name: 'Show' }).click();
   await expect(dialog).toBeHidden();
-  await expect(inspector(page).getByTestId('inspector-address')).toHaveText('aws_instance.web');
+  await expect(node(page, 'aws_instance.web')).toHaveClass(/selected/);
+  await expect(page.getByRole('button', { name: 'Show inspector' })).toBeVisible();
   await expect(panel(page).getByRole('button', { name: /^SSH \(port 22\) is open to the internet/ })).toHaveAttribute('aria-expanded', 'true');
   await expect(toast).toBeHidden();
 

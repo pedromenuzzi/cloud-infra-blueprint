@@ -407,6 +407,12 @@ function CanvasInner({ templates }: { templates: boolean }) {
   );
   const [overview, setOverview] = useState(false);
   const floats = useFloatingPanels();
+  // the diagram fits the view as it opens; a blank one has nothing to fit, and fitting its first
+  // node later would undo the pan that brings it out from under the inspector
+  const [fitOnOpen] = useState(() => {
+    const opened = useEditor.getState().ir;
+    return opened.resources.length + opened.modules.length + opened.data.length > 0;
+  });
   const cornerControls = useLayout((s) => s.editorLayout && !s.compact && s.panels.canvas);
   /** the pills' first row (stats, cost, warnings): the one level with the canvas's corner controls */
   const statsRowRef = useRef<HTMLSpanElement>(null);
@@ -1110,7 +1116,7 @@ function CanvasInner({ templates }: { templates: boolean }) {
         }}
         onDragLeave={drops.onPaletteDragLeave}
         deleteKeyCode={locked ? null : ['Delete', 'Backspace']}
-        fitView
+        fitView={fitOnOpen}
         fitViewOptions={{ padding: 0.15, maxZoom: 1 }}
         minZoom={0.05}
         maxZoom={2}
