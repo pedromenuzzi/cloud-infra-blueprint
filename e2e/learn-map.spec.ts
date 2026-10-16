@@ -153,6 +153,20 @@ test('reset progress asks first, then forgets everything', async ({ page }) => {
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cb-learn-v1')!))).toMatchObject({ xp: 0, start: null, lessons: {}, badges: {} });
 });
 
+test('after a reload, the map still animates what was finished since it last showed, once', async ({ page }) => {
+  await page.goto('/learn');
+  const first = await firstStation(page);
+  // the map showed nothing done; a lesson finished meanwhile (another tab, a reload in between)
+  await store(page, { start: 'new', xp: 40, lessons: { [first.slug]: { status: 'done', met: [], xp: 40 } }, last: first.slug });
+  const level = page.locator('[data-level]').filter({ has: page.locator(`[data-station="${first.code}"]`) });
+  await expect(level.locator('[data-trail] .bp-trail-draw')).toHaveCount(2);
+  await expect(page.locator(`[data-station="${first.code}"] .bp-medal-pop`)).toHaveCount(1);
+  // shown once: the next visit opens still
+  await page.reload();
+  await expect(page.locator(`[data-track] [data-station="${first.code}"]`)).toHaveAttribute('data-state', 'done');
+  await expect(level.locator('[data-trail] .bp-trail-draw')).toHaveCount(0);
+});
+
 test('a badge earned on the map is celebrated and read out, without taking focus', async ({ page }) => {
   await page.goto('/learn');
   // `terraform init` already ran in a lesson, its badge not given yet: the next change awards it
