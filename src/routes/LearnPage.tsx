@@ -6,7 +6,7 @@
  * phones and screen readers get.
  */
 import { ArrowRight, Award, Check, Cloud, Flame, Play, RotateCcw, Sprout, Swords, Trophy } from 'lucide-react';
-import { useEffect, useId, useRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { AppRail } from '@/components/AppRail';
 import { confirmAction } from '@/components/Confirm';
@@ -14,7 +14,7 @@ import { richText } from '@/components/RichText';
 import { showToast } from '@/components/Toast';
 import { Button, buttonClass } from '@/components/ui';
 import { BadgeMedal, badgeHue, levelHue, RankMedal } from '@/features/learn/medals';
-import { continueLesson, levelTally, stationOf, type Station } from '@/features/learn/trail';
+import { continueLesson, levelTally, noteMapSeen, sinceMapSeen, stationOf, type Station } from '@/features/learn/trail';
 import { formatDate } from '@/i18n/format';
 import { useLocale } from '@/i18n/locale';
 import { messagesFor, useMessages } from '@/i18n/messages';
@@ -22,6 +22,7 @@ import { allBadges, bestStreakOf, levelBadge, localDay, rankOf, streakOf } from 
 import { ALL_LESSONS, ALL_LEVELS, startLesson, TRACKS } from '@/learn/lessons';
 import { useLearn, type LearnProgress } from '@/learn/progress';
 import { textIn, type Level, type StartChoice, type T, type Track } from '@/learn/types';
+import { scrollBehavior } from '@/lib/motion';
 import { useDocumentTitle } from '@/lib/useDocumentTitle';
 import { cn } from '@/lib/utils';
 import { learnMessages } from './LearnPage.messages';
@@ -34,7 +35,7 @@ function useText() {
 
 /* ------------------------------------------------------------ player card */
 
-function PlayerCard({ progress }: { progress: LearnProgress }) {
+function PlayerCard({ progress, since }: { progress: LearnProgress; since: Since }) {
   const m = useMessages(learnMessages);
   const t = useText();
   const headingId = useId();
@@ -46,12 +47,18 @@ function PlayerCard({ progress }: { progress: LearnProgress }) {
   const earned = badges.filter((b) => progress.badges[b.id]).length;
   const done = ALL_LESSONS.filter((l) => progress.lessons[l.slug]?.status === 'done').length;
   const nextText = next ? m.toNextRank(next.xp - progress.xp, t(next.title)) : m.topRank;
+  // back from a lesson: the bar fills from where it was (from empty after a new rank)
+  const before = since ? rankOf(since.xp) : null;
+  const grown = useGrown(toNext, before ? (before.index === index ? before.progress : 0) : undefined);
 
   return (
     <section aria-labelledby={headingId} className="rounded-[20px] border bg-surface-1/90 p-5 shadow-md backdrop-blur" data-testid="player-card">
       <h2 id={headingId} className="sr-only">
         {m.yourProgress}
       </h2>
+      {/* side by side while the card spans the hero (tablets), stacked beside it on wide screens */}
+      <div className="sm:grid sm:grid-cols-2 sm:gap-x-8 lg:block">
+      <div>
       <div className="flex items-center gap-4">
         <RankMedal index={index} size={56} />
         <div className="min-w-0 flex-1">
@@ -70,13 +77,15 @@ function PlayerCard({ progress }: { progress: LearnProgress }) {
         className="mt-4 h-2.5 overflow-hidden rounded-full bg-surface-2"
       >
         <div
-          className="h-full rounded-full bg-gradient-to-r from-[#6366f1] via-[#2563eb] to-[#06b6d4] transition-[width] duration-700"
-          style={{ width: `${Math.max(3, toNext * 100)}%` }}
+          className="h-full rounded-full bg-gradient-to-r from-[#6366f1] via-[#2563eb] to-[#06b6d4] transition-[width] duration-700 ease-out"
+          style={{ width: `${Math.max(3, grown * 100)}%`, transitionDelay: since ? '450ms' : undefined }}
         />
       </div>
       <p className="mt-1.5 text-[12px] text-muted">{nextText}</p>
+      </div>
 
-      <div className="mt-4 flex items-center gap-3 border-t pt-4">
+      <div className="mt-4 border-t pt-4 sm:mt-0 sm:border-l sm:border-t-0 sm:pl-8 sm:pt-0 lg:mt-4 lg:border-l-0 lg:border-t lg:pl-0 lg:pt-4">
+      <div className="flex items-center gap-3">
         <span
           aria-hidden="true"
           className={cn(
@@ -90,7 +99,7 @@ function PlayerCard({ progress }: { progress: LearnProgress }) {
         <div className="min-w-0 flex-1">
           <p className="text-[10.5px] font-bold uppercase tracking-[0.12em] text-faint">{m.streak}</p>
           <p className="text-[15px] font-bold tabular-nums">{m.days(streak)}</p>
-          <p className="text-[11.5px] text-muted">{today ? m.streakToday : streak > 0 ? m.streakKeep : m.streakStart}</p>
+          <p className="text-[11.5px] text-muted">{today ? m.streakToday : streak > 0 ? m.streakKeep(streak + 1) : m.streakStart}</p>
         </div>
         {best > 0 ? <p className="shrink-0 self-start text-[11.5px] font-semibold tabular-nums text-muted">{m.bestStreak(best)}</p> : null}
       </div>
@@ -98,6 +107,8 @@ function PlayerCard({ progress }: { progress: LearnProgress }) {
         <Stat label={m.badges} icon={<Award className="h-4 w-4 text-[#d97706]" />} value={m.countOf(earned, badges.length)} />
         <Stat label={m.lessons} icon={<Check className="h-4 w-4 text-success" />} value={m.countOf(done, ALL_LESSONS.length)} />
       </dl>
+      </div>
+      </div>
     </section>
   );
 }
@@ -208,8 +219,12 @@ function StartQuestion({ start }: { start: StartChoice | null }) {
 
 /** the wave the stations ride on, as multiples of the amplitude */
 const WAVE = [1, 2, 1, 0];
-/** room above the stations for the "Start here" flag */
-const TOP = 34;
+/** narrower than this per station, a level's trail turns back in a new row (a switchback) */
+const MIN_COL = 128;
+const MIN_COL_SMALL = 120;
+
+/** what changed since the map last showed: the lessons just finished, and the XP shown then */
+type Since = ReturnType<typeof sinceMapSeen>;
 
 function Tag({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -219,12 +234,24 @@ function Tag({ children, className }: { children: ReactNode; className?: string 
   );
 }
 
-function StationNode({ station, pulse }: { station: Station; pulse: boolean }) {
+/** `target`, reached from `from` with the CSS transition once it has painted (no `from`: at once) */
+function useGrown(target: number, from: number | undefined): number {
+  const [value, setValue] = useState(from ?? target);
+  useEffect(() => {
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => setValue(target));
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [target]);
+  return value;
+}
+
+function StationNode({ station, pulse, pop }: { station: Station; pulse: boolean; pop: boolean }) {
   const { lesson, state, met, optional } = station;
   const challenge = lesson.kind === 'challenge';
   const ratio = lesson.goals.length ? met / lesson.goals.length : 0;
   return (
-    <span aria-hidden="true" className="relative flex h-10 w-10 shrink-0 items-center justify-center md:h-[var(--node)] md:w-[var(--node)]">
+    <span aria-hidden="true" data-node="" className="relative flex h-10 w-10 shrink-0 items-center justify-center md:h-[var(--node)] md:w-[var(--node)]">
       {pulse ? (
         <span className={cn('bp-pulse-ring absolute inset-0 border-2 border-[color:var(--lv)]', challenge ? 'rotate-45 scale-75 rounded-[10px]' : 'rounded-full')} />
       ) : null}
@@ -246,7 +273,8 @@ function StationNode({ station, pulse }: { station: Station; pulse: boolean }) {
             <circle cx="18" cy="18" r="17" fill="none" stroke="var(--lv)" strokeWidth="2.2" strokeLinecap="round" strokeDasharray={`${Math.max(ratio, 0.04) * 106.8} 106.8`} />
           </svg>
         ) : null}
-        <span className={cn('flex items-center justify-center', challenge && '-rotate-45')}>
+        {/* just finished: the medal pops in as the map comes back into view */}
+        <span className={cn('flex items-center justify-center', challenge && '-rotate-45', pop && 'bp-medal-pop [animation-delay:400ms]')}>
           {state === 'done' ? (
             challenge ? <Trophy className="h-4 w-4 md:h-[18px] md:w-[18px]" /> : <Check className="h-4 w-4 md:h-5 md:w-5" strokeWidth={2.6} />
           ) : challenge ? (
@@ -262,17 +290,29 @@ function StationNode({ station, pulse }: { station: Station; pulse: boolean }) {
   );
 }
 
+/** a station's cell in the trail's grid on wide screens (the rows after the first turn back) */
+interface Cell {
+  row: number;
+  col: number;
+  /** where along its row (in walking order) */
+  step: number;
+}
+
 function StationItem({
   station,
+  cell,
   wave,
   marker,
   pulse,
+  pop,
   align,
 }: {
   station: Station;
+  cell: Cell;
   wave: number;
   marker: string | null;
   pulse: boolean;
+  pop: boolean;
   /** where the summary card sits on wide screens (the first and last columns keep it inside the page) */
   align: 'start' | 'center' | 'end';
 }) {
@@ -304,7 +344,7 @@ function StationItem({
         "before:absolute before:bottom-1 before:left-[19px] before:top-11 before:border-l-2 before:content-[''] md:before:hidden",
         state === 'done' ? 'before:border-[color:var(--lv)]' : 'before:border-dashed before:border-border-strong',
       )}
-      style={{ '--wave': `${wave}px` } as CSSProperties}
+      style={{ '--wave': `${wave}px`, gridRow: cell.row + 1, gridColumn: cell.col + 1 } as CSSProperties}
     >
       <Link
         to={`/learn/${lesson.slug}`}
@@ -325,7 +365,7 @@ function StationItem({
             <span className="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-primary" />
           </span>
         ) : null}
-        <StationNode station={station} pulse={pulse} />
+        <StationNode station={station} pulse={pulse} pop={pop} />
         <span
           className={cn(
             'min-w-0 flex-1 md:w-full md:flex-none md:pt-0',
@@ -347,6 +387,8 @@ function StationItem({
             id={summaryId}
             className={cn(
               'mt-0.5 block text-[12.5px] leading-snug text-muted',
+              // a phone's list stays short: a lesson already done keeps its summary for screen readers only
+              state === 'done' && 'max-md:sr-only',
               // wide screens: a card that shows on hover and keyboard focus
               'md:pointer-events-none md:invisible md:absolute md:top-full md:z-20 md:mt-2 md:w-56 md:rounded-[12px] md:border md:bg-surface-1 md:p-3 md:text-left md:text-[12px] md:opacity-0 md:shadow-lg md:transition-opacity md:group-hover:visible md:group-hover:opacity-100 md:group-focus-visible:visible md:group-focus-visible:opacity-100',
               align === 'start' ? 'md:left-0' : align === 'end' ? 'md:right-0' : 'md:left-1/2 md:-translate-x-1/2',
@@ -354,7 +396,7 @@ function StationItem({
           >
             {richText(t(lesson.summary), 'font-mono text-[11px]')}
           </span>
-          <span className="mt-1 flex items-center gap-1.5 text-[11.5px] text-faint md:justify-center">
+          <span className="mt-1 flex items-center gap-1.5 whitespace-nowrap text-[11.5px] text-faint md:justify-center">
             <span>{m.minutes(lesson.minutes)}</span>
             <span aria-hidden="true">·</span>
             {state === 'done' ? (
@@ -369,12 +411,50 @@ function StationItem({
   );
 }
 
+/** the middle of each station's node (and the badge's), measured in `box`, which they're laid out in */
+function useNodeCenters(box: RefObject<HTMLElement | null>, layout: string): Array<{ x: number; y: number }> {
+  const [points, setPoints] = useState<Array<{ x: number; y: number }>>([]);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => {
+      const base = el.getBoundingClientRect();
+      const next = Array.from(el.querySelectorAll('[data-node]'), (node) => {
+        const r = node.getBoundingClientRect();
+        return { x: Math.round(r.left - base.left + r.width / 2), y: Math.round(r.top - base.top + r.height / 2) };
+      });
+      setPoints((prev) => (prev.length === next.length && prev.every((p, i) => p.x === next[i].x && p.y === next[i].y) ? prev : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [box, layout]);
+  return points;
+}
+
+/** the width `ref` has to offer (followed as it resizes; 0 before the first layout) */
+function useWidth(ref: RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const apply = () => setWidth(el.clientWidth);
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return width;
+}
+
 function Trail({
   level,
   stations,
   earned,
   startSlug,
   hereSlug,
+  fresh,
   small,
 }: {
   level: Level;
@@ -382,87 +462,114 @@ function Trail({
   earned: boolean;
   startSlug?: string;
   hereSlug?: string;
+  /** lessons just finished: their medal pops and the stretch after them draws itself in */
+  fresh?: Set<string>;
   small?: boolean;
 }) {
   const m = useMessages(learnMessages);
   const t = useText();
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
   const node = small ? 44 : 52;
   const amp = small ? 12 : 22;
-  // the lessons, then the level's badge at the end of the trail
-  const cols = stations.length + 1;
-  const xs = Array.from({ length: cols }, (_, i) => ((i + 0.5) / cols) * 100);
-  const ys = Array.from({ length: cols }, (_, i) => TOP + WAVE[i % 4] * amp + node / 2);
-  const height = TOP + 2 * amp + node;
-  const width = small ? 'md:max-w-[calc(var(--cols)*170px)]' : 'md:max-w-[calc(var(--cols)*210px)]';
+  // the lessons, then the level's badge at the end of the trail, in as many rows as the width needs
+  const count = stations.length + 1;
+  const width = useWidth(outer);
+  const fit = width > 0 ? Math.max(3, Math.floor(width / (small ? MIN_COL_SMALL : MIN_COL))) : count;
+  const rows = Math.ceil(count / fit);
+  const perRow = Math.ceil(count / rows);
+  const cell = (i: number): Cell => {
+    const row = Math.floor(i / perRow);
+    const step = i % perRow;
+    return { row, step, col: row % 2 === 1 ? perRow - 1 - step : step };
+  };
+  const align = (c: Cell) => (c.col === 0 ? 'start' : c.col === perRow - 1 ? 'end' : 'center');
+  const points = useNodeCenters(inner, `${perRow}`);
+  const maxWidth = small ? 'md:max-w-[calc(var(--cols)*170px)]' : 'md:max-w-[calc(var(--cols)*210px)]';
+  const badge = cell(count - 1);
+  const badgePop = earned && !!fresh && stations.some((s) => fresh.has(s.lesson.slug));
+
+  /** the path from one node to the next: a wave along a row, a U where the trail turns into the next row */
+  const path = (i: number) => {
+    const a = points[i];
+    const b = points[i + 1];
+    if (!a || !b) return null;
+    if (cell(i).row === cell(i + 1).row) {
+      const mid = (a.x + b.x) / 2;
+      return `M${a.x} ${a.y} C${mid} ${a.y} ${mid} ${b.y} ${b.x} ${b.y}`;
+    }
+    const colWidth = (inner.current?.clientWidth ?? 0) / perRow;
+    const out = Math.min((b.y - a.y) * 0.6, colWidth / 2 + 12) * (cell(i).col === perRow - 1 ? 1 : -1);
+    return `M${a.x} ${a.y} C${a.x + out} ${a.y} ${b.x + out} ${b.y} ${b.x} ${b.y}`;
+  };
 
   return (
-    <div className="relative mt-5 md:mt-3" style={{ '--cols': cols, '--node': `${node}px` } as CSSProperties}>
-      <svg
-        aria-hidden="true"
-        data-trail=""
-        className={cn('pointer-events-none absolute left-0 top-0 hidden w-full overflow-visible md:block', width)}
-        height={height}
-        viewBox={`0 0 100 ${height}`}
-        preserveAspectRatio="none"
-      >
-        {stations.map((station, i) => {
-          const mid = (xs[i] + xs[i + 1]) / 2;
-          const d = `M${xs[i]} ${ys[i]} C${mid} ${ys[i]} ${mid} ${ys[i + 1]} ${xs[i + 1]} ${ys[i + 1]}`;
-          // walked once the station it leaves from is done
-          return station.state === 'done' ? (
-            <g key={station.lesson.slug}>
-              <path d={d} fill="none" stroke="var(--lv)" strokeOpacity={0.16} strokeWidth={12} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-              <path d={d} fill="none" stroke="var(--lv)" strokeWidth={3.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-            </g>
-          ) : (
-            <path
-              key={station.lesson.slug}
-              d={d}
-              fill="none"
-              stroke="var(--border-strong)"
-              strokeWidth={3}
-              strokeDasharray="0.5 9"
-              strokeLinecap="round"
-              vectorEffect="non-scaling-stroke"
-            />
-          );
-        })}
-      </svg>
-      <ol className={cn('relative md:grid md:grid-cols-[repeat(var(--cols),minmax(0,1fr))]', width)}>
-        {stations.map((station, i) => {
-          const isStart = station.lesson.slug === startSlug && station.state !== 'done';
-          const isHere = station.lesson.slug === hereSlug && station.state !== 'done';
-          return (
-            <StationItem
-              key={station.lesson.slug}
-              station={station}
-              wave={WAVE[i % 4] * amp}
-              marker={isStart ? m.startHere : isHere ? m.youAreHere : null}
-              pulse={isStart || isHere}
-              align={i === 0 ? 'start' : i >= cols - 2 ? 'end' : 'center'}
-            />
-          );
-        })}
-        {/* the reward at the end of the trail; its state is read out in the level's header */}
-        <li
-          aria-hidden="true"
-          className="relative flex items-center gap-3.5 md:flex-col md:gap-2 md:pt-[calc(34px+var(--wave))] md:text-center"
-          style={{ '--wave': `${WAVE[(cols - 1) % 4] * amp}px` } as CSSProperties}
-        >
-          <span
-            className={cn(
-              'flex h-10 w-10 shrink-0 items-center justify-center [--m:40px] md:h-[var(--node)] md:w-[var(--node)]',
-              small ? 'md:[--m:48px]' : 'md:[--m:62px]',
-            )}
+    <div ref={outer} className="mt-5 md:mt-3" style={{ '--cols': perRow, '--node': `${node}px` } as CSSProperties}>
+      <div ref={inner} className={cn('relative', maxWidth)}>
+        <svg aria-hidden="true" data-trail="" className="pointer-events-none absolute inset-0 hidden h-full w-full overflow-visible md:block">
+          {stations.map((station, i) => {
+            const d = path(i);
+            if (!d) return null;
+            const dashed = (
+              <path d={d} fill="none" stroke="var(--border-strong)" strokeWidth={3} strokeDasharray="0.5 9" strokeLinecap="round" />
+            );
+            // walked once the station it leaves from is done
+            if (station.state !== 'done') return <g key={station.lesson.slug}>{dashed}</g>;
+            const drawn = fresh?.has(station.lesson.slug) ? { pathLength: 1, className: 'bp-trail-draw' } : {};
+            return (
+              <g key={station.lesson.slug}>
+                {drawn.className ? dashed : null}
+                <path d={d} fill="none" stroke="var(--lv)" strokeOpacity={0.16} strokeWidth={12} strokeLinecap="round" {...drawn} />
+                <path d={d} fill="none" stroke="var(--lv)" strokeWidth={3.5} strokeLinecap="round" {...drawn} />
+              </g>
+            );
+          })}
+        </svg>
+        <ol className="relative md:grid md:grid-cols-[repeat(var(--cols),minmax(0,1fr))] md:gap-y-7">
+          {stations.map((station, i) => {
+            const isStart = station.lesson.slug === startSlug && station.state !== 'done';
+            const isHere = station.lesson.slug === hereSlug && station.state !== 'done';
+            const c = cell(i);
+            return (
+              <StationItem
+                key={station.lesson.slug}
+                station={station}
+                cell={c}
+                wave={WAVE[c.step % 4] * amp}
+                marker={isStart ? m.startHere : isHere ? m.youAreHere : null}
+                pulse={isStart || isHere}
+                pop={fresh?.has(station.lesson.slug) === true}
+                align={align(c)}
+              />
+            );
+          })}
+          {/* the reward at the end of the trail; its state is read out in the level's header */}
+          <li
+            aria-hidden="true"
+            className="relative flex items-center gap-3.5 md:flex-col md:gap-2 md:pt-[calc(34px+var(--wave))] md:text-center"
+            style={{ '--wave': `${WAVE[badge.step % 4] * amp}px`, gridRow: badge.row + 1, gridColumn: badge.col + 1 } as CSSProperties}
           >
-            <BadgeMedal badge={levelBadge(level)} hue={levelHue(level)} earned={earned} />
-          </span>
-          <span className="min-w-0 md:mt-1.5">
-            <span className="block text-[10.5px] font-bold uppercase tracking-[0.1em] text-[color:var(--lv-text)]">{m.levelBadge}</span>
-            <span className="block text-[13px] font-semibold leading-snug">{t(level.title)}</span>
-          </span>
-        </li>
-      </ol>
+            <span
+              data-node=""
+              className={cn(
+                'flex h-10 w-10 shrink-0 items-center justify-center [--m:40px] md:h-[var(--node)] md:w-[var(--node)]',
+                small ? 'md:[--m:48px]' : 'md:[--m:62px]',
+              )}
+            >
+              <BadgeMedal
+                badge={levelBadge(level)}
+                hue={levelHue(level)}
+                earned={earned}
+                className={badgePop ? 'bp-medal-pop [animation-delay:1100ms]' : undefined}
+              />
+            </span>
+            <span className="min-w-0 md:mt-1.5">
+              <span className="block text-[10.5px] font-bold uppercase tracking-[0.1em] text-[color:var(--lv-text)]">{m.levelBadge}</span>
+              <span className="block text-[13px] font-semibold leading-snug">{t(level.title)}</span>
+            </span>
+          </li>
+        </ol>
+      </div>
     </div>
   );
 }
@@ -472,12 +579,14 @@ function LevelIsland({
   progress,
   startSlug,
   hereSlug,
+  since,
   small,
 }: {
   level: Level;
   progress: LearnProgress;
   startSlug?: string;
   hereSlug?: string;
+  since: Since;
   small?: boolean;
 }) {
   const m = useMessages(learnMessages);
@@ -486,6 +595,11 @@ function LevelIsland({
   const tally = levelTally(level, progress);
   const badgeTitle = t(level.title);
   const earned = !!progress.badges[levelBadge(level).id];
+  const freshHere = since ? level.lessons.filter((l) => since.fresh.has(l.slug)).length : 0;
+  // the bar grows from where it was when the map last showed
+  const ratio = tally.total ? tally.done / tally.total : 0;
+  const grown = useGrown(ratio, freshHere > 0 ? (tally.done - freshHere) / tally.total : undefined);
+  const available = level.lessons.reduce((sum, l) => sum + l.xp, 0);
 
   return (
     <section
@@ -505,10 +619,17 @@ function LevelIsland({
           <div className="w-full sm:mt-1 sm:w-52">
             <div className="flex items-baseline justify-between gap-2 text-[12px]">
               <span className="font-semibold">{m.levelDone(tally.done, tally.total)}</span>
-              <span className="font-semibold tabular-nums text-[color:var(--lv-text)]">{m.levelXp(tally.xp)}</span>
+              {tally.done > 0 ? (
+                <span className="font-semibold tabular-nums text-[color:var(--lv-text)]">{m.levelXp(tally.xp)}</span>
+              ) : (
+                <span className="tabular-nums text-muted">{m.levelXpToEarn(available)}</span>
+              )}
             </div>
             <div aria-hidden="true" className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-2">
-              <div className="h-full rounded-full bg-[var(--lv)] transition-[width] duration-700" style={{ width: `${(tally.done / tally.total) * 100}%` }} />
+              <div
+                className="h-full rounded-full bg-[var(--lv)] transition-[width] duration-700 ease-out"
+                style={{ width: `${grown * 100}%`, transitionDelay: freshHere > 0 ? '450ms' : undefined }}
+              />
             </div>
             <p className="sr-only">{earned ? m.badgeEarned(badgeTitle) : m.badgeLocked(badgeTitle)}</p>
           </div>
@@ -523,6 +644,7 @@ function LevelIsland({
           earned={earned}
           startSlug={startSlug}
           hereSlug={hereSlug}
+          fresh={freshHere > 0 ? since?.fresh : undefined}
           small={small}
         />
       )}
@@ -530,7 +652,7 @@ function LevelIsland({
   );
 }
 
-function TrackMap({ track, progress }: { track: Track; progress: LearnProgress }) {
+function TrackMap({ track, progress, since }: { track: Track; progress: LearnProgress; since: Since }) {
   const t = useText();
   const headingId = useId();
   const startSlug = startLesson(progress.start)?.slug;
@@ -542,7 +664,7 @@ function TrackMap({ track, progress }: { track: Track; progress: LearnProgress }
       </h2>
       <div className={cn('mt-4', track.preview ? 'space-y-3 lg:max-w-3xl' : 'space-y-5')}>
         {track.levels.map((level) => (
-          <LevelIsland key={level.id} level={level} progress={progress} startSlug={startSlug} hereSlug={hereSlug} small={track.preview} />
+          <LevelIsland key={level.id} level={level} progress={progress} startSlug={startSlug} hereSlug={hereSlug} since={since} small={track.preview} />
         ))}
       </div>
     </section>
@@ -619,6 +741,19 @@ export default function LearnPage() {
   useDocumentTitle(m.title);
   const progress = useLearn();
   const next = continueLesson(progress);
+  // back from a lesson: what was finished there animates once, and the map opens on it
+  const [since] = useState(() => sinceMapSeen(useLearn.getState()));
+  useEffect(() => noteMapSeen(progress), [progress]);
+  const here = useRef(next?.code);
+  useEffect(() => {
+    if (!since || !here.current) return;
+    const frame = requestAnimationFrame(() =>
+      document
+        .querySelector(`[data-track] [data-station="${here.current}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: scrollBehavior() }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [since]);
 
   return (
     <div className="flex h-full">
@@ -640,18 +775,18 @@ export default function LearnPage() {
                   </span>
                   <span className="min-w-0">
                     <span className="block text-[11.5px] font-medium">{progress.last ? m.continueFrom : m.startHere}</span>
-                    <span className="block truncate text-[14.5px] font-semibold">{m.lessonCode(next.code, t(next.title))}</span>
+                    <span className="line-clamp-2 block text-[14.5px] font-semibold leading-snug">{m.lessonCode(next.code, t(next.title))}</span>
                   </span>
                   <ArrowRight className="ml-1 h-4 w-4 shrink-0" aria-hidden="true" />
                 </Link>
               ) : null}
               <StartQuestion start={progress.start} />
             </div>
-            <PlayerCard progress={progress} />
+            <PlayerCard progress={progress} since={since} />
           </div>
 
           {TRACKS.map((track) => (
-            <TrackMap key={track.id} track={track} progress={progress} />
+            <TrackMap key={track.id} track={track} progress={progress} since={since} />
           ))}
 
           <BadgeShelf progress={progress} />
