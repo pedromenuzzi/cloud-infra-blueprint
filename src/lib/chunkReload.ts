@@ -89,9 +89,29 @@ export function lazyWithReload<T extends ComponentType<any>>(factory: () => Prom
   );
 }
 
+/** prefetches in flight (routeChunks.ts): their failures never reload the page */
+let quietLoads = 0;
+
+/**
+ * Load a chunk ahead of time, quietly: if it's gone (a deploy happened),
+ * nothing reloads under the user's hands. The navigation that needs it fails
+ * the same way later and recovers then, through lazyWithReload.
+ */
+export function quietLoad<T>(load: () => Promise<T>): Promise<T | undefined> {
+  quietLoads += 1;
+  return load()
+    .catch(() => undefined)
+    .finally(() => {
+      quietLoads -= 1;
+    });
+}
+
 /** Global hooks: Vite's preload failures and dynamic imports outside React.lazy. */
 export function installChunkRecovery() {
   window.addEventListener('vite:preloadError', (event) => {
+    // during a prefetch the error is let through: the prefetch swallows it, and a real
+    // navigation failing at the same moment still recovers through lazyWithReload
+    if (quietLoads > 0) return;
     if (recoveryReload()) event.preventDefault();
   });
   window.addEventListener('unhandledrejection', (event) => {

@@ -74,3 +74,13 @@ describe('stale-chunk recovery with a service worker', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 });
+
+describe('chunks fetched ahead of time', () => {
+  it('a quiet load that fails settles without reloading, and a later real failure still recovers', async () => {
+    const { quietLoad, recoveryReload } = await load();
+    await expect(quietLoad(() => Promise.reject(new TypeError('Failed to fetch dynamically imported module')))).resolves.toBeUndefined();
+    expect(reload).not.toHaveBeenCalled();
+    expect(recoveryReload()).toBe(true);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});

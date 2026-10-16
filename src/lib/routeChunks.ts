@@ -5,6 +5,8 @@
  * so the click lands on a page that is already loaded. A module import runs
  * once: warming twice, or warming and then rendering, costs one request.
  */
+import { quietLoad } from './chunkReload';
+
 const CHUNKS = {
   landing: () => import('@/routes/LandingPage'),
   dashboard: () => import('@/routes/DashboardPage'),
@@ -17,9 +19,9 @@ export type RouteChunk = keyof typeof CHUNKS;
 
 export const routeChunk = CHUNKS;
 
-/** Fetch a page's chunk now; a failure is left to the real navigation (chunkReload.ts). */
+/** Fetch a page's chunk now; a failure is left to the real navigation (chunkReload.ts), never a reload. */
 export function prefetchRoute(name: RouteChunk) {
-  CHUNKS[name]().catch(() => undefined);
+  void quietLoad(CHUNKS[name]);
 }
 
 /** On a data saver or a 2G connection only what is opened gets fetched. */
